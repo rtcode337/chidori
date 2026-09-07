@@ -43,6 +43,7 @@ defmodule Antenna.MixProject do
   defp deps do
     [
       {:phoenix, "~> 1.8.13"},
+      {:phoenix_ecto, "~> 4.7"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.2.0"},
@@ -54,6 +55,8 @@ defmodule Antenna.MixProject do
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
+      {:ecto_sql, "~> 3.14"},
+      {:postgrex, "~> 0.22"},
       {:bandit, "~> 1.5"}
     ]
   end
@@ -66,7 +69,12 @@ defmodule Antenna.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "assets.setup", "assets.build"],
+      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
+      "ecto.setup": ["ecto.create", "ecto.migrate"],
+      "ecto.reset": ["ecto.drop", "ecto.setup"],
+      # テストは毎回まっさらな DB で始める。前のテストが残した行を引きずると、
+      # 単体では通るのに並べると落ちる、という追いにくい壊れ方をする
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind antenna", "esbuild antenna"],
       "assets.deploy": [

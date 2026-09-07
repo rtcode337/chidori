@@ -8,6 +8,7 @@
 import Config
 
 config :antenna,
+  ecto_repos: [Antenna.Repo],
   generators: [timestamp_type: :utc_datetime]
 
 # Configure the endpoint

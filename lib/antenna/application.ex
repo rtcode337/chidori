@@ -9,6 +9,8 @@ defmodule Antenna.Application do
   def start(_type, _args) do
     children = [
       AntennaWeb.Telemetry,
+      # DB は他の何より先に立てる。設定も選別結果もここから読む
+      Antenna.Repo,
       {DNSCluster, query: Application.get_env(:antenna, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Antenna.PubSub},
       # 外部への取得はこの下で動かす。収集を持つ GenServer では待たない ——

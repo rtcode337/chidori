@@ -1,0 +1,52 @@
+# 本番の形。イメージは GHCR から pull する（手元のソースからは docker-compose.build.yml を重ねる）。
+services:
+  antenna:
+    image: ghcr.io/rtcode337/antenna:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # 生成: mix phx.gen.secret（64バイト以上。短いと起動時に断る）
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?SECRET_KEY_BASE を .env に書いてください}
+      DATABASE_URL: ecto://${POSTGRES_USER:-antenna}:${POSTGRES_PASSWORD:-antenna}@db:5432/${POSTGRES_DB:-antenna}
+      PHX_HOST: ${PHX_HOST:-localhost}
+      PORT: ${PORT:-7070}
+      # Chiezo（LAN内の知識サーバー）。入れるとニュースと関連図が使える
+      CHIEZO_BASE_URL: ${CHIEZO_BASE_URL:-}
+      CHIEZO_RELATIONS_BACKEND: ${CHIEZO_RELATIONS_BACKEND:-}
+      CHIEZO_RELATIONS_MODEL: ${CHIEZO_RELATIONS_MODEL:-}
+      TZ: ${TZ:-Asia/Tokyo}
+    ports:
+      - "${PORT:-7070}:${PORT:-7070}"
+
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-antenna}
+      # .env で変えるなら初回起動の前に（data/postgres を作るときにしか効かず、
+      # 後から変えても DB 側は変わらないまま接続文字列だけがずれる）
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-antenna}
+      POSTGRES_DB: ${POSTGRES_DB:-antenna}
+      TZ: ${TZ:-Asia/Tokyo}
+      # **バインドするのは data/ 1本**なので、PGDATA を data/ の下へ移す。
+      # postgres:18 は /var/lib/postgresql/data を直に使わせない（pg_upgrade の
+      # 都合で 1 段上をマウント点にする作りになった）ので、素直に外へ出す
+      PGDATA: /data/postgres/18/docker
+    volumes:
+      # 名前付きボリュームではなくホストのディレクトリに置く —— data/ を丸ごと
+      # コピーすればバックアップになり、Docker の中を覗きに行かなくて済む。
+      # 中身の所有者調整は postgres のエントリポイントが起動時に済ませる
+      - ./data:/data
+    # postgres:18 は VOLUME /var/lib/postgresql を宣言していて、そこに何も
+    # マウントしないと起動のたびに空の匿名ボリュームが作られて溜まる。
+    # 実データは上の PGDATA に置くので、使い捨ての tmpfs を当てて抑える
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      # 立ち上がる前にアプリが繋ぎに行くと、移行が失敗して起動ごと落ちる
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-antenna} -d ${POSTGRES_DB:-antenna}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

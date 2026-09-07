@@ -41,6 +41,12 @@ defmodule Antenna.News do
   defstruct status: :idle,
             collection: nil,
             articles: [],
+            # 選ばれたもの（見出し → なぜ）。**選ぶたびに AI を呼ばない**ので、
+            # 溜まったものが変わっていなければ前の結果をそのまま出す
+            picks: %{},
+            picked_titles: [],
+            picked_from: nil,
+            selecting: false,
             checked_at: nil,
             reason: nil,
             task: nil,
@@ -80,6 +86,16 @@ defmodule Antenna.News do
   """
   def run_now(server \\ __MODULE__) do
     GenServer.cast(server, {:command, :run})
+  end
+
+  @doc """
+  溜まったものから重要なものを選ばせます。
+
+  **溜まったものが変わっていなければ呼び直しません** —— 画面を開くたびに AI を
+  呼ぶと枠を食い切ります。`force` を立てると、変わっていなくても選び直します。
+  """
+  def select(server \\ __MODULE__, force \\ false) do
+    GenServer.cast(server, {:select, force})
   end
 
   @doc """
@@ -185,6 +201,56 @@ defmodule Antenna.News do
   end
 
   @impl true
+  def handle_cast({:select, force}, state) do
+    signature = signature(state.articles)
+
+    cond do
+      state.selecting or state.articles == [] ->
+        {:noreply, state}
+
+      not force and state.picked_from == signature ->
+        # 溜まったものが変わっていない。前の結果をそのまま使う
+        {:noreply, state}
+
+      true ->
+        base = chiezo_base_url()
+        topic = Antenna.Topics.get_by_collection(collection_name())
+
+        if base && topic do
+          articles = state.articles
+
+          Task.Supervisor.async_nolink(Antenna.TaskSupervisor, fn ->
+            {:selected, signature, Antenna.Selection.pick(base, topic, articles)}
+          end)
+
+          {:noreply, broadcast(%{state | selecting: true})}
+        else
+          {:noreply, state}
+        end
+    end
+  end
+
+  @impl true
+  def handle_info({_ref, {:selected, signature, result}}, state) do
+    state =
+      case result do
+        {:ok, picks} ->
+          %{
+            state
+            | selecting: false,
+              picked_from: signature,
+              picks: Map.new(picks, &{&1.title, &1.why}),
+              picked_titles: Enum.map(picks, & &1.title)
+          }
+
+        {:error, reason} ->
+          Logger.warning("選別に失敗した: #{inspect(reason)}")
+          %{state | selecting: false}
+      end
+
+    {:noreply, broadcast(state)}
+  end
+
   def handle_info({ref, result}, %__MODULE__{task: %Task{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
     {:noreply, broadcast(apply_result(state, result))}
@@ -203,6 +269,7 @@ defmodule Antenna.News do
   def handle_info(_message, state), do: {:noreply, state}
 
   defp apply_result(state, {:ok, %{collection: collection, articles: articles}}) do
+    # 溜まったものが入れ替わったら、前の選別はもう当てにならない
     %{
       state
       | status: :ready,
@@ -230,12 +297,18 @@ defmodule Antenna.News do
     state
   end
 
+  # 溜まったものが変わったかの目印。見出しの並びが同じなら選び直さない
+  defp signature(articles), do: articles |> Enum.map(& &1.title) |> :erlang.phash2()
+
   # 画面へ渡す形。内部で持っているタスクや計測用の時刻は出さない
   defp public(state) do
     %{
       status: state.status,
       collection: state.collection,
       articles: state.articles,
+      picks: state.picks,
+      picked_titles: state.picked_titles,
+      selecting: state.selecting,
       checked_at: state.checked_at,
       reason: state.reason,
       configured: chiezo_base_url() != nil

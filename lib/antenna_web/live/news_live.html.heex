@@ -9,6 +9,7 @@
       <nav aria-label="主要メニュー">
         <a class="active" href={~p"/news"}>ニュース</a>
         <a href={~p"/relations"}>関連図</a>
+        <a href={~p"/settings"}>設定</a>
       </nav>
     </header>
 
@@ -37,6 +38,14 @@
         <button
           type="button"
           class="news-secondary"
+          phx-click="select"
+          disabled={@news.articles == [] or @news.selecting}
+        >
+          {if @news.selecting, do: "選んでいます…", else: "AI に選ばせる"}
+        </button>
+        <button
+          type="button"
+          class="news-secondary"
           phx-click="refresh"
           disabled={@news.status == :loading or not @news.configured}
         >
@@ -50,14 +59,6 @@
       </div>
     </section>
 
-    <%!-- AI に何を頼んでいるかは、押す前にも後にも読めるようにする。
-         畳んでおくのは、ふだんは読みたいのが結果のほうだから --%>
-    <details class="news-prompt">
-      <summary>AI に頼んでいる内容</summary>
-      <p class="news-prompt-note">{prompt_note(@news)}</p>
-      <pre>{prompt_text(@news)}</pre>
-    </details>
-
     <section class="news-list" aria-live="polite">
       <%= if message = status_message(@news) do %>
         <p class="news-message">{message}</p>
@@ -70,7 +71,7 @@
         </div>
       </dl>
 
-      <%= for article <- @news.articles do %>
+      <%= for article <- sorted_articles(@news) do %>
         <article>
           <div>
             <p class="news-source">{article.collected_at}</p>
@@ -83,14 +84,40 @@
               <% end %>
             </h2>
             <p :if={article.summary} class="news-summary">{article.summary}</p>
-            <p class="news-reason">{article.reason}</p>
+            <%!-- AI が選んだ理由。関心に照らして「なぜ今読むべきか」を言う。
+                 選ばれていないものは、集めたときの理由だけを出す --%>
+            <p :if={pick_reason(@news, article)} class="news-pick">
+              {pick_reason(@news, article)}
+            </p>
+            <p :if={!pick_reason(@news, article)} class="news-reason">{article.reason}</p>
           </div>
-          <span class={if article.importance == 2, do: "priority", else: "standard"}>
-            {if article.importance == 2, do: "優先", else: "注目"}
+          <span class={
+            cond do
+              pick_reason(@news, article) -> "picked"
+              article.importance == 2 -> "priority"
+              true -> "standard"
+            end
+          }>
+            <%= cond do %>
+              <% pick_reason(@news, article) -> %>
+                いま読む
+              <% article.importance == 2 -> %>
+                優先
+              <% true -> %>
+                注目
+            <% end %>
           </span>
         </article>
       <% end %>
     </section>
+
+    <%!-- AI に何を頼んでいるかは、押す前にも後にも読めるようにする。
+         畳んでおくのは、ふだんは読みたいのが結果のほうだから --%>
+    <details class="news-prompt">
+      <summary>AI に頼んでいる内容</summary>
+      <p class="news-prompt-note">{prompt_note(@news)}</p>
+      <pre>{prompt_text(@news)}</pre>
+    </details>
 
     <footer>
       <p>

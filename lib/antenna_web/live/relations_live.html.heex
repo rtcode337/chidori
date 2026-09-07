@@ -7,6 +7,7 @@
       <nav aria-label="主要メニュー">
         <a href={~p"/news"}>ニュース</a>
         <a class="active" href={~p"/relations"}>関連図</a>
+        <a href={~p"/settings"}>設定</a>
       </nav>
     </header>
 
@@ -24,16 +25,6 @@
         画家の影響と時代
       </.link>
     </nav>
-
-    <section class="relation-actions" aria-label="関連図の情報収集">
-      <div>
-        <strong>公開情報から更新</strong>
-        <p aria-live="polite">{status_message(@relation)}</p>
-      </div>
-      <button type="button" phx-click="collect" disabled={@relation.status == :loading}>
-        {if @relation.status == :loading, do: "収集中…", else: "関連図を収集"}
-      </button>
-    </section>
 
     <section class="relation-canvas" aria-label={@relation.title}>
       <svg
@@ -70,25 +61,100 @@
           </text>
         <% end %>
         <%= for node <- @relation.nodes do %>
-          <g transform={"translate(#{node.x}, #{node.y})"} class={"relation-node #{node.kind}"}>
-            <circle r={if node.kind == :group, do: 47, else: 42} />
+          <%!-- 代表作があるノードは押せる。押すとその絵を出す --%>
+          <g
+            transform={"translate(#{node.x}, #{node.y})"}
+            class={"relation-node #{node.kind}#{if work_of(node), do: " has-work"}"}
+            phx-click={work_of(node) && "show_work"}
+            phx-value-name={node.name}
+          >
+            <circle r={radius_of(node)} />
             <text text-anchor="middle" class="node-name" y="-2">{node.name}</text>
             <text text-anchor="middle" class="node-note" y="17">{node.note}</text>
             <%= if node.years do %>
-              <rect x="-48" y="57" width="96" height="8" rx="4" class="year-bar" />
-              <text text-anchor="middle" class="year-label" y="81">{node.years}</text>
+              <text text-anchor="middle" class="year-label" y={radius_of(node) + 18}>
+                {node.years}
+              </text>
             <% end %>
           </g>
         <% end %>
       </svg>
     </section>
 
+    <section class="relation-actions" aria-label="関連図の情報収集">
+      <div>
+        <strong>公開情報から更新</strong>
+        <p aria-live="polite">{status_message(@relation)}</p>
+        <p class="muted-note">{source_note(@view)}</p>
+      </div>
+      <%!-- 押した合図は**サーバーの応答を待たずに**出す。集めるのが速く終わる日も
+           あるので、状態だけに任せると押せたのかどうかが分からない --%>
+      <button
+        type="button"
+        phx-click="collect"
+        phx-disable-with="収集中…"
+        disabled={@relation.status == :loading}
+      >
+        {if @relation.status == :loading, do: "収集中…", else: "関連図を収集"}
+      </button>
+    </section>
+
+    <dl :if={collection_facts(@relation) != []} class="collect-facts">
+      <div :for={{label, value} <- collection_facts(@relation)}>
+        <dt>{label}</dt>
+        <dd>{value}</dd>
+      </div>
+    </dl>
+
+    <%!-- AI に何を頼んでいるかは、押す前にも後にも読めるようにする --%>
+    <details :if={@view == "painters"} class="news-prompt">
+      <summary>AI に頼んでいる内容</summary>
+      <p class="news-prompt-note">{prompt_note(@relation)}</p>
+      <pre>{prompt_text(@relation)}</pre>
+    </details>
+
+    <%!-- 押した人の代表作。**画像は持たず、Wikipedia のものを指すだけ**。
+         図の外に重ねて出す —— 図の下に足すと、押した人が画面の外にいることがある --%>
+    <div
+      :if={@artwork_for}
+      class="artwork-backdrop"
+      phx-window-keydown="close_work"
+      phx-key="Escape"
+    >
+      <section
+        class="artwork"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="artwork-name"
+        phx-click-away="close_work"
+      >
+        <div class="artwork-head">
+          <strong id="artwork-name">{@artwork_for}</strong>
+          <button type="button" phx-click="close_work">閉じる</button>
+        </div>
+        <%= cond do %>
+          <% @artwork == :loading -> %>
+            <p class="muted-note">代表作を探しています…</p>
+          <% is_map(@artwork) -> %>
+            <img src={@artwork.image} alt={@artwork.title} />
+            <p class="artwork-title">{@artwork.title}</p>
+            <p :if={@artwork.extract} class="artwork-extract">{@artwork.extract}</p>
+            <p :if={@artwork.page} class="muted-note">
+              <a href={@artwork.page} target="_blank" rel="noreferrer">Wikipedia で見る</a>
+            </p>
+          <% true -> %>
+            <p class="muted-note">代表作の絵は見つかりませんでした。</p>
+        <% end %>
+      </section>
+    </div>
+
     <section class="relation-guide">
       <div>
         <h2>この図の見方</h2>
         <p>
           <%= if @view == "painters" do %>
-            矢印は影響の方向、年代帯は活躍時期の目安です。
+            上から下へ時代が流れます。矢印は影響の方向、丸の大きさは知られている度合い
+            （日本語版 Wikipedia の月間閲覧数）です。名前を押すと代表作が出ます。
           <% else %>
             実線は家族、点線はコンビとメンバーの関係です。
           <% end %>

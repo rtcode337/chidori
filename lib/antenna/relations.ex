@@ -14,14 +14,22 @@ defmodule Antenna.Relations do
 
   require Logger
 
+  alias Antenna.Chiezo
+  alias Antenna.Fame
   alias Antenna.Http
+  alias Antenna.Relations.Graph
 
   # 図を描く面の大きさ。サンプルの座標もこの中に収めてある
   @canvas_width 980
   @canvas_height 560
 
   @request_timeout 120_000
+  # 溜まったものを読むだけなら Chiezo は手元にいるので短くてよい
+  @read_timeout 15_000
   @connect_timeout 5_000
+
+  # 1 枚の図に取り込む上限。これを超える図は読めないので、集める側で絞る
+  @max_docs 60
   @user_agent "antenna/0.1 (+https://github.com/rtcode337/antenna)"
 
   # 押すたびに AI へ投げると枠を使い切る。こちら側で間隔を空ける
@@ -41,6 +49,7 @@ defmodule Antenna.Relations do
       description: "家族とコンビを、関係の種類ごとにたどれます。",
       width: @canvas_width,
       height: @canvas_height,
+      collection: nil,
       nodes: [
         %{id: "yusaku", name: "松田優作", note: "俳優", x: 130, y: 145, kind: :person, years: nil},
         %{id: "miyuki", name: "松田美由紀", note: "俳優・写真家", x: 310, y: 85, kind: :person, years: nil},
@@ -84,6 +93,7 @@ defmodule Antenna.Relations do
       description: "左から右へ、影響がつながる流れを表します。ノード下の帯は活躍した年代の目安です。",
       width: @canvas_width,
       height: @canvas_height,
+      collection: nil,
       nodes: [
         %{
           id: "delacroix",
@@ -164,6 +174,17 @@ defmodule Antenna.Relations do
     GenServer.cast(__MODULE__, {:collect, valid_key(key)})
   end
 
+  @doc """
+  Chiezo に溜まっているものを読み直します。**依頼も収集もしません**。
+
+  画面を開いたときに呼びます —— Chiezo の側は antenna と関係なく進むので、
+  開くたびに取り直さないと、いつまでも表示例のままになります。
+  溜め先を持たない図（人物）では何もしません。
+  """
+  def refresh(key) when is_binary(key) do
+    GenServer.cast(__MODULE__, {:refresh, valid_key(key)})
+  end
+
   def keys, do: Map.keys(@views)
 
   @doc """
@@ -193,6 +214,7 @@ defmodule Antenna.Relations do
       relations: @views,
       statuses: Map.new(keys(), &{&1, :sample}),
       collected_at: %{},
+      checked_at: %{},
       reasons: %{},
       tasks: %{},
       last_attempt_at: %{}
@@ -205,6 +227,35 @@ defmodule Antenna.Relations do
   def handle_call({:current, key}, _from, state) do
     {:reply, public(state, key), state}
   end
+
+  # 読むだけ。**間隔の制限を掛けない**（AI は動かず、相手は手元にいる）
+  @impl true
+  def handle_cast({:refresh, "painters"}, state) do
+    if state.statuses["painters"] == :loading do
+      {:noreply, state}
+    else
+      fallback = Map.fetch!(state.relations, "painters")
+      base_url = chiezo_base_url()
+
+      if base_url do
+        task =
+          Task.Supervisor.async_nolink(Antenna.TaskSupervisor, fn ->
+            fetch_painters(base_url, fallback)
+          end)
+
+        state =
+          state
+          |> put_in([:statuses, "painters"], :loading)
+          |> put_in([:tasks, task.ref], "painters")
+
+        {:noreply, broadcast(state, "painters")}
+      else
+        {:noreply, state}
+      end
+    end
+  end
+
+  def handle_cast({:refresh, _key}, state), do: {:noreply, state}
 
   @impl true
   def handle_cast({:collect, key}, state) do
@@ -243,6 +294,7 @@ defmodule Antenna.Relations do
         state =
           state
           |> Map.update!(:tasks, &Map.delete(&1, ref))
+          |> put_in([:checked_at, key], DateTime.utc_now())
           |> apply_result(key, result)
 
         {:noreply, broadcast(state, key)}
@@ -262,6 +314,7 @@ defmodule Antenna.Relations do
         state =
           state
           |> Map.update!(:tasks, &Map.delete(&1, ref))
+          |> put_in([:checked_at, key], DateTime.utc_now())
           |> apply_result(key, {:error, :collection_crashed})
 
         {:noreply, broadcast(state, key)}
@@ -279,6 +332,25 @@ defmodule Antenna.Relations do
     |> put_in([:statuses, key], :ready)
     |> put_in([:reasons, key], nil)
     |> put_in([:collected_at, key], DateTime.utc_now())
+  end
+
+  # 集めさせるのは断られたが、溜まっているものは読めた。図は出したうえで理由を添える
+  defp apply_result(state, key, {:ok, relation, reason}) do
+    state
+    |> apply_result(key, {:ok, relation})
+    |> put_in([:reasons, key], reason)
+  end
+
+  defp apply_result(state, key, {:error, {reason, collection}}) when is_map(collection) do
+    # 図を出せないときも、収集の状態は出す —— 「有効にしていない」のか
+    # 「有効だがまだ走っていない」のかで、次にすることが違う
+    state
+    |> put_in(
+      [:relations, key],
+      Map.put(Map.fetch!(state.relations, key), :collection, collection)
+    )
+    |> put_in([:statuses, key], if(state.collected_at[key], do: :stale, else: :unavailable))
+    |> put_in([:reasons, key], reason)
   end
 
   defp apply_result(state, key, {:error, reason}) do
@@ -308,7 +380,35 @@ defmodule Antenna.Relations do
     |> Map.fetch!(key)
     |> Map.put(:status, Map.fetch!(state.statuses, key))
     |> Map.put(:collected_at, Map.get(state.collected_at, key))
+    |> Map.put(:checked_at, Map.get(state.checked_at, key))
     |> Map.put(:reason, Map.get(state.reasons, key))
+  end
+
+  @doc """
+  画家の図を溜めておく Chiezo の収集の名前。`ANTENNA_PAINTERS_COLLECTION` で変えられます。
+
+  **整理する収集**（`mode=refine`）として置きます。図は流れではなく一枚もので、
+  作り直すたびに全体が入れ替わるのが正しい振る舞いだからです。
+  """
+  def painters_collection do
+    case System.get_env("ANTENNA_PAINTERS_COLLECTION", "") |> String.trim() do
+      "" -> "antenna_painters"
+      name -> name
+    end
+  end
+
+  # 画家は **Chiezo に溜まったものを読む**。集めて整理するのは Chiezo の役目で、
+  # antenna は図の形に読み直して見せるだけ。1 画家 1 文書の普通のソースなので、
+  # ノードとエッジという読み方を与えるのはこちら側（`Relations.Graph`）。
+  #
+  # 引き方は `filter`（タグでの一括抽出）。図は流れではなく**一枚もの**なので、
+  # 新しい順に何件かではなく全部が要る。
+  # 「収集」を押したとき。**まだ無ければ依頼し、その場で 1 回集めさせて**読み直す
+  defp fetch_relation("painters", fallback) do
+    case chiezo_base_url() do
+      nil -> {:error, :chiezo_not_configured}
+      base_url -> collect_painters(base_url, fallback)
+    end
   end
 
   defp fetch_relation(key, fallback) do
@@ -321,13 +421,180 @@ defmodule Antenna.Relations do
     end
   end
 
-  defp chiezo_base_url do
-    case System.get_env("CHIEZO_BASE_URL") do
-      nil -> nil
-      "" -> nil
-      value -> String.trim_trailing(String.trim(value), "/")
+  @doc """
+  Chiezo に溜まっているものを図として読みます。**読むだけで、何も作りません**。
+
+  画面を開くたびに呼ぶので、ここから依頼を出さないのが要点です —— 開いただけで
+  向こうに何かが作られるのは驚きが大きく、相手が古い版なら開くたびに失敗します。
+  依頼は「収集」を押したときだけ（`request_painters/2`）。
+
+  **GenServer を通さずに呼べる形にしてあります** —— 引き方と図への読み直しは
+  ここで完結するので、状態を持つ入れ物を跨がずに確かめられます。
+  """
+  def fetch_painters(base_url, fallback) do
+    # 収集の状態も一緒に読む。**押した人が「動いているのか」を判断できる**必要が
+    # あるので、図だけ出しても足りない（ニュースと同じ扱い）
+    collection =
+      case Chiezo.collection(base_url, painters_collection()) do
+        {:ok, found} -> found
+        {:error, _reason} -> nil
+      end
+
+    case collected_docs(base_url, painters_collection()) do
+      # まだ焼かれていなければソースごと無い。**溜まっていないのと同じ扱い**にする
+      # （繋がらないのとは別。状態を添えて返す）
+      {:error, :nothing_collected} ->
+        {:error, {:nothing_collected, collection}}
+
+      {:error, reason} ->
+        {:error, reason}
+
+      {:ok, docs} ->
+        graph = Graph.from_docs(docs)
+
+        if graph.nodes == [] do
+          {:error, {:nothing_collected, collection}}
+        else
+          # 丸の大きさは知名度で決める。**AI に有名かどうかを判断させない** ——
+          # jawiki の月次ページビューのほうが客観的で、実行のたびに揺れない
+          fame = Fame.for_articles(base_url, Enum.map(graph.nodes, & &1.article))
+
+          {:ok,
+           fallback
+           |> Map.merge(%{graph | nodes: Graph.sized(graph.nodes, fame)})
+           |> Map.put(:collection, collection)}
+        end
     end
   end
+
+  @doc """
+  Chiezo に収集を依頼して、そのまま読み直します。
+
+  作られるのは**止まった状態**なので、押しただけで AI が動くことはありません。
+  動かすかは Chiezo 側で決めます。
+  """
+  def request_painters(base_url, fallback) do
+    with :ok <- ensure_collection(base_url, painters_collection()) do
+      fetch_painters(base_url, fallback)
+    end
+  end
+
+  @doc """
+  依頼したうえで、**その場で 1 回集めさせて**読み直します。
+
+  「関連図を収集」を押したときの動きです。依頼するだけでは何も集まらないので、
+  押しても画面が変わらず、効いたのかどうかが分かりませんでした。
+
+  止まっている収集は Chiezo が断ります（有効にできるのは Chiezo の画面だけ）。
+  そのときも溜まっているものは読み直したうえで、断られたことを理由として返します。
+  """
+  def collect_painters(base_url, fallback) do
+    name = painters_collection()
+
+    with :ok <- ensure_collection(base_url, name) do
+      case Chiezo.run(base_url, name) do
+        :ok -> fetch_painters(base_url, fallback)
+        {:error, reason} -> refused(fetch_painters(base_url, fallback), reason)
+      end
+    end
+  end
+
+  # 断られたときは**理由のほうを前に出す**。読めたものはそのまま出す
+  defp refused({:ok, relation}, reason), do: {:ok, relation, reason}
+  defp refused({:error, {_previous, collection}}, reason), do: {:error, {reason, collection}}
+  defp refused({:error, _previous}, reason), do: {:error, reason}
+
+  @doc false
+  # Chiezo へ渡す指示文。**整理する収集**（`mode=refine`）なので、返したものが
+  # そのまま新しい全体になる。`{current}` にいまの内容が差し込まれる。
+  #
+  # **図の構造は Chiezo に持ち込まない。** 1 画家 1 文書の普通の文書として書かせ、
+  # 属性と関係はタグに載せる（読み方を与えるのは antenna 側 = `Relations.Graph`）。
+  def painters_prompt do
+    """
+    西洋近代絵画の画家について、影響関係と活躍年代の関連図を育ててください。
+
+    いまの内容:
+    {current}
+
+    進み具合: {cursor}
+
+    **進み具合が空（まだ何も無い）のときは、まず全体を一気に作ってください。**
+    Chiezo の道具で日本語版 Wikipedia を引き、19世紀から20世紀初頭の主要な画家を
+    30人ほど、粗くてよいので一度に出してください。この段階では 1 人の説明は
+    1〜2文で構いません。next_cursor に「粗く作成済み」と入れてください。
+
+    **進み具合が入っているときは、全体を作り直さないでください。**
+    いまの内容から**3人から5人だけ**選び、その人たちを詳しくしてください。
+    説明を書き直す、影響関係の抜けを補う、年代や様式の粒度を揃える、
+    代表作を確かめる、といった直し方です。触れなかった人はそのまま残るので、
+    変えない人を返す必要はありません。
+    次にどこから続けるかを next_cursor に書いてください（例:「ゴッホまで見直した」）。
+
+    1 人につき 1 件で、次の形にしてください。
+    - title: 画家名（日本語のカタカナ表記。同じ人は必ず同じ表記にする）
+    - body: その画家が何をした人かと、影響関係の要点
+    - url: 日本語版 Wikipedia のその画家の記事の URL
+    - tags: 次の 5 種類。#{Graph.kind_tag()} は必ず入れる
+      - "#{Graph.kind_tag()}"
+      - "様式:<ロマン主義 / 印象派 / ポスト印象派 のような様式名>"
+      - "年代:<活躍年代。1880-1890 の形>"
+      - "代表作:<日本語版 Wikipedia にあるその絵の記事名。例: 印象・日の出>"
+      - "影響元:<影響を受けた画家名>:<何を受けたかを10文字ほどで>"
+        影響を受けた画家ごとに 1 つ。**その画家も別の1件として返してください**
+        （返っていない相手への線は図に出ません）
+
+    重複していたら、まとめた先を返して、元のほうは墓標で消してください。
+    """
+  end
+
+  # まだ無ければ依頼する。**止まった状態で作られる**ので、これで AI が動き出す
+  # ことはない（動かすかは Chiezo 側で決める）。すでにあれば何もしない
+  defp ensure_collection(base_url, name) do
+    Chiezo.request(base_url, %{
+      name: name,
+      description: "antenna の関連図（画家の影響と時代）",
+      prompt: painters_prompt(),
+      interval_minutes: 1440,
+      mode: "refine",
+      requested_by: "antenna"
+    })
+  end
+
+  # 溜まっているものを全部引く。**まだ焼かれていなければソースごと無い**ので、
+  # 404 は「まだ何も入っていない」として扱う（繋がらないのとは別）
+  defp collected_docs(base_url, name) do
+    url =
+      base_url <>
+        "/v1/" <>
+        name <>
+        "/filter?limit=#{@max_docs}&fields=title,body,tags,extra&tag=" <>
+        URI.encode_www_form(Graph.kind_tag())
+
+    case Http.get(url,
+           headers: [{"user-agent", @user_agent}],
+           timeout: @read_timeout,
+           connect_timeout: @connect_timeout
+         ) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          # `filter` が返すのは `results`（`recent` の `docs` とは別の名前）
+          {:ok, %{"results" => docs}} when is_list(docs) -> {:ok, docs}
+          _ -> {:error, :chiezo_unexpected_body}
+        end
+
+      {:ok, %{status: 404}} ->
+        {:error, :nothing_collected}
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  defp chiezo_base_url, do: Chiezo.base_url()
 
   defp ask_chiezo(base_url, key) do
     payload =

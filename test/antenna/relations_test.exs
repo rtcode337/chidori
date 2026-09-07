@@ -1,186 +1,220 @@
 defmodule Antenna.RelationsTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
+  alias Antenna.HttpStub
   alias Antenna.Relations
 
-  # 図の面に収まっているか。はみ出したノードは画面から見えない
-  defp within_canvas?(relation) do
-    Enum.all?(relation.nodes, fn node ->
-      node.x >= 0 and node.x <= relation.width and node.y >= 0 and node.y <= relation.height
-    end)
+  @base "http://chiezo.test:7010"
+
+  defp painter_doc(title, tags) do
+    %{"title" => title, "body" => "説明", "tags" => ["画家" | tags]}
   end
 
-  defp fallback(key), do: Relations.current(key)
+  # Chiezo の `filter` が返す形（キーは `results`）
+  defp docs_body(docs), do: Jason.encode!(%{"results" => docs, "total" => length(docs)})
 
-  defp payload(nodes, edges, sources) do
-    Jason.encode!(%{"nodes" => nodes, "edges" => edges, "sources" => sources})
+  # 表示例をそのまま下敷きにする（本番と同じく、失敗したらこれが残る）
+  defp fallback, do: Relations.current("painters")
+
+  describe "画家の図を Chiezo から読む" do
+    test "読むだけのときは、何も作りに行かない" do
+      # 画面を開くたびに呼ぶ経路。開いただけで向こうに何かが作られるのは驚きが大きい
+      HttpStub.stub(fn
+        %{method: :post} -> flunk("読むだけのはずが依頼を出している")
+        %{method: :get} -> HttpStub.ok(docs_body([painter_doc("A", ["年代:1900"])]))
+      end)
+
+      assert {:ok, %{nodes: [%{name: "A"}]}} = Relations.fetch_painters(@base, fallback())
+    end
+
+    test "依頼してから、溜まっているものを図にする" do
+      test_pid = self()
+
+      HttpStub.stub(fn
+        %{method: :post, url: @base <> "/v1/collect", body: body} ->
+          send(test_pid, {:requested, Jason.decode!(body)})
+          HttpStub.ok("{}")
+
+        %{method: :get, url: @base <> "/v1/collect"} ->
+          HttpStub.ok(Jason.encode!(%{"collections" => []}))
+
+        %{method: :get, url: url} ->
+          send(test_pid, {:read, url})
+
+          HttpStub.ok(
+            docs_body([
+              painter_doc("クロード・モネ", ["年代:1860-1920", "様式:印象派"]),
+              painter_doc("フィンセント・ファン・ゴッホ", ["年代:1880-1890", "影響元:クロード・モネ:光"])
+            ])
+          )
+      end)
+
+      assert {:ok, relation} = Relations.request_painters(@base, fallback())
+
+      assert_received {:requested, payload}
+      # 整理する収集として依頼する（実行のたびに育てていく）
+      assert payload["mode"] == "refine"
+      assert payload["prompt"] =~ "{current}"
+      assert payload["requested_by"] == "antenna"
+
+      assert_received {:read, url}
+      # 一枚ものなので、新しい順に何件かではなく全部を引く
+      assert url =~ "/filter?"
+      assert url =~ "tag="
+
+      assert Enum.map(relation.nodes, & &1.name) == ["クロード・モネ", "フィンセント・ファン・ゴッホ"]
+      assert [%{label: "光", kind: :influence}] = relation.edges
+      # 見出しなど図そのもの以外は表示例のものを引き継ぐ
+      assert relation.title == fallback().title
+    end
+
+    test "「収集」を押したら、依頼するだけでなく実際に集めさせる" do
+      # 依頼するだけだと一瞬で終わり、画面も変わらないので、押せたのかどうかが
+      # 分からなかった。押したときは向こうを 1 回走らせる
+      test_pid = self()
+
+      HttpStub.stub(fn
+        %{method: :post, url: @base <> "/v1/collect"} ->
+          HttpStub.ok("{}")
+
+        %{method: :post, url: url} ->
+          send(test_pid, {:ran, url})
+          HttpStub.ok("{}")
+
+        %{method: :get, url: @base <> "/v1/collect"} ->
+          HttpStub.ok(Jason.encode!(%{"collections" => []}))
+
+        %{method: :get, url: _url} ->
+          HttpStub.ok(docs_body([painter_doc("クロード・モネ", ["年代:1860-1920"])]))
+      end)
+
+      assert {:ok, %{nodes: [%{name: "クロード・モネ"}]}} =
+               Relations.collect_painters(@base, fallback())
+
+      assert_received {:ran, url}
+      assert url =~ "/v1/collect/antenna_painters/run"
+    end
+
+    test "止まっている収集は集めさせられない。溜まっているものは出したまま理由を添える" do
+      HttpStub.stub(fn
+        %{method: :post, url: @base <> "/v1/collect"} ->
+          HttpStub.ok("{}")
+
+        # 有効にできるのは Chiezo の画面だけ。向こうは 403 で断る
+        %{method: :post, url: _run} ->
+          {:ok, %{status: 403, body: ""}}
+
+        %{method: :get, url: @base <> "/v1/collect"} ->
+          HttpStub.ok(Jason.encode!(%{"collections" => []}))
+
+        %{method: :get, url: _url} ->
+          HttpStub.ok(docs_body([painter_doc("クロード・モネ", ["年代:1860-1920"])]))
+      end)
+
+      assert {:ok, %{nodes: [_]}, :collection_disabled} =
+               Relations.collect_painters(@base, fallback())
+    end
+
+    test "止まっていて、まだ何も溜まっていなければ、断られた理由のほうを出す" do
+      # 「まだ何も溜まっていません」だけでは、次に何をすればよいか分からない
+      HttpStub.stub(fn
+        %{method: :post, url: @base <> "/v1/collect"} ->
+          HttpStub.ok("{}")
+
+        %{method: :post, url: _run} ->
+          {:ok, %{status: 403, body: ""}}
+
+        %{method: :get, url: @base <> "/v1/collect"} ->
+          HttpStub.ok(
+            Jason.encode!(%{"collections" => [%{"name" => "antenna_painters", "enabled" => false}]})
+          )
+
+        %{method: :get, url: _url} ->
+          HttpStub.ok(docs_body([]))
+      end)
+
+      assert {:error, {:collection_disabled, collection}} =
+               Relations.collect_painters(@base, fallback())
+
+      refute collection.enabled
+    end
+
+    test "すでにある収集は 409 が返るだけで、そのまま読みに行く" do
+      HttpStub.stub(fn
+        %{method: :post} -> {:ok, %{status: 409, body: ""}}
+        %{method: :get} -> HttpStub.ok(docs_body([painter_doc("A", ["年代:1900"])]))
+      end)
+
+      assert {:ok, %{nodes: [%{name: "A"}]}} = Relations.request_painters(@base, fallback())
+    end
+
+    test "まだ何も溜まっていなければ、そう分かる理由を返す" do
+      HttpStub.stub(fn
+        %{method: :post} -> HttpStub.ok("{}")
+        %{method: :get} -> HttpStub.ok(docs_body([]))
+      end)
+
+      # 収集の状態も一緒に返す（有効にしていないのか、まだ走っていないのかで
+      # 次にすることが違う）
+      assert {:error, {:nothing_collected, _c}} = Relations.fetch_painters(@base, fallback())
+    end
+
+    test "焼かれる前はソースごと無い。繋がらないのとは区別する" do
+      HttpStub.stub(fn
+        %{method: :post} -> HttpStub.ok("{}")
+        %{method: :get} -> {:ok, %{status: 404, body: ""}}
+      end)
+
+      # 収集の状態も一緒に返す（有効にしていないのか、まだ走っていないのかで
+      # 次にすることが違う）
+      assert {:error, {:nothing_collected, _c}} = Relations.fetch_painters(@base, fallback())
+    end
+
+    test "断られた理由をそのまま出す" do
+      # 数字だけ出しても、押した人には次に何をすればよいか分からない
+      # （実際に「400」とだけ出て、Chiezo の版が古いという理由に辿り着けなかった）
+      HttpStub.stub(fn %{method: :post} ->
+        {:ok, %{status: 400, body: ~s({"error":"mode は append / refine のどれかにしてください"})}}
+      end)
+
+      assert {:error, {:chiezo_refused, 400, message}} =
+               Relations.request_painters(@base, fallback())
+
+      assert message =~ "mode"
+    end
+
+    test "理由が読めなければ、状態だけ返す" do
+      HttpStub.stub(fn %{method: :post} -> {:ok, %{status: 400, body: "<html>"}} end)
+      assert {:error, {:chiezo_refused, 400, nil}} = Relations.request_painters(@base, fallback())
+    end
+
+    test "集める層が無い Chiezo はそれと分かる" do
+      HttpStub.stub(fn %{method: :post} -> {:ok, %{status: 404, body: ""}} end)
+      assert {:error, :collect_unsupported} = Relations.request_painters(@base, fallback())
+    end
+
+    test "繋がらなければ、そう返す（前の図を消すのは呼ぶ側の判断）" do
+      HttpStub.stub(fn _request -> {:error, :boom} end)
+      assert {:error, :chiezo_unavailable} = Relations.fetch_painters(@base, fallback())
+    end
   end
 
-  defp painters_payload do
-    payload(
-      [
-        %{"id" => "a", "name" => "画家A", "note" => "様式A", "years" => "1800–1850"},
-        %{"id" => "b", "name" => "画家B", "note" => "様式B", "years" => "1850–1900"}
-      ],
-      [%{"from" => "a", "to" => "b", "label" => "色彩", "kind" => "influence"}],
-      [%{"label" => "出典", "url" => "https://example.com/a"}]
-    )
-  end
+  test "指示文はタグの書き方まで指定する" do
+    prompt = Relations.painters_prompt()
 
-  describe "decode_relation/3" do
-    test "素のJSONを読める" do
-      assert {:ok, relation} =
-               Relations.decode_relation(painters_payload(), "painters", fallback("painters"))
+    # 図の構造は Chiezo に持ち込まない。属性と関係はタグに載せる
+    assert prompt =~ "画家"
+    assert prompt =~ "様式:"
+    assert prompt =~ "年代:"
+    assert prompt =~ "影響元:"
 
-      assert Enum.map(relation.nodes, & &1.id) == ["a", "b"]
-      assert [%{from: "a", to: "b", kind: :influence}] = relation.edges
-    end
+    assert prompt =~ "代表作:"
+    # 初回は一気に、以降は少しずつ。進み具合で振り分ける
+    assert prompt =~ "{cursor}"
+    assert prompt =~ "一気に"
+    assert prompt =~ "3人から5人だけ"
 
-    test "コードブロックで囲まれていても読める" do
-      wrapped = "```json\n" <> painters_payload() <> "\n```"
-
-      assert {:ok, relation} =
-               Relations.decode_relation(wrapped, "painters", fallback("painters"))
-
-      assert length(relation.nodes) == 2
-    end
-
-    test "前後に説明文が付いていても読める" do
-      wrapped = "以下が関連図です。\n\n" <> painters_payload() <> "\n\n出典は公開情報です。"
-
-      assert {:ok, relation} =
-               Relations.decode_relation(wrapped, "painters", fallback("painters"))
-
-      assert length(relation.nodes) == 2
-    end
-
-    test "JSONでなければ断る" do
-      assert {:error, :invalid_ai_response} =
-               Relations.decode_relation("調べられませんでした", "painters", fallback("painters"))
-    end
-
-    test "ノードが1件しかなければ断る" do
-      body =
-        payload(
-          [%{"id" => "a", "name" => "画家A"}],
-          [%{"from" => "a", "to" => "a", "label" => "自己", "kind" => "influence"}],
-          [%{"label" => "出典", "url" => "https://example.com/a"}]
-        )
-
-      assert {:error, :invalid_ai_response} =
-               Relations.decode_relation(body, "painters", fallback("painters"))
-    end
-
-    test "出典が無ければ断る。出典の無い関係は載せない" do
-      body =
-        payload(
-          [%{"id" => "a", "name" => "画家A"}, %{"id" => "b", "name" => "画家B"}],
-          [%{"from" => "a", "to" => "b", "label" => "色彩", "kind" => "influence"}],
-          []
-        )
-
-      assert {:error, :invalid_ai_response} =
-               Relations.decode_relation(body, "painters", fallback("painters"))
-    end
-
-    test "http以外の出典と、存在しないノードを指すエッジは落とす" do
-      body =
-        payload(
-          [
-            %{"id" => "a", "name" => "画家A"},
-            %{"id" => "b", "name" => "画家B"},
-            %{"id" => "駄目な id", "name" => "画家C"}
-          ],
-          [
-            %{"from" => "a", "to" => "b", "label" => "色彩", "kind" => "influence"},
-            %{"from" => "a", "to" => "zzz", "label" => "無い相手", "kind" => "influence"},
-            %{"from" => "a", "to" => "b", "label" => "種類違い", "kind" => "family"}
-          ],
-          [
-            %{"label" => "危ない", "url" => "javascript:alert(1)"},
-            %{"label" => "出典", "url" => "https://example.com/a"}
-          ]
-        )
-
-      assert {:ok, relation} =
-               Relations.decode_relation(body, "painters", fallback("painters"))
-
-      assert Enum.map(relation.nodes, & &1.id) == ["a", "b"]
-      assert [%{from: "a", to: "b", label: "色彩"}] = relation.edges
-      assert [%{url: "https://example.com/a"}] = relation.sources
-    end
-
-    test "長すぎるラベルは切って、切ったことが分かるようにする" do
-      long = String.duplicate("あ", 80)
-
-      body =
-        payload(
-          [%{"id" => "a", "name" => "画家A"}, %{"id" => "b", "name" => "画家B"}],
-          [%{"from" => "a", "to" => "b", "label" => long, "kind" => "influence"}],
-          [%{"label" => "出典", "url" => "https://example.com/a"}]
-        )
-
-      assert {:ok, %{edges: [edge]}} =
-               Relations.decode_relation(body, "painters", fallback("painters"))
-
-      assert String.length(edge.label) <= 24
-      assert String.ends_with?(edge.label, "…")
-    end
-
-    test "人物側で上限まで返ってきても、図の面に収まる" do
-      nodes = for i <- 1..12, do: %{"id" => "n#{i}", "name" => "人物#{i}"}
-
-      edges =
-        for i <- 1..9,
-            do: %{"from" => "n#{i}", "to" => "n#{i + 1}", "label" => "親子", "kind" => "family"}
-
-      body = payload(nodes, edges, [%{"label" => "出典", "url" => "https://example.com/a"}])
-
-      assert {:ok, relation} = Relations.decode_relation(body, "people", fallback("people"))
-
-      # 上限で切ったうえで、残った全部が枠の中にある
-      assert length(relation.nodes) == 10
-      assert within_canvas?(relation)
-    end
-
-    test "画家側で上限まで返ってきても、図の面に収まる" do
-      nodes = for i <- 1..10, do: %{"id" => "n#{i}", "name" => "画家#{i}"}
-
-      edges =
-        for i <- 1..7,
-            do: %{"from" => "n#{i}", "to" => "n#{i + 1}", "label" => "影響", "kind" => "influence"}
-
-      body = payload(nodes, edges, [%{"label" => "出典", "url" => "https://example.com/a"}])
-
-      assert {:ok, relation} = Relations.decode_relation(body, "painters", fallback("painters"))
-
-      assert length(relation.nodes) == 8
-      assert within_canvas?(relation)
-    end
-  end
-
-  describe "表示例" do
-    test "どちらの表示例も図の面に収まっている" do
-      for key <- Relations.keys() do
-        assert within_canvas?(Relations.current(key))
-      end
-    end
-
-    test "表示例のエッジは実在するノードだけを指す" do
-      for key <- Relations.keys() do
-        relation = Relations.current(key)
-        ids = MapSet.new(relation.nodes, & &1.id)
-
-        for edge <- relation.edges do
-          assert MapSet.member?(ids, edge.from)
-          assert MapSet.member?(ids, edge.to)
-        end
-      end
-    end
-  end
-
-  test "知らない種類は人物側へ丸める" do
-    assert Relations.valid_key("painters") == "painters"
-    assert Relations.valid_key("../etc/passwd") == "people"
+    # 毎回全部を返させない（返し忘れで消えない作りなので、その必要が無い）
+    assert prompt =~ "変えない人を返す必要はありません"
   end
 end

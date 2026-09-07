@@ -31,7 +31,9 @@ defmodule AntennaWeb.ConnCase do
     end
   end
 
-  setup _tags do
+  setup tags do
+    # DB を触る画面のテストも sandbox に包む(DataCase と同じ理由)
+    Antenna.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 end

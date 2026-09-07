@@ -35,3 +35,7 @@ antenna-*.tar
 npm-debug.log
 /assets/node_modules/
 
+# DB の実体（compose が作る）
+/data/
+/data-dev/
+.env

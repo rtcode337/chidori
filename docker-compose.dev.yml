@@ -1,0 +1,21 @@
+# 開発用。DB だけ立てて、アプリはホスト（か手元のコンテナ）から動かす。
+#
+#   docker compose -f docker-compose.dev.yml up -d
+#   mix ecto.setup && mix phx.server
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: antenna
+      POSTGRES_PASSWORD: antenna
+      POSTGRES_DB: antenna_dev
+      TZ: Asia/Tokyo
+      PGDATA: /data/postgres/18/docker
+    ports:
+      # 既定の 5432 ではなく、このアプリに割り当てた 70 番台に寄せる
+      # （手元に別の PostgreSQL が居ても踏まない）
+      - "7071:5432"
+    volumes:
+      - ./data-dev:/data
+    tmpfs:
+      - /var/lib/postgresql

@@ -6,17 +6,26 @@ Elixir と Phoenix で実装し、現在は情報の価値を伝えるトップ�
 
 ## 関連図
 
-`/relations` では、人物の家族・コンビ関係と、画家の影響関係・活躍年代をネットワーク図で表示します。「関連図を収集」を押すと Chiezo 経由でAIが公開情報を調べ、関係・年代・出典URLを更新します。収集は数十秒かかりますが、終わると画面が自動で切り替わります。収集に失敗した場合は、直前の図または表示例を維持し、失敗した理由を画面に出します。
+`/relations` では、人物の家族・コンビ関係と、画家の影響関係・活躍年代をネットワーク図で表示します。
 
-AIの応答に出典が付いていない関係、実在しないノードを指す関係、`http`/`https` 以外の出典は取り込みません。連続して押したときは間隔を空けます。
+**画家の図は [Chiezo](https://github.com/rtcode337/chiezo) に溜めます。** 「関連図を収集」を押すと、antenna が Chiezo に**整理する収集**（`mode=refine`）を依頼し、その場で 1 回集めさせます。作られるのは止まった状態なので、最初の 1 回は Chiezo の管理画面で有効にしてから押してください（止まっている収集は Chiezo が断ります）。有効にすれば Chiezo が決まった間隔でも図を育て、antenna はそれを読んで表示します。
 
-関連図の収集を有効にするには、コンテナ起動時にChiezoのLAN内接続先を渡します。接続先や認証情報はイメージへ含めません。
+**実行のたびに全部を作り直すのではなく、少しずつ良くしていく形**です。1 回で仕上げようとせず、抜けている画家を足す・説明の粗いものを書き直す・粒度を揃える、といった直し方を頼みます。触れなかったものはそのまま残り、消えるのは AI が消すと明示したときだけです。
 
-```bash
-docker run --env CHIEZO_BASE_URL=http://chiezo.example.lan:7010 \
-  --env CHIEZO_RELATIONS_BACKEND=claude \
-  --env CHIEZO_RELATIONS_MODEL=haiku ...
-```
+**図の構造は Chiezo に持ち込みません。** 向こうにあるのは「1 画家 = 1 文書」の普通のソースで、属性と関係はタグに載せてあります。
+
+| タグ | 意味 |
+| --- | --- |
+| `画家` | この図に取り込む目印 |
+| `様式:ポスト印象派` | ノードに添える様式 |
+| `年代:1880-1890` | ノード下の年代帯。並び順もこれで決まる |
+| `影響元:クロード・モネ:光と色彩` | その画家から受けた影響。線と、線の上の説明になる |
+
+ノードとエッジという読み方を与えるのは antenna 側です。判断や見せ方を Chiezo に持たせない、という線を崩さないための形にしてあります。
+
+**人物の図は、まだその場で AI に聞く形**です。収集に失敗した場合は、直前の図または表示例を維持し、失敗した理由を画面に出します。
+
+AI の応答に出典が付いていない関係、実在しないノードを指す関係、`http`/`https` 以外の出典は取り込みません。連続して押したときは間隔を空けます。
 
 ## ニュース
 
@@ -35,32 +44,50 @@ Chiezo 側で `CHIEZO_COLLECT_DIR` と `CHIEZO_NOTES_DIR` の両方が設定さ�
 | `ANTENNA_NEWS_BACKEND` | なし | 収集を頼む相手（`claude` など）。未設定なら Chiezo の既定にまかせる |
 | `ANTENNA_NEWS_MODEL` | なし | その相手のモデル |
 | `ANTENNA_NEWS_EFFORT` | なし | その相手の考える量 |
+| `DATABASE_URL` | なし | PostgreSQL の接続先。本番では必須 |
+| `ANTENNA_PAINTERS_COLLECTION` | `antenna_painters` | 画家の図を溜める Chiezo の収集の名前 |
 
 誰に頼むかは本来 Chiezo 側の判断なので、名指しするのは「この収集だけは別の相手に」と決めたときだけです。依頼した後は Chiezo の管理画面からも変えられ、画面には Chiezo が持っている値を出します。
 
+## 設定と選別
+
+`/settings` では、話題ごとに **集める相手** と **選ぶ相手** を別に決められます。役割が違うので、速さと質の釣り合いも別に決めたいためです。集めるのは web を歩く仕事、選ぶのは溜まったものを読む仕事です。どちらも未指定なら Chiezo の既定にまかせます。相手とモデルの候補は Chiezo に聞くので、こちらに写しを持ちません。
+
+ニュースの画面の「AI に選ばせる」を押すと、溜まったものから **いま読むべきもの** を選ばせます。何が重要かは利用者の関心で決まるので、選ぶのは antenna の仕事です（Chiezo は判断や好みを持ちません）。
+
+**選ぶたびに AI を呼びません。** 溜まったものが変わっていなければ前の結果をそのまま出します。**選ばれなかったものも消しません** —— 選別は絞り込みであって検閲ではないので、選から漏れたものも下に並びます。
+
 ## 起動
 
-開発サーバーは `http://localhost:7070` で起動します。ポートは `PORT` で変えられます。
+`docker compose` で PostgreSQL ごと立てる。開発サーバーは `http://localhost:7070`。
 
 ```bash
-docker run --rm -it --user 1000:1000 \
-  -e HOME=/tmp -e MIX_HOME=/tmp/.mix -e HEX_HOME=/tmp/.hex \
-  -p 7070:7070 \
-  -v "$PWD:/app" -w /app \
-  hexpm/elixir:1.20.4-erlang-28.5.0.6-debian-bookworm-20260824-slim \
-  sh -lc 'mix local.hex --force && mix deps.get && mix assets.setup && mix assets.build && mix phx.server'
+cp .env.example .env   # SECRET_KEY_BASE と CHIEZO_BASE_URL を書く
+docker compose up -d
 ```
 
-画面のスタイルと JavaScript は `mix assets.build` が作る。作らずに起動すると、装飾も画面の自動更新も効かない。
+`SECRET_KEY_BASE` は `mix phx.gen.secret` で作る。**64 バイト未満だと起動時に断る**
+（通すと起動には成功して全リクエストが 500 になり、原因を追いにくい）。
+移行は起動のたびに当たるので、手で流す必要はない。
 
-テストは同じイメージで実行する。外部への取得はスタブへ差し替えてあるので、ネットワークには出ない。
+手元のソースから作り直すときは重ねる。
 
 ```bash
-docker run --rm --user 1000:1000 \
-  -e HOME=/tmp -e MIX_HOME=/tmp/.mix -e HEX_HOME=/tmp/.hex \
-  -v "$PWD:/app" -w /app \
-  hexpm/elixir:1.20.4-erlang-28.5.0.6-debian-bookworm-20260824-slim \
-  sh -lc 'mix local.hex --force && mix deps.get && mix test'
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+ホストで直接動かすなら、DB だけ立てて繋ぐ。
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+mix setup && mix phx.server
+```
+
+テストは DB が要る。外部への取得はスタブへ差し替えてあるので、ネットワークには出ない。
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+mix test
 ```
 
 アイコンの原本は `priv/static/images/icon.svg`。変えたら PNG を作り直す。

@@ -1,0 +1,8 @@
+# 手元のソースからイメージを作って動かす（docker-compose.yml に重ねる）。
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+services:
+  antenna:
+    image: antenna:local
+    build:
+      context: .

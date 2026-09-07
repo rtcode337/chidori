@@ -44,4 +44,7 @@ ENV LANG=C.UTF-8 \
 USER antenna
 EXPOSE 7070
 
-CMD ["bin/antenna", "start"]
+# 起動のたびに移行を当ててから立てる。**リリースに Mix は入らない**ので
+# `Antenna.Release.migrate/0` を呼ぶ。当て終わっている移行は飛ばされるだけなので、
+# 何度起動しても同じ結果になる
+CMD ["sh", "-c", "bin/antenna eval 'Antenna.Release.migrate()' && exec bin/antenna start"]

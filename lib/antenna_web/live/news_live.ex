@@ -8,6 +8,7 @@ defmodule AntennaWeb.NewsLive do
 
   use AntennaWeb, :live_view
 
+  alias Antenna.Jst
   alias Antenna.News
 
   @impl true
@@ -38,10 +39,35 @@ defmodule AntennaWeb.NewsLive do
     {:noreply, socket}
   end
 
+  def handle_event("select", _params, socket) do
+    # 押したときは、溜まったものが変わっていなくても選び直す
+    News.select(News, true)
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info({:news_updated, news}, socket) do
+    # 溜まったものが変わっていれば選び直す（変わっていなければ何も起きない）
+    if news.status == :ready, do: News.select()
     {:noreply, assign(socket, news: news)}
   end
+
+  @doc """
+  選ばれたものを先に、それ以外を後に並べる。
+
+  **選ばれなかったものも消さない** —— 選別は絞り込みであって検閲ではないので、
+  選から漏れたものも読めるようにしておく。
+  """
+  def sorted_articles(%{articles: articles, picked_titles: picked}) when picked != [] do
+    order = picked |> Enum.with_index() |> Map.new()
+    {chosen, rest} = Enum.split_with(articles, &Map.has_key?(order, &1.title))
+    Enum.sort_by(chosen, &order[&1.title]) ++ rest
+  end
+
+  def sorted_articles(%{articles: articles}), do: articles
+
+  @doc "AI がこれを選んだ理由（選ばれていなければ nil）。"
+  def pick_reason(news, article), do: Map.get(news.picks || %{}, article.title)
 
   @doc """
   いまの状態を1文で言う。押した人が次に何をすればよいか分かる言い方にする。
@@ -94,7 +120,7 @@ defmodule AntennaWeb.NewsLive do
     [
       {"状態", if(c.enabled, do: "有効", else: "止まっている")},
       {"頼む相手", backend_text(c)},
-      {"集め方", if(c.mode == "rebuild", do: "整理する（作り直し）", else: "集める（足していく）")},
+      {"集め方", if(c.mode == "refine", do: "整理する（磨いていく）", else: "集める（足していく）")},
       {"間隔", if(c.interval_minutes, do: "#{c.interval_minutes} 分ごと", else: "—")},
       {"次に集める", at_text(c.next_run_at, c.enabled)},
       {"溜まった数", "#{c.docs} 件"},
@@ -112,31 +138,33 @@ defmodule AntennaWeb.NewsLive do
 
   defp at_text(_at, false), do: "—（止まっています）"
   defp at_text(nil, _enabled), do: "—"
-  defp at_text(at, _enabled), do: at
+  defp at_text(at, _enabled), do: Jst.format(at)
 
   defp last_text(%{last_run_at: nil}), do: "まだ集めていません"
 
   defp last_text(%{last_status: "error", last_error: error}) when is_binary(error),
     do: "失敗: #{error}"
 
-  defp last_text(%{last_run_at: at}), do: at
+  defp last_text(%{last_run_at: at}), do: Jst.format(at)
 
   defp reason_text(:chiezo_not_configured),
     do: "Chiezo の場所が設定されていないため、収集を頼めません。"
 
   defp reason_text(:collect_unsupported),
-    do:
-      "この Chiezo には「集める」層がまだありません。" <>
-        "Chiezo を新しくして、CHIEZO_COLLECT_DIR を設定すると使えるようになります。"
+    do: "この Chiezo には「集める」層がまだありません。Chiezo を新しくすると使えるようになります。"
 
   defp reason_text(:collect_disabled),
-    do: "Chiezo 側で「集める」層が無効です。CHIEZO_COLLECT_DIR と CHIEZO_NOTES_DIR を設定すると有効になります。"
+    do: "Chiezo 側で「集める」層が無効です。CHIEZO_NOTES_DIR と CHIEZO_TRIGGER_URL を設定すると有効になります。"
 
   defp reason_text(:collection_disabled),
     do: "収集はまだ止まっています。Chiezo の管理画面の「集める」で有効にしてください。"
 
   defp reason_text(:not_requested), do: "Chiezo にこの収集がありません。先に依頼してください。"
   defp reason_text(:too_soon), do: "続けて集めさせようとしています。少し時間を置いてから押してください。"
+  defp reason_text({:chiezo_refused, status, nil}), do: "Chiezo が依頼を断りました（#{status}）。"
+
+  defp reason_text({:chiezo_refused, _status, message}), do: "Chiezo が依頼を断りました: #{message}"
+
   defp reason_text(:chiezo_unavailable), do: "Chiezo に接続できませんでした。"
   defp reason_text({:chiezo_status, status}), do: "Chiezo が #{status} を返しました。"
   defp reason_text(:chiezo_unexpected_body), do: "Chiezo の応答を解釈できませんでした。"
