@@ -10,6 +10,7 @@ defmodule Antenna.Http do
 
   @callback get(url :: String.t(), opts :: keyword()) :: response()
   @callback post(url :: String.t(), body :: binary(), opts :: keyword()) :: response()
+  @callback patch(url :: String.t(), body :: binary(), opts :: keyword()) :: response()
 
   @doc """
   いま使う実装。テストは `config/test.exs` でスタブへ差し替えます。
@@ -18,6 +19,7 @@ defmodule Antenna.Http do
 
   def get(url, opts \\ []), do: impl().get(url, opts)
   def post(url, body, opts \\ []), do: impl().post(url, body, opts)
+  def patch(url, body, opts \\ []), do: impl().patch(url, body, opts)
 end
 
 defmodule Antenna.Http.Httpc do
@@ -39,11 +41,16 @@ defmodule Antenna.Http.Httpc do
   end
 
   @impl true
-  def post(url, body, opts) do
+  def post(url, body, opts), do: with_body(:post, url, body, opts)
+
+  @impl true
+  def patch(url, body, opts), do: with_body(:patch, url, body, opts)
+
+  defp with_body(method, url, body, opts) do
     content_type = Keyword.get(opts, :content_type, "application/json")
 
     request(
-      :post,
+      method,
       {charlist(url), headers(opts), charlist(content_type), body},
       opts
     )

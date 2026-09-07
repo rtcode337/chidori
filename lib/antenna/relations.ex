@@ -34,6 +34,8 @@ defmodule Antenna.Relations do
 
   # 押すたびに AI へ投げると枠を使い切る。こちら側で間隔を空ける
   @min_interval_ms 15_000
+  # 取り込み中かを確かめ直す間隔。走っているあいだだけ動く
+  @busy_recheck_ms 15_000
 
   # 図に置ける上限。増やすと札が重なって読めなくなる
   @max_nodes %{"people" => 10, "painters" => 8}
@@ -215,6 +217,8 @@ defmodule Antenna.Relations do
       statuses: Map.new(keys(), &{&1, :sample}),
       collected_at: %{},
       checked_at: %{},
+      # Chiezo 側で取り込みが走っているか（走っている間は「いま集めて」を断られる）
+      busy: %{},
       reasons: %{},
       tasks: %{},
       last_attempt_at: %{}
@@ -242,6 +246,8 @@ defmodule Antenna.Relations do
           Task.Supervisor.async_nolink(Antenna.TaskSupervisor, fn ->
             fetch_painters(base_url, fallback)
           end)
+
+        check_busy("painters")
 
         state =
           state
@@ -273,6 +279,8 @@ defmodule Antenna.Relations do
           Task.Supervisor.async_nolink(Antenna.TaskSupervisor, fn ->
             fetch_relation(key, fallback)
           end)
+
+        check_busy(key)
 
         state =
           state
@@ -324,7 +332,32 @@ defmodule Antenna.Relations do
     end
   end
 
+  # Chiezo の取り込みの様子。**走っている間は押させない**ので、終わったことに
+  # 気づけるよう、走っているあいだだけ間を置いて確かめ直す
+  def handle_info({:busy, key, busy}, state) do
+    if busy, do: Process.send_after(self(), {:recheck_busy, key}, @busy_recheck_ms)
+    {:noreply, broadcast(put_in(state.busy[key], busy), key)}
+  end
+
+  def handle_info({:recheck_busy, key}, state) do
+    check_busy(key)
+    {:noreply, state}
+  end
+
   def handle_info(_message, state), do: {:noreply, state}
+
+  # 確かめるのは別のプロセス。GenServer を HTTP で止めない
+  defp check_busy(key) do
+    parent = self()
+
+    if base_url = chiezo_base_url() do
+      Task.Supervisor.start_child(Antenna.TaskSupervisor, fn ->
+        send(parent, {:busy, key, Chiezo.ingesting?(base_url)})
+      end)
+    end
+
+    :ok
+  end
 
   defp apply_result(state, key, {:ok, relation}) do
     state
@@ -343,13 +376,22 @@ defmodule Antenna.Relations do
 
   defp apply_result(state, key, {:error, {reason, collection}}) when is_map(collection) do
     # 図を出せないときも、収集の状態は出す —— 「有効にしていない」のか
-    # 「有効だがまだ走っていない」のかで、次にすることが違う
+    # 「有効だがまだ走っていない」のかで、次にすることが違う。
+    #
+    # **溜まっていないと分かったときは、前回の図を残さない。** 繋がらない類の失敗と
+    # 違って、これは「向こうに無い」という確かな答え —— 消えたものを前回のぶんで
+    # 出し続けると、消したのに図が出たままになる（実際にそうなった）。表示例へ戻す
+    base =
+      if reason == :nothing_collected,
+        do: Map.fetch!(@views, key),
+        else: Map.fetch!(state.relations, key)
+
     state
+    |> put_in([:relations, key], Map.put(base, :collection, collection))
     |> put_in(
-      [:relations, key],
-      Map.put(Map.fetch!(state.relations, key), :collection, collection)
+      [:statuses, key],
+      if(reason != :nothing_collected and state.collected_at[key], do: :stale, else: :unavailable)
     )
-    |> put_in([:statuses, key], if(state.collected_at[key], do: :stale, else: :unavailable))
     |> put_in([:reasons, key], reason)
   end
 
@@ -381,6 +423,7 @@ defmodule Antenna.Relations do
     |> Map.put(:status, Map.fetch!(state.statuses, key))
     |> Map.put(:collected_at, Map.get(state.collected_at, key))
     |> Map.put(:checked_at, Map.get(state.checked_at, key))
+    |> Map.put(:busy, Map.get(state.busy, key, false))
     |> Map.put(:reason, Map.get(state.reasons, key))
   end
 
@@ -491,7 +534,8 @@ defmodule Antenna.Relations do
   def collect_painters(base_url, fallback) do
     name = painters_collection()
 
-    with :ok <- ensure_collection(base_url, name) do
+    with :ok <- ensure_collection_once(base_url, name),
+         :ok <- ensure_extract(base_url, name) do
       case Chiezo.run(base_url, name) do
         :ok -> fetch_painters(base_url, fallback)
         {:error, reason} -> refused(fetch_painters(base_url, fallback), reason)
@@ -499,10 +543,86 @@ defmodule Antenna.Relations do
     end
   end
 
+  # すでにあるなら何もしない。**作るときだけ指定を書かせる**ので、
+  # 押すたびに書かせに行かないよう、先に有無を確かめる
+  defp ensure_collection_once(base_url, name) do
+    case Chiezo.collection(base_url, name) do
+      {:ok, nil} -> ensure_collection(base_url, name)
+      {:ok, _found} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  抽出の指定をまだ持っていなければ、依頼文から書かせて持たせます。
+
+  **名簿と年代は Wikipedia から引けば済むもの**なので、AI に書かせません。
+  指定さえ入っていれば以降は AI を呼ばずに同じ結果が出るので、ここを通るのは
+  実質 1 回だけです。
+
+  **書けなくても収集そのものは止めません** —— 指定が無ければ今までどおり
+  AI が全部集めるだけで、図が出ないわけではない。
+  """
+  def ensure_extract(base_url, name) do
+    case Chiezo.collection(base_url, name) do
+      {:ok, %{extract: spec}} when is_map(spec) ->
+        :ok
+
+      {:ok, %{docs: docs}} ->
+        with {:ok, drafted} <- Chiezo.draft_extract(base_url, name, painters_extract_request()),
+             %{"extract" => spec} when is_map(spec) <- drafted,
+             :ok <- Chiezo.patch(base_url, name, patch_for(spec, docs)) do
+          Logger.info("画家の抽出の指定を Chiezo に持たせた: #{inspect(Map.take(drafted, ~w(total)))}")
+          :ok
+        else
+          other ->
+            # 指定が書けなくても集めるのは続ける（AI が全部書く形に戻るだけ）
+            Logger.warning("画家の抽出の指定を書かせられなかった: #{inspect(other)}")
+            :ok
+        end
+
+      _unreadable ->
+        :ok
+    end
+  end
+
+  # 機械で埋めるのは**進み具合が空のあいだの 1 回だけ**なので、まだ何も溜まって
+  # いないときは進み具合も空にして、次の実行がそこから始まるようにする。
+  #
+  # **溜まっているときは触らない。** 進み具合を空に戻すと機械の側から作り直しになり、
+  # AI が足した影響関係と代表作を、名簿と年代で上書きしてしまう
+  # （作り直したいときは Chiezo の管理画面で進み具合を空にする）。
+  defp patch_for(spec, 0), do: %{extract: spec, cursor: ""}
+  defp patch_for(spec, _docs), do: %{extract: spec}
+
   # 断られたときは**理由のほうを前に出す**。読めたものはそのまま出す
   defp refused({:ok, relation}, reason), do: {:ok, relation, reason}
   defp refused({:error, {_previous, collection}}, reason), do: {:error, {reason, collection}}
   defp refused({:error, _previous}, reason), do: {:error, reason}
+
+  @doc """
+  最初の 1 回を機械的に埋めるための**依頼文**です。
+
+  Chiezo は何を集めているかを知らないので、条件はこちらが言葉で書いて渡します。
+  向こうはこれを抽出の指定（どのソースの・どのタグを・何件・タグをどう読み替えるか）
+  に書き起こし、以降はその指定のほうを回します —— **決まった結果が出るのは指定の
+  おかげで、AI は書き起こす係**です。
+
+  名前・年代・出典は日本語版 Wikipedia に書いてあるので引けば済みます。
+  書いていないこと（影響関係・代表作）はここでは埋まらず、あとで AI が肉付けします。
+  """
+  def painters_extract_request do
+    """
+    日本語版 Wikipedia から、西洋近代絵画の画家を、有名な順に 30 人ほど。
+    タグは次の 3 つにしてください。
+    - "#{Graph.kind_tag()}" を全員に付ける
+    - "年代:<生年>-<没年>"。生年と没年のカテゴリ（「1840年生」「1926年没」の形）から作り、
+      どちらか片方しか無いときは作らない
+    - "様式:<様式名>"。「〜派の画家」のカテゴリから、"派" まで含めて作る。
+      このカテゴリを持たない画家も多いので、その人には付けなくて構いません
+    説明は記事の冒頭を使い、出典は日本語版 Wikipedia のその記事の URL にしてください。
+    """
+  end
 
   @doc false
   # Chiezo へ渡す指示文。**整理する収集**（`mode=refine`）なので、返したものが
@@ -512,37 +632,37 @@ defmodule Antenna.Relations do
   # 属性と関係はタグに載せる（読み方を与えるのは antenna 側 = `Relations.Graph`）。
   def painters_prompt do
     """
-    西洋近代絵画の画家について、影響関係と活躍年代の関連図を育ててください。
+    西洋近代絵画の画家の関連図を育ててください。
+
+    **名簿と年代は、すでに Wikipedia から機械的に入っています**（生没年のカテゴリから）。
+    あなたに埋めてほしいのは、そこに書いていないこと ——
+    **影響関係**と**代表作**、それに読んで分かる説明です。
+
+    **様式は入っている人と入っていない人がいます。** カテゴリに「〜派の画家」がある人
+    だけ機械的に入っており、ゴッホやピカソのようにカテゴリを持たない人は空のままです。
+    空の人には様式のタグを足してください。
 
     いまの内容:
     {current}
 
     進み具合: {cursor}
 
-    **進み具合が空（まだ何も無い）のときは、まず全体を一気に作ってください。**
-    Chiezo の道具で日本語版 Wikipedia を引き、19世紀から20世紀初頭の主要な画家を
-    30人ほど、粗くてよいので一度に出してください。この段階では 1 人の説明は
-    1〜2文で構いません。next_cursor に「粗く作成済み」と入れてください。
-
-    **進み具合が入っているときは、全体を作り直さないでください。**
-    いまの内容から**3人から5人だけ**選び、その人たちを詳しくしてください。
-    説明を書き直す、影響関係の抜けを補う、年代や様式の粒度を揃える、
-    代表作を確かめる、といった直し方です。触れなかった人はそのまま残るので、
+    **全体を作り直さないでください。** いまの内容から**3人から5人だけ**選び、
+    その人たちを詳しくしてください。触れなかった人はそのまま残るので、
     変えない人を返す必要はありません。
     次にどこから続けるかを next_cursor に書いてください（例:「ゴッホまで見直した」）。
 
     1 人につき 1 件で、次の形にしてください。
-    - title: 画家名（日本語のカタカナ表記。同じ人は必ず同じ表記にする）
+    - title: 画家名（**いまの内容にある表記をそのまま使う**。変えると別人になります）
     - body: その画家が何をした人かと、影響関係の要点
     - url: 日本語版 Wikipedia のその画家の記事の URL
-    - tags: 次の 5 種類。#{Graph.kind_tag()} は必ず入れる
-      - "#{Graph.kind_tag()}"
-      - "様式:<ロマン主義 / 印象派 / ポスト印象派 のような様式名>"
-      - "年代:<活躍年代。1880-1890 の形>"
+    - tags: **いまの内容に付いているタグをすべて残したうえで**、次を足してください
+      - "様式:<ロマン主義 / 印象派 / キュビスム のような様式名>"（入っていない人だけ）
       - "代表作:<日本語版 Wikipedia にあるその絵の記事名。例: 印象・日の出>"
       - "影響元:<影響を受けた画家名>:<何を受けたかを10文字ほどで>"
-        影響を受けた画家ごとに 1 つ。**その画家も別の1件として返してください**
-        （返っていない相手への線は図に出ません）
+        影響を受けた画家ごとに 1 つ。**いまの内容にいる画家だけ**を指してください
+        （いない相手への線は図に出ません）
+      年代や様式が明らかに違うときだけ、そのタグを直してください。
 
     重複していたら、まとめた先を返して、元のほうは墓標で消してください。
     """
@@ -551,14 +671,42 @@ defmodule Antenna.Relations do
   # まだ無ければ依頼する。**止まった状態で作られる**ので、これで AI が動き出す
   # ことはない（動かすかは Chiezo 側で決める）。すでにあれば何もしない
   defp ensure_collection(base_url, name) do
-    Chiezo.request(base_url, %{
+    Chiezo.request(base_url, collection_attrs(name, draft_extract(base_url)))
+  end
+
+  # **依頼する前に指定を書かせる。** 作った収集は次の予定が「いま」なので、
+  # 作ってから指定を持たせに行くと、書かせている数分のあいだに Chiezo 側が
+  # AI の回を始めてしまう（実際にそうなり、機械で埋まるはずの初回が AI に
+  # 書かれて、進み具合まで進んでしまった）。
+  defp draft_extract(base_url) do
+    case Chiezo.draft_extract(base_url, nil, painters_extract_request()) do
+      {:ok, %{"extract" => spec} = drafted} when is_map(spec) ->
+        Logger.info("画家の抽出の指定を書かせた（#{drafted["total"]} 件取れる）")
+        spec
+
+      other ->
+        # 指定が書けなくても依頼はする（AI が全部集める形に戻るだけ）
+        Logger.warning("画家の抽出の指定を書かせられなかった: #{inspect(other)}")
+        nil
+    end
+  rescue
+    error ->
+      Logger.warning("画家の抽出の指定を書かせられなかった: #{inspect(error)}")
+      nil
+  end
+
+  defp collection_attrs(name, nil), do: base_attrs(name)
+  defp collection_attrs(name, spec), do: Map.put(base_attrs(name), :extract, spec)
+
+  defp base_attrs(name) do
+    %{
       name: name,
       description: "antenna の関連図（画家の影響と時代）",
       prompt: painters_prompt(),
       interval_minutes: 1440,
       mode: "refine",
       requested_by: "antenna"
-    })
+    }
   end
 
   # 溜まっているものを全部引く。**まだ焼かれていなければソースごと無い**ので、

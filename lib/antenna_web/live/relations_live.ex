@@ -129,6 +129,17 @@ defmodule AntennaWeb.RelationsLive do
 
   def prompt_text(_relation), do: Antenna.Relations.painters_prompt()
 
+  @doc """
+  最初の 1 回を機械的に埋める指定（持っていなければ nil）。
+
+  **何で埋まったのかが読めないと、図の間違いを AI のせいにしてしまいます** ——
+  名簿と年代は Wikipedia から引いたもので、AI が書いたのは影響関係と代表作です。
+  """
+  def extract_text(%{collection: %{extract: spec}}) when is_map(spec),
+    do: Jason.encode!(spec, pretty: true)
+
+  def extract_text(_relation), do: nil
+
   def prompt_note(%{collection: c}) when is_map(c),
     do: "いま Chiezo が持っている内容です。直すのは Chiezo の管理画面の「集める」から。"
 
@@ -140,6 +151,21 @@ defmodule AntennaWeb.RelationsLive do
 
   @doc "丸の半径。知名度が引けていなければ既定の大きさ。"
   def radius_of(node), do: node[:radius] || if(node.kind == :group, do: 47, else: 42)
+
+  @doc """
+  いま押せないかどうか。
+
+  自分が読んでいる間だけでなく、**Chiezo 側で取り込みが走っている間も押させません** ——
+  走っている間の「いま集めて」は向こうが断るので、押してから断られることになります。
+  """
+  def collecting?(%{status: :loading}), do: true
+  def collecting?(%{busy: true}), do: true
+  def collecting?(_relation), do: false
+
+  @doc "ボタンの文字。何を待っているのかまで出す。"
+  def collect_label(%{status: :loading}), do: "収集中…"
+  def collect_label(%{busy: true}), do: "Chiezo が取り込み中…"
+  def collect_label(_relation), do: "関連図を収集"
 
   @doc """
   いまの状態を1文で言う。失敗したときは、直前の図を出していることまで書く。

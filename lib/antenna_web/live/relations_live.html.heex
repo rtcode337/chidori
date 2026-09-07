@@ -93,9 +93,9 @@
         type="button"
         phx-click="collect"
         phx-disable-with="収集中…"
-        disabled={@relation.status == :loading}
+        disabled={collecting?(@relation)}
       >
-        {if @relation.status == :loading, do: "収集中…", else: "関連図を収集"}
+        {collect_label(@relation)}
       </button>
     </section>
 
@@ -111,6 +111,17 @@
       <summary>AI に頼んでいる内容</summary>
       <p class="news-prompt-note">{prompt_note(@relation)}</p>
       <pre>{prompt_text(@relation)}</pre>
+    </details>
+
+    <%!-- 名簿と年代は AI ではなく Wikipedia から引いたもの。どちらが書いたのかが
+         読めないと、図の間違いを全部 AI のせいにしてしまう --%>
+    <details :if={extract_text(@relation)} class="news-prompt">
+      <summary>Wikipedia から機械的に引いている条件</summary>
+      <p class="news-prompt-note">
+        名簿・年代・様式・出典はこの指定で日本語版 Wikipedia から引いています。
+        AI が書くのは影響関係と代表作と説明です。
+      </p>
+      <pre>{extract_text(@relation)}</pre>
     </details>
 
     <%!-- 押した人の代表作。**画像は持たず、Wikipedia のものを指すだけ**。

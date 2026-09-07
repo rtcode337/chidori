@@ -26,6 +26,9 @@ defmodule Antenna.HttpStub do
   @impl true
   def post(url, body, opts), do: respond(%{method: :post, url: url, body: body, opts: opts})
 
+  @impl true
+  def patch(url, body, opts), do: respond(%{method: :patch, url: url, body: body, opts: opts})
+
   defp respond(request) do
     case Application.get_env(:antenna, @key) do
       nil -> {:error, :no_stub_configured}

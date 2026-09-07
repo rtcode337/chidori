@@ -65,6 +65,30 @@ defmodule AntennaWeb.RelationsLiveTest do
              end)
     end
 
+    test "Chiezo が取り込み中のあいだも押せなくする", %{conn: conn} do
+      # 走っている間の「いま集めて」は向こうが断る。押してから断られるのと、
+      # 押せないことが見えているのとでは別物
+      System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+
+      Antenna.HttpStub.stub(fn
+        %{url: "http://chiezo.test:7010/v1/ingest/status"} ->
+          Antenna.HttpStub.ok(~s({"state":"running","running":true,"source":"antenna_painters"}))
+
+        %{url: url} ->
+          if String.contains?(url, "/filter?") do
+            Antenna.HttpStub.ok(~s({"results":[],"total":0}))
+          else
+            Antenna.HttpStub.ok(~s({"collections":[]}))
+          end
+      end)
+
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+
+      assert wait_until(fn -> render(live) =~ "Chiezo が取り込み中…" end)
+      assert render(live) =~ "disabled"
+    end
+
     test "押した合図はサーバーの応答を待たずに出す", %{conn: conn} do
       # 集まるものが無い日は往復が一瞬で終わる。状態の変化だけに任せると、
       # 押したのかどうかが画面に残らない

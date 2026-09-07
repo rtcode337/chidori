@@ -13,6 +13,11 @@ defmodule Antenna.Chiezo do
 
   @user_agent "antenna/0.1 (+https://github.com/rtcode337/antenna)"
   @timeout 15_000
+  # 指定を書かせるのは AI 1 往復ぶん待つ。しかも Chiezo は、取れた数が足りなければ
+  # 実在するタグを見せてもう一度書かせる —— **最悪 2 往復**になる。向こうの 1 往復の
+  # 上限が 15 分なので、こちらが 10 分で切ると走っている AI を捨てることになり、
+  # 指定が無いまま(= AI が全部書く形で)集め始めてしまう
+  @draft_timeout 1_800_000
   @connect_timeout 5_000
 
   @doc """
@@ -69,6 +74,50 @@ defmodule Antenna.Chiezo do
     end
   end
 
+  @doc """
+  依頼文から**抽出の指定**を書かせます。**保存はされません**（返るだけ）。
+
+  Chiezo は何を集めているかを知らないので、条件はこちらが言葉で書いて渡します。
+  向こうは書けた指定でその場で引いて、何件取れるかと最初の数件を添えて返します。
+  """
+  def draft_extract(base, name, want, timeout \\ @draft_timeout) do
+    body = Jason.encode!(%{name: name, want: want})
+
+    case post(base <> "/v1/collect/draft-extract", body, timeout) do
+      {:ok, %{status: status, body: raw}} when status in 200..299 -> decoded(raw)
+      {:ok, %{status: 404}} -> {:error, :collect_unsupported}
+      {:ok, %{status: 503}} -> {:error, :collect_disabled}
+      {:ok, %{status: status, body: raw}} -> {:error, {:chiezo_refused, status, reason_of(raw)}}
+      {:error, _reason} -> {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
+  収集の設定の一部を差し替えます（渡した項目だけ）。
+  """
+  def patch(base, name, attrs) do
+    url = base <> "/v1/collect/" <> name
+
+    case Http.patch(url, Jason.encode!(attrs),
+           headers: [{"user-agent", @user_agent}],
+           content_type: "application/json",
+           timeout: @timeout,
+           connect_timeout: @connect_timeout
+         ) do
+      {:ok, %{status: status}} when status in 200..299 -> :ok
+      {:ok, %{status: 404}} -> {:error, :not_requested}
+      {:ok, %{status: status, body: raw}} -> {:error, {:chiezo_refused, status, reason_of(raw)}}
+      {:error, _reason} -> {:error, :chiezo_unavailable}
+    end
+  end
+
+  defp decoded(raw) do
+    case Jason.decode(raw) do
+      {:ok, %{} = value} -> {:ok, value}
+      _ -> {:error, :chiezo_unexpected_body}
+    end
+  end
+
   @doc false
   # Chiezo は理由を `{"error": "..."}` で返す。読めなければ nil
   def reason_of(body) do
@@ -90,6 +139,23 @@ defmodule Antenna.Chiezo do
       {:ok, %{status: 503}} -> {:error, :collect_disabled}
       {:ok, %{status: status}} -> {:error, {:chiezo_status, status}}
       {:error, _reason} -> {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
+  Chiezo でいま取り込みが走っているか。走っている間は「いま集めて」を断られます。
+
+  **押してから断られるのと、押せないことが見えているのとでは別物**なので、
+  押す前に確かめられるようにしてあります。読めなければ「走っていない」に倒します
+  （この問い合わせが失敗しただけで押せなくなるほうが困る）。
+  """
+  def ingesting?(base) do
+    case get(base <> "/v1/ingest/status") do
+      {:ok, %{status: 200, body: body}} ->
+        match?({:ok, %{"running" => true}}, Jason.decode(body))
+
+      _ ->
+        false
     end
   end
 
@@ -193,6 +259,9 @@ defmodule Antenna.Chiezo do
       mode: item["mode"] || "append",
       prompt: item["prompt"] || "",
       cursor: item["cursor"] || "",
+      # 最初の 1 回を機械的に埋める指定（持っていなければ nil）。
+      # 何で埋まったのかは画面に出したいので、状態と一緒に持ち回る
+      extract: item["extract"],
       backend: item["backend"],
       model: item["model"],
       effort: item["effort"],
