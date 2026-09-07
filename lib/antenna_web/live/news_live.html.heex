@@ -1,0 +1,104 @@
+<Layouts.flash_group flash={@flash} />
+<main class="news-page">
+  <div>
+    <header>
+      <a href={~p"/"} class="brand" aria-label="antenna トップページ">
+        <span> a </span>
+        <strong>antenna</strong>
+      </a>
+      <nav aria-label="主要メニュー">
+        <a class="active" href={~p"/news"}>ニュース</a>
+        <a href={~p"/relations"}>関連図</a>
+      </nav>
+    </header>
+
+    <section class="news-intro">
+      <p>DAILY NEWS</p>
+      <h1>今日、押さえておきたいニュース</h1>
+      <p>
+        集めるのは Chiezo です。antenna は収集を依頼して、溜まったものを読みます。
+        依頼して作られる収集は止まった状態なので、<strong>この画面から AI が勝手に動くことはありません</strong>。
+      </p>
+
+      <div class="news-actions">
+        <%= if @news.collection do %>
+          <button type="button" phx-click="run" disabled={@news.status == :loading}>
+            {if @news.status == :loading, do: "問い合わせ中…", else: "いま集めさせる"}
+          </button>
+        <% else %>
+          <button
+            type="button"
+            phx-click="request"
+            disabled={@news.status == :loading or not @news.configured}
+          >
+            {if @news.status == :loading, do: "問い合わせ中…", else: "収集を依頼する"}
+          </button>
+        <% end %>
+        <button
+          type="button"
+          class="news-secondary"
+          phx-click="refresh"
+          disabled={@news.status == :loading or not @news.configured}
+        >
+          読み直す
+        </button>
+        <%= if @news.collection && @news.collection.url do %>
+          <a class="news-secondary" href={@news.collection.url} target="_blank" rel="noreferrer">
+            Chiezo で見る
+          </a>
+        <% end %>
+      </div>
+    </section>
+
+    <%!-- AI に何を頼んでいるかは、押す前にも後にも読めるようにする。
+         畳んでおくのは、ふだんは読みたいのが結果のほうだから --%>
+    <details class="news-prompt">
+      <summary>AI に頼んでいる内容</summary>
+      <p class="news-prompt-note">{prompt_note(@news)}</p>
+      <pre>{prompt_text(@news)}</pre>
+    </details>
+
+    <section class="news-list" aria-live="polite">
+      <%= if message = status_message(@news) do %>
+        <p class="news-message">{message}</p>
+      <% end %>
+
+      <dl :if={@news.collection} class="collect-facts">
+        <div :for={{label, value} <- collection_facts(@news)}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      </dl>
+
+      <%= for article <- @news.articles do %>
+        <article>
+          <div>
+            <p class="news-source">{article.collected_at}</p>
+            <h2>
+              <%!-- 出典があれば原文へ。無ければ見出しだけ出す（Chiezo 側にも入口はある） --%>
+              <%= if article.url do %>
+                <a href={article.url} target="_blank" rel="noreferrer">{article.title}</a>
+              <% else %>
+                {article.title}
+              <% end %>
+            </h2>
+            <p :if={article.summary} class="news-summary">{article.summary}</p>
+            <p class="news-reason">{article.reason}</p>
+          </div>
+          <span class={if article.importance == 2, do: "priority", else: "standard"}>
+            {if article.importance == 2, do: "優先", else: "注目"}
+          </span>
+        </article>
+      <% end %>
+    </section>
+
+    <footer>
+      <p>
+        収集は
+        <a href="https://github.com/rtcode337/chiezo" target="_blank" rel="noreferrer">Chiezo</a>
+        の「集める」層が行い、溜まったものは Chiezo のソースとして残ります。
+        見出しを押すと Chiezo の中身（要約と出典）が開きます。
+      </p>
+    </footer>
+  </div>
+</main>

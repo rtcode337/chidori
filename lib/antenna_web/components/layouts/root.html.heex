@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <.live_title default="antenna" suffix=" · 情報アンテナ" phx-no-format>{assigns[:page_title]}</.live_title>
+    <%!-- 画面のヘッダーのマークと同じ絵。原本は images/icon.svg で、PNG はそこから作る。
+         ここから指すのは images/ 配下だけにする —— Plug.Static の `only` は先頭の
+         セグメントで見るので、`/favicon.ico` を指すとハッシュ付きの名前が 404 になる。
+         素の `/favicon.ico` はブラウザが自分で取りに来るぶんだけ残してある --%>
+    <link rel="icon" href={~p"/images/icon.svg"} type="image/svg+xml" />
+    <link rel="icon" href={~p"/images/icon-64.png"} type="image/png" sizes="64x64" />
+    <link rel="apple-touch-icon" href={~p"/images/icon-180.png"} />
+    <meta name="theme-color" content="#f97316" />
+    <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
+    </script>
+  </head>
+  <body>
+    {@inner_content}
+  </body>
+</html>

@@ -1,0 +1,114 @@
+@import "tailwindcss" source(none);
+@import "phoenix-colocated/antenna/colocated.css";
+
+@source "../css";
+@source "../js";
+@source "../../lib/antenna_web";
+@source "../../_build/*/phoenix-colocated/antenna/*/";
+
+@custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
+@custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
+@custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
+
+[data-phx-session], [data-phx-teleported-src] { display: contents; }
+
+/* ここから下は antenna の画面のスタイル。Tailwind の入力に置いてあるので
+   `mix assets.build` の出力1本にまとまる。手元にだけあるファイルを配ると、
+   クリーンなチェックアウトから作ったイメージが無装飾になる */
+
+/* 全ページ共通 */
+:root { color: #0f172a; background: #fafaf9; font-family: ui-sans-serif, system-ui, sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main > div { max-width: 72rem; margin: 0 auto; padding: 2rem 1.5rem; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+header a { color: inherit; text-decoration: none; }
+button { cursor: pointer; }
+section { margin: 0; }
+h1, h2, h3, p { margin-top: 0; }
+button, a { font: inherit; }
+button { display: inline-block; border-radius: 99px; padding: .8rem 1.25rem; border: 1px solid #cbd5e1; background: white; color: #0f172a; font-weight: 700; cursor: pointer; }
+article { border: 1px solid #e2e8f0; border-radius: 1rem; background: white; padding: 1.25rem; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+article p:last-child { color: #475569; line-height: 1.7; }
+
+.news-page { background: #f8fafc; min-height: 100vh; }
+.news-page > div { max-width: 56rem; }
+.news-page .brand { display: flex; align-items: center; gap: .65rem; font-size: 1.2rem; }
+.news-page .brand span { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; border-radius: 1rem; background: #f97316; color: white; font-weight: 900; }
+.news-link { color: #9a3412; font-weight: 700; text-decoration: none; }
+.news-intro { padding: 4.5rem 0 2.5rem; }
+.news-intro > p:first-child { color: #c2410c; font-size: .8rem; font-weight: 800; letter-spacing: .08em; }
+.news-intro h1 { max-width: 42rem; font-size: clamp(2.3rem, 6vw, 4rem); }
+.news-intro > p:last-child { max-width: 42rem; color: #475569; font-size: 1.05rem; line-height: 1.8; }
+.news-list { display: grid; gap: 1rem; }
+.news-list article { display: flex; justify-content: space-between; align-items: start; gap: 1rem; padding: 1.4rem; }
+.news-list h2 { margin: .4rem 0; font-size: 1.1rem; line-height: 1.55; }
+.news-list h2 a { color: #0f172a; text-decoration: none; }
+.news-list h2 a:hover { color: #c2410c; text-decoration: underline; }
+.news-source { color: #64748b; font-size: .8rem; }
+.news-reason { color: #475569; font-size: .9rem; line-height: 1.6; }
+.priority, .standard { flex: 0 0 auto; border-radius: 99px; padding: .3rem .6rem; font-size: .75rem; font-weight: 800; }
+.priority { background: #ffedd5; color: #9a3412; }
+.standard { background: #e2e8f0; color: #334155; }
+.news-message { border: 1px solid #fed7aa; border-radius: 1rem; background: #fff7ed; padding: 1rem 1.2rem; color: #9a3412; line-height: 1.7; }
+.news-page footer { margin-top: 2rem; border-top: 1px solid #e2e8f0; padding: 1.5rem 0; color: #64748b; font-size: .85rem; line-height: 1.7; }
+.news-page footer a { color: #c2410c; }
+
+.relations-page { min-height: 100vh; background: #f6f7fb; color: #182033; }
+.relations-page > div { max-width: 72rem; }
+.relations-page .brand { display: flex; align-items: center; gap: .65rem; color: #182033; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
+.relations-page .brand span { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; border-radius: 1rem; background: #6254d6; color: white; font-weight: 900; }
+.relations-page header nav { display: flex; gap: 1rem; }
+.relations-page header nav a { color: #52607a; font-size: .9rem; font-weight: 700; text-decoration: none; }
+.relations-page header nav a.active { color: #4f46b9; }
+.relations-intro { padding: 4.5rem 0 1.75rem; }
+.relations-intro > p:first-child { color: #6254d6; font-size: .8rem; font-weight: 800; letter-spacing: .1em; }
+.relations-intro h1 { margin-bottom: 1rem; font-size: clamp(2.4rem, 6vw, 4.2rem); }
+.relations-intro > p:last-child { max-width: 42rem; color: #52607a; font-size: 1.05rem; line-height: 1.8; }
+.relation-tabs { display: flex; gap: .6rem; margin-bottom: 1.25rem; }
+.relation-tabs a { border-radius: 99px; padding: .65rem 1rem; color: #52607a; font-size: .9rem; font-weight: 800; text-decoration: none; }
+.relation-tabs a.selected { background: #28235e; color: white; box-shadow: 0 6px 18px rgba(40, 35, 94, .22); }
+.relation-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; }
+.relation-actions strong { color: #332c75; font-size: .9rem; }
+.relation-actions p { margin: .25rem 0 0; color: #616a82; font-size: .82rem; }
+.relation-actions button { border: 0; background: #554bc0; color: #fff; white-space: nowrap; }
+.relation-actions button:disabled { cursor: wait; opacity: .65; }
+.relation-canvas { overflow-x: auto; border: 1px solid #e4e7f0; border-radius: 1.5rem; background: radial-gradient(circle at 45% 25%, #ffffff 0, #fafafe 42%, #eef0f9 100%); box-shadow: 0 14px 32px rgba(31, 41, 55, .08); }
+.relation-canvas svg { display: block; min-width: 48rem; width: 100%; }
+.relation-edge { stroke: #b6bdd2; stroke-width: 2; }
+.relation-edge.family { stroke: #d07b91; }
+.relation-edge.duo { stroke: #7770cc; stroke-dasharray: 7 6; }
+.relation-edge.influence { stroke: #6f69c8; stroke-width: 2.5; }
+.relation-edge + .edge-label { fill: #68718a; font-size: 12px; font-weight: 700; paint-order: stroke; stroke: #f9faff; stroke-width: 5px; }
+.relation-node circle { fill: white; stroke: #adb6cf; stroke-width: 2.5; filter: drop-shadow(0 5px 5px rgba(29, 36, 58, .11)); }
+.relation-node.group circle { fill: #eeedff; stroke: #756bd1; }
+.relation-node.artist circle { fill: #fdf5e8; stroke: #d29b58; }
+.node-name { fill: #202942; font-size: 13px; font-weight: 800; }
+.node-note, .year-label { fill: #6d7890; font-size: 10px; }
+.year-bar { fill: #d29b58; }
+.relation-guide { display: grid; gap: 1.5rem; margin: 1.5rem 0 3rem; padding: 1.35rem 1.5rem; border-radius: 1rem; background: white; }
+.relation-guide h2 { margin-bottom: .4rem; font-size: .9rem; }
+.relation-guide p, .relation-guide li { margin: 0; color: #647089; font-size: .86rem; line-height: 1.7; }
+.relation-guide ul { margin: 0; padding-left: 1.15rem; }
+.relation-guide a { color: #554bc0; }
+@media (min-width: 768px) { .relation-guide { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .relation-actions { align-items: flex-start; flex-direction: column; } }
+
+/* 収集の操作（依頼・いま集めさせる・読み直す）。狭い画面では折り返す */
+.news-actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+.news-secondary { background: transparent; border-color: #cbd5e1; color: #475569; }
+
+/* Chiezo の収集の状態。動いているかの判断に要るものを1行ずつ並べる */
+.collect-facts { display: grid; gap: .5rem; margin: 0; padding: 1rem 1.2rem; border: 1px solid #e2e8f0; border-radius: 1rem; background: white; }
+.collect-facts > div { display: flex; justify-content: space-between; gap: 1rem; font-size: .85rem; }
+.collect-facts dt { color: #64748b; }
+.collect-facts dd { margin: 0; color: #0f172a; font-weight: 700; text-align: right; word-break: break-word; }
+
+/* 集めた1件の要約（Chiezo が AI に書かせた本文の冒頭） */
+.news-summary { color: #334155; font-size: .92rem; line-height: 1.75; margin: .35rem 0; }
+
+/* AI に頼んでいる本文。畳んでおき、開いたら原文のまま読めるようにする */
+.news-prompt { margin: 1rem 0; border: 1px solid #e2e8f0; border-radius: 1rem; background: white; padding: .9rem 1.1rem; }
+.news-prompt summary { cursor: pointer; font-size: .9rem; font-weight: 700; color: #334155; }
+.news-prompt-note { margin: .6rem 0 .4rem; color: #64748b; font-size: .82rem; line-height: 1.7; }
+.news-prompt pre { margin: 0; padding: .8rem; border-radius: .6rem; background: #f8fafc; color: #334155; font-size: .82rem; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }

@@ -1,0 +1,107 @@
+<Layouts.flash_group flash={@flash} />
+
+<main class="relations-page">
+  <div>
+    <header>
+      <a href={~p"/"} class="brand" aria-label="antenna トップページ"><span>a</span>antenna</a>
+      <nav aria-label="主要メニュー">
+        <a href={~p"/news"}>ニュース</a>
+        <a class="active" href={~p"/relations"}>関連図</a>
+      </nav>
+    </header>
+
+    <section class="relations-intro">
+      <p>{@relation.eyebrow}</p>
+      <h1>{@relation.title}</h1>
+      <p>{@relation.description}</p>
+    </section>
+
+    <nav class="relation-tabs" aria-label="関連図の種類">
+      <.link patch={~p"/relations?view=people"} class={if @view == "people", do: "selected"}>
+        人物のつながり
+      </.link>
+      <.link patch={~p"/relations?view=painters"} class={if @view == "painters", do: "selected"}>
+        画家の影響と時代
+      </.link>
+    </nav>
+
+    <section class="relation-actions" aria-label="関連図の情報収集">
+      <div>
+        <strong>公開情報から更新</strong>
+        <p aria-live="polite">{status_message(@relation)}</p>
+      </div>
+      <button type="button" phx-click="collect" disabled={@relation.status == :loading}>
+        {if @relation.status == :loading, do: "収集中…", else: "関連図を収集"}
+      </button>
+    </section>
+
+    <section class="relation-canvas" aria-label={@relation.title}>
+      <svg
+        viewBox={"0 0 #{@relation.width} #{@relation.height}"}
+        role="img"
+        aria-label={@relation.title}
+      >
+        <defs>
+          <marker
+            id="arrow"
+            viewBox="0 0 10 10"
+            refX="8"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto-start-reverse"
+          >
+            <path d="M 0 0 L 10 5 L 0 10 z" />
+          </marker>
+        </defs>
+        <%= for edge <- @relation.edges,
+                from = Enum.find(@relation.nodes, &(&1.id == edge.from)),
+                to = Enum.find(@relation.nodes, &(&1.id == edge.to)) do %>
+          <line
+            x1={from.x}
+            y1={from.y}
+            x2={to.x}
+            y2={to.y}
+            class={"relation-edge #{edge.kind}"}
+            marker-end={if edge.kind == :influence, do: "url(#arrow)"}
+          />
+          <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8} class="edge-label">
+            {edge.label}
+          </text>
+        <% end %>
+        <%= for node <- @relation.nodes do %>
+          <g transform={"translate(#{node.x}, #{node.y})"} class={"relation-node #{node.kind}"}>
+            <circle r={if node.kind == :group, do: 47, else: 42} />
+            <text text-anchor="middle" class="node-name" y="-2">{node.name}</text>
+            <text text-anchor="middle" class="node-note" y="17">{node.note}</text>
+            <%= if node.years do %>
+              <rect x="-48" y="57" width="96" height="8" rx="4" class="year-bar" />
+              <text text-anchor="middle" class="year-label" y="81">{node.years}</text>
+            <% end %>
+          </g>
+        <% end %>
+      </svg>
+    </section>
+
+    <section class="relation-guide">
+      <div>
+        <h2>この図の見方</h2>
+        <p>
+          <%= if @view == "painters" do %>
+            矢印は影響の方向、年代帯は活躍時期の目安です。
+          <% else %>
+            実線は家族、点線はコンビとメンバーの関係です。
+          <% end %>
+        </p>
+      </div>
+      <div>
+        <h2>出典</h2>
+        <ul>
+          <%= for source <- @relation.sources do %>
+            <li><a href={source.url} target="_blank" rel="noreferrer">{source.label}</a></li>
+          <% end %>
+        </ul>
+      </div>
+    </section>
+  </div>
+</main>

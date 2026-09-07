@@ -1,0 +1,12 @@
+.git
+_build
+deps
+assets/node_modules
+.elixir_ls
+coverage
+test
+docs
+README.md
+# 手元でビルドした資産は持ち込まない。イメージの中で作る
+priv/static/assets
+priv/static/cache_manifest.json

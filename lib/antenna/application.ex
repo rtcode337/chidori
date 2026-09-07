@@ -1,0 +1,36 @@
+defmodule Antenna.Application do
+  # See https://elixir.hexdocs.pm/Application.html
+  # for more information on OTP Applications
+  @moduledoc false
+
+  use Application
+
+  @impl true
+  def start(_type, _args) do
+    children = [
+      AntennaWeb.Telemetry,
+      {DNSCluster, query: Application.get_env(:antenna, :dns_cluster_query) || :ignore},
+      {Phoenix.PubSub, name: Antenna.PubSub},
+      # 外部への取得はこの下で動かす。収集を持つ GenServer では待たない ——
+      # 待つと、収集中に画面を開いた人まで巻き添えで待たされる
+      {Task.Supervisor, name: Antenna.TaskSupervisor},
+      Antenna.News,
+      Antenna.Relations,
+      # Start to serve requests, typically the last entry
+      AntennaWeb.Endpoint
+    ]
+
+    # See https://elixir.hexdocs.pm/Supervisor.html
+    # for other strategies and supported options
+    opts = [strategy: :one_for_one, name: Antenna.Supervisor]
+    Supervisor.start_link(children, opts)
+  end
+
+  # Tell Phoenix to update the endpoint configuration
+  # whenever the application is updated.
+  @impl true
+  def config_change(changed, _new, removed) do
+    AntennaWeb.Endpoint.config_change(changed, removed)
+    :ok
+  end
+end
