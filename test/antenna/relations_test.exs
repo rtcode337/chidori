@@ -403,6 +403,8 @@ defmodule Antenna.RelationsTest do
     assert prompt =~ "すでに Wikipedia から機械的に入っています"
     # 様式のカテゴリは疎（ゴッホもピカソも持っていない）。空の人には足させる
     assert prompt =~ "空の人には様式のタグを足してください"
+    # 名簿は機械で作るので、絵で知られていない人が混ざる。その見分けは AI にしかできない
+    assert prompt =~ "絵で知られていない人"
     assert prompt =~ "いまの内容に付いているタグをすべて残したうえで"
 
     # 少しずつ育てる。進み具合で次にどこから続けるかを決める
@@ -441,6 +443,9 @@ defmodule Antenna.RelationsTest do
     assert want =~ "年代:"
     assert want =~ "様式:"
     assert want =~ "有名な順"
+    # カテゴリは持ち主の職業を選ばない。外す指定まで頼む
+    assert want =~ "not_tag"
+    assert want =~ "19 世紀から 20 世紀前半"
     # 書いていないことは頼まない
     refute want =~ "影響"
   end
