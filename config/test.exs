@@ -15,7 +15,10 @@ config :antenna, Antenna.Repo,
 # you can enable the server option below.
 config :antenna, AntennaWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
-  secret_key_base: "Pg4Xina8sjaq6tQ8YFWg7ujOO9jf6W8xHNCNzgoyGBwMXX82jpISt6TbdoxdONF8",
+  # 生成された実値ではなく、**明らかに偽物と分かるもの**を置く（長さだけ満たす）。
+  # 本番は `SECRET_KEY_BASE` から取るので、ここが漏れて困ることは無いが、
+  # リポジトリに乱数の実値があると「これは本物か」を毎回確かめることになる
+  secret_key_base: String.duplicate("t", 64),
   server: false
 
 # 外部への取得はスタブへ差し替える。テストが実際に相手を叩くと、
