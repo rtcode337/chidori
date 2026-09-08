@@ -221,6 +221,9 @@ defmodule Antenna.Relations do
       checked_at: %{},
       # Chiezo 側で取り込みが走っているか（走っている間は「いま集めて」を断られる）
       busy: %{},
+      # いま何をしているか。**押しても数分は Chiezo 側に何も出ない**（先に AI へ
+      # 指定を書かせるため）ので、どこで待っているのかを画面に出す
+      step: %{},
       reasons: %{},
       tasks: %{},
       last_attempt_at: %{}
@@ -334,6 +337,11 @@ defmodule Antenna.Relations do
     end
   end
 
+  # 走っている途中から届く「いま何をしているか」。そのまま画面へ流す
+  def handle_info({:progress, key, step}, state) do
+    {:noreply, broadcast(put_in(state.step[key], step), key)}
+  end
+
   # Chiezo の取り込みの様子。**走っている間は押させない**ので、終わったことに
   # 気づけるよう、走っているあいだだけ間を置いて確かめ直す
   def handle_info({:busy, key, busy}, state) do
@@ -361,7 +369,11 @@ defmodule Antenna.Relations do
     :ok
   end
 
-  defp apply_result(state, key, {:ok, relation}) do
+  defp apply_result(state, key, result) do
+    apply_step(put_in(state.step[key], nil), key, result)
+  end
+
+  defp apply_step(state, key, {:ok, relation}) do
     state
     |> put_in([:relations, key], relation)
     |> put_in([:statuses, key], :ready)
@@ -370,13 +382,13 @@ defmodule Antenna.Relations do
   end
 
   # 集めさせるのは断られたが、溜まっているものは読めた。図は出したうえで理由を添える
-  defp apply_result(state, key, {:ok, relation, reason}) do
+  defp apply_step(state, key, {:ok, relation, reason}) do
     state
-    |> apply_result(key, {:ok, relation})
+    |> apply_step(key, {:ok, relation})
     |> put_in([:reasons, key], reason)
   end
 
-  defp apply_result(state, key, {:error, {reason, collection}}) when is_map(collection) do
+  defp apply_step(state, key, {:error, {reason, collection}}) when is_map(collection) do
     # 図を出せないときも、収集の状態は出す —— 「有効にしていない」のか
     # 「有効だがまだ走っていない」のかで、次にすることが違う。
     #
@@ -397,7 +409,7 @@ defmodule Antenna.Relations do
     |> put_in([:reasons, key], reason)
   end
 
-  defp apply_result(state, key, {:error, reason}) do
+  defp apply_step(state, key, {:error, reason}) do
     status = if state.collected_at[key], do: :stale, else: :unavailable
 
     state
@@ -426,6 +438,7 @@ defmodule Antenna.Relations do
     |> Map.put(:collected_at, Map.get(state.collected_at, key))
     |> Map.put(:checked_at, Map.get(state.checked_at, key))
     |> Map.put(:busy, Map.get(state.busy, key, false))
+    |> Map.put(:step, Map.get(state.step, key))
     |> Map.put(:reason, Map.get(state.reasons, key))
   end
 
@@ -536,22 +549,48 @@ defmodule Antenna.Relations do
   def collect_painters(base_url, fallback) do
     name = painters_collection()
 
-    with :ok <- ensure_collection_once(base_url, name),
-         :ok <- ensure_extract(base_url, name) do
+    with {:ok, existing} <- ensure_collection_once(base_url, name),
+         # **作った直後は書かせに行かない。** 作るときに書かせたばかりで、
+         # 書けなかったのなら理由がある。同じ押下で 2 度目を投げると、
+         # 時間切れの 30 分をもう一度待つことになる（実際にそうなった）
+         :ok <- if(existing, do: ensure_extract(base_url, name), else: :ok) do
+      progress(:collecting)
+
       case Chiezo.run(base_url, name) do
-        :ok -> fetch_painters(base_url, fallback)
-        {:error, reason} -> refused(fetch_painters(base_url, fallback), reason)
+        :ok -> reading(fetch_painters(base_url, fallback))
+        {:error, reason} -> refused(reading(fetch_painters(base_url, fallback)), reason)
       end
     end
   end
 
+  defp reading(result) do
+    progress(:reading)
+    result
+  end
+
+  # **押しても数分は Chiezo 側に何も出ない**（先に AI へ指定を書かせるため）。
+  # どこで待っているのかが分からないと、押せていないのと区別が付かない
+  defp progress(step) do
+    if pid = Process.whereis(__MODULE__), do: send(pid, {:progress, "painters", step})
+    :ok
+  end
+
   # すでにあるなら何もしない。**作るときだけ指定を書かせる**ので、
   # 押すたびに書かせに行かないよう、先に有無を確かめる
+  # 戻り値の真偽は「もとからあったか」。作った直後かどうかで、このあと
+  # 指定を書かせに行くかが変わる
   defp ensure_collection_once(base_url, name) do
+    progress(:checking)
+
     case Chiezo.collection(base_url, name) do
-      {:ok, nil} -> ensure_collection(base_url, name)
-      {:ok, _found} -> :ok
-      {:error, reason} -> {:error, reason}
+      {:ok, nil} ->
+        with :ok <- ensure_collection(base_url, name), do: {:ok, false}
+
+      {:ok, _found} ->
+        {:ok, true}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -628,12 +667,16 @@ defmodule Antenna.Relations do
     作家が入っています。人気の順に取るとそちらが先に並ぶので、俳優・小説家・
     児童文学作家などのカテゴリは not_tag で外してください。
 
-    タグは次の 3 つにしてください。
+    タグは次の 5 つにしてください。
     - "#{Graph.kind_tag()}" を全員に付ける
     - "年代:<生年>-<没年>"。生年と没年のカテゴリ（「1840年生」「1926年没」の形）から作り、
       どちらか片方しか無いときは作らない
     - "様式:<様式名>"。「〜派の画家」のカテゴリから、"派" まで含めて作る。
       このカテゴリを持たない画家も多いので、その人には付けなくて構いません
+    - "#{Graph.work_tag()}:<絵の記事名>"。「〈その画家〉の作品」のようなカテゴリが
+      あるので、そこから人気の順に 1 つ。無い画家も多いので、その人には付きません
+    - "#{Graph.related_tag()}:<相手の画家名>"。**記事どうしが相互にリンクしている相手**を
+      出してください（片側だけのリンクは、有名どうしが軒並み繋がって図が読めなくなります）
     説明は記事の冒頭を使い、出典は日本語版 Wikipedia のその記事の URL にしてください。
     """
   end
@@ -697,7 +740,9 @@ defmodule Antenna.Relations do
   # まだ無ければ依頼する。**止まった状態で作られる**ので、これで AI が動き出す
   # ことはない（動かすかは Chiezo 側で決める）。すでにあれば何もしない
   defp ensure_collection(base_url, name) do
-    Chiezo.request(base_url, collection_attrs(name, draft_extract(base_url)))
+    spec = draft_extract(base_url)
+    progress(:requesting)
+    Chiezo.request(base_url, collection_attrs(name, spec))
   end
 
   # **依頼する前に指定を書かせる。** 作った収集は次の予定が「いま」なので、
@@ -705,7 +750,9 @@ defmodule Antenna.Relations do
   # AI の回を始めてしまう（実際にそうなり、機械で埋まるはずの初回が AI に
   # 書かれて、進み具合まで進んでしまった）。
   defp draft_extract(base_url) do
-    case Chiezo.draft_extract(base_url, nil, painters_extract_request()) do
+    progress(:drafting)
+
+    case Chiezo.draft_extract(base_url, nil, painters_extract_request(), who()) do
       {:ok, %{"extract" => spec} = drafted} when is_map(spec) ->
         Logger.info("画家の抽出の指定を書かせた（#{drafted["total"]} 件取れる）")
         spec
@@ -769,6 +816,16 @@ defmodule Antenna.Relations do
   end
 
   defp chiezo_base_url, do: Chiezo.base_url()
+
+  # 頼む相手。**指定を書かせるときも同じ相手にする** —— 本番と違う相手に書かせた
+  # 指定は、本番で通るか分からない
+  defp who do
+    %{backend: System.get_env("CHIEZO_RELATIONS_BACKEND", "claude")}
+    |> put_unless_blank(:model, System.get_env("CHIEZO_RELATIONS_MODEL"))
+  end
+
+  defp put_unless_blank(map, _key, value) when value in [nil, ""], do: map
+  defp put_unless_blank(map, key, value), do: Map.put(map, key, value)
 
   defp ask_chiezo(base_url, key) do
     payload =

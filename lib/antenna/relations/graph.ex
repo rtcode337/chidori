@@ -38,6 +38,12 @@ defmodule Antenna.Relations.Graph do
   @min_radius 26
   @max_radius 60
 
+  @doc "代表作を載せるタグの頭。"
+  def work_tag, do: @work_prefix
+
+  @doc "相互リンクの相手を載せるタグの頭。"
+  def related_tag, do: @related_prefix
+
   @doc "Chiezo の `filter` が返した文書の並びを、図のデータにします。"
   def from_docs(docs) when is_list(docs) do
     nodes =

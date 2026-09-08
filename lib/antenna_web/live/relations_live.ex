@@ -162,10 +162,34 @@ defmodule AntennaWeb.RelationsLive do
   def collecting?(%{busy: true}), do: true
   def collecting?(_relation), do: false
 
-  @doc "ボタンの文字。何を待っているのかまで出す。"
-  def collect_label(%{status: :loading}), do: "収集中…"
+  @doc """
+  ボタンの文字。**何を待っているのかまで出す。**
+
+  押しても数分は Chiezo 側に何も出ません（先に AI へ抽出の指定を書かせるため）。
+  「収集中…」だけだと、押せていないのと区別が付きません。
+  """
+  def collect_label(%{status: :loading} = relation), do: step_text(relation) || "収集中…"
   def collect_label(%{busy: true}), do: "Chiezo が取り込み中…"
   def collect_label(_relation), do: "関連図を収集"
+
+  @doc "いま何をしているか。分からなければ nil。"
+  def step_text(%{step: :checking}), do: "収集があるか確かめています…"
+  def step_text(%{step: :drafting}), do: "AI に抽出の指定を書かせています…"
+  def step_text(%{step: :requesting}), do: "Chiezo に収集を依頼しています…"
+  def step_text(%{step: :collecting}), do: "Chiezo に集めさせています…"
+  def step_text(%{step: :reading}), do: "溜まったものを読んでいます…"
+  def step_text(_relation), do: nil
+
+  @doc "その段でどれくらい待つのか。押した人が席を立ってよいかの目安。"
+  def step_note(%{step: :drafting}),
+    do:
+      "どのカテゴリから引けるかを AI が Chiezo の索引で確かめています。" <>
+        "数分から十数分かかり、この間は Chiezo 側にはまだ何も出ません。"
+
+  def step_note(%{step: :collecting}),
+    do: "指定どおりに引いて長期記憶へ焼いています。AI は動きません。"
+
+  def step_note(_relation), do: nil
 
   @doc """
   いまの状態を1文で言う。失敗したときは、直前の図を出していることまで書く。
@@ -229,6 +253,11 @@ defmodule AntennaWeb.RelationsLive do
 
   defp reason_text(:invalid_ai_response), do: "AIの応答から関連図を作れませんでした。もう一度収集してください。"
   defp reason_text(:collection_crashed), do: "収集の途中で問題が起きました。もう一度収集してください。"
+  defp reason_text(:not_requested), do: "Chiezo にこの収集がありません。もう一度押すと作り直します。"
   defp reason_text(nil), do: ""
-  defp reason_text(_reason), do: "収集に失敗しました。"
+
+  # **知らない理由でも、そのまま出す。** 「収集に失敗しました」だけだと、押した人にも
+  # 直す人にも何も分からない（実際にこれが出て、原因を画面から辿れなかった）。
+  # ここに来るのは自分たちが返した印であって、外から来た文言ではない
+  defp reason_text(reason), do: "収集に失敗しました（#{inspect(reason)}）。"
 end

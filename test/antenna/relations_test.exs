@@ -133,10 +133,39 @@ defmodule Antenna.RelationsTest do
       assert {:ok, %{nodes: [_]}} = Relations.collect_painters(@base, fallback())
 
       # 名前はまだ無いので渡さない（相手も今の指定も無い）
-      assert_received {:drafted, %{"name" => nil}}
+      assert_received {:drafted, %{"name" => nil} = asked}
+      # 本番と同じ相手に書かせる（違う相手の指定は、本番で通るか分からない）
+      assert asked["backend"] == "claude"
       assert_received {:created, created}
       assert created["extract"]["tag"] == "印象派の画家"
       assert created["mode"] == "refine"
+    end
+
+    @tag :capture_log
+    test "作った直後は、指定を書かせに行き直さない" do
+      # 作るときに書かせたばかり。同じ押下で 2 度目を投げると、時間切れの
+      # 待ち時間をもう一度食う（実際にそうなった）
+      test_pid = self()
+
+      HttpStub.stub(fn
+        %{method: :post, url: @base <> "/v1/collect/draft-extract"} ->
+          send(test_pid, :drafted)
+          {:ok, %{status: 504, body: ""}}
+
+        %{method: :post} ->
+          HttpStub.ok("{}")
+
+        %{method: :get, url: @base <> "/v1/collect"} ->
+          HttpStub.ok(Jason.encode!(%{"collections" => []}))
+
+        %{method: :get, url: _url} ->
+          HttpStub.ok(docs_body([painter_doc("クロード・モネ", ["年代:1860-1920"])]))
+      end)
+
+      assert {:ok, %{nodes: [_]}} = Relations.collect_painters(@base, fallback())
+
+      assert_received :drafted
+      refute_received :drafted
     end
 
     test "指定を持っていなければ、依頼文から書かせて持たせる" do
@@ -445,11 +474,21 @@ defmodule Antenna.RelationsTest do
     assert want =~ "年代:"
     assert want =~ "様式:"
     assert want =~ "件数は絞らなくて構いません"
+    # 書いてあることは全部頼む（頼まなければ、その読み替えは使われない）
+    assert want =~ "代表作:"
+    assert want =~ "関連:"
+    assert want =~ "相互にリンクしている相手"
     # カテゴリは持ち主の職業を選ばない。外す指定まで頼む
     assert want =~ "not_tag"
     # 年代は絞らない（どの時代を見たいかは、頼む側が決めること）
     assert want =~ "年代は絞りません"
     # 書いていないことは頼まない
     refute want =~ "影響"
+  end
+
+  test "知らない理由でも、何が起きたかは画面に出す" do
+    # 「収集に失敗しました」だけだと、押した人にも直す人にも分からない
+    assert AntennaWeb.RelationsLive.status_message(%{status: :unavailable, reason: :なにか}) =~
+             ":なにか"
   end
 end

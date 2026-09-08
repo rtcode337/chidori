@@ -89,6 +89,50 @@ defmodule AntennaWeb.RelationsLiveTest do
       assert render(live) =~ "disabled"
     end
 
+    test "いま何をしているのかを出す", %{conn: conn} do
+      # 押しても数分は Chiezo 側に何も出ない（先に AI へ指定を書かせるため）。
+      # 「収集中…」だけだと、押せていないのと区別が付かない
+      System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+      test_pid = self()
+
+      Antenna.HttpStub.stub(fn
+        %{url: "http://chiezo.test:7010/v1/ingest/status"} ->
+          Antenna.HttpStub.ok(~s({"running":false}))
+
+        %{method: :post, url: "http://chiezo.test:7010/v1/collect/draft-extract"} ->
+          send(test_pid, {:asked, self()})
+
+          receive do
+            :go -> Antenna.HttpStub.ok(~s({"extract":{"source":"jawiki","tag":"x"}}))
+          after
+            5_000 -> {:error, :timeout}
+          end
+
+        %{method: :post} ->
+          Antenna.HttpStub.ok("{}")
+
+        %{url: url} ->
+          if String.contains?(url, "/filter?") do
+            Antenna.HttpStub.ok(~s({"results":[],"total":0}))
+          else
+            Antenna.HttpStub.ok(~s({"collections":[]}))
+          end
+      end)
+
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      assert wait_until(fn -> render(live) =~ "関連図を収集" end)
+
+      live |> element("button[phx-click=collect]") |> render_click()
+
+      assert_receive {:asked, worker}, 2_000
+      assert wait_until(fn -> render(live) =~ "AI に抽出の指定を書かせています" end)
+      # 待っているあいだ、Chiezo 側にはまだ何も出ないことも書いておく
+      assert render(live) =~ "Chiezo 側にはまだ何も出ません"
+
+      send(worker, :go)
+    end
+
     test "押した合図はサーバーの応答を待たずに出す", %{conn: conn} do
       # 集まるものが無い日は往復が一瞬で終わる。状態の変化だけに任せると、
       # 押したのかどうかが画面に残らない

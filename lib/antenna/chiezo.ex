@@ -79,9 +79,12 @@ defmodule Antenna.Chiezo do
 
   Chiezo は何を集めているかを知らないので、条件はこちらが言葉で書いて渡します。
   向こうは書けた指定でその場で引いて、何件取れるかと最初の数件を添えて返します。
+
+  **誰に書かせるかは名指しできます**（`who` に `backend` / `model`）。指定を書くのは
+  索引を何度も引く仕事なので、遅い相手だと十数分待つことになります。
   """
-  def draft_extract(base, name, want, timeout \\ @draft_timeout) do
-    body = Jason.encode!(%{name: name, want: want})
+  def draft_extract(base, name, want, who \\ %{}, timeout \\ @draft_timeout) do
+    body = Jason.encode!(Map.merge(%{name: name, want: want}, who))
 
     case post(base <> "/v1/collect/draft-extract", body, timeout) do
       {:ok, %{status: status, body: raw}} when status in 200..299 -> decoded(raw)

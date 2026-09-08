@@ -90,7 +90,8 @@
     <section class="relation-actions" aria-label="関連図の情報収集">
       <div>
         <strong>公開情報から更新</strong>
-        <p aria-live="polite">{status_message(@relation)}</p>
+        <p aria-live="polite">{step_text(@relation) || status_message(@relation)}</p>
+        <p :if={step_note(@relation)} class="muted-note">{step_note(@relation)}</p>
         <p class="muted-note">{source_note(@view)}</p>
       </div>
       <%!-- 押した合図は**サーバーの応答を待たずに**出す。集めるのが速く終わる日も
