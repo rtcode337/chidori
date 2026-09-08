@@ -135,4 +135,80 @@ defmodule Antenna.Relations.GraphTest do
     assert Graph.from_docs([]).nodes == []
     assert Graph.from_docs(nil).nodes == []
   end
+
+  describe "相互リンクの線" do
+    test "古いほうから新しいほうへ 1 本引く" do
+      # リンクに向きは無いが、時代の流れは分かっている
+      graph =
+        Graph.from_docs([
+          painter("マネ", ["年代:1832-1883", "関連:モネ"]),
+          painter("モネ", ["年代:1840-1926", "関連:マネ"])
+        ])
+
+      assert [%{kind: :related} = edge] = graph.edges
+      manet = Enum.find(graph.nodes, &(&1.name == "マネ"))
+      assert edge.from == manet.id
+    end
+
+    test "影響の線がある組には重ねない" do
+      # 「何を受けたか」まで分かっている組に、薄い線を重ねても読めるものは増えない
+      graph =
+        Graph.from_docs([
+          painter("マネ", ["年代:1832-1883", "関連:モネ"]),
+          painter("モネ", ["年代:1840-1926", "関連:マネ", "影響元:マネ:外光の描き方"])
+        ])
+
+      assert [%{kind: :influence, label: "外光の描き方"}] = graph.edges
+    end
+
+    test "図に出ない相手への線は引かない" do
+      graph = Graph.from_docs([painter("モネ", ["年代:1840-1926", "関連:居ない人"])])
+
+      assert graph.edges == []
+    end
+  end
+
+  describe "年表の目盛り" do
+    defp dated(names_and_years) do
+      Graph.from_docs(
+        for {name, years} <- names_and_years, do: painter(name, ["年代:#{years}"])
+      )
+    end
+
+    test "古い順に、その年が来る高さへ置く" do
+      graph = dated([{"古い人", "1450-1510"}, {"新しい人", "1960-2020"}])
+
+      assert [_ | _] = graph.ticks
+      years = Enum.map(graph.ticks, & &1.year)
+      assert years == Enum.sort(years)
+      assert List.first(graph.ticks).y < List.last(graph.ticks).y
+      # 400 年を超える図は 100 年刻み（50 年だと目盛りが多すぎて図が読めない）
+      assert Enum.all?(years, &(rem(&1, 100) == 0))
+    end
+
+    test "人が多い年代ほど、目盛りの間隔は広がる" do
+      # 丸は年代の順に等間隔で並ぶので、目盛りの側が伸び縮みする。
+      # 混み合った時代ほど紙面を取る＝読みやすい側に伸びる
+      graph =
+        dated([
+          {"a", "1800-1850"},
+          {"b", "1840-1900"},
+          {"c", "1850-1900"},
+          {"d", "1860-1910"},
+          {"e", "1990-2020"}
+        ])
+
+      by_year = Map.new(graph.ticks, &{&1.year, &1.y})
+      人が多い年代 = by_year[1850] - by_year[1800]
+      誰もいない年代 = by_year[1950] - by_year[1900]
+
+      assert 人が多い年代 > 誰もいない年代
+    end
+
+    test "年代の分からない図には目盛りを置かない" do
+      assert Graph.from_docs([painter("年代なし", [])]).ticks == []
+      # 1 人だけでは幅が決まらない
+      assert dated([{"1人", "1900-1950"}]).ticks == []
+    end
+  end
 end

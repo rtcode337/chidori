@@ -45,6 +45,12 @@
             <path d="M 0 0 L 10 5 L 0 10 z" />
           </marker>
         </defs>
+        <%!-- 年表の目盛り。**間隔は一定ではない** —— 丸は年代の順に等間隔で並べてあるので、
+             目盛りの側が伸び縮みする。人が多い年代ほど広がる --%>
+        <g :for={tick <- @relation[:ticks] || []} class="relation-tick">
+          <line x1="70" y1={tick.y} x2={@relation.width} y2={tick.y} />
+          <text x="8" y={tick.y + 5}>{tick.year}年</text>
+        </g>
         <%= for edge <- @relation.edges,
                 from = Enum.find(@relation.nodes, &(&1.id == edge.from)),
                 to = Enum.find(@relation.nodes, &(&1.id == edge.to)) do %>
@@ -164,8 +170,12 @@
         <h2>この図の見方</h2>
         <p>
           <%= if @view == "painters" do %>
-            上から下へ時代が流れます。矢印は影響の方向、丸の大きさは知られている度合い
-            （日本語版 Wikipedia の月間閲覧数）です。名前を押すと代表作が出ます。
+            上から下へ時代が流れます。丸の大きさは知られている度合い
+            （日本語版 Wikipedia の月間閲覧数）で、名前を押すと代表作が出ます。
+            <strong>濃い矢印</strong>は AI が調べた影響関係（何を受けたかが線に出ます）。
+            <strong>薄い線</strong>は記事どうしが相互にリンクしているというだけの関係で、
+            Wikipedia から機械的に引いたものです。左の目盛りは年表ですが、
+            丸を等間隔に並べているので、画家が多い時代ほど間隔が広がります。
           <% else %>
             実線は家族、点線はコンビとメンバーの関係です。
           <% end %>

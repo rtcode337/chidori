@@ -29,6 +29,9 @@ defmodule Antenna.Relations.Graph do
   @years_prefix "年代"
   @work_prefix "代表作"
   @influence_prefix "影響元"
+  # 記事どうしが相互にリンクしている、というだけの線。**Chiezo が機械的に付ける**ので、
+  # AI を待たずに図がつながる。何の関係かまでは分からないので、影響の線とは分けて描く
+  @related_prefix "関連"
 
   # 丸の大きさ。**知名度で変える** —— どれが中心的な画家かが、読む前に分かる。
   # 知名度そのものは jawiki の月次ページビュー（`Antenna.Fame`）
@@ -47,9 +50,12 @@ defmodule Antenna.Relations.Graph do
 
     by_name = Map.new(nodes, &{&1.name, &1})
 
+    placed = layout(nodes)
+
     %{
-      nodes: layout(nodes),
+      nodes: placed,
       edges: edges(docs, by_name),
+      ticks: ticks(placed),
       width: canvas_width(length(nodes)),
       height: canvas_height(length(nodes))
     }
@@ -57,7 +63,65 @@ defmodule Antenna.Relations.Graph do
 
   def from_docs(_docs), do: empty()
 
-  def empty, do: %{nodes: [], edges: [], width: @canvas_width, height: @canvas_height}
+  def empty,
+    do: %{nodes: [], edges: [], ticks: [], width: @canvas_width, height: @canvas_height}
+
+  @doc """
+  縦軸に置く年表の目盛り。`%{year:, y:}` を古い順に返します。
+
+  **等間隔には置きません。** 丸は年代の順に等間隔で並べてあって、年代そのものに
+  比例してはいない（比例させると、画家が集中する 19 世紀後半だけ団子になり、
+  空いている世紀に何もない余白ができる）。目盛りは前後の丸の年代から位置を割り出して
+  置くので、**人が多い年代ほど間隔が広がります**。混み合った時代ほど紙面を取る、
+  という読み方になります。
+
+  刻みは、図が収める幅に合わせて 50 年か 100 年のどちらかにします。
+  """
+  def ticks(nodes) do
+    dated = for node <- nodes, year = year_of(node), do: {year, node.y}
+
+    case dated do
+      [] ->
+        []
+
+      [_single] ->
+        []
+
+      _ ->
+        {first, _} = List.first(dated)
+        {last, _} = List.last(dated)
+        step = tick_step(last - first)
+
+        Stream.iterate(ceil_to(first, step), &(&1 + step))
+        |> Enum.take_while(&(&1 <= last))
+        |> Enum.map(&%{year: &1, y: y_at(&1, dated)})
+    end
+  end
+
+  # 前後の丸のあいだを比例で割って、その年が来る高さを出す
+  defp y_at(year, dated) do
+    {before, rest} = Enum.split_while(dated, fn {y, _} -> y <= year end)
+
+    case {List.last(before), List.first(rest)} do
+      {nil, {_year, y}} -> y
+      {{_year, y}, nil} -> y
+      {{y1, top}, {y2, bottom}} when y2 > y1 -> top + (bottom - top) * (year - y1) / (y2 - y1)
+      {{_y1, top}, _} -> top
+    end
+  end
+
+  defp tick_step(span) when span > 400, do: 100
+  defp tick_step(span) when span > 120, do: 50
+  defp tick_step(_span), do: 25
+
+  defp ceil_to(year, step), do: ceil(year / step) * step
+
+  defp year_of(node) do
+    case node.years && Regex.run(~r/\d{3,4}/, node.years) do
+      [year] -> String.to_integer(year)
+      _ -> nil
+    end
+  end
 
   @doc "この図に取り込む文書かどうかの目印。Chiezo からはこのタグで引きます。"
   def kind_tag, do: @kind_tag
@@ -125,25 +189,57 @@ defmodule Antenna.Relations.Graph do
   defp to_node(_doc), do: []
 
   # 年代の始まりで並べる。左から右へ時代が流れる図なので、並びがそのまま意味になる
-  defp sort_key(node) do
-    case node.years && Regex.run(~r/\d{3,4}/, node.years) do
-      [year] -> {String.to_integer(year), node.name}
-      _ -> {9999, node.name}
-    end
-  end
+  defp sort_key(node), do: {year_of(node) || 9999, node.name}
 
   defp edges(docs, by_name) do
+    influence =
+      for doc <- docs,
+          to = by_name[String.trim(to_string(doc["title"] || ""))],
+          to != nil,
+          {from_name, label} <- influences(tags_of(doc)),
+          from = by_name[from_name],
+          from != nil,
+          from.id != to.id do
+        %{from: from.id, to: to.id, label: label, kind: :influence}
+      end
+      # 同じ向きの線は 1 本に畳む（同じ相手を 2 つのタグで挙げても重ならない）
+      |> Enum.uniq_by(&{&1.from, &1.to})
+
+    influence ++ related(docs, by_name, influence)
+  end
+
+  # 相互リンクの線。**古いほうから新しいほうへ向ける** —— 記事どうしのリンクに
+  # 向きは無いが、時代の流れは分かっているので、こちらで向きを与える。
+  #
+  # **影響の線がある組には引かない。** AI が「何を受けたか」まで書いた組は、
+  # そちらのほうが濃い情報なので、上に薄い線を重ねない。
+  defp related(docs, by_name, influence) do
+    known = MapSet.new(influence, fn edge -> Enum.sort([edge.from, edge.to]) end)
+
     for doc <- docs,
-        to = by_name[String.trim(to_string(doc["title"] || ""))],
-        to != nil,
-        {from_name, label} <- influences(tags_of(doc)),
-        from = by_name[from_name],
-        from != nil,
-        from.id != to.id do
-      %{from: from.id, to: to.id, label: label, kind: :influence}
+        node = by_name[String.trim(to_string(doc["title"] || ""))],
+        node != nil,
+        other_name <- tag_values(tags_of(doc), @related_prefix),
+        other = by_name[other_name],
+        other != nil,
+        other.id != node.id,
+        not MapSet.member?(known, Enum.sort([node.id, other.id])),
+        # 古い側から新しい側へ 1 本だけ（相互リンクなので両方の文書に出てくる）
+        {from, to} = order_by_age(node, other),
+        from.id == node.id do
+      %{from: from.id, to: to.id, label: nil, kind: :related}
     end
-    # 同じ向きの線は 1 本に畳む（同じ相手を 2 つのタグで挙げても重ならない）
     |> Enum.uniq_by(&{&1.from, &1.to})
+  end
+
+  defp order_by_age(a, b) do
+    if (year_of(a) || 9999) <= (year_of(b) || 9999), do: {a, b}, else: {b, a}
+  end
+
+  defp tag_values(tags, prefix) do
+    for tag <- tags, String.starts_with?(tag, prefix <> ":") do
+      tag |> String.split(":", parts: 2) |> List.last() |> String.trim()
+    end
   end
 
   defp influences(tags) do

@@ -79,6 +79,8 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relation-edge.family { stroke: #d07b91; }
 .relation-edge.duo { stroke: #7770cc; stroke-dasharray: 7 6; }
 .relation-edge.influence { stroke: #6f69c8; stroke-width: 2.5; }
+/* 相互リンクだけの線。何の関係かは分からないので、影響の線より薄く細く */
+.relation-edge.related { stroke: #cfd4e6; stroke-width: 1.5; }
 .relation-edge + .edge-label { fill: #68718a; font-size: 12px; font-weight: 700; paint-order: stroke; stroke: #f9faff; stroke-width: 5px; }
 .relation-node circle { fill: white; stroke: #adb6cf; stroke-width: 2.5; filter: drop-shadow(0 5px 5px rgba(29, 36, 58, .11)); }
 .relation-node.group circle { fill: #eeedff; stroke: #756bd1; }
@@ -117,6 +119,9 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .muted-note { margin: .35rem 0 0; color: #7c869b; font-size: .78rem; line-height: 1.6; }
 
 /* 代表作。画像は Wikipedia のものを指すだけで、こちらには持たない */
+.relation-tick line { stroke: #e2e4f3; stroke-width: 1.5; stroke-dasharray: 6 6; }
+.relation-tick text { fill: #97a0bb; font-size: .82rem; font-weight: 600; }
+
 .artwork-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 1.5rem; background: rgba(24, 22, 51, .55); }
 .artwork { margin: 0; width: min(34rem, 100%); max-height: 86vh; overflow-y: auto; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f8f8ff; box-shadow: 0 1.4rem 3rem rgba(24, 22, 51, .3); }
 .artwork-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }

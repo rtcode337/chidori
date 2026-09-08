@@ -74,12 +74,32 @@ if config_env() == :prod do
     """
   end
 
-  host = System.get_env("PHX_HOST") || "example.com"
+  # ブラウザが開くときの宛先。**リンクの組み立てにしか使わない**が、既定のままだと
+  # スマホから IP で開いたときに `localhost` を指すリンクが返る
+  host = System.get_env("PHX_HOST") || "localhost"
+  scheme = System.get_env("PHX_SCHEME") || "http"
+  url_port =
+    String.to_integer(
+      System.get_env("PHX_URL_PORT") ||
+        if(scheme == "https", do: "443", else: System.get_env("PORT", "7070"))
+    )
+
+  # **どこから開いても繋がるようにする。** LiveView は繋ぎ直すときに接続元を
+  # 見比べるので、`PHX_HOST` と違う宛先（IP やホスト名）で開くと画面が
+  # 「繋がりません」のまま止まる。LAN の中に閉じていて認証も無い層なので、
+  # 既定では見比べない（外へ出すなら `PHX_CHECK_ORIGIN` に宛先を並べる）
+  check_origin =
+    case System.get_env("PHX_CHECK_ORIGIN") do
+      nil -> false
+      "" -> false
+      list -> list |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+    end
 
   config :antenna, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
   config :antenna, AntennaWeb.Endpoint,
-    url: [host: host, port: 443, scheme: "https"],
+    url: [host: host, port: url_port, scheme: scheme],
+    check_origin: check_origin,
     http: [
       # Enable IPv6 and bind on all interfaces.
       # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.

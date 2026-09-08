@@ -409,7 +409,9 @@ defmodule Antenna.RelationsTest do
 
     # 少しずつ育てる。進み具合で次にどこから続けるかを決める
     assert prompt =~ "{cursor}"
-    assert prompt =~ "3人から5人だけ"
+    assert prompt =~ "10人ほど"
+    # 線が引かれていない人から埋めさせる（名簿と年代は最初から入っている）
+    assert prompt =~ "まだ影響元のタグが付いていない人を先に"
 
     # 毎回全部を返させない（返し忘れで消えない作りなので、その必要が無い）
     assert prompt =~ "変えない人を返す必要はありません"
@@ -442,10 +444,11 @@ defmodule Antenna.RelationsTest do
     assert want =~ "Wikipedia"
     assert want =~ "年代:"
     assert want =~ "様式:"
-    assert want =~ "有名な順"
+    assert want =~ "件数は絞らなくて構いません"
     # カテゴリは持ち主の職業を選ばない。外す指定まで頼む
     assert want =~ "not_tag"
-    assert want =~ "19 世紀から 20 世紀前半"
+    # 年代は絞らない（どの時代を見たいかは、頼む側が決めること）
+    assert want =~ "年代は絞りません"
     # 書いていないことは頼まない
     refute want =~ "影響"
   end

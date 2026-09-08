@@ -10,7 +10,11 @@ services:
       # 生成: mix phx.gen.secret（64バイト以上。短いと起動時に断る）
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:?SECRET_KEY_BASE を .env に書いてください}
       DATABASE_URL: ecto://${POSTGRES_USER:-antenna}:${POSTGRES_PASSWORD:-antenna}@db:5432/${POSTGRES_DB:-antenna}
+      # 手元以外から開くなら、その宛先を .env に書く（既定のままだと、
+      # リンクの組み立てが localhost を指す）
       PHX_HOST: ${PHX_HOST:-localhost}
+      PHX_SCHEME: ${PHX_SCHEME:-http}
+      PHX_CHECK_ORIGIN: ${PHX_CHECK_ORIGIN:-}
       PORT: ${PORT:-7070}
       # Chiezo（LAN内の知識サーバー）。入れるとニュースと関連図が使える
       CHIEZO_BASE_URL: ${CHIEZO_BASE_URL:-}
