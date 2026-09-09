@@ -35,7 +35,15 @@
           <p class="news-reason">関心: {topic.interest}</p>
 
           <%= if @editing == topic.id do %>
-            <.form for={@form} phx-submit="save" class="topic-form">
+            <%!-- 話題ごとに 1 枚出るので、id も話題ごとに分ける
+                  （同じ id が並ぶと、切断からの復帰でフォームを取り違える） --%>
+            <.form
+              for={@form}
+              id={"topic-form-#{topic.id}"}
+              phx-submit="save"
+              phx-change="validate"
+              class="topic-form"
+            >
               <p :if={@error} class="news-message">{@error}</p>
 
               <label>関心（何を集めて、何を選んでほしいか）</label>
@@ -50,13 +58,29 @@
                 />
                 <.input
                   field={@form[:collect_model]}
-                  type="text"
-                  placeholder="モデル（空で既定）"
+                  type="select"
+                  label="モデル"
+                  options={
+                    candidate_options(
+                      @backends,
+                      field_value(@form, :collect_backend),
+                      "models",
+                      field_value(@form, :collect_model)
+                    )
+                  }
                 />
                 <.input
                   field={@form[:collect_effort]}
-                  type="text"
-                  placeholder="考える量（空で既定）"
+                  type="select"
+                  label="考える量"
+                  options={
+                    candidate_options(
+                      @backends,
+                      field_value(@form, :collect_backend),
+                      "efforts",
+                      field_value(@form, :collect_effort)
+                    )
+                  }
                 />
               </fieldset>
 
@@ -69,13 +93,29 @@
                 />
                 <.input
                   field={@form[:select_model]}
-                  type="text"
-                  placeholder="モデル（空で既定）"
+                  type="select"
+                  label="モデル"
+                  options={
+                    candidate_options(
+                      @backends,
+                      field_value(@form, :select_backend),
+                      "models",
+                      field_value(@form, :select_model)
+                    )
+                  }
                 />
                 <.input
                   field={@form[:select_effort]}
-                  type="text"
-                  placeholder="考える量（空で既定）"
+                  type="select"
+                  label="考える量"
+                  options={
+                    candidate_options(
+                      @backends,
+                      field_value(@form, :select_backend),
+                      "efforts",
+                      field_value(@form, :select_effort)
+                    )
+                  }
                 />
               </fieldset>
 

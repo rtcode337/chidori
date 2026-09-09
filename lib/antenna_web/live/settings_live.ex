@@ -36,6 +36,18 @@ defmodule AntennaWeb.SettingsLive do
     {:noreply, assign(socket, editing: nil, error: nil)}
   end
 
+  # 相手を選び直したら、モデルと考える量の選択肢も入れ替える。
+  #
+  # **Chiezo へ聞き直しません。** 候補は mount で取った一覧に最初から入っているので
+  # （`/v1/ai/backends` は相手ごとの models と efforts を返します）、選び直しの
+  # たびに外へ出るのは無駄なうえ、相手が落ちていると画面が固まります。
+  #
+  # 保存はしません。ここで持ち回るのは書きかけの入力だけで、書き込むのは "save" です。
+  def handle_event("validate", %{"topic" => attrs}, socket) do
+    topic = Topics.get!(socket.assigns.editing)
+    {:noreply, assign(socket, form: to_form(Topics.change(topic, attrs)))}
+  end
+
   def handle_event("save", %{"topic" => attrs}, socket) do
     topic = Topics.get!(socket.assigns.editing)
 
@@ -70,10 +82,40 @@ defmodule AntennaWeb.SettingsLive do
   end
 
   @doc """
+  モデル・考える量の選択肢。**空が「相手の既定」**で、先頭に置きます。
+
+  候補は mount で取った一覧から引きます —— `/v1/ai/backends` は相手ごとの
+  models と efforts を最初から返すので、相手を選び直すたびに聞き直す必要はありません。
+
+  **相手が未指定なら一覧の先頭の候補を出します。** 「Chiezo の既定にまかせる」で
+  実際に当たるのがその相手だからです（向こうの `normalize_backend` と同じ決まり）。
+
+  **いま入っている値が候補に無くても残します** —— 落とすと、保存し直した瞬間に
+  既定へ倒れて、何を指定していたのかが画面から消えます（相手を選ぶ側と同じ約束）。
+  """
+  def candidate_options(backends, backend, key, current) do
+    spec =
+      Enum.find(backends, &(&1["id"] == backend)) ||
+        if(backend in [nil, ""], do: List.first(backends), else: nil)
+
+    candidates = List.wrap(spec && spec[key])
+    kept = if current in [nil, "" | candidates], do: [], else: [current]
+    [{"相手の既定", ""}] ++ Enum.map(candidates ++ kept, &{&1, &1})
+  end
+
+  @doc "フォームのいまの値（選び直した直後は、まだ保存されていない値）。"
+  def field_value(form, key) do
+    case form[key].value do
+      nil -> ""
+      value -> to_string(value)
+    end
+  end
+
+  @doc """
   相手ごとに渡せるモデルと考える量。**選ぶ前に読めるところに置く**。
 
-  選択肢を連動させるには相手を選び直すたびの往復が要るので、一覧を添えて
-  手で書いてもらいます（空にすれば相手の既定に任せられます）。
+  モデルと考える量はセレクトで選べますが、あれは**いま選んでいる相手のぶんだけ**なので、
+  「どの相手に替えれば何が使えるか」はここでしか読めません。相手を選ぶ前に効きます。
   """
   def backend_hint(backends) do
     for b <- backends do
