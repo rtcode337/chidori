@@ -211,4 +211,169 @@ defmodule AntennaWeb.RelationsLiveTest do
       true -> Process.sleep(20) && wait_until(check, tries - 1)
     end
   end
+
+  describe "線の座標" do
+    alias AntennaWeb.RelationsLive
+
+    test "エッジごとに両端の座標を返す" do
+      relation = %{
+        nodes: [%{id: "a", x: 10, y: 20}, %{id: "b", x: 30, y: 60}],
+        edges: [%{from: "a", to: "b", kind: :influence, label: "光"}]
+      }
+
+      assert [line] = RelationsLive.edge_lines(relation, relation.nodes)
+      assert {line.x1, line.y1, line.x2, line.y2} == {10, 20, 30, 60}
+      assert line.label == "光"
+
+      # 線の上に出す札の位置も一緒に出す（テンプレートで計算し直さない）
+      assert line.mid_x == 20
+    end
+
+    test "図に出ていない相手への線は落とす" do
+      relation = %{
+        nodes: [%{id: "a", x: 0, y: 0}],
+        edges: [%{from: "a", to: "居ない", kind: :related, label: nil}]
+      }
+
+      assert RelationsLive.edge_lines(relation, relation.nodes) == []
+    end
+
+    test "ノードが増えても線ごとに探し直さない" do
+      # かつてはエッジごとに全ノードを線形探索していた（500 人で 25,500 回）。
+      # 件数を増やしても現実的な時間で返ることだけ押さえる
+      nodes = for i <- 1..2_000, do: %{id: "n#{i}", x: i, y: i}
+      edges = for i <- 1..1_999, do: %{from: "n#{i}", to: "n#{i + 1}", kind: :related, label: nil}
+
+      {us, lines} =
+        :timer.tc(fn -> RelationsLive.edge_lines(%{nodes: nodes, edges: edges}, nodes) end)
+
+      assert length(lines) == 1_999
+      assert div(us, 1000) < 500
+    end
+  end
+
+  describe "描く数を絞る" do
+    alias AntennaWeb.RelationsLive
+
+    defp node(id, x, y, r), do: %{id: id, x: x, y: y, radius: r, kind: :artist}
+
+    defp graph(nodes), do: %{nodes: nodes, edges: []}
+
+    test "見えている範囲の外は描かない" do
+      far = node("far", 5_000, 5_000, 30)
+      near = node("near", 100, 100, 30)
+      viewport = %{x: 0, y: 0, w: 400, h: 400, ppu: 1.0}
+
+      drawn = RelationsLive.drawn_nodes(graph([far, near]), viewport)
+      assert Enum.map(drawn, & &1.id) == ["near"]
+    end
+
+    test "画面の上で小さすぎるものは描かない" do
+      # 全体表示では点にしかならず、DOM を重くするだけで何も伝えない
+      big = node("big", 10, 10, 30)
+      tiny = node("tiny", 20, 20, 1)
+      viewport = %{x: 0, y: 0, w: 400, h: 400, ppu: 1.0}
+
+      drawn = RelationsLive.drawn_nodes(graph([big, tiny]), viewport)
+      assert Enum.map(drawn, & &1.id) == ["big"]
+    end
+
+    test "拡大すると小さい丸も出てくる" do
+      tiny = node("tiny", 20, 20, 1)
+      fit = %{x: 0, y: 0, w: 400, h: 400, ppu: 1.0}
+      zoomed = %{x: 0, y: 0, w: 40, h: 40, ppu: 10.0}
+
+      assert RelationsLive.drawn_nodes(graph([tiny]), fit) == []
+      assert [%{id: "tiny"}] = RelationsLive.drawn_nodes(graph([tiny]), zoomed)
+    end
+
+    test "多すぎるときは大きい順に頭打ちにする" do
+      # 図がどれだけ大きくても、描く数が一定に収まる
+      nodes = for i <- 1..3_000, do: node("n#{i}", 10, 10, rem(i, 40) + 10)
+      viewport = %{x: 0, y: 0, w: 400, h: 400, ppu: 1.0}
+
+      drawn = RelationsLive.drawn_nodes(graph(nodes), viewport)
+
+      assert length(drawn) < length(nodes)
+      # 残ったものは大きい順
+      radii = Enum.map(drawn, & &1.radius)
+      assert radii == Enum.sort(radii, :desc)
+    end
+
+    test "範囲がまだ分からなければ、大きいものだけを描く" do
+      # 画面が繋がる前の 1 回目。全部並べると、そこでもう固まる
+      big = node("big", 10, 10, 30)
+      tiny = node("tiny", 20, 20, 1)
+
+      drawn = RelationsLive.drawn_nodes(graph([big, tiny]), nil)
+      assert Enum.map(drawn, & &1.id) == ["big"]
+    end
+
+    test "描かれていない相手への線は引かない" do
+      # 片方しか出ていない線は、どこへ向かうのか読めないまま画面の外へ消える
+      a = node("a", 10, 10, 30)
+      b = node("b", 20, 20, 30)
+      relation = %{nodes: [a, b], edges: [%{from: "a", to: "b", kind: :related, label: nil}]}
+
+      assert RelationsLive.edge_lines(relation, [a]) == []
+      assert [_line] = RelationsLive.edge_lines(relation, [a, b])
+    end
+  end
+
+  describe "探して寄る" do
+    alias AntennaWeb.RelationsLive
+
+    test "選んだ人と繋がっている相手は、小さくても描く" do
+      # 周りの関連図を読むために寄っているので、小さいという理由で消えては用をなさない
+      focus = %{id: "a", x: 10, y: 10, radius: 1, kind: :artist}
+      neighbour = %{id: "b", x: 20, y: 20, radius: 1, kind: :artist}
+      other = %{id: "c", x: 30, y: 30, radius: 1, kind: :artist}
+
+      relation = %{
+        nodes: [focus, neighbour, other],
+        edges: [%{from: "a", to: "b", kind: :related, label: nil}]
+      }
+
+      viewport = %{x: 0, y: 0, w: 400, h: 400, ppu: 1.0}
+
+      # 焦点が無ければ、小さすぎて 1 つも描かれない
+      assert RelationsLive.drawn_nodes(relation, viewport) == []
+
+      drawn = RelationsLive.drawn_nodes(relation, viewport, "a") |> Enum.map(& &1.id)
+      assert "a" in drawn
+      assert "b" in drawn
+      refute "c" in drawn
+    end
+
+    test "繋がりの無い人を選んでも、その人だけは描く" do
+      focus = %{id: "a", x: 10, y: 10, radius: 1, kind: :artist}
+      relation = %{nodes: [focus], edges: []}
+      viewport = %{x: 0, y: 0, w: 400, h: 400, ppu: 1.0}
+
+      assert [%{id: "a"}] = RelationsLive.drawn_nodes(relation, viewport, "a")
+    end
+
+    test "名前に含まれるかで探し、知られている順に返す", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+
+      html = live |> form(".relation-search", %{q: "ゴッホ"}) |> render_change()
+      assert html =~ "ゴッホ"
+    end
+
+    test "空の検索では候補を出さない", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+
+      html = live |> form(".relation-search", %{q: ""}) |> render_change()
+      refute html =~ "relation-matches"
+    end
+
+    test "検索をやめると焦点も外れる", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+
+      live |> form(".relation-search", %{q: "ゴッホ"}) |> render_change()
+      html = live |> element(~s|button[phx-click="clear_search"]|) |> render_click()
+
+      refute html =~ "relation-matches"
+    end
+  end
 end

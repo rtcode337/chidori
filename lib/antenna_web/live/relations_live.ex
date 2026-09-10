@@ -11,9 +11,41 @@ defmodule AntennaWeb.RelationsLive do
   alias Antenna.Jst
   alias Antenna.Relations
 
+  # 1 度に描く丸の上限。**図がどれだけ大きくても、ここで頭打ちにする** ——
+  # 4,250 人ぶんを SVG に並べると、線と札を合わせて 2 万を超える要素になり、
+  # 引きずるだけで画面が固まる。入り切らないぶんは大きい順に残す
+  @max_drawn 400
+
+  # 画面の上でこれ未満にしか見えない丸は描かない（単位は px）。**読めないものは
+  # 出さない** —— 全体表示では点にしかならず、DOM を重くするだけで何も伝えない。
+  # 拡大すれば見える大きさになるので、そのとき出てくる。
+  #
+  # 7px では全体表示に 1,361 人が残り、点の海の中から目印を選べなかった。
+  # 8px と `Graph` 側の曲げ具合（`@fame_curve`）を合わせて 272 人まで落としてある
+  @min_drawn_px 8.0
+
+  # 見えている範囲の外側にも少し描いておく幅（画面の幅に対する割合）。
+  # 引きずった先が空白から描き起こされるのを防ぐ
+  @viewport_margin 0.35
+
+  # 検索で出す候補の数。**選ぶための一覧**なので、多すぎると選べない
+  @max_matches 8
+
+  # 札どうしのあいだに空ける幅（図の座標）。0 にすると線がぴったり接して、
+  # 2 枚あるのか 1 枚なのか読めなくなる
+  @label_gap 2
+
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "関連図", artwork: nil, artwork_for: nil)}
+    {:ok,
+     socket
+     |> assign(page_title: "関連図", artwork: nil, artwork_for: nil)
+     # 検索。`focus` が決まっているあいだは、その人と繋がっている相手を
+     # 大きさに関わらず描く（周りの関連図を見るのが目的なので）
+     |> assign(query: "", matches: [], focus: nil)
+     # 見えている範囲。**最初は不明**にしておき、画面が繋がってから figure が知らせる
+     # （繋がる前は全体が見えている前提で、大きいものだけを描く）
+     |> assign(viewport: nil)}
   end
 
   @impl true
@@ -65,6 +97,56 @@ defmodule AntennaWeb.RelationsLive do
   # 閉じ方は3つとも同じところへ来る（ボタン・図の外を押す・Esc）
   def handle_event("close_work", _params, socket) do
     {:noreply, assign(socket, artwork: nil, artwork_for: nil)}
+  end
+
+  # 図が「いまどこを、どれくらいの倍率で見ているか」を知らせてくる。
+  # `ppu` は図の 1 単位が画面の何 px にあたるか（拡大するほど大きくなる）。
+  def handle_event("viewport", %{"x" => x, "y" => y, "w" => w, "h" => h, "ppu" => ppu}, socket) do
+    {:noreply, assign(socket, viewport: %{x: x, y: y, w: w, h: h, ppu: ppu})}
+  end
+
+  def handle_event("viewport", _params, socket), do: {:noreply, socket}
+
+  # 名前で探す。**候補を出すだけで、図はまだ動かさない** —— 打っている途中で
+  # 図が飛び回ると、どこを見ていたのか分からなくなる
+  def handle_event("search", %{"q" => q}, socket) do
+    {:noreply, assign(socket, query: q, matches: search(socket.assigns.relation, q))}
+  end
+
+  # 候補を選んだら、その人を真ん中に置いて寄る。
+  #
+  # **寄せるのは画面の側**（`focus` を figure へ送る）。サーバーが持っているのは
+  # 図の座標だけで、いま器が何 px なのかは向こうしか知らない。
+  def handle_event("focus", %{"name" => name}, socket) do
+    case Enum.find(socket.assigns.relation.nodes, &(&1.name == name)) do
+      nil ->
+        {:noreply, socket}
+
+      node ->
+        {:noreply,
+         socket
+         |> assign(focus: node.id, query: name, matches: [])
+         |> push_event("focus", %{x: node.x, y: node.y})}
+    end
+  end
+
+  def handle_event("clear_search", _params, socket) do
+    {:noreply, assign(socket, query: "", matches: [], focus: nil)}
+  end
+
+  # 名前に含まれるかで探し、**知られている順**に返す。前方一致にしないのは、
+  # 「ゴッホ」で「フィンセント・ファン・ゴッホ」を出したいため
+  defp search(relation, q) do
+    case String.trim(q) do
+      "" ->
+        []
+
+      needle ->
+        relation.nodes
+        |> Enum.filter(&String.contains?(&1.name, needle))
+        |> Enum.sort_by(&radius_of/1, :desc)
+        |> Enum.take(@max_matches)
+    end
   end
 
   @impl true
@@ -149,8 +231,172 @@ defmodule AntennaWeb.RelationsLive do
   @doc "その人の代表作の見出し（無ければ nil）。押せるかどうかの判断にも使う。"
   def work_of(node), do: node[:work]
 
+  @doc """
+  いま描く丸だけを選びます。**全部は描きません。**
+
+  絞りは 3 段です。どれも「読めないものを出さない」という 1 つの考えから来ています。
+
+  1. **見えている範囲の外は落とす。** 引きずった先が空白にならないよう、少しはみ出して
+     残します（`@viewport_margin`）
+  2. **画面の上で小さすぎるものは落とす**（`@min_drawn_px`）。全体表示では点にしか
+     ならず、DOM を重くするだけで何も伝えません。拡大すれば見える大きさになり、
+     そのとき出てきます
+  3. **それでも多ければ、大きい順に頭打ち**（`@max_drawn`）。図がどれだけ大きくても
+     描く数が一定に収まるので、引きずったときの重さが人数に比例しません
+
+  範囲がまだ分からないとき（画面が繋がる前）は、全体が見えている前提で選びます。
+  """
+  def drawn_nodes(relation, viewport, focus \\ nil) do
+    kept = neighbourhood(relation, focus)
+
+    relation.nodes
+    |> Enum.filter(fn node ->
+      MapSet.member?(kept, node.id) or
+        (visible?(node, viewport) and big_enough?(node, viewport))
+    end)
+    # 探して選んだ人とその相手を先に、あとは大きい順に。**置く順がそのまま優先順**で、
+    # 先に置いたものが場所を取る
+    |> Enum.sort_by(fn node -> {!MapSet.member?(kept, node.id), -radius_of(node)} end)
+    # 重なりを見るのは総当たりなので、見る数に蓋をする
+    |> Enum.take(@max_drawn * 4)
+    |> without_overlap()
+    |> Enum.take(@max_drawn)
+  end
+
+  # 札が重なるものを落とす。
+  #
+  # **場所を空けるのではなく、描くのをやめる。** 札は名前の幅で決まるので升目より
+  # ずっと大きく、有名な画家の札は隣を何人ぶんも覆う。押しのけて避けようとすると
+  # 位置が生年からずれ、縦の年表が意味を失う（地図が地名を間引くのと同じ考え方）。
+  #
+  # **消えたものは拡大すると出てくる。** 拡大するほど見える範囲が狭まり、
+  # 同じ場所を取り合う相手が減るため。
+  defp without_overlap(candidates) do
+    candidates
+    |> Enum.reduce({[], []}, fn node, {drawn, boxes} ->
+      box = label_box(node)
+
+      if Enum.any?(boxes, &overlap?(&1, box)),
+        do: {drawn, boxes},
+        else: {[node | drawn], [box | boxes]}
+    end)
+    |> elem(0)
+    |> Enum.reverse()
+  end
+
+  # 札が占める場所。**下に出す様式と年代のぶんも含める** —— 札だけで見ると、
+  # 下の札の名前と上の札の年代が重なる
+  defp label_box(node) do
+    half_width = label_width_of(node) / 2 + @label_gap
+    half_height = label_height_of(node) / 2
+
+    %{
+      left: node.x - half_width,
+      right: node.x + half_width,
+      top: node.y - half_height - @label_gap,
+      bottom: node.y + half_height + sub_size_of(node) * 2.9 + @label_gap
+    }
+  end
+
+  defp overlap?(a, b) do
+    a.left < b.right and b.left < a.right and a.top < b.bottom and b.top < a.bottom
+  end
+
+  @doc """
+  選んだ人と、その人に線で繋がっている相手。
+
+  **大きさに関わらず描きます。** 探して寄ったのは周りの関連図を見るためなので、
+  相手が小さいという理由で消えては用をなしません（探した本人まで消えることもある）。
+  """
+  def neighbourhood(_relation, nil), do: MapSet.new()
+
+  def neighbourhood(relation, focus) do
+    Enum.reduce(relation.edges, MapSet.new([focus]), fn edge, acc ->
+      cond do
+        edge.from == focus -> MapSet.put(acc, edge.to)
+        edge.to == focus -> MapSet.put(acc, edge.from)
+        true -> acc
+      end
+    end)
+  end
+
+  defp visible?(_node, nil), do: true
+
+  defp visible?(node, %{x: x, y: y, w: w, h: h}) do
+    margin_x = w * @viewport_margin
+    margin_y = h * @viewport_margin
+
+    node.x >= x - margin_x and node.x <= x + w + margin_x and
+      node.y >= y - margin_y and node.y <= y + h + margin_y
+  end
+
+  # 画面の上での直径。倍率が上がるほど、小さい丸も出てくる
+  defp big_enough?(node, nil), do: radius_of(node) * 2 >= @min_drawn_px
+
+  defp big_enough?(node, %{ppu: ppu}) when is_number(ppu) and ppu > 0,
+    do: radius_of(node) * 2 * ppu >= @min_drawn_px
+
+  defp big_enough?(_node, _viewport), do: true
+
+  @doc """
+  線を引くための座標を、エッジ 1 本につき 1 つ返します。
+
+  **ノードは Map で引きます。** かつてはテンプレートがエッジごとに
+  `Enum.find(nodes, ...)` していたので、ノード数 × エッジ数の線形探索になっていました
+  （500 人で 25,500 回。人数を増やすほど二乗で効いてきます）。
+
+  **両端が描かれている線だけを引きます。** 片方しか出ていない線は、どこへ向かって
+  いるのか読めないまま画面の外へ消えるだけで、数だけが増えます。
+
+  端が見つからないエッジは落とします —— 図に出ていない相手への線は引けません。
+  """
+  def edge_lines(relation, drawn) do
+    by_id = Map.new(drawn, &{&1.id, &1})
+
+    for edge <- relation.edges,
+        from = by_id[edge.from],
+        to = by_id[edge.to] do
+      %{
+        x1: from.x,
+        y1: from.y,
+        x2: to.x,
+        y2: to.y,
+        kind: edge.kind,
+        label: edge.label,
+        mid_x: (from.x + to.x) / 2,
+        mid_y: (from.y + to.y) / 2 - 8
+      }
+    end
+  end
+
+  @doc """
+  名前を入れる札の大きさ。**名前がはみ出さない幅**を `Graph.sized/2` が見積もっています。
+
+  持っていないノード（人物の図）には、以前の丸と同じ大きさの札を返します。
+  """
+  def label_width_of(node), do: node[:label_width] || radius_of(node) * 2.6
+  def label_height_of(node), do: node[:label_height] || radius_of(node) * 1.6
+
   @doc "丸の半径。知名度が引けていなければ既定の大きさ。"
   def radius_of(node), do: node[:radius] || if(node.kind == :group, do: 47, else: 42)
+
+  @doc """
+  名前の字の大きさ。**知名度で 1 人ずつ違う**（`Graph.sized/2` が決める）。
+
+  持っていないノード（人物の図は知名度を引かない）には、以前と同じ大きさを返します。
+  """
+  def name_size_of(node), do: node[:name_size] || 13
+
+  @doc "様式と年代の字。名前より小さい。"
+  def sub_size_of(node), do: node[:sub_size] || 10
+
+  @doc """
+  名前を丸の中心からどれだけ上へ置くか。
+
+  **字の大きさに合わせてずらす。** 固定にすると、大きい丸では名前が中心に寄りすぎ、
+  小さい丸では様式の札と重なる。
+  """
+  def name_offset(node), do: Float.round(sub_size_of(node) * 0.3, 1)
 
   @doc """
   いま押せないかどうか。

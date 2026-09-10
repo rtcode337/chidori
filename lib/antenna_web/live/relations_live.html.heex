@@ -26,7 +26,59 @@
       </.link>
     </nav>
 
-    <section class="relation-canvas" aria-label={@relation.title}>
+    <%!-- 図は地図と同じ操作にする（押し広げ・引きずり）。**全画面はブラウザの
+         Fullscreen API に任せる** —— 自前で画面を覆うと、ブラウザの UI が残るぶん
+         縦が削られ、Esc で閉じる作法も自分で書くことになる --%>
+    <section
+      class="relation-canvas"
+      aria-label={@relation.title}
+      id={"relation-canvas-#{@view}"}
+      phx-hook=".PanZoom"
+    >
+      <%!-- 名前で探して寄る。**候補を出すまでは図を動かさない** —— 打っている
+           途中で図が飛び回ると、どこを見ていたのか分からなくなる --%>
+      <form
+        id={"relation-search-#{@view}"}
+        class="relation-search"
+        phx-change="search"
+        phx-submit="search"
+        autocomplete="off"
+      >
+        <input
+          type="search"
+          name="q"
+          value={@query}
+          placeholder="画家を探す"
+          aria-label="画家を探す"
+        />
+        <button
+          :if={@query != ""}
+          type="button"
+          phx-click="clear_search"
+          aria-label="検索をやめる"
+        >
+          ×
+        </button>
+        <ul :if={@matches != []} class="relation-matches">
+          <li :for={match <- @matches}>
+            <button type="button" phx-click="focus" phx-value-name={match.name}>
+              {match.name}
+              <span :if={match.years} class="match-years">{match.years}</span>
+            </button>
+          </li>
+        </ul>
+      </form>
+      <div class="relation-tools">
+        <button type="button" data-zoom="in" aria-label="拡大">＋</button>
+        <button type="button" data-zoom="out" aria-label="縮小">−</button>
+        <button type="button" data-zoom="reset" aria-label="全体を表示">全体</button>
+        <button type="button" data-zoom="full" aria-label="全画面で見る">全画面</button>
+      </div>
+      <%!-- 案内は端末で変える。押しても全画面にならない PC に「押すと全画面」と
+           書くと嘘になる（全画面はボタンからいつでも入れる） --%>
+      <p class="relation-hint">
+        <span class="only-touch">押すと全画面。指で動かし、2 本の指でつまんで拡大縮小。</span><span class="only-mouse">引きずって移動、ホイールで拡大縮小。</span>
+      </p>
       <svg
         viewBox={"0 0 #{@relation.width} #{@relation.height}"}
         role="img"
@@ -51,34 +103,98 @@
           <line x1="70" y1={tick.y} x2={@relation.width} y2={tick.y} />
           <text x="8" y={tick.y + 5}>{tick.year}年</text>
         </g>
-        <%= for edge <- @relation.edges,
-                from = Enum.find(@relation.nodes, &(&1.id == edge.from)),
-                to = Enum.find(@relation.nodes, &(&1.id == edge.to)) do %>
+        <%!-- 様式の枠。**丸より先に描く**ので、線も丸も枠の上に乗る。
+             重なるのは同じ時代に複数の様式が並走しているときで、実際にそうなので
+             避けて描かない --%>
+        <g :for={cluster <- @relation[:clusters] || []} class="relation-cluster">
+          <rect x={cluster.x} y={cluster.y} width={cluster.width} height={cluster.height} rx="18" />
+          <text x={cluster.x + 12} y={cluster.y + 18}>
+            {cluster.style}
+            <tspan class="cluster-count">{cluster.members}人</tspan>
+          </text>
+        </g>
+        <%!-- **描くのは見えているぶんだけ**（`drawn_nodes/2`）。全部を並べると
+             2 万を超える要素になり、引きずるだけで固まる。端の座標は先に
+             引き当ててある（`edge_lines/2`）—— ここで探すとノード数 × エッジ数の
+             線形探索になる --%>
+        <% drawn = drawn_nodes(@relation, @viewport, @focus) %>
+        <%= for edge <- edge_lines(@relation, drawn) do %>
           <line
-            x1={from.x}
-            y1={from.y}
-            x2={to.x}
-            y2={to.y}
+            x1={edge.x1}
+            y1={edge.y1}
+            x2={edge.x2}
+            y2={edge.y2}
             class={"relation-edge #{edge.kind}"}
             marker-end={if edge.kind == :influence, do: "url(#arrow)"}
           />
-          <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8} class="edge-label">
-            {edge.label}
-          </text>
+          <text x={edge.mid_x} y={edge.mid_y} class="edge-label">{edge.label}</text>
         <% end %>
-        <%= for node <- @relation.nodes do %>
+        <%= for node <- drawn do %>
           <%!-- 代表作があるノードは押せる。押すとその絵を出す --%>
           <g
             transform={"translate(#{node.x}, #{node.y})"}
-            class={"relation-node #{node.kind}#{if work_of(node), do: " has-work"}"}
+            class={[
+              "relation-node",
+              to_string(node.kind),
+              work_of(node) && "has-work",
+              node.id == @focus && "focused"
+            ]}
             phx-click={work_of(node) && "show_work"}
             phx-value-name={node.name}
           >
-            <circle r={radius_of(node)} />
-            <text text-anchor="middle" class="node-name" y="-2">{node.name}</text>
-            <text text-anchor="middle" class="node-note" y="17">{node.note}</text>
+            <%!-- 探して選んだ人の目印。**札の色だけでは周りに紛れる**ので、
+                 広がって消える輪を重ねる（動きは止まっている図の中で目に入る） --%>
+            <rect
+              :if={node.id == @focus}
+              class="focus-ring"
+              x={-label_width_of(node) / 2}
+              y={-label_height_of(node) / 2}
+              width={label_width_of(node)}
+              height={label_height_of(node)}
+              rx={label_height_of(node) * 0.28}
+            />
+            <%!-- **丸ではなく札にする。** 円は角へ行くほど内側が痩せるので、
+                 横に長い名前を入れるには不釣り合いに大きな円が要り、そうしないと
+                 名前が外へはみ出す。四角なら名前の幅どおりに広げられる --%>
+            <rect
+              x={-label_width_of(node) / 2}
+              y={-label_height_of(node) / 2}
+              width={label_width_of(node)}
+              height={label_height_of(node)}
+              rx={label_height_of(node) * 0.28}
+            />
+            <%!-- 字の大きさは 1 人ずつ違う（知名度で決まる）ので、CSS ではなく
+                 ここで当てる。**style で当てる** —— SVG の font-size 属性は
+                 CSS のほうが強いので、属性で書くと class 側に負ける --%>
+            <text
+              text-anchor="middle"
+              dominant-baseline="central"
+              class="node-name"
+              style={"font-size: #{name_size_of(node)}px"}
+            >
+              {node.name}
+            </text>
+            <%!-- 様式と年代は札の外（下）に置く。中に入れると、名前のために
+                 広げた札がさらに縦に伸びて、隣と重なる --%>
+            <text
+              :if={node.note}
+              text-anchor="middle"
+              class="node-note"
+              y={label_height_of(node) / 2 + sub_size_of(node) * 1.15}
+              style={"font-size: #{sub_size_of(node)}px"}
+            >
+              {node.note}
+            </text>
             <%= if node.years do %>
-              <text text-anchor="middle" class="year-label" y={radius_of(node) + 18}>
+              <text
+                text-anchor="middle"
+                class="year-label"
+                y={
+                  label_height_of(node) / 2 +
+                    sub_size_of(node) * if node.note, do: 2.4, else: 1.15
+                }
+                style={"font-size: #{sub_size_of(node)}px"}
+              >
                 {node.years}
               </text>
             <% end %>
@@ -171,12 +287,13 @@
         <h2>この図の見方</h2>
         <p>
           <%= if @view == "painters" do %>
-            上から下へ時代が流れます。丸の大きさは知られている度合い
-            （日本語版 Wikipedia の月間閲覧数）で、名前を押すと代表作が出ます。
-            <strong>濃い矢印</strong>は AI が調べた影響関係（何を受けたかが線に出ます）。
-            <strong>薄い線</strong>は記事どうしが相互にリンクしているというだけの関係で、
+            上から下へ時代が流れます（並びは生年順）。丸の大きさは知られている度合い
+            （日本語版 Wikipedia の月間閲覧数）で、名前を押すと代表作が出ます。 <strong>破線の枠</strong>は同じ様式の画家をまとめたものです。並びは生年順のままなので、
+            同じ時代に複数の様式が並走していれば枠も重なります。 <strong>1 人が複数の様式に属していれば、その全部の枠に入ります</strong>（時期で作風が
+            変わった画家を 1 つに決めると、どれを選んでも間違いになるためです）。 <strong>濃い矢印</strong>は AI が調べた影響関係（何を受けたかが線に出ます）。 <strong>薄い線</strong>は記事どうしが相互にリンクしているというだけの関係で、
             Wikipedia から機械的に引いたものです。左の目盛りは年表ですが、
             丸を等間隔に並べているので、画家が多い時代ほど間隔が広がります。
+            図は<strong>引きずって移動、ホイールで拡大縮小</strong>でき、押すと全画面になります。
           <% else %>
             実線は家族、点線はコンビとメンバーの関係です。
           <% end %>
@@ -193,3 +310,315 @@
     </section>
   </div>
 </main>
+
+<%!-- 図の押し広げと引きずり。**地図アプリと同じ操作**にしてある。
+
+     状態（倍率と位置）はフックが持ち、`updated` で当て直す。LiveView が図を
+     描き直すのは収集のあとなどで、そのたびに見ていた位置へ戻されると、
+     どこを見ていたのか分からなくなる。
+
+     **引きずったときは押したことにしない。** 丸を押すと代表作が出る作りなので、
+     移動のつもりの操作で毎回ダイアログが開いてしまう。動いた距離で見分ける。 --%>
+<script :type={Phoenix.LiveView.ColocatedHook} name=".PanZoom">
+  // 倍率の下限と上限。全体表示より小さくしても読めるものが増えないので下は 1 倍
+  const MIN_SCALE = 1
+  const MAX_SCALE = 8
+  // これ以上動いたら「引きずった」とみなす（押したことにしない）
+  const DRAG_SLOP = 5
+
+  // 見ている範囲を知らせるまでの落ち着き待ち（ミリ秒）。引きずっている最中に
+  // 毎フレーム送ると、往復のたびに描き直しが挟まってかえって固まる
+  const REPORT_DELAY = 140
+
+  // 探した人へ寄るときの最低倍率。**全体表示のままでは寄った意味が無い**
+  // （周りの関連図を読むために探しているので、線の相手まで見える近さが要る）
+  const FOCUS_SCALE = 4
+
+  // 指で触る画面か。**画面の幅ではなく入力の種類で見る** —— 幅で分けると、
+  // 窓を狭くしただけの PC が「スマホ扱い」になって、押すたびに全画面へ飛ぶ
+  const touchLike = () =>
+    window.matchMedia && window.matchMedia("(pointer: coarse)").matches
+
+  export default {
+    mounted() {
+      this.scale = 1
+      this.tx = 0
+      this.ty = 0
+      this.pointers = new Map()
+      this.pinch = null
+      this.svg = this.el.querySelector("svg")
+      this.bind()
+      // 探して選んだ人を真ん中へ。**倍率はサーバーが決めない** —— 器が何 px かは
+      // こちらしか知らないので、図の座標だけ受け取って寄せ方はここで決める
+      this.handleEvent("focus", ({x, y}) => this.centerOn(x, y))
+      this.apply()
+    },
+
+    // いま触れている 2 本の指の間隔と中点
+    spread() {
+      const [a, b] = Array.from(this.pointers.values())
+      return {
+        distance: Math.hypot(a.x - b.x, a.y - b.y),
+        x: (a.x + b.x) / 2,
+        y: (a.y + b.y) / 2,
+      }
+    },
+
+    // 図の座標 (x, y) を器の真ん中に置いて寄る
+    centerOn(x, y) {
+      const box = this.el.getBoundingClientRect()
+      const view = (this.svg && this.svg.getAttribute("viewBox") || "").split(/\s+/)
+      const vw = parseFloat(view[2])
+      if (!(vw > 0) || !(box.width > 0)) { return }
+      this.scale = Math.min(MAX_SCALE, Math.max(this.scale, FOCUS_SCALE))
+      const ppu = (box.width / vw) * this.scale
+      this.tx = box.width / 2 - x * ppu
+      this.ty = box.height / 2 - y * ppu
+      this.clamp()
+      this.apply()
+    },
+
+    updated() {
+      // 描き直されると svg の要素が入れ替わるので、持ち直してから当て直す
+      this.svg = this.el.querySelector("svg")
+      this.apply()
+    },
+
+    destroyed() {
+      clearTimeout(this.reportTimer)
+      this.unbind()
+    },
+
+    // いま見ている範囲を図の座標で知らせる。**サーバーはここだけを描く。**
+    //
+    // 送るのは落ち着いてから（`REPORT_DELAY`）。引きずっている最中に毎フレーム
+    // 送ると、往復のたびに描き直しが挟まって、かえって固まる。
+    report() {
+      clearTimeout(this.reportTimer)
+      this.reportTimer = setTimeout(() => {
+        const {box} = this.metrics()
+        const view = (this.svg && this.svg.getAttribute("viewBox") || "").split(/\s+/)
+        const vw = parseFloat(view[2])
+        if (!(vw > 0) || !(box.width > 0)) { return }
+        // 図の 1 単位が画面の何 px か。倍率が上がるほど大きくなる
+        const ppu = (box.width / vw) * this.scale
+        this.pushEvent("viewport", {
+          x: -this.tx / ppu,
+          y: -this.ty / ppu,
+          w: box.width / ppu,
+          h: box.height / ppu,
+          ppu: ppu,
+        })
+      }, REPORT_DELAY)
+    },
+
+    apply() {
+      if (!this.svg) { return }
+      // 数でない値が 1 つでも混ざると transform ごと無効になり、**黙って動かなくなる**
+      // （エラーも出ないので原因を追いにくい）。ここで 0 に戻して踏み止まる
+      if (!isFinite(this.tx) || !isFinite(this.ty) || !isFinite(this.scale)) {
+        this.tx = 0
+        this.ty = 0
+        this.scale = 1
+      }
+      this.svg.style.transformOrigin = "0 0"
+      this.svg.style.transform =
+        `translate(${this.tx}px, ${this.ty}px) scale(${this.scale})`
+      this.report()
+    },
+
+    // 倍率を変える。**押した点を動かさない** —— 中心を固定して拡大すると、
+    // 見ていたものが画面の外へ逃げる
+    zoomAt(factor, clientX, clientY) {
+      const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, this.scale * factor))
+      if (next === this.scale) { return }
+      const box = this.el.getBoundingClientRect()
+      const px = clientX - box.left
+      const py = clientY - box.top
+      const ratio = next / this.scale
+      this.tx = px - (px - this.tx) * ratio
+      this.ty = py - (py - this.ty) * ratio
+      this.scale = next
+      this.clamp()
+      this.apply()
+    },
+
+    // いま画面に出ている図の大きさ（倍率こみ）と、器の大きさ。
+    //
+    // **SVG に offsetWidth は使えない。** SVGElement は HTMLElement ではないので
+    // 値が undefined になり、掛けた先が NaN になって transform ごと無効になる
+    // （引きずっても拡大しても何も動かなくなる）。器の幅と viewBox の比から出す。
+    metrics() {
+      const box = this.el.getBoundingClientRect()
+      const view = (this.svg && this.svg.getAttribute("viewBox") || "").split(/\s+/)
+      const vw = parseFloat(view[2])
+      const vh = parseFloat(view[3])
+      const width = box.width
+      const height = vw > 0 && vh > 0 ? width * (vh / vw) : box.height
+      return {box, width: width * this.scale, height: height * this.scale}
+    },
+
+    // 図を器の外へ出しすぎない。真っ白な面だけが見える状態にしない。
+    //
+    // **器ではなく図の大きさで測る。** 図は器よりずっと縦長で、倍率 1 倍でも
+    // はみ出している —— 器の高さで測ると、拡大するまで縦に動かせなくなる
+    clamp() {
+      if (!this.svg) { return }
+      const {box, width, height} = this.metrics()
+      if (!isFinite(width) || !isFinite(height)) { return }
+      // 収まっているほうの軸は動かさない（余白の中で図が泳ぐと落ち着かない）
+      this.tx = width <= box.width ? 0 : Math.min(0, Math.max(box.width - width, this.tx))
+      this.ty = height <= box.height ? 0 : Math.min(0, Math.max(box.height - height, this.ty))
+    },
+
+    reset() {
+      this.scale = 1
+      this.tx = 0
+      this.ty = 0
+      this.apply()
+    },
+
+    // 全画面。**使えない端末がある** —— iOS の Safari は動画以外を全画面にできない
+    // ので、そこでは器に class を足して画面いっぱいに広げる（見た目は同じになる）
+    fullscreen() {
+      if (document.fullscreenElement) {
+        document.exitFullscreen()
+        return
+      }
+      if (this.el.classList.contains("faux-fullscreen")) {
+        this.el.classList.remove("faux-fullscreen")
+        this.onFullscreen()
+        return
+      }
+      if (this.el.requestFullscreen) {
+        this.el.requestFullscreen().catch(() => this.fauxFullscreen())
+      } else {
+        this.fauxFullscreen()
+      }
+    },
+
+    fauxFullscreen() {
+      this.el.classList.add("faux-fullscreen")
+      this.onFullscreen()
+    },
+
+    bind() {
+      this.onWheel = (ev) => {
+        // 図の上でだけ横取りする（ページのスクロールを奪わない）
+        ev.preventDefault()
+        this.zoomAt(ev.deltaY < 0 ? 1.15 : 1 / 1.15, ev.clientX, ev.clientY)
+      }
+
+      this.onPointerDown = (ev) => {
+        if (ev.target.closest(".relation-tools") || ev.target.closest(".relation-search")) {
+          return
+        }
+        // **指は何本でも来る。** 1 本ぶんしか覚えないと、2 本目を置いた瞬間に
+        // 座標が飛び、つまむ操作が引きずりとして扱われる
+        this.pointers.set(ev.pointerId, {x: ev.clientX, y: ev.clientY})
+        this.dragging = true
+        this.moved = 0
+        this.lastX = ev.clientX
+        this.lastY = ev.clientY
+        this.pinch = this.pointers.size >= 2 ? this.spread() : null
+        // **ここでは捕まえない。** ポインタを捕捉すると、続く click の宛先が
+        // 捕捉した要素へ付け替えられ、丸の phx-click に届かなくなる
+        // （押しても代表作が出なくなる）。捕まえるのは引きずり始めてから
+      }
+
+      this.onPointerMove = (ev) => {
+        if (!this.dragging) { return }
+        if (this.pointers.has(ev.pointerId)) {
+          this.pointers.set(ev.pointerId, {x: ev.clientX, y: ev.clientY})
+        }
+
+        // 指 2 本ならつまむ拡大。**ホイールの無い端末ではこれが唯一の拡大手段**
+        if (this.pointers.size >= 2) {
+          const now = this.spread()
+          if (this.pinch && this.pinch.distance > 0 && now.distance > 0) {
+            this.moved = Infinity
+            this.zoomAt(now.distance / this.pinch.distance, now.x, now.y)
+          }
+          this.pinch = now
+          return
+        }
+
+        const dx = ev.clientX - this.lastX
+        const dy = ev.clientY - this.lastY
+        this.moved += Math.abs(dx) + Math.abs(dy)
+        this.lastX = ev.clientX
+        this.lastY = ev.clientY
+        // 引きずりだと分かった時点で捕まえる。指が図の外へ出ても追い続けるため
+        if (this.moved > DRAG_SLOP && !this.el.hasPointerCapture(ev.pointerId)) {
+          this.el.setPointerCapture(ev.pointerId)
+        }
+        // **倍率 1 倍でも動かせる。** 図は器より縦長なので、拡大していなくても
+        // 下のほうは引きずらないと見えない
+        this.tx += dx
+        this.ty += dy
+        this.clamp()
+        this.apply()
+      }
+
+      this.onPointerUp = (ev) => {
+        this.pointers.delete(ev.pointerId)
+        this.pinch = this.pointers.size >= 2 ? this.spread() : null
+        if (!this.dragging) { return }
+        if (this.pointers.size > 0) { return }
+        this.dragging = false
+        if (this.el.hasPointerCapture(ev.pointerId)) {
+          this.el.releasePointerCapture(ev.pointerId)
+        }
+      }
+
+      // 引きずった直後の click は捨てる（丸の上で指を離すと代表作が開いてしまう）
+      this.onClickCapture = (ev) => {
+        if (this.moved > DRAG_SLOP) {
+          ev.stopPropagation()
+          ev.preventDefault()
+          this.moved = 0
+          return
+        }
+        const button = ev.target.closest("[data-zoom]")
+        if (button) {
+          ev.preventDefault()
+          const how = button.dataset.zoom
+          const box = this.el.getBoundingClientRect()
+          if (how === "in") { this.zoomAt(1.4, box.left + box.width / 2, box.top + box.height / 2) }
+          if (how === "out") { this.zoomAt(1 / 1.4, box.left + box.width / 2, box.top + box.height / 2) }
+          if (how === "reset") { this.reset() }
+          if (how === "full") { this.fullscreen() }
+          return
+        }
+        // 図の余白を押したら全画面。**指で触る画面だけ**にする —— 狭い画面では
+        // 図が小さすぎて全画面がないと読めないが、PC では窓のまま拡大すれば足りるので、
+        // 押すたびに全画面へ飛ぶのは邪魔なだけ（ボタンからは PC でも入れる）。
+        // 丸を押したときは代表作が開くので邪魔しない
+        if (touchLike() && !ev.target.closest(".relation-node") && !document.fullscreenElement) {
+          this.fullscreen()
+        }
+      }
+
+      // 全画面に入る・出ると器の大きさが変わるので、はみ出しを測り直す
+      this.onFullscreen = () => { this.clamp(); this.apply() }
+
+      this.el.addEventListener("wheel", this.onWheel, {passive: false})
+      this.el.addEventListener("pointerdown", this.onPointerDown)
+      this.el.addEventListener("pointermove", this.onPointerMove)
+      this.el.addEventListener("pointerup", this.onPointerUp)
+      this.el.addEventListener("pointercancel", this.onPointerUp)
+      this.el.addEventListener("click", this.onClickCapture, true)
+      document.addEventListener("fullscreenchange", this.onFullscreen)
+    },
+
+    unbind() {
+      this.el.removeEventListener("wheel", this.onWheel)
+      this.el.removeEventListener("pointerdown", this.onPointerDown)
+      this.el.removeEventListener("pointermove", this.onPointerMove)
+      this.el.removeEventListener("pointerup", this.onPointerUp)
+      this.el.removeEventListener("pointercancel", this.onPointerUp)
+      this.el.removeEventListener("click", this.onClickCapture, true)
+      document.removeEventListener("fullscreenchange", this.onFullscreen)
+    },
+  }
+</script>

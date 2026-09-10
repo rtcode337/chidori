@@ -520,10 +520,13 @@ defmodule Antenna.Relations do
           # 丸の大きさは知名度で決める。**AI に有名かどうかを判断させない** ——
           # jawiki の月次ページビューのほうが客観的で、実行のたびに揺れない
           fame = Fame.for_articles(base_url, Enum.map(graph.nodes, & &1.article))
+          sized = Graph.sized(graph.nodes, fame)
 
           {:ok,
            fallback
-           |> Map.merge(%{graph | nodes: Graph.sized(graph.nodes, fame)})
+           # 枠は**大きさが決まってから**組み直す。丸の半径まで含めて囲うので、
+           # 知名度を当てる前に測ると、大きい丸が枠からはみ出す
+           |> Map.merge(%{graph | nodes: sized, clusters: Graph.clusters(sized)})
            |> Map.put(:collection, collection)}
         end
     end
@@ -709,6 +712,10 @@ defmodule Antenna.Relations do
     だけ機械的に入っており、ゴッホやピカソのようにカテゴリを持たない人は空のままです。
     空の人には様式のタグを足してください。
 
+    **1 人に複数の様式を付けて構いません。** 時期で作風が変わった画家を 1 つに
+    決めると、どれを選んでも間違いになります（ピカソは青の時代もキュビスムも
+    新古典主義も本当です）。当てはまるものを全部書いてください。
+
     いまの内容:
     {current}
 
@@ -727,7 +734,8 @@ defmodule Antenna.Relations do
     - body: その画家が何をした人かと、影響関係の要点
     - url: 日本語版 Wikipedia のその画家の記事の URL
     - tags: **いまの内容に付いているタグをすべて残したうえで**、次を足してください
-      - "様式:<ロマン主義 / 印象派 / キュビスム のような様式名>"（入っていない人だけ）
+      - "様式:<ロマン主義 / 印象派 / キュビスム のような様式名>"。**当てはまる様式の数だけ
+        並べてよい**（時期で作風が変わった画家は 1 つに決められません）
       - "代表作:<日本語版 Wikipedia にあるその絵の記事名。例: 印象・日の出>"
       - "影響元:<影響を受けた画家名>:<何を受けたかを10文字ほどで>"
         影響を受けた画家ごとに 1 つ。**いまの内容にいる画家だけ**を指してください

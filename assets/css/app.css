@@ -61,11 +61,13 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relations-page header nav { display: flex; gap: 1rem; }
 .relations-page header nav a { color: #52607a; font-size: .9rem; font-weight: 700; text-decoration: none; }
 .relations-page header nav a.active { color: #4f46b9; }
-.relations-intro { padding: 4.5rem 0 1.75rem; }
-.relations-intro > p:first-child { color: #6254d6; font-size: .8rem; font-weight: 800; letter-spacing: .1em; }
-.relations-intro h1 { margin-bottom: 1rem; font-size: clamp(2.4rem, 6vw, 4.2rem); }
-.relations-intro > p:last-child { max-width: 42rem; color: #52607a; font-size: 1.05rem; line-height: 1.8; }
-.relation-tabs { display: flex; gap: .6rem; margin-bottom: 1.25rem; }
+/* 図を主役にする。見出しに 4.5rem 取っていた頃は、図が画面の下半分にしか
+   出ていなかった（読みに来る人が見たいのは図のほう） */
+.relations-intro { padding: 1.75rem 0 1rem; }
+.relations-intro > p:first-child { color: #6254d6; font-size: .75rem; font-weight: 800; letter-spacing: .1em; }
+.relations-intro h1 { margin-bottom: .5rem; font-size: clamp(1.5rem, 3vw, 2.1rem); }
+.relations-intro > p:last-child { max-width: 42rem; color: #52607a; font-size: .9rem; line-height: 1.7; }
+.relation-tabs { display: flex; gap: .6rem; margin-bottom: .75rem; }
 .relation-tabs a { border-radius: 99px; padding: .65rem 1rem; color: #52607a; font-size: .9rem; font-weight: 800; text-decoration: none; }
 .relation-tabs a.selected { background: #28235e; color: white; box-shadow: 0 6px 18px rgba(40, 35, 94, .22); }
 .relation-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; }
@@ -73,20 +75,87 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relation-actions p { margin: .25rem 0 0; color: #616a82; font-size: .82rem; }
 .relation-actions button { border: 0; background: #554bc0; color: #fff; white-space: nowrap; }
 .relation-actions button:disabled { cursor: wait; opacity: .65; }
-.relation-canvas { overflow-x: auto; border: 1px solid #e4e7f0; border-radius: 1.5rem; background: radial-gradient(circle at 45% 25%, #ffffff 0, #fafafe 42%, #eef0f9 100%); box-shadow: 0 14px 32px rgba(31, 41, 55, .08); }
-.relation-canvas svg { display: block; min-width: 48rem; width: 100%; }
+/* 図の器。**中身を切り抜く**（拡大したぶんが外へ流れ出ないように）。
+   高さは画面に合わせる —— 縦に伸ばすとページのスクロールと図の移動が混ざる */
+/* **縦に長く取る。** 年表を縦に振っているので、縦が広いほど一度に読める時代が増える。
+   下に続く操作や解説は畳んでも困らないが、図は畳めない */
+.relation-canvas { position: relative; overflow: hidden; margin-bottom: 1.5rem; height: min(88vh, 64rem); border: 1px solid #e4e7f0; border-radius: 1.5rem; background: radial-gradient(circle at 45% 25%, #ffffff 0, #fafafe 42%, #eef0f9 100%); box-shadow: 0 14px 32px rgba(31, 41, 55, .08); cursor: grab; touch-action: none; }
+/* **縦横比は保つ**（高さを器に合わせると、縦長の図が潰れて字が読めなくなる）。
+   図は器より高いので、はみ出したぶんは引きずって見る */
+.relation-canvas svg { display: block; width: 100%; height: auto; }
+.relation-canvas:active { cursor: grabbing; }
+.relation-canvas:fullscreen { height: 100vh; border: 0; border-radius: 0; }
+/* 全画面が使えない端末（iOS の Safari は動画以外を全画面にできない）向けの代替。
+   見た目は :fullscreen と同じにする */
+.relation-canvas.faux-fullscreen { position: fixed; inset: 0; z-index: 60; width: 100vw; height: 100dvh; margin: 0; border: 0; border-radius: 0; }
+/* 指で触る画面では操作の口を大きく。**押せない大きさでは無いのと同じ** */
+@media (pointer: coarse) {
+  .relation-tools button { padding: .5rem .8rem; font-size: .9rem; }
+  .relation-search input { width: 8.5rem; }
+}
+
+/* 名前で探す。操作の口と同じく図の上に重ねる（全画面でも一緒に出したい） */
+.relation-search { position: absolute; top: .75rem; left: .75rem; z-index: 3; display: flex; align-items: center; gap: .3rem; }
+.relation-search input { width: 11rem; padding: .35rem .7rem; border: 1px solid #dcdff0; border-radius: .6rem; background: rgba(255, 255, 255, .95); color: #3b4463; font: inherit; font-size: .8rem; box-shadow: 0 2px 6px rgba(31, 41, 55, .08); }
+.relation-search input:focus { outline: 2px solid #a9a2e6; outline-offset: 1px; }
+.relation-search > button { padding: .25rem .55rem; border: 1px solid #dcdff0; border-radius: .6rem; background: rgba(255, 255, 255, .92); color: #6a7290; font-size: .8rem; }
+/* 候補。**入力のすぐ下に重ねる** —— 図の中に出すと、拡大縮小と一緒に動いてしまう */
+.relation-matches { position: absolute; top: 2.3rem; left: 0; z-index: 4; width: 15rem; margin: 0; padding: .25rem; list-style: none; border: 1px solid #dcdff0; border-radius: .6rem; background: rgba(255, 255, 255, .98); box-shadow: 0 8px 20px rgba(31, 41, 55, .16); }
+.relation-matches button { display: flex; justify-content: space-between; gap: .6rem; width: 100%; padding: .35rem .5rem; border: 0; border-radius: .4rem; background: transparent; color: #3b4463; font-size: .82rem; font-weight: 600; text-align: left; }
+.relation-matches button:hover { background: #f1f0fb; color: #4338a8; }
+.match-years { color: #98a0ba; font-weight: 500; }
+
+/* 探して選んだ人。**周りの関連図を読むために寄っている**ので、どれがその人かが
+   一目で分かる必要がある */
+.relation-node.focused rect { fill: #efecff; stroke: #4338a8; stroke-width: 3; filter: drop-shadow(0 0 8px rgba(67, 56, 168, .55)); }
+.relation-node.focused .node-name { fill: #2f2782; }
+/* 探して選んだ人の目印。**札だけでは足りない** —— 図が密なので、色の違いは
+   周りに紛れる。輪が広がって縮む動きは、止まっている図の中で確実に目に入る */
+.relation-node.focused .focus-ring { fill: none; stroke: #4338a8; stroke-width: 2; opacity: .9; transform-box: fill-box; transform-origin: center; animation: focus-pulse 1.6s ease-out infinite; }
+@keyframes focus-pulse {
+  0% { transform: scale(1); opacity: .85; }
+  70% { transform: scale(1.9); opacity: 0; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .relation-node.focused .focus-ring { animation: none; opacity: .8; } }
+
+/* 操作の口。図の上に重ねる（図の外に置くと、全画面のときに一緒に出せない） */
+.relation-tools { position: absolute; top: .75rem; right: .75rem; z-index: 2; display: flex; gap: .35rem; }
+.relation-tools button { padding: .3rem .7rem; border: 1px solid #dcdff0; border-radius: .6rem; background: rgba(255, 255, 255, .92); color: #3b4463; font-size: .78rem; font-weight: 700; box-shadow: 0 2px 6px rgba(31, 41, 55, .08); }
+.relation-tools button:hover { border-color: #a9a2e6; color: #4338a8; }
+.relation-hint { position: absolute; left: .9rem; bottom: .7rem; z-index: 2; margin: 0; color: #8a93ad; font-size: .72rem; }
+/* 指で触る画面でだけ出す案内。**幅ではなく入力の種類で分ける**（窓を狭くした PC を
+   スマホ扱いしない）。フックの touchLike() と同じ条件にそろえてある */
+.only-touch { display: none; }
+.only-mouse { display: inline; }
+@media (pointer: coarse) {
+  .only-touch { display: inline; }
+  .only-mouse { display: none; }
+}
+
+/* 様式の枠。**薄く敷く** —— 主役は丸と線なので、囲いが目立つと図が読みにくくなる。
+   1 人が複数の様式に属していると枠は重なるので、塗りは重ねても濃くなりすぎない
+   薄さにしてある（重なったところが少し濃くなり、二重に属していると分かる） */
+.relation-cluster rect { fill: rgba(98, 84, 214, .045); stroke: #c9c6ee; stroke-width: 1.5; stroke-dasharray: 8 6; }
+.relation-cluster text { fill: #7a72c4; font-size: 12px; font-weight: 800; }
+.relation-cluster .cluster-count { fill: #a7a2cd; font-size: 10px; font-weight: 600; }
 .relation-edge { stroke: #b6bdd2; stroke-width: 2; }
 .relation-edge.family { stroke: #d07b91; }
 .relation-edge.duo { stroke: #7770cc; stroke-dasharray: 7 6; }
 .relation-edge.influence { stroke: #6f69c8; stroke-width: 2.5; }
 /* 相互リンクだけの線。何の関係かは分からないので、影響の線より薄く細く */
 .relation-edge.related { stroke: #cfd4e6; stroke-width: 1.5; }
-.relation-edge + .edge-label { fill: #68718a; font-size: 12px; font-weight: 700; paint-order: stroke; stroke: #f9faff; stroke-width: 5px; }
-.relation-node circle { fill: white; stroke: #adb6cf; stroke-width: 2.5; filter: drop-shadow(0 5px 5px rgba(29, 36, 58, .11)); }
-.relation-node.group circle { fill: #eeedff; stroke: #756bd1; }
-.relation-node.artist circle { fill: #fdf5e8; stroke: #d29b58; }
-.node-name { fill: #202942; font-size: 13px; font-weight: 800; }
-.node-note, .year-label { fill: #6d7890; font-size: 10px; }
+.relation-edge + .edge-label { fill: #68718a; font-size: 9px; font-weight: 700; paint-order: stroke; stroke: #f9faff; stroke-width: 4px; }
+/* 名前を入れる札。**丸ではなく四角** —— 円は角へ行くほど内側が痩せるので、
+   横に長い名前を入れるには不釣り合いに大きな円が要り、そうしないと名前がはみ出す */
+.relation-node rect { fill: white; stroke: #adb6cf; stroke-width: 1.5; filter: drop-shadow(0 2px 3px rgba(29, 36, 58, .12)); }
+.relation-node.group rect { fill: #eeedff; stroke: #756bd1; }
+.relation-node.artist rect { fill: #fdf5e8; stroke: #d29b58; }
+/* **字の大きさはここで決めない。** 知名度で 1 人ずつ変わるので、テンプレートが
+   style で当てる（ここに font-size を書くと、CSS のほうが強いので全員同じになる）。
+   フチを付けるのは、線や枠の上に名前が重なっても読めるようにするため */
+.node-name { fill: #202942; font-weight: 800; }
+.node-note, .year-label { fill: #6d7890; }
 .year-bar { fill: #d29b58; }
 .relation-guide { display: grid; gap: 1.5rem; margin: 1.5rem 0 3rem; padding: 1.35rem 1.5rem; border-radius: 1rem; background: white; }
 .relation-guide h2 { margin-bottom: .4rem; font-size: .9rem; }
@@ -120,7 +189,7 @@ article p:last-child { color: #475569; line-height: 1.7; }
 
 /* 代表作。画像は Wikipedia のものを指すだけで、こちらには持たない */
 .relation-tick line { stroke: #e2e4f3; stroke-width: 1.5; stroke-dasharray: 6 6; }
-.relation-tick text { fill: #97a0bb; font-size: .82rem; font-weight: 600; }
+.relation-tick text { fill: #97a0bb; font-size: 10px; font-weight: 600; }
 
 .artwork-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 1.5rem; background: rgba(24, 22, 51, .55); }
 .artwork { margin: 0; width: min(34rem, 100%); max-height: 86vh; overflow-y: auto; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f8f8ff; box-shadow: 0 1.4rem 3rem rgba(24, 22, 51, .3); }
@@ -133,7 +202,7 @@ article p:last-child { color: #475569; line-height: 1.7; }
 
 /* 代表作を持つノードは押せる */
 .relation-node.has-work { cursor: pointer; }
-.relation-node.has-work:hover circle { stroke: #554bc0; stroke-width: 3.5; }
+.relation-node.has-work:hover rect { stroke: #554bc0; stroke-width: 3; }
 
 /* AI が選んだもの。集めたときの理由とは別の色にする（誰の判断か分かるように） */
 .picked { flex: 0 0 auto; border-radius: 99px; padding: .3rem .6rem; font-size: .75rem; font-weight: 800; background: #dcfce7; color: #166534; }
