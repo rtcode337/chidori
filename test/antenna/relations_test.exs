@@ -491,4 +491,69 @@ defmodule Antenna.RelationsTest do
     assert AntennaWeb.RelationsLive.status_message(%{status: :unavailable, reason: :なにか}) =~
              ":なにか"
   end
+
+  describe "溜まっているぶんを全部読む" do
+    # 図を読む経路は収集の情報も引く。頁の話だけを見たいので、そちらは黙って返す
+    defp stub_pages(pages) do
+      test_pid = self()
+
+      HttpStub.stub(fn
+        %{method: :get, url: @base <> "/v1/collect"} ->
+          HttpStub.ok(Jason.encode!(%{"collections" => []}))
+
+        %{method: :get, url: url} ->
+          send(test_pid, {:page, url})
+          pages.(url)
+      end)
+    end
+
+    test "1 頁に収まらなければ、続きを継いで読む" do
+      # Chiezo の filter は 1 回 500 件までしか返さない。継がないと先頭だけの図になる
+      stub_pages(fn url ->
+        cond do
+          String.contains?(url, "offset=0") ->
+            HttpStub.ok(docs_body(for i <- 1..500, do: painter_doc("A#{i}", ["年代:1900"])))
+
+          String.contains?(url, "offset=500") ->
+            HttpStub.ok(docs_body(for i <- 1..3, do: painter_doc("B#{i}", ["年代:1910"])))
+
+          true ->
+            flunk("読みすぎている: #{url}")
+        end
+      end)
+
+      assert {:ok, relation} = Relations.fetch_painters(@base, fallback())
+      assert length(relation.nodes) == 503
+    end
+
+    test "満たない頁で止める" do
+      # total を信じて回数を決めると、途中で件数が変わったときに空振りする
+      stub_pages(fn _url -> HttpStub.ok(docs_body([painter_doc("A", ["年代:1900"])])) end)
+
+      assert {:ok, _relation} = Relations.fetch_painters(@base, fallback())
+
+      assert_received {:page, _first}
+      refute_received {:page, _second}
+    end
+
+    test "2 頁目が無くなっても、読めたぶんは図にする" do
+      # 読んでいる最中に焼き直されると、途中の頁が 404 になりうる
+      stub_pages(fn url ->
+        if String.contains?(url, "offset=0") do
+          HttpStub.ok(docs_body(for i <- 1..500, do: painter_doc("A#{i}", ["年代:1900"])))
+        else
+          {:ok, %{status: 404, body: ""}}
+        end
+      end)
+
+      assert {:ok, relation} = Relations.fetch_painters(@base, fallback())
+      assert length(relation.nodes) == 500
+    end
+
+    test "1 頁目から無ければ、まだ何も溜まっていない" do
+      stub_pages(fn _url -> {:ok, %{status: 404, body: ""}} end)
+      assert {:error, {:nothing_collected, _}} = Relations.fetch_painters(@base, fallback())
+    end
+  end
+
 end

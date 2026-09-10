@@ -28,10 +28,14 @@ defmodule Antenna.Relations do
   @read_timeout 15_000
   @connect_timeout 5_000
 
-  # 1 枚の図に取り込む上限。これを超える図は読めないので、集める側で絞る
-  # 図に読み込む上限。**集める側ではなく描く側の都合**で、溜まっている数とは別。
-  # 超えた分は有名な順に落ちる（Chiezo が rank_score の順で返す）
-  @max_docs 200
+  # 1 回に取れる件数。**Chiezo の filter の上限**で、これを超えると 422 になる。
+  # 溜まっているぶんは全部読むので、足りない分は offset で継ぐ
+  @page_size 500
+
+  # 頁を継ぐ回数の上限。**際限なく回らないための止め木**であって、ここで絞る意図は無い
+  # （@page_size と掛けた数が実質の上限になる）。無限に回ると、向こうの応答が
+  # 壊れたときに終われなくなる
+  @max_pages 40
   @user_agent "antenna/0.1 (+https://github.com/rtcode337/antenna)"
 
   # 押すたびに AI へ投げると枠を使い切る。こちら側で間隔を空ける
@@ -784,12 +788,24 @@ defmodule Antenna.Relations do
 
   # 溜まっているものを全部引く。**まだ焼かれていなければソースごと無い**ので、
   # 404 は「まだ何も入っていない」として扱う（繋がらないのとは別）
+  # **溜まっているぶんは全部読む。** かつては先頭 200 件だけを読んでいたが、
+  # あれは「超えた分は有名な順に落ちる」という前提で置いた上限で、その前提が
+  # 成り立っていなかった —— 収集ソースには rank_score が入らないので、Chiezo の
+  # `ORDER BY rank_score DESC, title` は title のタイブレークだけが効き、返るのは
+  # 名前順の先頭 200 人になる（実測では、有名な画家が 1 人も入らなかった）。
   defp collected_docs(base_url, name) do
+    collect_pages(base_url, name, 0, [])
+  end
+
+  defp collect_pages(_base_url, _name, offset, acc) when offset >= @page_size * @max_pages,
+    do: {:ok, acc}
+
+  defp collect_pages(base_url, name, offset, acc) do
     url =
       base_url <>
         "/v1/" <>
         name <>
-        "/filter?limit=#{@max_docs}&fields=title,body,tags,extra&tag=" <>
+        "/filter?limit=#{@page_size}&offset=#{offset}&fields=title,body,tags,extra&tag=" <>
         URI.encode_www_form(Graph.kind_tag())
 
     case Http.get(url,
@@ -800,12 +816,25 @@ defmodule Antenna.Relations do
       {:ok, %{status: 200, body: body}} ->
         case Jason.decode(body) do
           # `filter` が返すのは `results`（`recent` の `docs` とは別の名前）
-          {:ok, %{"results" => docs}} when is_list(docs) -> {:ok, docs}
-          _ -> {:error, :chiezo_unexpected_body}
+          {:ok, %{"results" => docs}} when is_list(docs) ->
+            acc = acc ++ docs
+
+            # 満杯で返ってきた頁の次だけ継ぐ。**足りない頁で止める**ので、
+            # total を信じて回数を決めるより、途中で件数が変わっても破綻しない
+            if length(docs) < @page_size,
+              do: {:ok, acc},
+              else: collect_pages(base_url, name, offset + @page_size, acc)
+
+          _ ->
+            {:error, :chiezo_unexpected_body}
         end
 
-      {:ok, %{status: 404}} ->
+      # まだ焼かれていなければソースごと無い。1 頁目で出たときだけ「空」とみなす
+      {:ok, %{status: 404}} when acc == [] ->
         {:error, :nothing_collected}
+
+      {:ok, %{status: 404}} ->
+        {:ok, acc}
 
       {:ok, %{status: status}} ->
         {:error, {:chiezo_status, status}}
