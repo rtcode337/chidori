@@ -39,10 +39,10 @@ ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     HOME=/app \
     PHX_SERVER=true \
-    PORT=7070
+    PORT=7000
 
 USER antenna
-EXPOSE 7070
+EXPOSE 7000
 
 # 起動のたびに移行を当ててから立てる。**リリースに Mix は入らない**ので
 # `Antenna.Release.migrate/0` を呼ぶ。当て終わっている移行は飛ばされるだけなので、

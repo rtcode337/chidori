@@ -73,7 +73,7 @@ Chiezo 側で `CHIEZO_COLLECT_DIR` と `CHIEZO_NOTES_DIR` の両方が設定さ�
 
 ## 起動
 
-`docker compose` で PostgreSQL ごと立てる。開発サーバーは `http://localhost:7070`。
+`docker compose` で PostgreSQL ごと立てる。開発サーバーは `http://localhost:7000`。
 
 ```bash
 cp .env.example .env   # SECRET_KEY_BASE と CHIEZO_BASE_URL を書く

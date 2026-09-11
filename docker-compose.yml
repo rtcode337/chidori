@@ -15,14 +15,14 @@ services:
       PHX_HOST: ${PHX_HOST:-localhost}
       PHX_SCHEME: ${PHX_SCHEME:-http}
       PHX_CHECK_ORIGIN: ${PHX_CHECK_ORIGIN:-}
-      PORT: ${PORT:-7070}
+      PORT: ${PORT:-7000}
       # Chiezo（LAN内の知識サーバー）。入れるとニュースと関連図が使える
       CHIEZO_BASE_URL: ${CHIEZO_BASE_URL:-}
       CHIEZO_RELATIONS_BACKEND: ${CHIEZO_RELATIONS_BACKEND:-}
       CHIEZO_RELATIONS_MODEL: ${CHIEZO_RELATIONS_MODEL:-}
       TZ: ${TZ:-Asia/Tokyo}
     ports:
-      - "${PORT:-7070}:${PORT:-7070}"
+      - "${PORT:-7000}:${PORT:-7000}"
 
   db:
     image: postgres:18-alpine

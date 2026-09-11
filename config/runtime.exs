@@ -21,7 +21,7 @@ if System.get_env("PHX_SERVER") do
 end
 
 config :antenna, AntennaWeb.Endpoint,
-  http: [port: String.to_integer(System.get_env("PORT", "7070"))]
+  http: [port: String.to_integer(System.get_env("PORT", "7000"))]
 
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
@@ -81,7 +81,7 @@ if config_env() == :prod do
   url_port =
     String.to_integer(
       System.get_env("PHX_URL_PORT") ||
-        if(scheme == "https", do: "443", else: System.get_env("PORT", "7070"))
+        if(scheme == "https", do: "443", else: System.get_env("PORT", "7000"))
     )
 
   # **どこから開いても繋がるようにする。** LiveView は繋ぎ直すときに接続元を
