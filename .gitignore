@@ -39,3 +39,6 @@ npm-debug.log
 /data/
 /data-dev/
 .env
+
+# 手元でテストを回すときの mix のホーム（コンテナに渡す置き場）
+/.docker-home/
