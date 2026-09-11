@@ -13,6 +13,12 @@ defmodule Antenna.RelationsTest do
   # Chiezo の `filter` が返す形（キーは `results`）
   defp docs_body(docs), do: Jason.encode!(%{"results" => docs, "total" => length(docs)})
 
+  # 抽出の指定が書けた、という Chiezo の応答。**指定が書けないと収集は作られない**
+  # ので、書けたかどうかを見ないテストではこれを返しておく
+  defp drafted_body do
+    Jason.encode!(%{"extract" => %{"source" => "jawiki", "tag" => "画家"}, "total" => 10})
+  end
+
   # 表示例をそのまま下敷きにする（本番と同じく、失敗したらこれが残る）
   defp fallback, do: Relations.current("painters")
 
@@ -32,6 +38,9 @@ defmodule Antenna.RelationsTest do
       test_pid = self()
 
       HttpStub.stub(fn
+        %{method: :post, url: @base <> "/v1/collect/draft-extract"} ->
+          HttpStub.ok(drafted_body())
+
         %{method: :post, url: @base <> "/v1/collect", body: body} ->
           send(test_pid, {:requested, Jason.decode!(body)})
           HttpStub.ok("{}")
@@ -57,6 +66,19 @@ defmodule Antenna.RelationsTest do
       assert payload["mode"] == "refine"
       assert payload["prompt"] =~ "{current}"
       assert payload["requested_by"] == "antenna"
+
+      # **回る先は Chiezo に割らせる。** 全員が必ずどこかの区画に入る見出し順で、
+      # 1 区画 50 人（2,999 人なら約 60 区画）
+      assert payload["partition"] == %{"by" => "title", "target" => 50}
+
+      # **巡回は 2 本。** ざっとは 14 日で一周（1 回に見る区画数は Chiezo が
+      # 区画の数から計算するので、画家が増えても一周の日数は変わらない）、
+      # じっくりは 1 日 1 区画を考える量を上げて見直す
+      assert [rough, deep] = payload["sweeps"]
+      assert rough["name"] == "ざっと"
+      assert rough["cover_days"] == 14
+      assert deep["partitions_per_run"] == 1
+      assert deep["effort"] == "high"
 
       assert_received {:read, url}
       # 一枚ものなので、新しい順に何件かではなく全部を引く
@@ -134,6 +156,7 @@ defmodule Antenna.RelationsTest do
 
       # 名前はまだ無いので渡さない（相手も今の指定も無い）
       assert_received {:drafted, %{"name" => nil} = asked}
+
       # 本番と同じ相手に書かせる（違う相手の指定は、本番で通るか分からない）
       assert asked["backend"] == "claude"
       assert_received {:created, created}
@@ -150,7 +173,7 @@ defmodule Antenna.RelationsTest do
       HttpStub.stub(fn
         %{method: :post, url: @base <> "/v1/collect/draft-extract"} ->
           send(test_pid, :drafted)
-          {:ok, %{status: 504, body: ""}}
+          HttpStub.ok(drafted_body())
 
         %{method: :post} ->
           HttpStub.ok("{}")
@@ -216,6 +239,7 @@ defmodule Antenna.RelationsTest do
       assert_received {:patched, url, patch}
       assert url =~ "/v1/collect/antenna_painters"
       assert patch["extract"]["tag"] == "印象派の画家"
+
       # まだ何も溜まっていないので、進み具合も空にして機械の側から始めさせる
       assert patch["cursor"] == ""
     end
@@ -315,6 +339,9 @@ defmodule Antenna.RelationsTest do
     @tag :capture_log
     test "止まっている収集は集めさせられない。溜まっているものは出したまま理由を添える" do
       HttpStub.stub(fn
+        %{method: :post, url: @base <> "/v1/collect/draft-extract"} ->
+          HttpStub.ok(drafted_body())
+
         %{method: :post, url: @base <> "/v1/collect"} ->
           HttpStub.ok("{}")
 
@@ -345,7 +372,9 @@ defmodule Antenna.RelationsTest do
 
         %{method: :get, url: @base <> "/v1/collect"} ->
           HttpStub.ok(
-            Jason.encode!(%{"collections" => [%{"name" => "antenna_painters", "enabled" => false}]})
+            Jason.encode!(%{
+              "collections" => [%{"name" => "antenna_painters", "enabled" => false}]
+            })
           )
 
         %{method: :get, url: _url} ->
@@ -361,6 +390,7 @@ defmodule Antenna.RelationsTest do
     @tag :capture_log
     test "すでにある収集は 409 が返るだけで、そのまま読みに行く" do
       HttpStub.stub(fn
+        %{method: :post, url: @base <> "/v1/collect/draft-extract"} -> HttpStub.ok(drafted_body())
         %{method: :post} -> {:ok, %{status: 409, body: ""}}
         %{method: :get} -> HttpStub.ok(docs_body([painter_doc("A", ["年代:1900"])]))
       end)
@@ -370,8 +400,15 @@ defmodule Antenna.RelationsTest do
 
     test "まだ何も溜まっていなければ、そう分かる理由を返す" do
       HttpStub.stub(fn
-        %{method: :post} -> HttpStub.ok("{}")
-        %{method: :get} -> HttpStub.ok(docs_body([]))
+        %{method: :post} ->
+          HttpStub.ok("{}")
+
+        # 収集はある（作られてはいる）。溜まっていないだけ
+        %{method: :get, url: @base <> "/v1/collect"} ->
+          HttpStub.ok(Jason.encode!(%{"collections" => [%{"name" => "antenna_painters"}]}))
+
+        %{method: :get} ->
+          HttpStub.ok(docs_body([]))
       end)
 
       # 収集の状態も一緒に返す（有効にしていないのか、まだ走っていないのかで
@@ -381,13 +418,33 @@ defmodule Antenna.RelationsTest do
 
     test "焼かれる前はソースごと無い。繋がらないのとは区別する" do
       HttpStub.stub(fn
-        %{method: :post} -> HttpStub.ok("{}")
-        %{method: :get} -> {:ok, %{status: 404, body: ""}}
+        %{method: :post} ->
+          HttpStub.ok("{}")
+
+        %{method: :get, url: @base <> "/v1/collect"} ->
+          HttpStub.ok(Jason.encode!(%{"collections" => [%{"name" => "antenna_painters"}]}))
+
+        %{method: :get} ->
+          {:ok, %{status: 404, body: ""}}
       end)
 
       # 収集の状態も一緒に返す（有効にしていないのか、まだ走っていないのかで
       # 次にすることが違う）
       assert {:error, {:nothing_collected, _c}} = Relations.fetch_painters(@base, fallback())
+    end
+
+    test "収集そのものが無ければ、溜まっていないのとは分けて言う" do
+      # どちらも図は出ないが、次にすることが違う —— 溜まっていないなら Chiezo の
+      # 画面で有効にする、作られていないなら antenna で「関連図を収集」を押す
+      HttpStub.stub(fn
+        %{method: :get, url: @base <> "/v1/collect"} ->
+          HttpStub.ok(Jason.encode!(%{"collections" => []}))
+
+        %{method: :get} ->
+          {:ok, %{status: 404, body: ""}}
+      end)
+
+      assert {:error, {:collection_missing, nil}} = Relations.fetch_painters(@base, fallback())
     end
 
     @tag :capture_log
@@ -428,22 +485,57 @@ defmodule Antenna.RelationsTest do
     # 図の構造は Chiezo に持ち込まない。属性と関係はタグに載せる
     assert prompt =~ "影響元:"
     assert prompt =~ "代表作:"
+
     # 名簿・年代・様式は抽出で入るので、書かせない（書かせると存在しない画家が混ざる）
-    assert prompt =~ "すでに Wikipedia から機械的に入っています"
+    assert prompt =~ "名簿と年代は Wikipedia から機械的に入れてあります"
+
     # 様式のカテゴリは疎（ゴッホもピカソも持っていない）。空の人には足させる
     assert prompt =~ "空の人には様式のタグを足してください"
+
     # 名簿は機械で作るので、絵で知られていない人が混ざる。その見分けは AI にしかできない
     assert prompt =~ "絵で知られていない人"
-    assert prompt =~ "いまの内容に付いているタグをすべて残したうえで"
-
-    # 少しずつ育てる。進み具合で次にどこから続けるかを決める
-    assert prompt =~ "{cursor}"
-    assert prompt =~ "10人ほど"
-    # 線が引かれていない人から埋めさせる（名簿と年代は最初から入っている）
-    assert prompt =~ "まだ影響元のタグが付いていない人を先に"
+    assert prompt =~ "その人にいま付いているタグをすべて残したうえで"
 
     # 毎回全部を返させない（返し忘れで消えない作りなので、その必要が無い）
     assert prompt =~ "変えない人を返す必要はありません"
+  end
+
+  test "誰を見るかは Chiezo が区画で渡す（AI に選ばせない）" do
+    prompt = Relations.painters_prompt()
+
+    # 今回見る範囲が差し込まれ、その範囲の画家が {current} に丸ごと入る。
+    # **選ばせない**のが要 —— 選ばせていた頃は同じ人を何度も選ぶのを止められず、
+    # 1 日 10 人では 2,999 人の一周に 300 日かかった
+    assert prompt =~ "{partition}"
+    assert prompt =~ "{current}"
+    assert prompt =~ "誰を見るか選ぶ必要はありません"
+    assert prompt =~ "範囲の外の画家は返さないでください"
+
+    # 進み具合は Chiezo の台帳が持つので、AI に名乗らせない
+    refute prompt =~ "{cursor}"
+    refute prompt =~ "next_cursor"
+  end
+
+  test "影響元の相手は、関連タグから選ばせる" do
+    # 区画で切ると {current} はその 50 人だけになる。「いまの内容にいる画家だけ」
+    # と頼むと、線が区画の中でしか引かれず図が分断される。関連タグには名簿にいる
+    # 相手が載っているので、そこから選ばせれば区画をまたいだ線が引ける
+    assert Relations.painters_prompt() =~ "タグに\n    挙がっている画家から選んでください"
+  end
+
+  test "名簿はカテゴリを書き並べず、末尾で指させる" do
+    request = Relations.painters_extract_request()
+
+    # **書き並べると必ず取りこぼす。** 名前の付き方が揃っておらず（「イギリス」と
+    # 「イングランド」は別のカテゴリで、中身は圧倒的に後者に寄っている）、書く側は
+    # 思い出しで補うしかない —— 実際に「アメリカ合衆国」が丸ごと落ち、ホッパーも
+    # ポロックもホイッスラーも名簿に居なかった
+    assert request =~ "tag_suffix"
+    assert request =~ "書き並べると必ず取りこぼします"
+
+    # **地域も年代も絞らない。** 限定は頼まれていない
+    assert request =~ "地域も年代も絞りません"
+    refute request =~ "西洋"
   end
 
   test "溜まっていないと分かったら、前回の図は出し続けない" do
@@ -474,14 +566,15 @@ defmodule Antenna.RelationsTest do
     assert want =~ "年代:"
     assert want =~ "様式:"
     assert want =~ "件数は絞らなくて構いません"
+
     # 書いてあることは全部頼む（頼まなければ、その読み替えは使われない）
     assert want =~ "代表作:"
     assert want =~ "関連:"
     assert want =~ "相互にリンクしている相手"
     # カテゴリは持ち主の職業を選ばない。外す指定まで頼む
     assert want =~ "not_tag"
-    # 年代は絞らない（どの時代を見たいかは、頼む側が決めること）
-    assert want =~ "年代は絞りません"
+    # 地域も年代も絞らない（どこまで見たいかは、頼む側が決めること）
+    assert want =~ "地域も年代も絞りません"
     # 書いていないことは頼まない
     refute want =~ "影響"
   end
@@ -551,9 +644,73 @@ defmodule Antenna.RelationsTest do
     end
 
     test "1 頁目から無ければ、まだ何も溜まっていない" do
+      # stub_pages は収集を空で返すので、ここは「収集が作られていない」ほうになる
       stub_pages(fn _url -> {:ok, %{status: 404, body: ""}} end)
-      assert {:error, {:nothing_collected, _}} = Relations.fetch_painters(@base, fallback())
+      assert {:error, {:collection_missing, nil}} = Relations.fetch_painters(@base, fallback())
     end
   end
 
+  describe "指定を書けなかったとき" do
+    test "収集を作らない" do
+      # 指定なしで作ると、名簿が空のまま AI に「いまの内容から 10 人ほど選べ」と
+      # 頼むことになり、10 件の図ができて終わる（実測。4,250 人になるはずだった）
+      test_pid = self()
+
+      HttpStub.stub(fn
+        %{method: :post, url: @base <> "/v1/collect/draft-extract"} ->
+          # 「機械では引けない」も Chiezo の答えのうち（200 で返る）
+          HttpStub.ok(Jason.encode!(%{"extract" => nil, "reason" => "タグで引けない題材です"}))
+
+        %{method: :post, url: @base <> "/v1/collect"} ->
+          send(test_pid, :created)
+          HttpStub.ok("{}")
+
+        %{method: :get, url: @base <> "/v1/collect"} ->
+          HttpStub.ok(Jason.encode!(%{"collections" => []}))
+
+        %{method: :get, url: _url} ->
+          HttpStub.ok(docs_body([]))
+      end)
+
+      assert {:error, {:extract_refused, "タグで引けない題材です"}} =
+               Relations.request_painters(@base, fallback())
+
+      refute_received :created
+    end
+
+    test "Chiezo が添えた理由を捨てない" do
+      # 理由が消えると、押した人には何も起きなかったように見える
+      HttpStub.stub(fn
+        %{method: :post, url: @base <> "/v1/collect/draft-extract"} ->
+          HttpStub.ok(Jason.encode!(%{"extract" => nil, "reason" => "  "}))
+
+        %{method: :get, url: @base <> "/v1/collect"} ->
+          HttpStub.ok(Jason.encode!(%{"collections" => []}))
+
+        %{method: :get, url: _url} ->
+          HttpStub.ok(docs_body([]))
+      end)
+
+      # 空白だけの理由は「理由なし」として扱う（画面に空文字を出さない）
+      assert {:error, {:extract_refused, nil}} = Relations.request_painters(@base, fallback())
+    end
+
+    @tag :capture_log
+    test "Chiezo 側の理由はそのまま通す" do
+      # 包み直すと「集める層が無い」も「断られた」も同じ 1 つの理由に潰れ、
+      # 画面から次の手が読めなくなる
+      HttpStub.stub(fn
+        %{method: :post, url: @base <> "/v1/collect/draft-extract"} ->
+          {:ok, %{status: 404, body: ""}}
+
+        %{method: :get, url: @base <> "/v1/collect"} ->
+          HttpStub.ok(Jason.encode!(%{"collections" => []}))
+
+        %{method: :get, url: _url} ->
+          HttpStub.ok(docs_body([]))
+      end)
+
+      assert {:error, :collect_unsupported} = Relations.request_painters(@base, fallback())
+    end
+  end
 end

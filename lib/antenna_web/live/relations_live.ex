@@ -492,10 +492,31 @@ defmodule AntennaWeb.RelationsLive do
       "この収集は Chiezo 側で止まっているので、集めさせられませんでした。" <>
         "Chiezo の管理画面の「集める」で有効にすると、押したときに集まります。"
 
+  defp reason_text(:collection_missing),
+    do:
+      "この図の収集は、まだ Chiezo に作られていません。" <>
+        "「関連図を収集」を押すと、Chiezo に依頼して作ります。"
+
   defp reason_text(:nothing_collected),
     do:
       "Chiezo にまだ何も溜まっていません。Chiezo の管理画面の「集める」で" <>
         "この図の収集を有効にすると、集まったものがここに出ます。"
+
+  # **指定が書けなければ収集を作らない。** 作ってしまうと、名簿が空のまま AI に
+  # 「いまの内容から 10 人ほど選べ」と頼むことになり、10 件の図ができて終わる
+  # （実測）。そのとき押した人には、なぜそうなったのかが読めない
+  defp reason_text({:extract_refused, nil}),
+    do:
+      "Wikipedia から機械的に引く条件を書けなかったため、収集を作りませんでした。" <>
+        "もう一度押すと書き直させます。"
+
+  defp reason_text({:extract_refused, why}),
+    do: "Wikipedia から機械的に引く条件を書けなかったため、収集を作りませんでした: #{why}"
+
+  defp reason_text({:extract_failed, _detail}),
+    do:
+      "Wikipedia から機械的に引く条件を AI に書かせられませんでした。" <>
+        "収集は作っていません。もう一度押すか、相手を変えて試してください。"
 
   defp reason_text(:invalid_ai_response), do: "AIの応答から関連図を作れませんでした。もう一度収集してください。"
   defp reason_text(:collection_crashed), do: "収集の途中で問題が起きました。もう一度収集してください。"

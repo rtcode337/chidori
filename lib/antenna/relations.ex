@@ -38,6 +38,37 @@ defmodule Antenna.Relations do
   @max_pages 40
   @user_agent "antenna/0.1 (+https://github.com/rtcode337/antenna)"
 
+  # 回る先の割り方。**見出しの順に 50 人ずつ**で、200 区画ほどになる
+  # （日本語版 Wikipedia の「〜の画家」は 323 カテゴリ・のべ 14,735 記事）。
+  #
+  # 意味のある集まり（生年の 10 年刻み、様式）で割るほうが「この範囲で漏れている画家は
+  # 誰か」を問えるのだが、**そちらは半分近くが区画から漏れる** —— 生没年のカテゴリを
+  # 持たない画家が 42%、様式に至っては 94% いる（本番の 2,999 人で実測）。
+  # ここでの狙いは**全員を一度は見ること**なので、全員が必ずどこかに入る見出し順を採る。
+  # 「この 50 人を詳しくして」は、集まりに意味が無くても答えられる問い。
+  #
+  # **名簿の漏れはここでは埋まらない。** あれは抽出の指定（`painters_extract_request`）の
+  # 話で、カテゴリを足して引き直すほうが決定的。狙い撃ちで調べさせたいときは
+  # Chiezo の割り込み（`POST /v1/collect/<name>/focus`）が向いている。
+  @partition %{by: "title", target: 50}
+
+  # ざっと全体を拾う巡回。6 時間ごとに 14 日で一周する（1 回に見る区画数は
+  # Chiezo が区画の数から計算するので、画家が増えても一周の日数は変わらない）。
+  # **一周の日数で決める**のは、AI の呼び出し回数がそこから逆算されるため ——
+  # 1 万人を 7 日で回ると 1 日 32 回になる
+  @rough_minutes 360
+  @rough_days 14
+  # 少数をじっくり調べる巡回。1 日 1 区画を、考える量を上げて見直す
+  @deep_minutes 1440
+
+  # **2 本に分ける理由。** 進み方も、頼む相手も、1 回に食べる量も違う ——
+  # ざっとは影響関係の空欄を埋めて回り、じっくりは既に入っているものを疑う。
+  # 1 本の間隔では両方は表せない
+  @sweeps [
+    %{name: "ざっと", interval_minutes: @rough_minutes, cover_days: @rough_days},
+    %{name: "じっくり", interval_minutes: @deep_minutes, partitions_per_run: 1, effort: "high"}
+  ]
+
   # 押すたびに AI へ投げると枠を使い切る。こちら側で間隔を空ける
   @min_interval_ms 15_000
   # 取り込み中かを確かめ直す間隔。走っているあいだだけ動く
@@ -392,6 +423,14 @@ defmodule Antenna.Relations do
     |> put_in([:reasons, key], reason)
   end
 
+  # 収集そのものが無いとき。**状態を添えようがない**ので、理由だけを持って表示例へ戻す
+  defp apply_step(state, key, {:error, {reason, nil}}) do
+    state
+    |> put_in([:relations, key], Map.put(Map.fetch!(@views, key), :collection, nil))
+    |> put_in([:statuses, key], :unavailable)
+    |> put_in([:reasons, key], reason)
+  end
+
   defp apply_step(state, key, {:error, {reason, collection}}) when is_map(collection) do
     # 図を出せないときも、収集の状態は出す —— 「有効にしていない」のか
     # 「有効だがまだ走っていない」のかで、次にすることが違う。
@@ -506,7 +545,7 @@ defmodule Antenna.Relations do
       # まだ焼かれていなければソースごと無い。**溜まっていないのと同じ扱い**にする
       # （繋がらないのとは別。状態を添えて返す）
       {:error, :nothing_collected} ->
-        {:error, {:nothing_collected, collection}}
+        {:error, {nothing_reason(collection), collection}}
 
       {:error, reason} ->
         {:error, reason}
@@ -515,7 +554,7 @@ defmodule Antenna.Relations do
         graph = Graph.from_docs(docs)
 
         if graph.nodes == [] do
-          {:error, {:nothing_collected, collection}}
+          {:error, {nothing_reason(collection), collection}}
         else
           # 丸の大きさは知名度で決める。**AI に有名かどうかを判断させない** ——
           # jawiki の月次ページビューのほうが客観的で、実行のたびに揺れない
@@ -661,14 +700,20 @@ defmodule Antenna.Relations do
   """
   def painters_extract_request do
     """
-    日本語版 Wikipedia から、西洋絵画の画家を集めてください。
+    日本語版 Wikipedia から、画家を集めてください。
 
     **件数は絞らなくて構いません。** 引くのは手元の索引を 1 本引くだけなので、
     人数が増えても手間は変わりません。
 
-    **年代は絞りません。** ルネサンスから現代まで、どの時代の画家も対象です
-    （ダ・ヴィンチもゴッホもピカソも入ります）。国はイタリア・フランス・オランダ・
-    スペイン・ドイツ・イギリスなど、西洋の各国から。
+    **地域も年代も絞りません。** ルネサンスから現代まで、どの国・どの時代の画家も
+    対象です（ダ・ヴィンチもゴッホもピカソも葛飾北斎も入ります）。
+
+    **カテゴリは書き並べず、`tag_suffix` で「〜の画家」を指してください。**
+    画家のカテゴリは「〈世紀〉世紀〈地域〉の画家」「江戸時代の画家」「印象派の画家」
+    のように族をなしていて、300 を超えます。**書き並べると必ず取りこぼします** ——
+    名前の付き方が揃っておらず（「イギリス」と「イングランド」は別のカテゴリで、
+    中身は圧倒的に後者に寄っています）、書く側は思い出しで補うしかないからです。
+    末尾で指せば推測が要らず、あとからカテゴリが増えても勝手に入ります。
 
     **絵で知られていない人を外してください。** 画家のカテゴリには、絵も描く俳優や
     作家が入っています。人気の順に取るとそちらが先に並ぶので、俳優・小説家・
@@ -696,14 +741,23 @@ defmodule Antenna.Relations do
   # 属性と関係はタグに載せる（読み方を与えるのは antenna 側 = `Relations.Graph`）。
   def painters_prompt do
     """
-    西洋近代絵画の画家の関連図を育ててください。
+    画家の関連図を育ててください。
 
-    **名簿と年代は、すでに Wikipedia から機械的に入っています**（生没年のカテゴリから）。
-    あなたに埋めてほしいのは、そこに書いていないこと ——
+    **今回見る範囲**
+    {partition}
+
+    **この範囲の画家が、下にすべて並んでいます。** 誰を見るか選ぶ必要はありません ——
+    並んでいる人を順に詳しくしてください。**範囲の外の画家は返さないでください**
+    （その人たちは別の回に回ってきます）。
+
+    {current}
+
+    **名簿と年代は Wikipedia から機械的に入れてあります**（生没年のカテゴリから）。
+    上に並んでいるのがそれです。あなたに埋めてほしいのは、そこに書いていないこと ——
     **影響関係**と**代表作**、それに読んで分かる説明です。
 
     **関連の線はもう引いてあります。** 記事どうしが相互にリンクしている組を
-    機械的に「関連」のタグにしてあるので、図はすでにつながっています。
+    機械的に「#{Graph.related_tag()}」のタグにしてあるので、図はすでにつながっています。
     あなたの仕事は、そのうち**実際に影響関係があるものを「影響元」に書き換える**こと ——
     誰が誰から何を受けたのかは、リンクの有無からは分かりません。
     関連のタグはそのまま残してください（消すと線が消えます）。
@@ -716,30 +770,21 @@ defmodule Antenna.Relations do
     決めると、どれを選んでも間違いになります（ピカソは青の時代もキュビスムも
     新古典主義も本当です）。当てはまるものを全部書いてください。
 
-    いまの内容:
-    {current}
-
-    進み具合: {cursor}
-
-    **全体を作り直さないでください。** いまの内容から**10人ほど**選び、
-    その人たちを詳しくしてください。触れなかった人はそのまま残るので、
-    変えない人を返す必要はありません。
-
-    **まだ影響元のタグが付いていない人を先に選んでください。** 名簿と年代は
-    入っていても、影響関係が入るまで図に線が引かれません。
-    次にどこから続けるかを next_cursor に書いてください（例:「ゴッホまで見直した」）。
+    **変えない人を返す必要はありません。** 触れなかった人はそのまま残ります。
+    調べても影響関係が分からなかった人は、飛ばして構いません。
 
     1 人につき 1 件で、次の形にしてください。
-    - title: 画家名（**いまの内容にある表記をそのまま使う**。変えると別人になります）
+    - title: 画家名（**上に並んでいる表記をそのまま使う**。変えると別人になります）
     - body: その画家が何をした人かと、影響関係の要点
     - url: 日本語版 Wikipedia のその画家の記事の URL
-    - tags: **いまの内容に付いているタグをすべて残したうえで**、次を足してください
+    - tags: **その人にいま付いているタグをすべて残したうえで**、次を足してください
       - "様式:<ロマン主義 / 印象派 / キュビスム のような様式名>"。**当てはまる様式の数だけ
         並べてよい**（時期で作風が変わった画家は 1 つに決められません）
-      - "代表作:<日本語版 Wikipedia にあるその絵の記事名。例: 印象・日の出>"
+      - "#{Graph.work_tag()}:<日本語版 Wikipedia にあるその絵の記事名。例: 印象・日の出>"
       - "影響元:<影響を受けた画家名>:<何を受けたかを10文字ほどで>"
-        影響を受けた画家ごとに 1 つ。**いまの内容にいる画家だけ**を指してください
-        （いない相手への線は図に出ません）
+        影響を受けた画家ごとに 1 つ。**その人の「#{Graph.related_tag()}」タグに
+        挙がっている画家から選んでください** —— あれは名簿にいる相手だけが載っているので、
+        そこから選べば必ず図に線が出ます。名簿にいない相手への線は出ません。
       年代や様式が明らかに違うときだけ、そのタグを直してください。
 
     重複していたら、まとめた先を返して、元のほうは墓標で消してください。
@@ -751,36 +796,77 @@ defmodule Antenna.Relations do
 
   # まだ無ければ依頼する。**止まった状態で作られる**ので、これで AI が動き出す
   # ことはない（動かすかは Chiezo 側で決める）。すでにあれば何もしない
+  # **指定が書けたときだけ作る。** 指定なしで作ると、名簿が空のまま AI に
+  # 「いまの内容から選べ」と頼むことになり、10 件の図ができて終わる
   defp ensure_collection(base_url, name) do
-    spec = draft_extract(base_url)
-    progress(:requesting)
-    Chiezo.request(base_url, collection_attrs(name, spec))
+    with {:ok, spec} <- draft_extract(base_url) do
+      progress(:requesting)
+      Chiezo.request(base_url, collection_attrs(name, spec))
+    end
   end
 
   # **依頼する前に指定を書かせる。** 作った収集は次の予定が「いま」なので、
   # 作ってから指定を持たせに行くと、書かせている数分のあいだに Chiezo 側が
   # AI の回を始めてしまう（実際にそうなり、機械で埋まるはずの初回が AI に
   # 書かれて、進み具合まで進んでしまった）。
-  defp draft_extract(base_url) do
+  @doc """
+  抽出の指定を AI に書かせます。`{:ok, spec}` か `{:error, 理由}`。
+
+  **書けなければ収集を作りません。** かつては「指定が無くても AI が全部集める形に
+  戻るだけ」として警告 1 行で進めていましたが、戻りません —— プロンプトは
+  **名簿と年代が Wikipedia から入っている前提**で「いまの内容から 10 人ほど選び」と
+  頼む形なので、名簿が空のまま走ると AI が 10 人だけ作って終わります
+  （実測: 4,250 人の名簿になるはずの収集が 10 件で焼き上がり、画面からは
+  なぜそうなったのか読めなかった）。
+
+  **Chiezo が添えた理由を捨てません。** 向こうは「機械では引けない」と判断したとき、
+  `extract: null` に `reason` を付けて 200 で返します。これは失敗ではなく答えなので、
+  受け取る側が黙って握り潰すと、押した人には何も起きなかったように見えます。
+  """
+  def draft_extract(base_url) do
     progress(:drafting)
 
     case Chiezo.draft_extract(base_url, nil, painters_extract_request(), who()) do
       {:ok, %{"extract" => spec} = drafted} when is_map(spec) ->
         Logger.info("画家の抽出の指定を書かせた（#{drafted["total"]} 件取れる）")
-        spec
+        {:ok, spec}
+
+      # 「機械では引けない」も答えのうち。理由を添えて返ってくる
+      {:ok, %{"extract" => nil} = drafted} ->
+        {:error, {:extract_refused, reason_text(drafted["reason"])}}
+
+      # **Chiezo が付けた理由はそのまま通す。** 包み直すと「集める層が無い」も
+      # 「断られた」も同じ 1 つの理由に潰れ、画面から次の手が読めなくなる
+      {:error, reason} ->
+        Logger.warning("画家の抽出の指定を書かせられなかった: #{inspect(reason)}")
+        {:error, reason}
 
       other ->
-        # 指定が書けなくても依頼はする（AI が全部集める形に戻るだけ）
-        Logger.warning("画家の抽出の指定を書かせられなかった: #{inspect(other)}")
-        nil
+        Logger.warning("画家の抽出の指定が読めなかった: #{inspect(other)}")
+        {:error, {:extract_failed, other}}
     end
   rescue
     error ->
       Logger.warning("画家の抽出の指定を書かせられなかった: #{inspect(error)}")
-      nil
+      {:error, {:extract_failed, error}}
   end
 
-  defp collection_attrs(name, nil), do: base_attrs(name)
+  defp reason_text(reason) when is_binary(reason) do
+    case String.trim(reason) do
+      "" -> nil
+      text -> text
+    end
+  end
+
+  defp reason_text(_reason), do: nil
+
+  # 指定は必ず付く（書けなければ `ensure_collection` が作る前に止まる）
+  # **「溜まっていない」と「作られていない」を分ける。** どちらも図は出ないが、
+  # 次にすることが違う —— 前者は Chiezo の画面で有効にする、後者は antenna で
+  # 「関連図を収集」を押す。混ぜると、押した人は有効化の画面を探しに行ってしまう
+  defp nothing_reason(nil), do: :collection_missing
+  defp nothing_reason(_collection), do: :nothing_collected
+
   defp collection_attrs(name, spec), do: Map.put(base_attrs(name), :extract, spec)
 
   defp base_attrs(name) do
@@ -788,8 +874,10 @@ defmodule Antenna.Relations do
       name: name,
       description: "antenna の関連図（画家の影響と時代）",
       prompt: painters_prompt(),
-      interval_minutes: 1440,
+      interval_minutes: @rough_minutes,
       mode: "refine",
+      partition: @partition,
+      sweeps: @sweeps,
       requested_by: "antenna"
     }
   end
