@@ -71,6 +71,18 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relation-tabs a { border-radius: 99px; padding: .65rem 1rem; color: #52607a; font-size: .9rem; font-weight: 800; text-decoration: none; }
 .relation-tabs a.selected { background: #28235e; color: white; box-shadow: 0 6px 18px rgba(40, 35, 94, .22); }
 .relation-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; }
+/* Chiezo の状態・巡回の設定・押すボタンを 1 つの枠に。**離れていると、何がどこへ
+   効くのか読めない**（状態を見て、直して、押す、が 1 か所で終わる） */
+.collect-panel { margin-bottom: 1.25rem; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; }
+.collect-panel h2 { margin-bottom: .4rem; font-size: .95rem; color: #332c75; }
+.collect-panel > p { margin: .25rem 0; color: #616a82; font-size: .85rem; }
+.collect-panel button { border: 0; background: #554bc0; color: #fff; }
+.collect-panel button:disabled { cursor: wait; opacity: .65; }
+.sweep-table { width: 100%; margin: .8rem 0; border-collapse: collapse; font-size: .82rem; }
+.sweep-table th { text-align: left; padding: .2rem .5rem; color: #7e879f; font-weight: 700; white-space: nowrap; }
+.sweep-table td { padding: .35rem .5rem; border-top: 1px solid #e3e1f4; vertical-align: top; }
+.sweep-table td.pick { display: flex; flex-wrap: wrap; gap: .3rem; }
+.sweep-table select { max-width: 12rem; padding: .2rem .35rem; border: 1px solid #dcdff0; border-radius: .4rem; background: #fff; font: inherit; font-size: .8rem; }
 .relation-actions strong { color: #332c75; font-size: .9rem; }
 .relation-actions p { margin: .25rem 0 0; color: #616a82; font-size: .82rem; }
 .relation-actions button { border: 0; background: #554bc0; color: #fff; white-space: nowrap; }
@@ -318,3 +330,7 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .ask-more button { margin-top: 0.3rem; }
 /* 依頼文の中の小見出し（抽出の指定 / 指示文） */
 .news-prompt h3 { font-size: 0.9rem; margin: 1rem 0 0.3rem; }
+
+/* 図がまだ無いとき。**器は残す**（高さが変わると、読み込み後に画面が跳ねる） */
+.canvas-empty { display: grid; place-items: center; height: 100%; padding: 2rem; }
+.canvas-empty p { margin: 0; color: #7e879f; font-size: .95rem; text-align: center; }

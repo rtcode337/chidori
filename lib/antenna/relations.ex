@@ -92,6 +92,9 @@ defmodule Antenna.Relations do
     "people" => %{
       title: "人物のつながり",
       eyebrow: "FAMILY & DUO",
+      # **これは手書きの表示例**。Chiezo（や AI）から読めたものに差し替わるまで、
+      # 図は描かない —— 本物と見分けが付かない図が出ると、何を見ているのか分からない
+      sample?: true,
       description: "家族とコンビを、関係の種類ごとにたどれます。",
       width: @canvas_width,
       height: @canvas_height,
@@ -136,6 +139,7 @@ defmodule Antenna.Relations do
     "painters" => %{
       title: "画家の影響と時代",
       eyebrow: "ARTISTS & INFLUENCE",
+      sample?: true,
       description: "左から右へ、影響がつながる流れを表します。ノード下の帯は活躍した年代の目安です。",
       width: @canvas_width,
       height: @canvas_height,
@@ -222,8 +226,8 @@ defmodule Antenna.Relations do
   **走らせません。** 定時の巡回は Chiezo が回すもので、こちらから割り込んで
   走らせると、その回のぶん予定が先送りになる（押した人にはそれが見えない）。
   """
-  def collect_now(key) when is_binary(key) do
-    GenServer.cast(__MODULE__, {:collect, valid_key(key)})
+  def collect_now(key, choices \\ %{}) when is_binary(key) and is_map(choices) do
+    GenServer.cast(__MODULE__, {:collect, valid_key(key), choices})
   end
 
   @doc """
@@ -247,6 +251,21 @@ defmodule Antenna.Relations do
   end
 
   def keys, do: Map.keys(@views)
+
+  @doc """
+  Chiezo で頼める相手の一覧（画面の選択肢に使う）。
+
+  **図を読むのとは別に引きます。** 図の読み直しは開くたびに走るので、そこへ混ぜると
+  「溜まったものを読む」以外の問い合わせが増える —— 何を読んでいるのかが辿りにくい。
+
+  引けなければ空。**選べないだけで、図は出ます**。
+  """
+  def ai_backends do
+    case chiezo_base_url() do
+      nil -> []
+      base_url -> Chiezo.backends(base_url)
+    end
+  end
 
   @doc """
   収集状態の変化を受け取ります。LiveView が接続時に呼びます。
@@ -276,8 +295,12 @@ defmodule Antenna.Relations do
       statuses: Map.new(keys(), &{&1, :sample}),
       collected_at: %{},
       checked_at: %{},
-      # Chiezo 側で取り込みが走っているか（走っている間は「いま集めて」を断られる）
+      # Chiezo 側で取り込みが走っているか。**ボタンは止めない** —— 押しても
+      # 送るだけ（走らせはしない）ので、取り込み中でも困らない
       busy: %{},
+      # 押して送っている最中か。**開いたときの読み直しと区別する** ——
+      # 一緒にすると、読むだけのときに「送っています」と出てボタンも押せなくなる
+      pushing: %{},
       # いま何をしているか。**押しても数分は Chiezo 側に何も出ない**（先に AI へ
       # 指定を書かせるため）ので、どこで待っているのかを画面に出す
       step: %{},
@@ -341,7 +364,7 @@ defmodule Antenna.Relations do
     end
   end
 
-  def handle_cast({:collect, key}, state) do
+  def handle_cast({:collect, key, choices}, state) do
     cond do
       state.statuses[key] == :loading ->
         {:noreply, state}
@@ -354,7 +377,7 @@ defmodule Antenna.Relations do
 
         task =
           Task.Supervisor.async_nolink(Antenna.TaskSupervisor, fn ->
-            fetch_relation(key, fallback)
+            fetch_relation(key, fallback, choices)
           end)
 
         check_busy(key)
@@ -364,6 +387,7 @@ defmodule Antenna.Relations do
           |> put_in([:statuses, key], :loading)
           |> put_in([:reasons, key], nil)
           |> put_in([:tasks, task.ref], key)
+          |> put_in([:pushing, key], true)
           |> put_in([:last_attempt_at, key], System.monotonic_time(:millisecond))
 
         {:noreply, broadcast(state, key)}
@@ -380,6 +404,9 @@ defmodule Antenna.Relations do
           state
           |> Map.update!(:tasks, &Map.delete(&1, ref))
           |> put_in([:checked_at, key], DateTime.utc_now())
+          # 終わったら「送っている」も「いまどこ」も畳む(残すと押せないままになる)
+          |> put_in([:pushing, key], false)
+          |> put_in([:step, key], nil)
           |> apply_result(key, result)
 
         {:noreply, broadcast(state, key)}
@@ -400,6 +427,10 @@ defmodule Antenna.Relations do
           state
           |> Map.update!(:tasks, &Map.delete(&1, ref))
           |> put_in([:checked_at, key], DateTime.utc_now())
+          # **落ちたときも必ず戻す。** 戻さないと「送っています」のまま固まり、
+          # ボタンが二度と押せなくなる
+          |> put_in([:pushing, key], false)
+          |> put_in([:step, key], nil)
           |> apply_result(key, {:error, :collection_crashed})
 
         {:noreply, broadcast(state, key)}
@@ -518,6 +549,9 @@ defmodule Antenna.Relations do
     |> Map.put(:collected_at, Map.get(state.collected_at, key))
     |> Map.put(:checked_at, Map.get(state.checked_at, key))
     |> Map.put(:busy, Map.get(state.busy, key, false))
+    # **押して送っている最中かどうか。** 開いたときの読み直しと区別する ——
+    # 読むだけのときに「送っています」と出すのは嘘で、しかもボタンが押せなくなる
+    |> Map.put(:pushing, Map.get(state.pushing, key, false))
     |> Map.put(:step, Map.get(state.step, key))
     |> Map.put(:reason, Map.get(state.reasons, key))
   end
@@ -542,14 +576,14 @@ defmodule Antenna.Relations do
   # 引き方は `filter`（タグでの一括抽出）。図は流れではなく**一枚もの**なので、
   # 新しい順に何件かではなく全部が要る。
   # 「収集」を押したとき。**まだ無ければ依頼し、その場で 1 回集めさせて**読み直す
-  defp fetch_relation("painters", fallback) do
+  defp fetch_relation("painters", fallback, choices) do
     case chiezo_base_url() do
       nil -> {:error, :chiezo_not_configured}
-      base_url -> push_painters(base_url, fallback)
+      base_url -> push_painters(base_url, fallback, choices)
     end
   end
 
-  defp fetch_relation(key, fallback) do
+  defp fetch_relation(key, fallback, _choices) do
     with base_url when is_binary(base_url) <- chiezo_base_url(),
          {:ok, content} <- ask_chiezo(base_url, key) do
       decode_relation(content, key, fallback)
@@ -601,7 +635,8 @@ defmodule Antenna.Relations do
           {:ok,
            fallback
            |> Map.merge(%{graph | nodes: sized})
-           |> Map.put(:collection, collection)}
+           |> Map.put(:collection, collection)
+           |> Map.put(:sample?, false)}
         end
     end
   end
@@ -627,7 +662,7 @@ defmodule Antenna.Relations do
   止まっている収集は Chiezo が断ります（有効にできるのは Chiezo の画面だけ）。
   そのときも溜まっているものは読み直したうえで、断られたことを理由として返します。
   """
-  def push_painters(base_url, fallback) do
+  def push_painters(base_url, fallback, choices \\ %{}) do
     name = painters_collection()
 
     with {:ok, existing} <- ensure_collection_once(base_url, name),
@@ -641,7 +676,7 @@ defmodule Antenna.Relations do
       # **走らせはしない** —— 走らせると定時の巡回がその回ぶん先送りになる
       if existing do
         progress(:pushing)
-        Chiezo.patch(base_url, name, base_attrs(name))
+        Chiezo.patch(base_url, name, base_attrs(name, choices))
       end
 
       reading(fetch_painters(base_url, fallback))
@@ -924,7 +959,7 @@ defmodule Antenna.Relations do
 
   defp collection_attrs(name, spec), do: Map.put(base_attrs(name), :extract, spec)
 
-  defp base_attrs(name) do
+  defp base_attrs(name, choices \\ %{}) do
     %{
       name: name,
       description: "antenna の関連図（画家の影響と時代）",
@@ -932,9 +967,21 @@ defmodule Antenna.Relations do
       interval_minutes: @rough_minutes,
       mode: "refine",
       partition: @partition,
-      sweeps: @sweeps,
+      sweeps: with_choices(@sweeps, choices),
       requested_by: "antenna"
     }
+  end
+
+  # 画面で選んだ相手を巡回に載せる。**antenna は覚えない** —— 正は Chiezo が持って
+  # いるもので、画面はそれを読んで見せているだけ。覚えると二重に持つことになり、
+  # Chiezo 側で直したときにどちらが正か言えなくなる
+  defp with_choices(sweeps, choices) do
+    for sweep <- sweeps do
+      case Map.get(choices, sweep.name) do
+        nil -> sweep
+        picked -> Map.merge(sweep, Map.reject(picked, fn {_k, v} -> v in [nil, ""] end))
+      end
+    end
   end
 
   # 溜まっているものを全部引く。**まだ焼かれていなければソースごと無い**ので、
@@ -1092,7 +1139,8 @@ defmodule Antenna.Relations do
 
       %{
         fallback
-        | nodes: laid_out,
+        | sample?: false,
+          nodes: laid_out,
           edges: parsed_edges,
           sources: parsed_sources,
           width: canvas_width(length(laid_out), key),

@@ -49,7 +49,8 @@ defmodule AntennaWeb.RelationsLive do
        artwork: nil,
        edge: nil,
        style_filter: nil,
-       focus_sent: nil
+       focus_sent: nil,
+       backends: []
      )
      # 検索。`focus` が決まっているあいだは、その人と繋がっている相手を
      # 大きさに関わらず描く（周りの関連図を見るのが目的なので）
@@ -75,34 +76,32 @@ defmodule AntennaWeb.RelationsLive do
       Relations.refresh(view)
     end
 
-    {:noreply, assign(socket, view: view, relation: Relations.current(view))}
+    socket = assign(socket, view: view, relation: Relations.current(view))
+
+    # 相手の一覧は**繋がってから、待たずに**引く。画面の中で同期に引くと、Chiezo が
+    # 遅いあいだページが固まる（選択肢が無くても図は読めるので、待つ価値が無い）
+    {:noreply,
+     if(connected?(socket),
+       do: start_async(socket, :backends, &Relations.ai_backends/0),
+       else: socket
+     )}
   end
 
   @impl true
-  def handle_event("collect", _params, socket) do
-    Relations.collect_now(socket.assigns.view)
+  # 「収集の設定を更新」。**画面で選んだ相手を一緒に送る** ——
+  # antenna は覚えない（正は Chiezo が持っているもの）ので、押したときに載せる
+  def handle_event("collect", params, socket) do
+    Relations.collect_now(socket.assigns.view, sweep_choices(params))
     {:noreply, socket}
   end
 
   # モーダルから「この画家を詳しく調べて」を Chiezo へ割り込ませる。
   # **定時の巡回には触らない**ので、待たずに頼める
   def handle_event("focus_painter", %{"name" => name} = params, socket) do
-    note = String.trim(params["note"] || "")
-
-    note =
-      if note == "",
-        do: "#{name}について、影響を受けた画家と代表作を詳しく調べて埋めてください。",
-        else: note
-
-    Relations.focus_painter(socket.assigns.view, name, note)
+    Relations.focus_painter(socket.assigns.view, name, focus_note(name, params["note"]))
     {:noreply, assign(socket, focus_sent: name)}
   end
 
-  # ノードを押したら、その人のことを出す。**代表作を持っていなくても押せる** ——
-  # 押せる丸と押せない丸が混じっていると、押しても何も起きない丸を何度も押すことになる。
-  # 出すのは、もとになった記事・Chiezo に入っているタグ・（あれば）代表作の絵。
-  #
-  # **絵は押されたときだけ引く** —— 先に集めると、見ない絵まで毎回取りに行くことになる
   def handle_event("show_node", %{"name" => name}, socket) do
     node = Enum.find(socket.assigns.relation.nodes, &(&1.name == name))
 
@@ -206,6 +205,25 @@ defmodule AntennaWeb.RelationsLive do
 
   # 名前に含まれるかで探し、**知られている順**に返す。前方一致にしないのは、
   # 「ゴッホ」で「フィンセント・ファン・ゴッホ」を出したいため
+  @doc """
+  割り込みの指示文。**必ず画家の名前で始めます**。
+
+  名指しは `titles` で別に渡していて、Chiezo はそちらを見てプロンプトへ載せます。
+  ただし**指示文だけを読んだ人には誰宛てか分からない** —— 「影響元が空なので調べて」
+  とだけ書くと、Chiezo の画面にもそれしか残りません。
+  """
+  def focus_note(name, note) do
+    case String.trim(note || "") do
+      "" -> "#{name}について、影響を受けた画家と代表作を詳しく調べて埋めてください。"
+      written -> "#{name}について。#{written}"
+    end
+  end
+
+  # ノードを押したら、その人のことを出す。**代表作を持っていなくても押せる** ——
+  # 押せる丸と押せない丸が混じっていると、押しても何も起きない丸を何度も押すことになる。
+  # 出すのは、もとになった記事・Chiezo に入っているタグ・（あれば）代表作の絵。
+  #
+  # **絵は押されたときだけ引く** —— 先に集めると、見ない絵まで毎回取りに行くことになる
   defp search(relation, q) do
     case String.trim(q) do
       "" ->
@@ -220,6 +238,13 @@ defmodule AntennaWeb.RelationsLive do
   end
 
   @impl true
+  def handle_async(:backends, {:ok, list}, socket) when is_list(list) do
+    {:noreply, assign(socket, backends: list)}
+  end
+
+  # 引けなくても図は出る。**選べないだけ**
+  def handle_async(:backends, _result, socket), do: {:noreply, socket}
+
   def handle_async(:artwork, {:ok, result}, socket) do
     {:noreply, assign(socket, artwork: result)}
   end
@@ -227,6 +252,22 @@ defmodule AntennaWeb.RelationsLive do
   def handle_async(:artwork, {:exit, _reason}, socket) do
     # **空の一覧にする。** nil にすると「探している最中」と見分けが付かない
     {:noreply, assign(socket, artwork: [])}
+  end
+
+  # `sweep|ざっと|backend` の形で届くものを、巡回ごとにまとめ直す
+  defp sweep_choices(params) do
+    for {key, value} <- params, reduce: %{} do
+      acc ->
+        case String.split(key, "|") do
+          ["sweep", name, field] when field in ~w(backend model effort) ->
+            Map.update(acc, name, %{String.to_atom(field) => value}, fn picked ->
+              Map.put(picked, String.to_atom(field), value)
+            end)
+
+          _ ->
+            acc
+        end
+    end
   end
 
   @impl true
@@ -243,12 +284,9 @@ defmodule AntennaWeb.RelationsLive do
   def collection_facts(%{collection: c} = relation) when is_map(c) do
     [
       {"状態", if(c.enabled, do: "有効", else: "止まっている")},
-      {"頼む相手", backend_text(c)},
-      {"間隔", if(c.interval_minutes, do: "#{c.interval_minutes} 分ごと", else: "—")},
-      {"次に集める", if(c.enabled, do: Jst.format(c.next_run_at) || "—", else: "—（止まっています）")},
       {"溜まった数", "#{c.docs} 件"},
+      {"区画", if(c[:partitions_total] in [nil, 0], do: "まだ割っていません", else: "#{c.partitions_total}")},
       {"進み具合", if(c.cursor == "", do: "（まだ無し。次は一気に作ります）", else: c.cursor)},
-      {"前回", last_text(c)},
       # 集まるものが変わらなかった日でも、**押した結果はここが動く**
       {"最後に確かめた", Jst.format(relation[:checked_at]) || "まだ確かめていません"}
     ]
@@ -256,22 +294,78 @@ defmodule AntennaWeb.RelationsLive do
 
   def collection_facts(_relation), do: []
 
-  defp backend_text(%{backend: nil}), do: "Chiezo の既定にまかせる"
+  @doc """
+  その相手が受け付ける「考える量」。**相手を選び直すまでは、いまの相手のぶん**。
 
-  defp backend_text(%{backend: backend} = c) do
-    detail = Enum.reject([c.model, c.effort], &(&1 in [nil, ""]))
-    if detail == [], do: backend, else: "#{backend}（#{Enum.join(detail, " / ")}）"
+  相手ごとに段階が違うので（claude は 5 段、antigravity は 3 段）、まとめて並べると
+  選べない値が出ます。
+  """
+  def efforts_for(backends, backend) do
+    case Enum.find(backends || [], &(&1.id == backend)) do
+      nil -> []
+      found -> found.efforts
+    end
   end
 
-  defp last_text(%{last_run_at: nil}), do: "まだ集めていません"
+  @doc """
+  巡回ごとの行（名前・いつ走るか・一周のうちどこまで・前回）。
+
+  **巡回を書いていない収集にも 1 行出ます**（定義そのものが 1 本の巡回として動く）。
+  """
+  def sweep_rows(%{collection: %{sweeps: sweeps}} = relation) when sweeps != [],
+    do: Enum.map(sweeps, &sweep_row(&1, relation))
+
+  def sweep_rows(%{collection: c}) when is_map(c) do
+    [
+      sweep_row(
+        %{
+          name: "既定",
+          backend: c.backend,
+          model: c.model,
+          effort: c.effort,
+          interval_minutes: c.interval_minutes,
+          cover_days: nil,
+          enabled: c.enabled,
+          next_run_at: c.next_run_at,
+          last_run_at: c.last_run_at,
+          last_status: c.last_status,
+          last_error: c.last_error,
+          partitions_visited: 0
+        },
+        %{collection: c}
+      )
+    ]
+  end
+
+  def sweep_rows(_relation), do: []
+
+  defp sweep_row(sweep, %{collection: c}) do
+    total = c[:partitions_total] || 0
+
+    %{
+      name: sweep.name,
+      backend: sweep.backend,
+      model: sweep.model,
+      effort: sweep.effort,
+      interval: if(sweep.interval_minutes, do: "#{sweep.interval_minutes} 分ごと", else: "—"),
+      round: if(sweep[:cover_days], do: "#{round(sweep.cover_days)} 日で一周", else: nil),
+      next:
+        cond do
+          not sweep.enabled -> "止めている"
+          next = Jst.format(sweep.next_run_at) -> next
+          true -> "いますぐ"
+        end,
+      progress: if(total > 0, do: "#{total} のうち #{sweep.partitions_visited}", else: "—"),
+      last: last_text(sweep)
+    }
+  end
+
+  defp last_text(%{last_run_at: nil}), do: "まだ"
 
   defp last_text(%{last_status: "error", last_error: error}) when is_binary(error),
     do: "失敗: #{error}"
 
-  defp last_text(c),
-    do:
-      "#{Jst.format(c.last_run_at)}（+#{c.last_added} 件" <>
-        if(c.last_removed > 0, do: " / -#{c.last_removed} 件）", else: "）")
+  defp last_text(c), do: Jst.format(c.last_run_at) || "まだ"
 
   @doc """
   AI に頼んでいる本文。**依頼した後は Chiezo が持っているものを出す** ——
@@ -538,13 +632,14 @@ defmodule AntennaWeb.RelationsLive do
   def name_offset(node), do: Float.round(sub_size_of(node) * 0.3, 1)
 
   @doc """
-  いま押せないかどうか。
+  ボタンを押させない場面。**押して送っている最中だけ**。
 
-  自分が読んでいる間だけでなく、**Chiezo 側で取り込みが走っている間も押させません** ——
-  走っている間の「いま集めて」は向こうが断るので、押してから断られることになります。
+  かつては「開いたときの読み直し中」と「Chiezo で取り込みが走っている間」も止めて
+  いた。前者は読むだけなので止める理由が無く（開くたびに数秒押せなくなっていた）、
+  後者は**ボタンが集めさせていた頃の名残**です —— いまは送るだけなので、取り込みが
+  走っていても困りません。
   """
-  def collecting?(%{status: :loading}), do: true
-  def collecting?(%{busy: true}), do: true
+  def collecting?(%{pushing: true}), do: true
   def collecting?(_relation), do: false
 
   @doc """
@@ -553,9 +648,19 @@ defmodule AntennaWeb.RelationsLive do
   押しても数分は Chiezo 側に何も出ません（先に AI へ抽出の指定を書かせるため）。
   「収集中…」だけだと、押せていないのと区別が付きません。
   """
-  def collect_label(%{status: :loading} = relation), do: step_text(relation) || "送っています…"
-  def collect_label(%{busy: true}), do: "Chiezo が取り込み中…"
+  def collect_label(%{pushing: true} = relation), do: step_text(relation) || "送っています…"
   def collect_label(_relation), do: "収集の設定を更新"
+
+  @doc """
+  Chiezo 側で取り込みが走っているときの一言。**止めるためではなく、知らせるため**。
+
+  走っている最中は図がもうすぐ変わるので、いま読んでいるものが最新でないと分かる。
+  ボタンは止めない（押しても送るだけで、走らせはしない）。
+  """
+  def busy_note(%{busy: true}),
+    do: "いま Chiezo が取り込み中です。終わると図が変わります。"
+
+  def busy_note(_relation), do: nil
 
   @doc "いま何をしているか。分からなければ nil。"
   def step_text(%{step: :checking}), do: "収集があるか確かめています…"
@@ -576,6 +681,21 @@ defmodule AntennaWeb.RelationsLive do
     do: "指定どおりに引いて長期記憶へ焼いています。AI は動きません。"
 
   def step_note(_relation), do: nil
+
+  @doc """
+  図の代わりに出す一言（まだ本物を読めていないとき）。
+
+  **表示例の図は描きません。** 本物と見分けが付かないので、読み込みが終わるまで
+  5 人の関連図が出て「これは何」になります。読めない理由があればそれを、
+  無ければ何を待っているかを出します。
+  """
+  def sample_message(%{reason: reason} = relation) when reason != nil,
+    do: status_message(relation)
+
+  def sample_message(%{status: :loading}), do: "Chiezo から読み込んでいます…"
+
+  def sample_message(_relation),
+    do: "まだ読み込んでいません。Chiezo に溜まったものを読むとここに図が出ます。"
 
   @doc """
   いまの状態を1文で言う。失敗したときは、直前の図を出していることまで書く。

@@ -7,7 +7,10 @@ defmodule AntennaWeb.RelationsLiveTest do
     {:ok, _live, html} = live(conn, ~p"/relations")
 
     assert html =~ "人物のつながり"
-    assert html =~ "松田優作"
+    # **表示例の図は描かない。** 本物と見分けが付かないので、読み込みが終わるまで
+    # 手書きの関連図が出て「これは何」になる（実際にそう言われた）
+    assert html =~ "まだ読み込んでいません"
+    refute html =~ "松田優作"
   end
 
   test "画家の関連図へ切り替えられる", %{conn: conn} do
@@ -16,7 +19,10 @@ defmodule AntennaWeb.RelationsLiveTest do
     html = live |> element(~s|a[href="/relations?view=painters"]|) |> render_click()
 
     assert html =~ "画家の影響と時代"
-    assert html =~ "フィンセント・ファン・ゴッホ"
+    # **誰が出るかは Chiezo 次第**なので、名前では見ない（前のテストが読み込んだ図が
+    # 残っていると落ちる）。切り替わったことは、見出しと図の器で分かる
+    assert html =~ "relation-canvas"
+    assert html =~ "様式の色" or html =~ "この図の見方"
   end
 
   test "知らない種類は人物の図に丸める", %{conn: conn} do
@@ -26,29 +32,38 @@ defmodule AntennaWeb.RelationsLiveTest do
   end
 
   describe "押した合図" do
-    test "収集中はボタンを押せなくする", %{conn: conn} do
-      # 集めるのは向こうなので、終わるまで押しっぱなしにできると二重に頼める
+    test "開いたときの読み直し中は、押せるまま", %{conn: conn} do
+      # **読むだけなので止める理由が無い。** 一緒くたに :loading で止めていた頃は、
+      # 開くたびに数秒ボタンが押せず、しかも「送っています」と嘘が出ていた
       System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
       on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
       test_pid = self()
 
-      Antenna.HttpStub.stub(fn _request ->
-        # 応答を止めたまま、止めている自分を教える（終わらせるのはテスト側）
-        send(test_pid, {:asked, self()})
+      Antenna.HttpStub.stub(fn
+        # **止めるのは図を読むところだけ。** 相手の一覧は別に引いているので、
+        # そちらまで止めると、解放し忘れが次のテストへ持ち越す
+        %{url: "http://chiezo.test:7010/v1/ai/backends"} ->
+          Antenna.HttpStub.ok(~s({"backends":[]}))
 
-        receive do
-          :go -> Antenna.HttpStub.ok(~s({"results":[],"total":0}))
-        after
-          5_000 -> {:error, :timeout}
-        end
+        _request ->
+          # 応答を止めたまま、止めている自分を教える（終わらせるのはテスト側）
+          send(test_pid, {:asked, self()})
+
+          receive do
+            :go -> Antenna.HttpStub.ok(~s({"results":[],"total":0}))
+          after
+            5_000 -> {:error, :timeout}
+          end
       end)
 
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
 
-      # 開いたときの読み直しが走っている間は、押せない状態になっている
       assert_receive {:asked, worker}, 2_000
-      assert wait_until(fn -> render(live) =~ "収集中…" end)
-      assert render(live) =~ "disabled"
+      # 読み直しの最中でも、ボタンは押せるまま（ボタンそのものを見る —— ページ全体で
+      # 探すと、関係ない要素の disabled まで拾う）
+      button = live |> element("form[phx-submit=collect] button") |> render()
+      assert button =~ "収集の設定を更新"
+      refute button =~ "disabled"
 
       # 止めたままにすると、次のテストへ :loading のまま持ち越す。
       # 1 回の読み直しで何度か聞きに行くので、続きも残らず解放する
@@ -65,9 +80,10 @@ defmodule AntennaWeb.RelationsLiveTest do
              end)
     end
 
-    test "Chiezo が取り込み中のあいだも押せなくする", %{conn: conn} do
-      # 走っている間の「いま集めて」は向こうが断る。押してから断られるのと、
-      # 押せないことが見えているのとでは別物
+    test "Chiezo が取り込み中でも押せる（知らせるだけ）", %{conn: conn} do
+      # **ボタンが集めさせていた頃の名残で止めていた。** いまは送るだけなので、
+      # 取り込みが走っていても困らない。走っていることは知らせる —— 図がもうすぐ
+      # 変わるので、いま読んでいるものが最新でないと分かる
       System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
       on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
 
@@ -85,8 +101,8 @@ defmodule AntennaWeb.RelationsLiveTest do
 
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
 
-      assert wait_until(fn -> render(live) =~ "Chiezo が取り込み中…" end)
-      assert render(live) =~ "disabled"
+      assert wait_until(fn -> render(live) =~ "いま Chiezo が取り込み中です" end)
+      refute live |> element("form[phx-submit=collect] button") |> render() =~ "disabled"
     end
 
     test "いま何をしているのかを出す", %{conn: conn} do
@@ -121,9 +137,10 @@ defmodule AntennaWeb.RelationsLiveTest do
       end)
 
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
-      assert wait_until(fn -> render(live) =~ "関連図を収集" end)
+      assert wait_until(fn -> render(live) =~ "収集の設定を更新" end)
 
-      live |> element("button[phx-click=collect]") |> render_click()
+      # ボタンは「送る設定」と同じ枠に入っているので、フォームごと送る
+      live |> element("form[phx-submit=collect]") |> render_submit(%{})
 
       assert_receive {:asked, worker}, 2_000
       assert wait_until(fn -> render(live) =~ "AI に抽出の指定を書かせています" end)
@@ -138,7 +155,7 @@ defmodule AntennaWeb.RelationsLiveTest do
       # 押したのかどうかが画面に残らない
       {:ok, _live, html} = live(conn, ~p"/relations?view=painters")
 
-      assert html =~ ~s(phx-disable-with="収集中…")
+      assert html =~ ~s(phx-disable-with="送っています…")
     end
   end
 

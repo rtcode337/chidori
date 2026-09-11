@@ -289,6 +289,10 @@ defmodule Antenna.Chiezo do
       backend: item["backend"],
       model: item["model"],
       effort: item["effort"],
+      # 巡回（ざっと / じっくり）。**相手も区画の進み具合も巡回ごとに違う**ので、
+      # 収集に 1 つだけ持たせると、そこに出る値はどちらか片方のものにしかならない
+      sweeps: sweeps_of(item),
+      partitions_total: item["partitions_total"] || 0,
       docs: 0,
       recent: [],
       requested_by: item["requested_by"] || "",
@@ -297,4 +301,55 @@ defmodule Antenna.Chiezo do
   end
 
   def to_map(_item), do: nil
+
+  defp sweeps_of(%{"sweeps" => list}) when is_list(list) do
+    for s <- list, is_map(s) do
+      %{
+        name: s["name"] || "",
+        backend: s["backend"],
+        model: s["model"],
+        effort: s["effort"],
+        interval_minutes: s["interval_minutes"],
+        cover_days: s["cover_days"],
+        partitions_per_run: s["partitions_per_run"],
+        enabled: s["enabled"] != false,
+        next_run_at: s["next_run_at"],
+        last_run_at: s["last_run_at"],
+        last_status: s["last_status"],
+        last_error: s["last_error"],
+        partitions_visited: s["partitions_visited"] || 0
+      }
+    end
+  end
+
+  defp sweeps_of(_item), do: []
+
+  @doc """
+  Chiezo で頼める相手の一覧。**画面の選択肢に使う**ので、向こうが有効にしている
+  ものだけが返ります（無効な相手を選べても、走らせた瞬間に断られる）。
+
+  引けなければ空。**選べないだけで、図は出ます**。
+  """
+  def backends(base) do
+    case get(base <> "/v1/ai/backends") do
+      {:ok, %{status: 200, body: raw}} ->
+        case Jason.decode(raw) do
+          {:ok, %{"backends" => list}} when is_list(list) ->
+            for b <- list, is_map(b), b["id"] do
+              %{
+                id: b["id"],
+                label: b["label"] || b["id"],
+                models: b["models"] || [],
+                efforts: b["efforts"] || []
+              }
+            end
+
+          _ ->
+            []
+        end
+
+      _ ->
+        []
+    end
+  end
 end

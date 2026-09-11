@@ -79,11 +79,18 @@
       <p class="relation-hint">
         <span class="only-touch">押すと全画面。指で動かし、2 本の指でつまんで拡大縮小。</span><span class="only-mouse">引きずって移動、Ctrl+ホイールで拡大縮小。</span>
       </p>
+      <%!-- **表示例の図は描かない。** 本物と見分けが付かないので、読み込みが終わるまで
+           5 人の関連図が出て「これは何」になる。何を待っているかだけを出す --%>
+      <div :if={@relation[:sample?]} class="canvas-empty">
+        <p>{sample_message(@relation)}</p>
+      </div>
+
       <%!-- 絞り込みが掛かっていれば、その様式だけで置き直した図を描く。
            **絞るだけでは足りない** —— 位置がもとのままだと、39 人が高さ 2,500 の面に
            散らばって拡大しないと読めず、絞った意味が無い --%>
       <% shown = Graph.only(@relation, @style_filter) %>
       <svg
+        :if={!@relation[:sample?]}
         viewBox={"0 0 #{shown.width} #{shown.height}"}
         role="img"
         aria-label={shown.title}
@@ -315,31 +322,74 @@
       <% end %>
     </section>
 
-    <section class="relation-actions" aria-label="関連図の情報収集">
-      <div>
-        <strong>公開情報から更新</strong>
-        <p aria-live="polite">{step_text(@relation) || status_message(@relation)}</p>
-        <p :if={step_note(@relation)} class="muted-note">{step_note(@relation)}</p>
-        <p class="muted-note">{source_note(@view)}</p>
-      </div>
-      <%!-- 押した合図は**サーバーの応答を待たずに**出す。集めるのが速く終わる日も
-           あるので、状態だけに任せると押せたのかどうかが分からない --%>
-      <button
-        type="button"
-        phx-click="collect"
-        phx-disable-with="収集中…"
-        disabled={collecting?(@relation)}
-      >
-        {collect_label(@relation)}
-      </button>
-    </section>
+    <%!-- Chiezo の状態と、そこへ送る設定を **1 つの枠にまとめる**。
+         状態を見る場所と、直す場所と、押す場所が離れていると、何がどこへ効くのか
+         読めない --%>
+    <section class="collect-panel" aria-label="関連図の情報収集">
+      <h2>Chiezo の収集</h2>
+      <p aria-live="polite">{step_text(@relation) || status_message(@relation)}</p>
+      <p :if={step_note(@relation)} class="muted-note">{step_note(@relation)}</p>
+      <p :if={busy_note(@relation)} class="muted-note">{busy_note(@relation)}</p>
 
-    <dl :if={collection_facts(@relation) != []} class="collect-facts">
-      <div :for={{label, value} <- collection_facts(@relation)}>
-        <dt>{label}</dt>
-        <dd>{value}</dd>
-      </div>
-    </dl>
+      <dl :if={collection_facts(@relation) != []} class="collect-facts">
+        <div :for={{label, value} <- collection_facts(@relation)}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      </dl>
+
+      <form phx-submit="collect">
+        <%!-- 巡回ごとに 1 行。**相手も進み具合も巡回ごとに違う**ので、収集に 1 つだけ
+             出すと、そこに出る値はどちらか片方のものにしかならない --%>
+        <table :if={sweep_rows(@relation) != []} class="sweep-table">
+          <thead>
+            <tr>
+              <th>巡回</th>
+              <th>頼む相手</th>
+              <th>間隔</th>
+              <th>次にいつ</th>
+              <th>一周のうち</th>
+              <th>前回</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={row <- sweep_rows(@relation)}>
+              <td>{row.name}</td>
+              <td class="pick">
+                <select name={"sweep|#{row.name}|backend"}>
+                  <option value="">Chiezo の既定にまかせる</option>
+                  <option :for={b <- @backends} value={b.id} selected={b.id == row.backend}>
+                    {b.label}
+                  </option>
+                </select>
+                <select name={"sweep|#{row.name}|effort"}>
+                  <option value="">考える量は相手の既定</option>
+                  <option
+                    :for={e <- efforts_for(@backends, row.backend)}
+                    value={e}
+                    selected={e == row.effort}
+                  >
+                    {e}
+                  </option>
+                </select>
+              </td>
+              <td>
+                {row.interval}
+                <span :if={row.round} class="muted-note">（{row.round}）</span>
+              </td>
+              <td>{row.next}</td>
+              <td>{row.progress}</td>
+              <td>{row.last}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p class="muted-note">{source_note(@view)}</p>
+        <button type="submit" phx-disable-with="送っています…" disabled={collecting?(@relation)}>
+          {collect_label(@relation)}
+        </button>
+      </form>
+    </section>
 
     <%!-- **どちらも Chiezo が持っているもの**なので、1 つにまとめる。
          機械で引いたものと AI が書いたものの線引きが、この図でいちばん大事なところ --%>
