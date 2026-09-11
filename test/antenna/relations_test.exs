@@ -68,8 +68,9 @@ defmodule Antenna.RelationsTest do
       assert payload["requested_by"] == "antenna"
 
       # **回る先は Chiezo に割らせる。** 全員が必ずどこかの区画に入る見出し順で、
-      # 1 区画 50 人（2,999 人なら約 60 区画）
-      assert payload["partition"] == %{"by" => "title", "target" => 50}
+      # 1 区画 25 人 —— **1 回の答えが長くなりすぎない大きさ**にしてある
+      # （50 人ずつで聞いていた頃、AI の答えが出力上限に当たって途中で切れた）
+      assert payload["partition"] == %{"by" => "title", "target" => 25}
 
       # **巡回は 2 本。** ざっとは 14 日で一周（1 回に見る区画数は Chiezo が
       # 区画の数から計算するので、画家が増えても一周の日数は変わらない）、
@@ -135,7 +136,7 @@ defmodule Antenna.RelationsTest do
       assert_received {:patched, url, patch}
       assert url =~ "/v1/collect/antenna_painters"
       assert patch["prompt"] =~ "{partition}"
-      assert patch["partition"] == %{"by" => "title", "target" => 50}
+      assert patch["partition"] == %{"by" => "title", "target" => 25}
       assert [%{"name" => "ざっと"}, %{"name" => "じっくり"}] = patch["sweeps"]
 
       # **走らせない**
