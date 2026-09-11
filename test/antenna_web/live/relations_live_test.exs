@@ -337,6 +337,59 @@ defmodule AntennaWeb.RelationsLiveTest do
     end
   end
 
+  describe "動いたものだけ" do
+    alias Antenna.Relations.Graph
+    alias AntennaWeb.RelationsLive
+
+    defp painters(stamps) do
+      for {name, stamp} <- stamps do
+        %{
+          "title" => name,
+          "body" => "説明",
+          "tags" => ["画家", "年代:1800-1900"],
+          "updated_at" => stamp
+        }
+      end
+    end
+
+    test "動いた件数と時刻を一言で出す" do
+      graph =
+        Graph.from_docs(
+          painters([
+            {"モネ", "2026-09-11T15:59:11+00:00"},
+            {"ダ・ヴィンチ", "2026-09-01T00:00:00+00:00"}
+          ])
+        )
+
+      note = RelationsLive.changed_note(graph)
+      assert note =~ "1 件"
+      # 時刻は日本時間で出す（+09:00）
+      assert note =~ "2026-09-12 00:59 JST"
+    end
+
+    test "動いたものが無ければ何も言わない" do
+      # 最初の一括作成。**比べる先が無い**ので、件数を出しても読む人には何も言えていない
+      graph = Graph.from_docs(painters([{"モネ", "2026-09-01T00:00:00+00:00"}]))
+      assert RelationsLive.changed_note(graph) == nil
+    end
+
+    test "押している間は、動いたものだけで置き直した図を描く" do
+      graph =
+        Graph.from_docs(
+          painters([
+            {"モネ", "2026-09-11T15:59:11+00:00"},
+            {"ダ・ヴィンチ", "2026-09-01T00:00:00+00:00"}
+          ])
+        )
+
+      all = RelationsLive.shown(graph, %{changed_only: false, style_filter: nil})
+      only = RelationsLive.shown(graph, %{changed_only: true, style_filter: nil})
+
+      assert length(all.nodes) == 2
+      assert Enum.map(only.nodes, & &1.name) == ["モネ"]
+    end
+  end
+
   describe "探して寄る" do
     alias AntennaWeb.RelationsLive
 

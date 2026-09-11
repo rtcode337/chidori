@@ -49,6 +49,9 @@ defmodule AntennaWeb.RelationsLive do
        artwork: nil,
        edge: nil,
        style_filter: nil,
+       # 直近の巡回で動いたものだけを出しているか。**様式の絞り込みとは排他** ——
+       # 2 つ重ねると、出ていないものが「動かなかった」のか「別の様式」なのか読めない
+       changed_only: false,
        focus_sent: nil,
        backends: []
      )
@@ -160,7 +163,18 @@ defmodule AntennaWeb.RelationsLive do
     style = String.trim(style)
     next = if style == "" or socket.assigns.style_filter == style, do: nil, else: style
     # 絞り込みを変えたら見ている場所も倍率も意味を失うので、図を初めから見せ直す
-    {:noreply, assign(socket, style_filter: next, viewport: nil, focus: nil)}
+    {:noreply, assign(socket, style_filter: next, changed_only: false, viewport: nil, focus: nil)}
+  end
+
+  # 直近の巡回で動いたものだけにする。**もう一度押すと戻る**（凡例と同じ押し方）
+  def handle_event("filter_changed", _params, socket) do
+    {:noreply,
+     assign(socket,
+       changed_only: not socket.assigns.changed_only,
+       style_filter: nil,
+       viewport: nil,
+       focus: nil
+     )}
   end
 
   # 閉じ方は3つとも同じところへ来る（ボタン・図の外を押す・Esc）
@@ -413,6 +427,27 @@ defmodule AntennaWeb.RelationsLive do
   様式は AI が足していくので、増えるほど凡例が図より長くなります。
   """
   def style_legend(relation), do: Enum.take(relation[:styles] || [], @legend_max)
+
+  @doc """
+  いま描く図。**絞り込みが掛かっていれば、その人たちだけで置き直したもの**を返します。
+
+  位置をもとのままにして絞ると、数十人が高さ 2,500 の面に散らばって拡大しないと
+  読めません（絞った意味が無い）。
+  """
+  def shown(relation, %{changed_only: true}), do: Graph.only_changed(relation)
+  def shown(relation, %{style_filter: style}), do: Graph.only(relation, style)
+
+  @doc """
+  直近の巡回で動いたものの一言。動いたものが無ければ nil。
+
+  **時刻と件数の両方を出す** —— 件数だけではいつの話か分からず、時刻だけでは
+  何件動いたのか分からない。**最初の一括作成では出ません**（全部が同じ刻みなので、
+  比べる先が無い）。
+  """
+  def changed_note(%{changed: count, changed_at: at}) when is_integer(count) and count > 0,
+    do: "#{Jst.format(at)} の巡回で #{count} 件が動きました"
+
+  def changed_note(_relation), do: nil
 
   @doc "その画家の代表作（無ければ空）。**印を出すかの判断もここを見る**。"
   def works_of(node), do: node[:works] || []

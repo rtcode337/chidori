@@ -210,6 +210,19 @@ defmodule Antenna.Relations.Graph do
 
   def only(relation, _style), do: relation
 
+  @doc """
+  直近の巡回で動いたものだけを取り出して、置き直した図を返します。
+
+  絞り方が違うだけで、やっていることは `only/2` と同じです
+  （**絞るだけでは読めない**ので置き直す）。
+  """
+  def only_changed(relation) do
+    case Enum.filter(relation.nodes || [], & &1[:changed?]) do
+      [] -> relation
+      kept -> refocus(relation, kept)
+    end
+  end
+
   defp refocus(%{nodes: []} = relation, _kept), do: relation
 
   defp refocus(relation, []), do: relation
@@ -281,8 +294,14 @@ defmodule Antenna.Relations.Graph do
         Map.put(node, :hue, node |> styles_of() |> Enum.map(&hues[&1]) |> Enum.min(fn -> nil end))
       end)
 
+    {marked, changed_at} = mark_changed(coloured)
+
     %{
-      nodes: coloured,
+      nodes: marked,
+      # 直近の巡回で動いたぶん。**時刻と件数の両方を出す** —— 件数だけでは
+      # いつの話か分からず、時刻だけでは何件動いたのか分からない
+      changed_at: changed_at,
+      changed: Enum.count(marked, & &1[:changed?]),
       edges: edges,
       ticks: ticks(laid.nodes),
       bands: laid.bands,
@@ -306,6 +325,8 @@ defmodule Antenna.Relations.Graph do
       ticks: [],
       bands: [],
       styles: [],
+      changed_at: nil,
+      changed: 0,
       width: @canvas_width,
       height: @canvas_height
     }
@@ -574,6 +595,9 @@ defmodule Antenna.Relations.Graph do
           # **Chiezo に入っているタグをそのまま持つ。** どういう条件でこの人が
           # 名簿に入り、何が分かっているのかは、これを見せないと読み取れない
           tags: tags,
+          # **いつ動いたか。** Chiezo は 1 回の巡回で触れた文書に同じ刻みを打つので、
+          # これが揃っているものが「その回で動いたぶん」になる
+          changed_at: stamp_of(doc),
           kind: :artist
         }
       ]
@@ -581,6 +605,44 @@ defmodule Antenna.Relations.Graph do
   end
 
   defp to_node(_doc), do: []
+
+  defp stamp_of(doc) do
+    case doc["updated_at"] do
+      text when is_binary(text) -> String.trim(text)
+      _ -> nil
+    end
+  end
+
+  @doc """
+  直近の巡回で動いたものに印を付け、その時刻を返します。
+
+  Chiezo は**1 回の巡回で触れた文書に同じ刻みを打つ**ので、いちばん新しい刻みを
+  持つものが、その回で足された・直されたぶんになります。
+
+  **全部が同じ刻みなら、印は付けません。** 最初の一括作成がそれで、比べる先が
+  無いまま「全部が動いた」と出しても読む人には何も言えていません。
+  """
+  def mark_changed(nodes) do
+    stamps = nodes |> Enum.map(& &1[:changed_at]) |> Enum.reject(&(&1 in [nil, ""])) |> Enum.uniq()
+
+    case stamps do
+      list when length(list) < 2 ->
+        {nodes, nil}
+
+      list ->
+        latest = Enum.max_by(list, &stamp_value/1)
+        {Enum.map(nodes, &Map.put(&1, :changed?, &1[:changed_at] == latest)), latest}
+    end
+  end
+
+  # 並べるための値。**読めないものは最古として扱う**（印は「いちばん新しい」に
+  # 付くので、読めなかったぶんが最新に化けるより、付かないほうが害が小さい）
+  defp stamp_value(text) do
+    case DateTime.from_iso8601(to_string(text)) do
+      {:ok, at, _offset} -> DateTime.to_unix(at)
+      _ -> 0
+    end
+  end
 
   # 丸の下に出す様式。**いくつあっても並べる** —— 1 つに切り詰めると、
   # 枠が 2 つ掛かっている画家の丸だけ、片方の様式しか書かれていないことになる

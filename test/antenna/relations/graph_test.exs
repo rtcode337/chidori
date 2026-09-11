@@ -256,6 +256,68 @@ defmodule Antenna.Relations.GraphTest do
     end
   end
 
+  describe "直近の巡回で動いたもの" do
+    defp at(title, tags, stamp), do: Map.put(painter(title, tags), "updated_at", stamp)
+
+    test "いちばん新しい刻みを持つものに印が付く" do
+      # Chiezo は 1 回の巡回で触れた文書に同じ刻みを打つ
+      graph =
+        Graph.from_docs([
+          at("モネ", ["年代:1840-1926"], "2026-09-11T15:59:11+00:00"),
+          at("ルノワール", ["年代:1841-1919"], "2026-09-11T15:59:11+00:00"),
+          at("ダ・ヴィンチ", ["年代:1452-1519"], "2026-09-01T00:00:00+00:00")
+        ])
+
+      assert graph.changed == 2
+      assert graph.changed_at == "2026-09-11T15:59:11+00:00"
+      assert Enum.filter(graph.nodes, & &1[:changed?]) |> Enum.map(& &1.name) |> Enum.sort() ==
+               ["モネ", "ルノワール"]
+    end
+
+    test "全部が同じ刻みなら印を付けない" do
+      # 最初の一括作成がこれ。**比べる先が無い**ので「全部が動いた」と言っても意味が無い
+      graph =
+        Graph.from_docs([
+          at("モネ", ["年代:1840-1926"], "2026-09-01T00:00:00+00:00"),
+          at("ルノワール", ["年代:1841-1919"], "2026-09-01T00:00:00+00:00")
+        ])
+
+      assert graph.changed == 0
+      assert graph.changed_at == nil
+      refute Enum.any?(graph.nodes, & &1[:changed?])
+    end
+
+    test "刻みを持たない文書が混ざっても壊さない" do
+      graph =
+        Graph.from_docs([
+          painter("刻み無し", ["年代:1800-1850"]),
+          at("モネ", ["年代:1840-1926"], "2026-09-11T15:59:11+00:00"),
+          at("ダ・ヴィンチ", ["年代:1452-1519"], "2026-09-01T00:00:00+00:00")
+        ])
+
+      assert graph.changed == 1
+    end
+
+    test "動いたものだけにすると、その人たちだけで置き直す" do
+      docs =
+        [at("モネ", ["年代:1840-1926", "地域:フランス"], "2026-09-11T15:59:11+00:00")] ++
+          for i <- 1..60,
+              do: at("その他#{i}", ["年代:#{1800 + i}-1900", "地域:フランス"], "2026-09-01T00:00:00+00:00")
+
+      graph = Graph.from_docs(docs)
+      graph = %{graph | nodes: Graph.sized(graph.nodes, %{})}
+      only = Graph.only_changed(graph)
+
+      assert Enum.map(only.nodes, & &1.name) == ["モネ"]
+      assert only.height <= graph.height
+    end
+
+    test "動いたものが無ければ、図はそのまま" do
+      graph = Graph.from_docs([painter("モネ", ["年代:1840-1926"])])
+      assert Graph.only_changed(graph).nodes == graph.nodes
+    end
+  end
+
   describe "ひとつの様式だけを見る" do
     test "その様式の画家だけになり、線もその中だけになる" do
       docs =

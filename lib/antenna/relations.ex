@@ -1003,7 +1003,7 @@ defmodule Antenna.Relations do
       base_url <>
         "/v1/" <>
         name <>
-        "/filter?limit=#{@page_size}&offset=#{offset}&fields=title,body,tags,extra&tag=" <>
+        "/filter?limit=#{@page_size}&offset=#{offset}&fields=title,body,tags,extra,updated_at&tag=" <>
         URI.encode_www_form(Graph.kind_tag())
 
     case Http.get(url,

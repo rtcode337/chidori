@@ -85,10 +85,10 @@
         <p>{sample_message(@relation)}</p>
       </div>
 
-      <%!-- 絞り込みが掛かっていれば、その様式だけで置き直した図を描く。
+      <%!-- 絞り込みが掛かっていれば、その人たちだけで置き直した図を描く。
            **絞るだけでは足りない** —— 位置がもとのままだと、39 人が高さ 2,500 の面に
            散らばって拡大しないと読めず、絞った意味が無い --%>
-      <% shown = Graph.only(@relation, @style_filter) %>
+      <% shown = shown(@relation, assigns) %>
       <svg
         :if={!@relation[:sample?]}
         viewBox={"0 0 #{shown.width} #{shown.height}"}
@@ -177,6 +177,7 @@
               "relation-node",
               to_string(node.kind),
               works_of(node) != [] && "has-work",
+              node[:changed?] && "changed",
               node.id == @focus && "focused"
             ]}
             phx-click="show_node"
@@ -250,6 +251,21 @@
       </svg>
     </section>
 
+    <%!-- 直近の巡回で何が動いたか。**図の下、凡例のすぐ上に置く** —— 押すと
+         その人たちだけになるので、絞り込みの仲間として並べたほうが見つかる。
+         動いたものが無ければ出さない（最初の一括作成では全部が同じ刻みになる）--%>
+    <section :if={@view == "painters" and changed_note(@relation)} class="changed-note">
+      <p>{changed_note(@relation)}</p>
+      <button
+        type="button"
+        class={@changed_only && "on"}
+        phx-click="filter_changed"
+        aria-pressed={to_string(@changed_only)}
+      >
+        {if @changed_only, do: "すべて出す", else: "動いたものだけ"}
+      </button>
+    </section>
+
     <%!-- 色の凡例。**図の真下に置く** —— 色を見てから凡例を探すので、間に何かを
          挟むと目が行き来する。**押すとその様式だけになる**（もう一度押すと戻る）--%>
     <section :if={@view == "painters" and style_legend(@relation) != []} class="style-legend">
@@ -295,6 +311,12 @@
           <strong>複数の様式を持つ画家は、そのうち 1 つの色</strong>になります
           （丸は 1 つしかないので、どれを選んでも同じくらい正しくない）。
           下の凡例を押すと<strong>その様式だけを大きく並べ直します</strong>。
+        </p>
+        <p>
+          <strong>直近の巡回で動いた画家は、緑の破線で囲みます</strong>
+          （Chiezo が足したか直したかしたもの）。図の下の「動いたものだけ」を押すと、
+          その人たちだけを大きく並べ直します。<strong>最初の一括作成では出ません</strong> ——
+          全部が同じ時刻になるので、比べる先がありません。
         </p>
         <p>
           <strong>どの名前も押せます。</strong> もとになった記事・Chiezo に入っているタグ・

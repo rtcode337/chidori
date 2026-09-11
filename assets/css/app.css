@@ -117,6 +117,12 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relation-matches button:hover { background: #f1f0fb; color: #4338a8; }
 .match-years { color: #98a0ba; font-weight: 500; }
 
+/* 直近の巡回で動いた人。**塗りは様式の色に使ってあるので、縁で示す** ——
+   塗りを変えると、動いたことと様式のどちらを言っているのか読めなくなる。
+   探して選んだ人の印より先に書く（同じ強さなので後に書いたほうが勝つ ——
+   自分で選んだ相手の印が、動いた印に負けないように） */
+.relation-node.changed rect { stroke: #1d7a5f; stroke-width: 3; stroke-dasharray: 5 3; }
+
 /* 探して選んだ人。**周りの関連図を読むために寄っている**ので、どれがその人かが
    一目で分かる必要がある */
 .relation-node.focused rect { fill: #efecff; stroke: #4338a8; stroke-width: 3; filter: drop-shadow(0 0 8px rgba(67, 56, 168, .55)); }
@@ -281,6 +287,21 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .band-labels .band-count { fill: #97a0bb; font-weight: 600; }
 
 /* 様式の色の凡例。図の下に置く —— 図の上に重ねると、狭い画面で図を覆う */
+/* 直近の巡回で何が動いたか。押すとその人たちだけになるので、凡例と同じ見た目にそろえる */
+.changed-note { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .8rem 0 0; font-size: .85rem; color: #3b4463; }
+.changed-note p { margin: 0; }
+.changed-note button {
+  padding: 0.15rem 0.6rem;
+  border: 1px solid #dfe3f0;
+  border-radius: 999px;
+  background: #fff;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.changed-note button:hover { border-color: #1d7a5f; }
+.changed-note button.on { border-color: #1d7a5f; background: #e8f5f0; font-weight: 700; }
+
 .style-legend { margin: 0.5rem 0 1.4rem; }
 .style-legend ul {
   display: flex;
