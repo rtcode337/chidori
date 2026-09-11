@@ -77,7 +77,7 @@
       <%!-- 案内は端末で変える。押しても全画面にならない PC に「押すと全画面」と
            書くと嘘になる（全画面はボタンからいつでも入れる） --%>
       <p class="relation-hint">
-        <span class="only-touch">押すと全画面。指で動かし、2 本の指でつまんで拡大縮小。</span><span class="only-mouse">引きずって移動、ホイールで拡大縮小。</span>
+        <span class="only-touch">押すと全画面。指で動かし、2 本の指でつまんで拡大縮小。</span><span class="only-mouse">引きずって移動、Ctrl+ホイールで拡大縮小。</span>
       </p>
       <svg
         viewBox={"0 0 #{@relation.width} #{@relation.height}"}
@@ -293,7 +293,8 @@
             変わった画家を 1 つに決めると、どれを選んでも間違いになるためです）。 <strong>濃い矢印</strong>は AI が調べた影響関係（何を受けたかが線に出ます）。 <strong>薄い線</strong>は記事どうしが相互にリンクしているというだけの関係で、
             Wikipedia から機械的に引いたものです。左の目盛りは年表ですが、
             丸を等間隔に並べているので、画家が多い時代ほど間隔が広がります。
-            図は<strong>引きずって移動、ホイールで拡大縮小</strong>でき、押すと全画面になります。
+            図は<strong>引きずって移動、Ctrl+ホイールで拡大縮小</strong>できます
+            （素のホイールはページのスクロールに使います）。
           <% else %>
             実線は家族、点線はコンビとメンバーの関係です。
           <% end %>
@@ -325,6 +326,15 @@
   const MAX_SCALE = 8
   // これ以上動いたら「引きずった」とみなす（押したことにしない）
   const DRAG_SLOP = 5
+
+  // 端を越えたあとの動きの重さ（1 が抵抗なし）と、伸びきるまでの px。
+  // **止まるのではなく重くする** —— 端で完全に動かなくなると、行き止まりなのか
+  // 操作が効いていないのかが区別できない
+  const RUBBER = 0.45
+  const RUBBER_MAX = 110
+
+  // 離したあと、はみ出したぶんが戻るまでの時間（ミリ秒）
+  const SETTLE_MS = 220
 
   // 見ている範囲を知らせるまでの落ち着き待ち（ミリ秒）。引きずっている最中に
   // 毎フレーム送ると、往復のたびに描き直しが挟まってかえって固まる
@@ -386,6 +396,7 @@
 
     destroyed() {
       clearTimeout(this.reportTimer)
+      clearTimeout(this.settleTimer)
       this.unbind()
     },
 
@@ -458,17 +469,68 @@
       return {box, width: width * this.scale, height: height * this.scale}
     },
 
-    // 図を器の外へ出しすぎない。真っ白な面だけが見える状態にしない。
+    // 動ける範囲。`{x: [min, max], y: [min, max]}` を返す。
     //
     // **器ではなく図の大きさで測る。** 図は器よりずっと縦長で、倍率 1 倍でも
-    // はみ出している —— 器の高さで測ると、拡大するまで縦に動かせなくなる
-    clamp() {
-      if (!this.svg) { return }
+    // はみ出している —— 器の高さで測ると、拡大するまで縦に動かせなくなる。
+    // 収まっているほうの軸は動かさない（余白の中で図が泳ぐと落ち着かない）。
+    range() {
       const {box, width, height} = this.metrics()
-      if (!isFinite(width) || !isFinite(height)) { return }
-      // 収まっているほうの軸は動かさない（余白の中で図が泳ぐと落ち着かない）
-      this.tx = width <= box.width ? 0 : Math.min(0, Math.max(box.width - width, this.tx))
-      this.ty = height <= box.height ? 0 : Math.min(0, Math.max(box.height - height, this.ty))
+      if (!isFinite(width) || !isFinite(height)) { return null }
+      return {
+        x: width <= box.width ? [0, 0] : [box.width - width, 0],
+        y: height <= box.height ? [0, 0] : [box.height - height, 0],
+      }
+    },
+
+    // 図を器の外へ出しすぎない。真っ白な面だけが見える状態にしない。
+    clamp() {
+      const limit = this.range()
+      if (!limit) { return }
+      this.tx = Math.min(limit.x[1], Math.max(limit.x[0], this.tx))
+      this.ty = Math.min(limit.y[1], Math.max(limit.y[0], this.ty))
+    },
+
+    // 端からどれだけはみ出しているか（範囲の中なら 0）
+    overshoot(value, [min, max]) {
+      if (value > max) { return value - max }
+      if (value < min) { return value - min }
+      return 0
+    },
+
+    // 端に着いてからも、抵抗をつけて少しだけ動かす。
+    //
+    // **止まるのではなく重くなる。** 端で完全に動かなくなると、行き止まりなのか
+    // 操作が効いていないのかが指先から区別できない（実際に「バグなのか端なのか
+    // 分からない」と言われた）。少し動いて、離すと戻れば、端だと分かる。
+    drag(dx, dy) {
+      const limit = this.range()
+      if (!limit) { return }
+      this.tx = this.pull(this.tx, dx, limit.x)
+      this.ty = this.pull(this.ty, dy, limit.y)
+    },
+
+    pull(value, delta, bounds) {
+      const out = Math.abs(this.overshoot(value, bounds))
+      // はみ出しているぶんだけ動きを鈍らせ、伸びきったところで止める
+      const give = out >= RUBBER_MAX ? 0 : RUBBER * (1 - out / RUBBER_MAX)
+      const next = value + delta
+      // 範囲へ戻る向きの動きには抵抗をかけない（戻すのが重いと直感に反する）
+      const returning = Math.abs(this.overshoot(next, bounds)) < out
+      return returning ? next : value + delta * (out > 0 ? give : 1)
+    },
+
+    // 指を離したら、はみ出したぶんを戻す。
+    settle() {
+      const {tx, ty} = this
+      this.clamp()
+      if (this.tx === tx && this.ty === ty) { return }
+      if (this.svg) { this.svg.style.transition = `transform ${SETTLE_MS}ms ease-out` }
+      this.apply()
+      clearTimeout(this.settleTimer)
+      this.settleTimer = setTimeout(() => {
+        if (this.svg) { this.svg.style.transition = "" }
+      }, SETTLE_MS + 20)
     },
 
     reset() {
@@ -504,7 +566,13 @@
 
     bind() {
       this.onWheel = (ev) => {
-        // 図の上でだけ横取りする（ページのスクロールを奪わない）
+        // **素のホイールは横取りしない。** 図はページの中に埋まっているので、
+        // 素で拡大縮小にすると、読み進めようとスクロールしただけで図が動き、
+        // ページが進まない。拡大は Ctrl（Mac は ⌘）を押しながら。
+        //
+        // トラックパッドのつまむ操作は ctrlKey 付きの wheel として届くので、
+        // この分岐だけで指の操作も拾える。
+        if (!ev.ctrlKey && !ev.metaKey) { return }
         ev.preventDefault()
         this.zoomAt(ev.deltaY < 0 ? 1.15 : 1 / 1.15, ev.clientX, ev.clientY)
       }
@@ -554,9 +622,7 @@
         }
         // **倍率 1 倍でも動かせる。** 図は器より縦長なので、拡大していなくても
         // 下のほうは引きずらないと見えない
-        this.tx += dx
-        this.ty += dy
-        this.clamp()
+        this.drag(dx, dy)
         this.apply()
       }
 
@@ -569,6 +635,7 @@
         if (this.el.hasPointerCapture(ev.pointerId)) {
           this.el.releasePointerCapture(ev.pointerId)
         }
+        this.settle()
       }
 
       // 引きずった直後の click は捨てる（丸の上で指を離すと代表作が開いてしまう）
