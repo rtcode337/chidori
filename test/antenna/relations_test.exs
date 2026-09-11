@@ -91,9 +91,11 @@ defmodule Antenna.RelationsTest do
       assert relation.title == fallback().title
     end
 
-    test "「収集」を押したら、依頼するだけでなく実際に集めさせる" do
-      # 依頼するだけだと一瞬で終わり、画面も変わらないので、押せたのかどうかが
-      # 分からなかった。押したときは向こうを 1 回走らせる
+    test "押しても走らせない。antenna の設定を送り直すだけ" do
+      # **走らせると定時の巡回がその回ぶん先送りになる**（押した人にはそれが見えない）。
+      # 集めるのは Chiezo が決まった間隔で回すもの。
+      # 送り直すのは、作るときの POST が「もうある」で断られるため —— それだけだと
+      # antenna 側で指示文や区画を直しても永遠に届かない
       test_pid = self()
 
       HttpStub.stub(fn
@@ -104,21 +106,40 @@ defmodule Antenna.RelationsTest do
           if String.ends_with?(url, "/run"), do: send(test_pid, {:ran, url})
           HttpStub.ok(Jason.encode!(%{"extract" => %{"source" => "jawiki", "tag" => "画家"}}))
 
-        %{method: :patch} ->
+        %{method: :patch, url: url, body: body} ->
+          send(test_pid, {:patched, url, Jason.decode!(body)})
           HttpStub.ok("{}")
 
         %{method: :get, url: @base <> "/v1/collect"} ->
-          HttpStub.ok(Jason.encode!(%{"collections" => []}))
+          HttpStub.ok(
+            Jason.encode!(%{"collections" => [%{"name" => "antenna_painters"}]})
+          )
 
-        %{method: :get, url: _url} ->
-          HttpStub.ok(docs_body([painter_doc("クロード・モネ", ["年代:1860-1920"])]))
+        %{method: :get, url: url} ->
+          if String.contains?(url, "/filter?") do
+            HttpStub.ok(docs_body([painter_doc("クロード・モネ", ["年代:1860-1920"])]))
+          else
+            HttpStub.ok(
+              Jason.encode!(%{
+                "name" => "antenna_painters",
+                "extract" => %{"source" => "jawiki", "tag" => "画家"}
+              })
+            )
+          end
       end)
 
       assert {:ok, %{nodes: [%{name: "クロード・モネ"}]}} =
-               Relations.collect_painters(@base, fallback())
+               Relations.push_painters(@base, fallback())
 
-      assert_received {:ran, url}
-      assert url =~ "/v1/collect/antenna_painters/run"
+      # 指示文・区画・巡回がそのまま向こうへ行く
+      assert_received {:patched, url, patch}
+      assert url =~ "/v1/collect/antenna_painters"
+      assert patch["prompt"] =~ "{partition}"
+      assert patch["partition"] == %{"by" => "title", "target" => 50}
+      assert [%{"name" => "ざっと"}, %{"name" => "じっくり"}] = patch["sweeps"]
+
+      # **走らせない**
+      refute_received {:ran, _url}
     end
 
     test "収集を作るときは、依頼する前に指定を書かせて一緒に渡す" do
@@ -152,7 +173,7 @@ defmodule Antenna.RelationsTest do
           HttpStub.ok(docs_body([painter_doc("クロード・モネ", ["年代:1860-1920"])]))
       end)
 
-      assert {:ok, %{nodes: [_]}} = Relations.collect_painters(@base, fallback())
+      assert {:ok, %{nodes: [_]}} = Relations.push_painters(@base, fallback())
 
       # 名前はまだ無いので渡さない（相手も今の指定も無い）
       assert_received {:drafted, %{"name" => nil} = asked}
@@ -185,7 +206,7 @@ defmodule Antenna.RelationsTest do
           HttpStub.ok(docs_body([painter_doc("クロード・モネ", ["年代:1860-1920"])]))
       end)
 
-      assert {:ok, %{nodes: [_]}} = Relations.collect_painters(@base, fallback())
+      assert {:ok, %{nodes: [_]}} = Relations.push_painters(@base, fallback())
 
       assert_received :drafted
       refute_received :drafted
@@ -228,7 +249,7 @@ defmodule Antenna.RelationsTest do
           end
       end)
 
-      assert {:ok, %{nodes: [_]}} = Relations.collect_painters(@base, fallback())
+      assert {:ok, %{nodes: [_]}} = Relations.push_painters(@base, fallback())
 
       assert_received {:drafted, payload}
       assert payload["name"] == "antenna_painters"
@@ -278,7 +299,7 @@ defmodule Antenna.RelationsTest do
           end
       end)
 
-      assert {:ok, %{nodes: [_]}} = Relations.collect_painters(@base, fallback())
+      assert {:ok, %{nodes: [_]}} = Relations.push_painters(@base, fallback())
 
       assert_received {:patched, patch}
       refute Map.has_key?(patch, "cursor")
@@ -291,6 +312,9 @@ defmodule Antenna.RelationsTest do
           flunk("指定を持っているのに書かせ直している")
 
         %{method: :post} ->
+          HttpStub.ok("{}")
+
+        %{method: :patch} ->
           HttpStub.ok("{}")
 
         %{method: :get, url: @base <> "/v1/collect"} ->
@@ -309,7 +333,7 @@ defmodule Antenna.RelationsTest do
           end
       end)
 
-      assert {:ok, %{nodes: [_]}} = Relations.collect_painters(@base, fallback())
+      assert {:ok, %{nodes: [_]}} = Relations.push_painters(@base, fallback())
     end
 
     @tag :capture_log
@@ -320,6 +344,9 @@ defmodule Antenna.RelationsTest do
           {:ok, %{status: 502, body: ~s({"error":"AI が抽出の指定を返しませんでした"})}}
 
         %{method: :post} ->
+          HttpStub.ok("{}")
+
+        %{method: :patch} ->
           HttpStub.ok("{}")
 
         %{method: :get, url: @base <> "/v1/collect"} ->
@@ -333,42 +360,24 @@ defmodule Antenna.RelationsTest do
           end
       end)
 
-      assert {:ok, %{nodes: [_]}} = Relations.collect_painters(@base, fallback())
+      assert {:ok, %{nodes: [_]}} = Relations.push_painters(@base, fallback())
     end
 
     @tag :capture_log
-    test "止まっている収集は集めさせられない。溜まっているものは出したまま理由を添える" do
+    test "止まっている収集にも設定は送る（有効にするのは Chiezo 側の判断）" do
+      # 押して設定が届かないと、有効にした瞬間に古い指示文で走り出す
+      test_pid = self()
+
       HttpStub.stub(fn
         %{method: :post, url: @base <> "/v1/collect/draft-extract"} ->
           HttpStub.ok(drafted_body())
 
-        %{method: :post, url: @base <> "/v1/collect"} ->
+        %{method: :post} ->
           HttpStub.ok("{}")
 
-        # 有効にできるのは Chiezo の画面だけ。向こうは 403 で断る
-        %{method: :post, url: _run} ->
-          {:ok, %{status: 403, body: ""}}
-
-        %{method: :get, url: @base <> "/v1/collect"} ->
-          HttpStub.ok(Jason.encode!(%{"collections" => []}))
-
-        %{method: :get, url: _url} ->
-          HttpStub.ok(docs_body([painter_doc("クロード・モネ", ["年代:1860-1920"])]))
-      end)
-
-      assert {:ok, %{nodes: [_]}, :collection_disabled} =
-               Relations.collect_painters(@base, fallback())
-    end
-
-    @tag :capture_log
-    test "止まっていて、まだ何も溜まっていなければ、断られた理由のほうを出す" do
-      # 「まだ何も溜まっていません」だけでは、次に何をすればよいか分からない
-      HttpStub.stub(fn
-        %{method: :post, url: @base <> "/v1/collect"} ->
+        %{method: :patch} ->
+          send(test_pid, :patched)
           HttpStub.ok("{}")
-
-        %{method: :post, url: _run} ->
-          {:ok, %{status: 403, body: ""}}
 
         %{method: :get, url: @base <> "/v1/collect"} ->
           HttpStub.ok(
@@ -377,14 +386,22 @@ defmodule Antenna.RelationsTest do
             })
           )
 
-        %{method: :get, url: _url} ->
-          HttpStub.ok(docs_body([]))
+        %{method: :get, url: url} ->
+          if String.contains?(url, "/filter?") do
+            HttpStub.ok(docs_body([painter_doc("クロード・モネ", ["年代:1860-1920"])]))
+          else
+            HttpStub.ok(
+              Jason.encode!(%{
+                "name" => "antenna_painters",
+                "enabled" => false,
+                "extract" => %{"source" => "jawiki", "tag" => "画家"}
+              })
+            )
+          end
       end)
 
-      assert {:error, {:collection_disabled, collection}} =
-               Relations.collect_painters(@base, fallback())
-
-      refute collection.enabled
+      assert {:ok, %{nodes: [_]}} = Relations.push_painters(@base, fallback())
+      assert_received :patched
     end
 
     @tag :capture_log

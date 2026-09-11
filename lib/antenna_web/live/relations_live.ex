@@ -31,6 +31,10 @@ defmodule AntennaWeb.RelationsLive do
   # 検索で出す候補の数。**選ぶための一覧**なので、多すぎると選べない
   @max_matches 8
 
+  # 凡例に並べる様式の数。**全部は並べない** —— 様式は AI が足していくので、
+  # 増えるほど凡例が図より長くなる。少ない様式は丸の下の字で読む
+  @legend_max 14
+
   # 札どうしのあいだに空ける幅（図の座標）。0 にすると線がぴったり接して、
   # 2 枚あるのか 1 枚なのか読めなくなる
   @label_gap 2
@@ -39,7 +43,14 @@ defmodule AntennaWeb.RelationsLive do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(page_title: "関連図", artwork: nil, artwork_for: nil)
+     |> assign(
+       page_title: "関連図",
+       detail: nil,
+       artwork: nil,
+       edge: nil,
+       style_filter: nil,
+       focus_sent: nil
+     )
      # 検索。`focus` が決まっているあいだは、その人と繋がっている相手を
      # 大きさに関わらず描く（周りの関連図を見るのが目的なので）
      |> assign(query: "", matches: [], focus: nil)
@@ -73,9 +84,26 @@ defmodule AntennaWeb.RelationsLive do
     {:noreply, socket}
   end
 
-  # ノードを押したら、その人の代表作を出す。**押されたときだけ引く** ——
-  # 12 人ぶんを先に集めると、見ない絵まで毎回取りに行くことになる
-  def handle_event("show_work", %{"name" => name}, socket) do
+  # モーダルから「この画家を詳しく調べて」を Chiezo へ割り込ませる。
+  # **定時の巡回には触らない**ので、待たずに頼める
+  def handle_event("focus_painter", %{"name" => name} = params, socket) do
+    note = String.trim(params["note"] || "")
+
+    note =
+      if note == "",
+        do: "#{name}について、影響を受けた画家と代表作を詳しく調べて埋めてください。",
+        else: note
+
+    Relations.focus_painter(socket.assigns.view, name, note)
+    {:noreply, assign(socket, focus_sent: name)}
+  end
+
+  # ノードを押したら、その人のことを出す。**代表作を持っていなくても押せる** ——
+  # 押せる丸と押せない丸が混じっていると、押しても何も起きない丸を何度も押すことになる。
+  # 出すのは、もとになった記事・Chiezo に入っているタグ・（あれば）代表作の絵。
+  #
+  # **絵は押されたときだけ引く** —— 先に集めると、見ない絵まで毎回取りに行くことになる
+  def handle_event("show_node", %{"name" => name}, socket) do
     node = Enum.find(socket.assigns.relation.nodes, &(&1.name == name))
 
     cond do
@@ -83,20 +111,62 @@ defmodule AntennaWeb.RelationsLive do
         {:noreply, socket}
 
       # もう一度押したら閉じる
-      socket.assigns.artwork_for == name ->
-        {:noreply, assign(socket, artwork: nil, artwork_for: nil)}
+      detail_name(socket.assigns.detail) == name ->
+        {:noreply, assign(socket, detail: nil, artwork: nil)}
+
+      works_of(node) == [] ->
+        # 絵が無いことは分かっているので、探しているふりをしない
+        {:noreply, assign(socket, detail: node, artwork: [], edge: nil, focus_sent: nil)}
 
       true ->
+        works = works_of(node)
+
         {:noreply,
          socket
-         |> assign(artwork_for: name, artwork: :loading)
-         |> start_async(:artwork, fn -> Antenna.Artwork.lookup(node[:work]) end)}
+         |> assign(detail: node, artwork: :loading, edge: nil, focus_sent: nil)
+         |> start_async(:artwork, fn ->
+           works |> Enum.map(&Antenna.Artwork.lookup/1) |> Enum.reject(&is_nil/1)
+         end)}
     end
+  end
+
+  # 影響の線を押したら、**何をもって影響元としたか**を出す。
+  #
+  # 出せるのは AI が書いた一言と、両者の記事へのリンクだけ。**それを隠さない** ——
+  # 影響関係は Wikipedia に書いていないので機械では引けず、ここは AI の判断そのもの。
+  # 根拠を確かめたい人が記事へ行けることが、いま渡せる最良のもの。
+  def handle_event("show_edge", %{"from" => from, "to" => to} = params, socket) do
+    nodes = Map.new(socket.assigns.relation.nodes, &{&1.id, &1})
+    kind = if params["kind"] == "influence", do: :influence, else: :related
+
+    edge =
+      Enum.find(socket.assigns.relation.edges, fn e ->
+        e.from == from and e.to == to and e.kind == kind
+      end)
+
+    if edge && nodes[from] && nodes[to] do
+      {:noreply,
+       assign(socket,
+         edge: %{from: nodes[from], to: nodes[to], label: edge.label, kind: kind},
+         detail: nil,
+         artwork: nil
+       )}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # 凡例を押したら、その様式だけにする。**もう一度押すと戻る**
+  def handle_event("filter_style", %{"style" => style}, socket) do
+    style = String.trim(style)
+    next = if style == "" or socket.assigns.style_filter == style, do: nil, else: style
+    # 絞り込みを変えたら見ている場所も倍率も意味を失うので、図を初めから見せ直す
+    {:noreply, assign(socket, style_filter: next, viewport: nil, focus: nil)}
   end
 
   # 閉じ方は3つとも同じところへ来る（ボタン・図の外を押す・Esc）
   def handle_event("close_work", _params, socket) do
-    {:noreply, assign(socket, artwork: nil, artwork_for: nil)}
+    {:noreply, assign(socket, detail: nil, artwork: nil, edge: nil)}
   end
 
   # 図が「いまどこを、どれくらいの倍率で見ているか」を知らせてくる。
@@ -155,7 +225,8 @@ defmodule AntennaWeb.RelationsLive do
   end
 
   def handle_async(:artwork, {:exit, _reason}, socket) do
-    {:noreply, assign(socket, artwork: nil)}
+    # **空の一覧にする。** nil にすると「探している最中」と見分けが付かない
+    {:noreply, assign(socket, artwork: [])}
   end
 
   @impl true
@@ -223,13 +294,78 @@ defmodule AntennaWeb.RelationsLive do
   def extract_text(_relation), do: nil
 
   def prompt_note(%{collection: c}) when is_map(c),
-    do: "いま Chiezo が持っている内容です。直すのは Chiezo の管理画面の「集める」から。"
+    do: "いま Chiezo が持っている内容です。"
 
   def prompt_note(_relation),
-    do: "「関連図を収集」を押すと、この内容で Chiezo に頼みます。"
+    do: "まだ Chiezo に収集がありません。「収集の設定を更新」を押すと、この内容で作ります。"
 
-  @doc "その人の代表作の見出し（無ければ nil）。押せるかどうかの判断にも使う。"
-  def work_of(node), do: node[:work]
+  alias Antenna.Relations.Graph
+
+  @doc """
+  丸に当てる色。様式を持たない画家には当てません（白のまま）。
+
+  **薄く塗って、枠線だけ濃くします。** 名前を読むのが先なので、塗りを濃くすると
+  字が読みにくくなる —— 色は「同じ派閥か」を見分けるための印で、主役ではない。
+  """
+  def hue_style(node) do
+    case Graph.hue_of(node) do
+      nil -> nil
+      hue -> "fill: hsl(#{hue} 62% 92%); stroke: hsl(#{hue} 45% 58%)"
+    end
+  end
+
+  @doc """
+  色の凡例に出す様式（多い順）。**全部は並べません**（`@legend_max`）——
+  様式は AI が足していくので、増えるほど凡例が図より長くなります。
+  """
+  def style_legend(relation), do: Enum.take(relation[:styles] || [], @legend_max)
+
+  @doc "その画家の代表作（無ければ空）。**印を出すかの判断もここを見る**。"
+  def works_of(node), do: node[:works] || []
+
+  @doc "いま開いている人の名前（開いていなければ nil）。"
+  def detail_name(nil), do: nil
+  def detail_name(node), do: node[:name]
+
+  @doc """
+  その画家について Chiezo に入っているタグを、読める形に分けます。
+
+  **そのまま並べない** —— 「関連」は多い人で数十件あり、しかも図の上に線として
+  出ているので、一覧で繰り返す意味が薄い。押した人が知りたいのは
+  「どういう条件でこの人が名簿に入り、何が分かっているのか」のほう。
+  """
+  def tag_groups(node) do
+    tags = node[:tags] || []
+
+    [
+      {"年代", for(t <- tags, v = strip(t, "年代:"), do: v)},
+      {"様式", for(t <- tags, v = strip(t, "様式:"), do: v)},
+      {"代表作", for(t <- tags, v = strip(t, "代表作:"), do: v)},
+      {"影響元", for(t <- tags, v = strip(t, "影響元:"), do: v)},
+      {"その他", for(t <- tags, plain_tag?(t), do: t)}
+    ]
+    |> Enum.reject(fn {_label, values} -> values == [] end)
+  end
+
+  defp strip(tag, prefix) do
+    case tag do
+      ^prefix <> rest -> rest
+      _ -> nil
+    end
+  end
+
+  # 頭に区分の付いていないタグ（「画家」など）。**関連は出さない**（線で見えている）
+  defp plain_tag?(tag) do
+    not Enum.any?(~w(年代: 様式: 代表作: 影響元: 関連:), &String.starts_with?(tag, &1))
+  end
+
+  @doc "その画家の Wikipedia の記事。**代表作ではなく画家を指す**。"
+  def article_url(node) do
+    node[:url] ||
+      if title = node[:article] do
+        "https://ja.wikipedia.org/wiki/" <> URI.encode(String.replace(title, " ", "_"))
+      end
+  end
 
   @doc """
   いま描く丸だけを選びます。**全部は描きません。**
@@ -363,6 +499,9 @@ defmodule AntennaWeb.RelationsLive do
         y2: to.y,
         kind: edge.kind,
         label: edge.label,
+        # 押されたときに誰と誰の線かを引き当てる
+        from: edge.from,
+        to: edge.to,
         mid_x: (from.x + to.x) / 2,
         mid_y: (from.y + to.y) / 2 - 8
       }
@@ -414,14 +553,15 @@ defmodule AntennaWeb.RelationsLive do
   押しても数分は Chiezo 側に何も出ません（先に AI へ抽出の指定を書かせるため）。
   「収集中…」だけだと、押せていないのと区別が付きません。
   """
-  def collect_label(%{status: :loading} = relation), do: step_text(relation) || "収集中…"
+  def collect_label(%{status: :loading} = relation), do: step_text(relation) || "送っています…"
   def collect_label(%{busy: true}), do: "Chiezo が取り込み中…"
-  def collect_label(_relation), do: "関連図を収集"
+  def collect_label(_relation), do: "収集の設定を更新"
 
   @doc "いま何をしているか。分からなければ nil。"
   def step_text(%{step: :checking}), do: "収集があるか確かめています…"
   def step_text(%{step: :drafting}), do: "AI に抽出の指定を書かせています…"
   def step_text(%{step: :requesting}), do: "Chiezo に収集を依頼しています…"
+  def step_text(%{step: :pushing}), do: "Chiezo の設定を書き換えています…"
   def step_text(%{step: :collecting}), do: "Chiezo に集めさせています…"
   def step_text(%{step: :reading}), do: "溜まったものを読んでいます…"
   def step_text(_relation), do: nil
@@ -463,7 +603,8 @@ defmodule AntennaWeb.RelationsLive do
   """
   def source_note("painters") do
     "この図は Chiezo に溜まった内容から作っています（収集「#{Antenna.Relations.painters_collection()}」）。" <>
-      "集めて整理するのは Chiezo で、antenna は図の形にして見せるだけです。"
+      "**集めるのは Chiezo が決まった間隔で回します。** このボタンは、" <>
+      "antenna が持っている依頼文と回り方を Chiezo へ送り直すだけで、集めさせはしません。"
   end
 
   def source_note(_view), do: "「関連図を収集」を押すと、その場で AI に調べさせて図を作り直します。"

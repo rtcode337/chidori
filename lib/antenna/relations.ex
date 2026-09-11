@@ -209,8 +209,23 @@ defmodule Antenna.Relations do
     GenServer.call(__MODULE__, {:current, valid_key(key)})
   end
 
+  @doc """
+  antenna が持っている設定を Chiezo へ送り、読み直します。
+
+  **走らせません。** 定時の巡回は Chiezo が回すもので、こちらから割り込んで
+  走らせると、その回のぶん予定が先送りになる（押した人にはそれが見えない）。
+  """
   def collect_now(key) when is_binary(key) do
     GenServer.cast(__MODULE__, {:collect, valid_key(key)})
+  end
+
+  @doc """
+  **この画家を詳しく調べて**、を Chiezo へ割り込ませます。
+
+  定時の巡回とは別の道なので、進み具合にも次の予定にも触りません。
+  """
+  def focus_painter(key, name, note) when is_binary(key) and is_binary(name) do
+    GenServer.cast(__MODULE__, {:focus, valid_key(key), name, note})
   end
 
   @doc """
@@ -304,6 +319,21 @@ defmodule Antenna.Relations do
   def handle_cast({:refresh, _key}, state), do: {:noreply, state}
 
   @impl true
+  def handle_cast({:focus, key, painter, note}, state) do
+    case chiezo_base_url() do
+      nil ->
+        {:noreply, broadcast(put_in(state.reasons[key], :chiezo_not_configured), key)}
+
+      base_url ->
+        # **待たせない。** 割り込みは Chiezo 側で数分かかるので、押した合図だけ返す
+        Task.Supervisor.start_child(Antenna.TaskSupervisor, fn ->
+          ask_focus(base_url, painter, note)
+        end)
+
+        {:noreply, state}
+    end
+  end
+
   def handle_cast({:collect, key}, state) do
     cond do
       state.statuses[key] == :loading ->
@@ -508,7 +538,7 @@ defmodule Antenna.Relations do
   defp fetch_relation("painters", fallback) do
     case chiezo_base_url() do
       nil -> {:error, :chiezo_not_configured}
-      base_url -> collect_painters(base_url, fallback)
+      base_url -> push_painters(base_url, fallback)
     end
   end
 
@@ -563,9 +593,7 @@ defmodule Antenna.Relations do
 
           {:ok,
            fallback
-           # 枠は**大きさが決まってから**組み直す。丸の半径まで含めて囲うので、
-           # 知名度を当てる前に測ると、大きい丸が枠からはみ出す
-           |> Map.merge(%{graph | nodes: sized, clusters: Graph.clusters(sized)})
+           |> Map.merge(%{graph | nodes: sized})
            |> Map.put(:collection, collection)}
         end
     end
@@ -592,7 +620,7 @@ defmodule Antenna.Relations do
   止まっている収集は Chiezo が断ります（有効にできるのは Chiezo の画面だけ）。
   そのときも溜まっているものは読み直したうえで、断られたことを理由として返します。
   """
-  def collect_painters(base_url, fallback) do
+  def push_painters(base_url, fallback) do
     name = painters_collection()
 
     with {:ok, existing} <- ensure_collection_once(base_url, name),
@@ -600,12 +628,29 @@ defmodule Antenna.Relations do
          # 書けなかったのなら理由がある。同じ押下で 2 度目を投げると、
          # 時間切れの 30 分をもう一度待つことになる（実際にそうなった）
          :ok <- if(existing, do: ensure_extract(base_url, name), else: :ok) do
-      progress(:collecting)
-
-      case Chiezo.run(base_url, name) do
-        :ok -> reading(fetch_painters(base_url, fallback))
-        {:error, reason} -> refused(reading(fetch_painters(base_url, fallback)), reason)
+      # **既にある収集には設定を送り直す。** 作るときの `POST` は「もうある」で
+      # 断られるので、それだけだと antenna 側で指示文や区画を直しても永遠に届かない
+      # （画面には Chiezo の中身が出るので、直したはずのものが出ないことになる）。
+      # **走らせはしない** —— 走らせると定時の巡回がその回ぶん先送りになる
+      if existing do
+        progress(:pushing)
+        Chiezo.patch(base_url, name, base_attrs(name))
       end
+
+      reading(fetch_painters(base_url, fallback))
+    end
+  end
+
+  @doc """
+  この画家を詳しく調べてほしい、を Chiezo へ割り込ませます。
+
+  **区画ではなく名指しで渡します** —— 区画を渡すだけでは、直してほしい 1 人が
+  差し込みに載る保証がありません。
+  """
+  def ask_focus(base_url, name, note) do
+    case Chiezo.focus(base_url, painters_collection(), note, [name]) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -683,10 +728,6 @@ defmodule Antenna.Relations do
   defp patch_for(spec, _docs), do: %{extract: spec}
 
   # 断られたときは**理由のほうを前に出す**。読めたものはそのまま出す
-  defp refused({:ok, relation}, reason), do: {:ok, relation, reason}
-  defp refused({:error, {_previous, collection}}, reason), do: {:error, {reason, collection}}
-  defp refused({:error, _previous}, reason), do: {:error, reason}
-
   @doc """
   最初の 1 回を機械的に埋めるための**依頼文**です。
 
@@ -726,7 +767,14 @@ defmodule Antenna.Relations do
     - "様式:<様式名>"。「〜派の画家」のカテゴリから、"派" まで含めて作る。
       このカテゴリを持たない画家も多いので、その人には付けなくて構いません
     - "#{Graph.work_tag()}:<絵の記事名>"。「〈その画家〉の作品」のようなカテゴリが
-      あるので、そこから人気の順に 1 つ。無い画家も多いので、その人には付きません
+      あるので、そこから**人気の順に 3 つまで**（take: 3）。無い画家も多いので、
+      その人には付きません。**1 つに絞らないでください** —— 多作の画家を 1 枚で
+      代表させると、どれを選んでも「その人らしさ」を外します
+    - "#{Graph.region_tag()}:<地域名>"。**図の横軸に使うので必ず作ってください。**
+      「〈世紀〉世紀〈地域〉の画家」から地域名を取ります。
+      日本は時代区分のカテゴリ（「江戸時代の画家」「明治時代の画家」など）にしか
+      入っていない人が多いので、そちらからも "#{Graph.region_tag()}:日本" を作ってください。
+      「オランダ黄金時代の画家」のような言い方も拾ってください
     - "#{Graph.related_tag()}:<相手の画家名>"。**記事どうしが相互にリンクしている相手**を
       出してください（片側だけのリンクは、有名どうしが軒並み繋がって図が読めなくなります）
     説明は記事の冒頭を使い、出典は日本語版 Wikipedia のその記事の URL にしてください。

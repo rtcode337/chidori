@@ -79,10 +79,14 @@
       <p class="relation-hint">
         <span class="only-touch">押すと全画面。指で動かし、2 本の指でつまんで拡大縮小。</span><span class="only-mouse">引きずって移動、Ctrl+ホイールで拡大縮小。</span>
       </p>
+      <%!-- 絞り込みが掛かっていれば、その様式だけで置き直した図を描く。
+           **絞るだけでは足りない** —— 位置がもとのままだと、39 人が高さ 2,500 の面に
+           散らばって拡大しないと読めず、絞った意味が無い --%>
+      <% shown = Graph.only(@relation, @style_filter) %>
       <svg
-        viewBox={"0 0 #{@relation.width} #{@relation.height}"}
+        viewBox={"0 0 #{shown.width} #{shown.height}"}
         role="img"
-        aria-label={@relation.title}
+        aria-label={shown.title}
       >
         <defs>
           <marker
@@ -99,26 +103,38 @@
         </defs>
         <%!-- 年表の目盛り。**間隔は一定ではない** —— 丸は年代の順に等間隔で並べてあるので、
              目盛りの側が伸び縮みする。人が多い年代ほど広がる --%>
-        <g :for={tick <- @relation[:ticks] || []} class="relation-tick">
-          <line x1="70" y1={tick.y} x2={@relation.width} y2={tick.y} />
-          <text x="8" y={tick.y + 5}>{tick.year}年</text>
+        <%!-- 地域の帯。**丸より先に描く**ので、丸も線も帯の上に乗る。
+             帯の幅は人数の比なので、広い帯にはそれだけの画家がいる --%>
+        <g :for={band <- shown[:bands] || []} class="relation-band">
+          <rect x={band.x} y="0" width={band.width} height={shown.height} />
+          <line x1={band.x} y1="0" x2={band.x} y2={shown.height} />
         </g>
-        <%!-- 様式の枠。**丸より先に描く**ので、線も丸も枠の上に乗る。
-             重なるのは同じ時代に複数の様式が並走しているときで、実際にそうなので
-             避けて描かない --%>
-        <g :for={cluster <- @relation[:clusters] || []} class="relation-cluster">
-          <rect x={cluster.x} y={cluster.y} width={cluster.width} height={cluster.height} rx="18" />
-          <text x={cluster.x + 12} y={cluster.y + 18}>
-            {cluster.style}
-            <tspan class="cluster-count">{cluster.members}人</tspan>
+        <g :for={tick <- shown[:ticks] || []} class="relation-tick">
+          <line x1="70" y1={tick.y} x2={shown.width} y2={tick.y} />
+        </g>
+        <%!-- **年代の札だけは画面の左端に貼り付ける。** 図と一緒に流すと、少し右へ
+             引きずっただけで年表が画面の外へ出てしまい、拡大したときにいちばん
+             知りたい「いまどのあたりの時代か」が読めなくなる。
+             横の位置と字の大きさは PanZoom が当て直す（縦は図と一緒に動く）--%>
+        <g class="tick-labels" data-pinned-labels>
+          <text :for={tick <- shown[:ticks] || []} x="8" y={tick.y + 5}>
+            {tick.year}年
+          </text>
+        </g>
+        <%!-- 帯の名前。**上端に貼り付ける** —— 下へ引きずったときに、いま見ている
+             縦の列がどの地域なのか分からなくなる（年代の札と同じ理由）--%>
+        <g class="band-labels" data-pinned-top>
+          <text :for={band <- shown[:bands] || []} x={band.x + band.width / 2} y="0">
+            {band.band}
+            <tspan class="band-count">{band.members}人</tspan>
           </text>
         </g>
         <%!-- **描くのは見えているぶんだけ**（`drawn_nodes/2`）。全部を並べると
              2 万を超える要素になり、引きずるだけで固まる。端の座標は先に
              引き当ててある（`edge_lines/2`）—— ここで探すとノード数 × エッジ数の
              線形探索になる --%>
-        <% drawn = drawn_nodes(@relation, @viewport, @focus) %>
-        <%= for edge <- edge_lines(@relation, drawn) do %>
+        <% drawn = drawn_nodes(shown, @viewport, @focus) %>
+        <%= for edge <- edge_lines(shown, drawn) do %>
           <line
             x1={edge.x1}
             y1={edge.y1}
@@ -127,19 +143,36 @@
             class={"relation-edge #{edge.kind}"}
             marker-end={if edge.kind == :influence, do: "url(#arrow)"}
           />
+          <%!-- **押す的は別に置く。** 線そのものは細いので、そのままでは指でも
+               マウスでも当たらない。透明な太い線を重ねて、そちらで受ける。
+               **薄い線（相互リンク）も押せる** —— 影響の線はまだ数えるほどしか
+               無いので、押せるのが影響だけだと「押せない図」になる --%>
+          <line
+            x1={edge.x1}
+            y1={edge.y1}
+            x2={edge.x2}
+            y2={edge.y2}
+            class="edge-target"
+            phx-click="show_edge"
+            phx-value-from={edge.from}
+            phx-value-to={edge.to}
+            phx-value-kind={edge.kind}
+          />
           <text x={edge.mid_x} y={edge.mid_y} class="edge-label">{edge.label}</text>
         <% end %>
         <%= for node <- drawn do %>
-          <%!-- 代表作があるノードは押せる。押すとその絵を出す --%>
+          <%!-- **どの丸も押せる。** 押すと、もとになった記事・Chiezo に入っている
+               タグ・（あれば）代表作の絵を出す。押せる丸と押せない丸が混じっていると、
+               押しても何も起きない丸を何度も押すことになる --%>
           <g
             transform={"translate(#{node.x}, #{node.y})"}
             class={[
               "relation-node",
               to_string(node.kind),
-              work_of(node) && "has-work",
+              works_of(node) != [] && "has-work",
               node.id == @focus && "focused"
             ]}
-            phx-click={work_of(node) && "show_work"}
+            phx-click="show_node"
             phx-value-name={node.name}
           >
             <%!-- 探して選んだ人の目印。**札の色だけでは周りに紛れる**ので、
@@ -156,12 +189,17 @@
             <%!-- **丸ではなく札にする。** 円は角へ行くほど内側が痩せるので、
                  横に長い名前を入れるには不釣り合いに大きな円が要り、そうしないと
                  名前が外へはみ出す。四角なら名前の幅どおりに広げられる --%>
+            <%!-- **様式は色で見せる。** 枠で囲うのはやめた —— 同じ様式の画家は
+                 生年順に並べると飛び飛びになるので、他人を入れずに囲おうとすると
+                 枠が細かく割れる（印象派 39 人が 11 枠になった）。色なら、
+                 離れていても同じ派閥だと分かる --%>
             <rect
               x={-label_width_of(node) / 2}
               y={-label_height_of(node) / 2}
               width={label_width_of(node)}
               height={label_height_of(node)}
               rx={label_height_of(node) * 0.28}
+              style={hue_style(node)}
             />
             <%!-- 字の大きさは 1 人ずつ違う（知名度で決まる）ので、CSS ではなく
                  ここで当てる。**style で当てる** —— SVG の font-size 属性は
@@ -170,37 +208,111 @@
               text-anchor="middle"
               dominant-baseline="central"
               class="node-name"
+              y={node[:name_dy] || 0}
               style={"font-size: #{name_size_of(node)}px"}
             >
-              {node.name}
+              {node.name}<tspan :if={works_of(node) != []} class="work-mark">
+                {Antenna.Relations.Graph.work_mark()}
+              </tspan>
             </text>
-            <%!-- 様式と年代は札の外（下）に置く。中に入れると、名前のために
-                 広げた札がさらに縦に伸びて、隣と重なる --%>
+            <%!-- **様式は札の中に入れる。** 外に置くと、隣の丸の札と重なったときに
+                 どちらの様式か分からなくなる（札の中なら、札ごと重なりを避ける
+                 仕組みに乗る）。札の高さはそのぶん広げてある --%>
             <text
               :if={node.note}
               text-anchor="middle"
+              dominant-baseline="central"
               class="node-note"
-              y={label_height_of(node) / 2 + sub_size_of(node) * 1.15}
+              y={node[:note_dy] || 0}
               style={"font-size: #{sub_size_of(node)}px"}
             >
               {node.note}
             </text>
-            <%= if node.years do %>
-              <text
-                text-anchor="middle"
-                class="year-label"
-                y={
-                  label_height_of(node) / 2 +
-                    sub_size_of(node) * if node.note, do: 2.4, else: 1.15
-                }
-                style={"font-size: #{sub_size_of(node)}px"}
-              >
-                {node.years}
-              </text>
-            <% end %>
+            <%!-- 年代は外（下）のまま。札の中に 3 行入れると札が縦に伸びすぎる --%>
+            <text
+              :if={node.years}
+              text-anchor="middle"
+              class="year-label"
+              y={label_height_of(node) / 2 + sub_size_of(node) * 1.15}
+              style={"font-size: #{sub_size_of(node)}px"}
+            >
+              {node.years}
+            </text>
           </g>
         <% end %>
       </svg>
+    </section>
+
+    <%!-- 色の凡例。**図の真下に置く** —— 色を見てから凡例を探すので、間に何かを
+         挟むと目が行き来する。**押すとその様式だけになる**（もう一度押すと戻る）--%>
+    <section :if={@view == "painters" and style_legend(@relation) != []} class="style-legend">
+      <ul>
+        <li :for={{style, count, hue} <- style_legend(@relation)}>
+          <button
+            type="button"
+            class={@style_filter == style && "on"}
+            phx-click="filter_style"
+            phx-value-style={style}
+            aria-pressed={to_string(@style_filter == style)}
+          >
+            <span class="swatch" style={"background: hsl(#{hue} 62% 72%)"}></span>
+            {style}<span class="muted-note">{count}人</span>
+          </button>
+        </li>
+        <li :if={@style_filter}>
+          <button type="button" class="clear" phx-click="filter_style" phx-value-style="">
+            すべて出す
+          </button>
+        </li>
+      </ul>
+    </section>
+
+    <%!-- 出典を並べていた右半分を畳んで、説明のほうを広げた。**読むのは見方のほう**で、
+         出典は表示例のものが固定で出ているだけだった --%>
+    <section class="relation-guide">
+      <h2>この図の見方</h2>
+      <%= if @view == "painters" do %>
+        <p>
+          <strong>縦は時代</strong>です（上から下へ、並びは生年順）。左端の年代は図を
+          動かしても貼り付いたままになります。丸を等間隔に並べているので、
+          <strong>画家が多い時代ほど目盛りの間隔が広がります</strong>。
+        </p>
+        <p>
+          <strong>横は地域</strong>です（ヨーロッパ／南北アメリカ／アジア・その他）。
+          帯の幅はその地域の画家の数で、名前は上端に貼り付きます。
+          地域が取れていない画家は「その他」に入ります。
+        </p>
+        <p>
+          <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、
+          <strong>色は様式</strong>です。様式は札の中の 2 行目にも書いてあります。
+          <strong>複数の様式を持つ画家は、そのうち 1 つの色</strong>になります
+          （丸は 1 つしかないので、どれを選んでも同じくらい正しくない）。
+          下の凡例を押すと<strong>その様式だけを大きく並べ直します</strong>。
+        </p>
+        <p>
+          <strong>どの名前も押せます。</strong> もとになった記事・Chiezo に入っているタグ・
+          代表作の絵（最大 3 枚）が出て、その場で
+          <strong>「この画家を詳しく調べて」を Chiezo に頼めます</strong>。
+          名前のうしろの <strong>{Antenna.Relations.Graph.work_mark()}</strong> は
+          代表作が入っている印です。
+        </p>
+        <p>
+          <strong>線も押せます。</strong> 濃い矢印は AI が調べた影響関係で、
+          <strong>何をもってそう言えるのかは AI の判断そのもの</strong>です
+          （影響関係は記事に書いていないので機械では引けません）。
+          薄い線は記事どうしが互いにリンクしているというだけの関係で、
+          <strong>Wikipedia から機械的に引いたもの</strong>です。
+          どちらを押しても、その線の根拠と両者の記事へのリンクが出ます。
+        </p>
+        <p>
+          図は<strong>引きずって移動、Ctrl+ホイールで拡大縮小</strong>できます
+          （素のホイールはページのスクロールに使います）。
+          <strong>小さすぎる札と、見えていないところは描きません</strong> ——
+          8,000 人を一度に並べると読めないので、拡大すると出てきます。
+        </p>
+      <% else %>
+        <p>実線は家族、点線はコンビとメンバーの関係です。</p>
+      <% end %>
     </section>
 
     <section class="relation-actions" aria-label="関連図の情報収集">
@@ -229,28 +341,90 @@
       </div>
     </dl>
 
-    <%!-- AI に何を頼んでいるかは、押す前にも後にも読めるようにする --%>
+    <%!-- **どちらも Chiezo が持っているもの**なので、1 つにまとめる。
+         機械で引いたものと AI が書いたものの線引きが、この図でいちばん大事なところ --%>
     <details :if={@view == "painters"} class="news-prompt">
-      <summary>AI に頼んでいる内容</summary>
+      <summary>Chiezo への依頼文</summary>
       <p class="news-prompt-note">{prompt_note(@relation)}</p>
+
+      <h3>抽出の指定（Wikipedia から機械的に引く条件）</h3>
+      <p class="news-prompt-note">
+        名簿・年代・様式・地域・代表作・相互リンクは、この指定で日本語版 Wikipedia から
+        引いています。<strong>AI は関わりません</strong>（決まった結果が出ます）。
+      </p>
+      <pre :if={extract_text(@relation)}>{extract_text(@relation)}</pre>
+      <p :if={!extract_text(@relation)} class="muted-note">まだ指定が入っていません。</p>
+
+      <h3>指示文（AI に頼んでいる内容）</h3>
+      <p class="news-prompt-note">
+        AI が書くのは<strong>影響関係と説明</strong>と、カテゴリに無い様式です。
+        誰を見るかは Chiezo が区画で渡すので、指示文には書いてありません。
+      </p>
       <pre>{prompt_text(@relation)}</pre>
     </details>
 
-    <%!-- 名簿と年代は AI ではなく Wikipedia から引いたもの。どちらが書いたのかが
-         読めないと、図の間違いを全部 AI のせいにしてしまう --%>
-    <details :if={extract_text(@relation)} class="news-prompt">
-      <summary>Wikipedia から機械的に引いている条件</summary>
-      <p class="news-prompt-note">
-        名簿・年代・様式・出典はこの指定で日本語版 Wikipedia から引いています。
-        AI が書くのは影響関係と代表作と説明です。
-      </p>
-      <pre>{extract_text(@relation)}</pre>
-    </details>
-
-    <%!-- 押した人の代表作。**画像は持たず、Wikipedia のものを指すだけ**。
+    <%!-- 押した人のこと。**絵は持たず、Wikipedia のものを指すだけ**。
          図の外に重ねて出す —— 図の下に足すと、押した人が画面の外にいることがある --%>
+    <%!-- 影響の線を押したとき。**何をもって影響元としたかを正直に出す** ——
+         影響関係は Wikipedia に書いていないので機械では引けず、ここは AI の判断
+         そのもの。根拠を確かめたい人が記事へ行けるようにする --%>
     <div
-      :if={@artwork_for}
+      :if={@edge}
+      class="artwork-backdrop"
+      phx-window-keydown="close_work"
+      phx-key="Escape"
+    >
+      <section
+        class="artwork"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edge-name"
+        phx-click-away="close_work"
+      >
+        <div class="artwork-head">
+          <strong id="edge-name">{@edge.from.name} → {@edge.to.name}</strong>
+          <button type="button" phx-click="close_work">閉じる</button>
+        </div>
+        <%= if @edge.kind == :influence do %>
+          <p class="edge-reason">
+            {@edge.to.name}は{@edge.from.name}から
+            <strong>{@edge.label || "影響を受けた"}</strong>、と AI が書いています。
+          </p>
+          <p class="muted-note">
+            <strong>これは AI の判断です。</strong>
+            名簿・年代・様式・相互リンクは Wikipedia から機械的に引いていますが、
+            <strong>誰が誰から何を受けたのかは記事に書いていない</strong>ので引けません。
+            確かめるには、それぞれの記事を読んでください。
+          </p>
+        <% else %>
+          <p class="edge-reason">
+            <strong>{@edge.from.name}と{@edge.to.name}は、記事どうしが互いにリンクしています。</strong>
+          </p>
+          <p class="muted-note">
+            これは Wikipedia から機械的に引いた線で、<strong>影響関係ではありません</strong>。
+            <strong>片側だけのリンクは採りません</strong> —— 有名な画家は多くの記事から
+            名前を出されるので、片側で繋ぐと有名どうしが軒並み繋がって図が読めなくなります。
+            互いに名前を出している組だけを残しています。
+            <strong>何の関係かまでは、リンクの有無からは分かりません</strong>。
+          </p>
+        <% end %>
+        <ul class="edge-links">
+          <li :if={article_url(@edge.from)}>
+            <a href={article_url(@edge.from)} target="_blank" rel="noreferrer">
+              {@edge.from.name} を Wikipedia で見る
+            </a>
+          </li>
+          <li :if={article_url(@edge.to)}>
+            <a href={article_url(@edge.to)} target="_blank" rel="noreferrer">
+              {@edge.to.name} を Wikipedia で見る
+            </a>
+          </li>
+        </ul>
+      </section>
+    </div>
+
+    <div
+      :if={@detail}
       class="artwork-backdrop"
       phx-window-keydown="close_work"
       phx-key="Escape"
@@ -263,52 +437,87 @@
         phx-click-away="close_work"
       >
         <div class="artwork-head">
-          <strong id="artwork-name">{@artwork_for}</strong>
+          <strong id="artwork-name">{@detail.name}</strong>
           <button type="button" phx-click="close_work">閉じる</button>
         </div>
+
+        <%!-- **行き先は画家の記事。** 押したのは画家なので、代表作の記事へ飛ばすと
+             「この人のことを知りたい」に答えていない --%>
+        <p :if={article_url(@detail)} class="artwork-source">
+          <a href={article_url(@detail)} target="_blank" rel="noreferrer">
+            {@detail[:article] || @detail.name} を Wikipedia で見る
+          </a>
+        </p>
+
+        <%!-- その画家の短い説明（記事の冒頭）。**絵の説明だけが出て、描いた人の
+             説明が出ないのは片手落ち** —— 押したのは画家のほう --%>
+        <p :if={@detail[:summary]} class="artwork-extract">{@detail.summary}</p>
+
+        <%!-- Chiezo に入っているタグ。**どういう条件でこの人が名簿に入り、
+             何が分かっているのか**が、ここを見ないと読み取れない --%>
+        <dl :if={tag_groups(@detail) != []} class="artwork-tags">
+          <%= for {label, values} <- tag_groups(@detail) do %>
+            <dt>{label}</dt>
+            <dd>{Enum.join(values, "、")}</dd>
+          <% end %>
+        </dl>
+
         <%= cond do %>
           <% @artwork == :loading -> %>
             <p class="muted-note">代表作を探しています…</p>
-          <% is_map(@artwork) -> %>
-            <img src={@artwork.image} alt={@artwork.title} />
-            <p class="artwork-title">{@artwork.title}</p>
-            <p :if={@artwork.extract} class="artwork-extract">{@artwork.extract}</p>
-            <p :if={@artwork.page} class="muted-note">
-              <a href={@artwork.page} target="_blank" rel="noreferrer">Wikipedia で見る</a>
-            </p>
+          <% is_list(@artwork) and @artwork != [] -> %>
+            <%!-- **何枚もあるなら全部出す。** 多作の画家を 1 枚で代表させると、
+                 どれを選んでも「その人らしさ」を外す --%>
+            <figure :for={work <- @artwork} class="artwork-figure">
+              <img src={work.image} alt={work.title} />
+              <figcaption>
+                <span class="artwork-title">{work.title}</span>
+                <span :if={work.extract} class="artwork-extract">{work.extract}</span>
+                <a :if={work.page} href={work.page} target="_blank" rel="noreferrer">
+                  この絵を Wikipedia で見る
+                </a>
+              </figcaption>
+            </figure>
+          <% works_of(@detail) == [] -> %>
+            <p class="muted-note">この画家には、まだ代表作が入っていません。</p>
           <% true -> %>
             <p class="muted-note">代表作の絵は見つかりませんでした。</p>
         <% end %>
+
+        <%!-- **この人を詳しく調べて、を頼める。** 巡回は 8,000 人を順に回るので、
+             気になった 1 人に当たるのは何日も先になる。割り込みは定時の巡回の
+             進み具合にも次の予定にも触らない --%>
+        <details :if={@view == "painters"} class="ask-more">
+          <summary>この画家を詳しく調べてもらう</summary>
+          <%= if @focus_sent == @detail.name do %>
+            <p class="muted-note">
+              Chiezo に頼みました。**結果が図に出るのは、次に Chiezo が集めたあと**です。
+            </p>
+          <% else %>
+            <form phx-submit="focus_painter">
+              <input type="hidden" name="name" value={@detail.name} />
+              <p>
+                <label>
+                  どこを調べてほしいか（空でもよい）<br />
+                  <textarea
+                    name="note"
+                    rows="2"
+                    placeholder="例: 誰から影響を受けたのかが空のままなので調べて"
+                  ></textarea>
+                </label>
+              </p>
+              <p class="muted-note">
+                定時の巡回とは別の道で頼みます（進み具合も次の予定も動きません）。
+                名指しするので、この画家は必ず AI に見せられます。
+              </p>
+              <button type="submit" phx-disable-with="頼んでいます…">この画家を頼む</button>
+            </form>
+          <% end %>
+        </details>
       </section>
     </div>
 
-    <section class="relation-guide">
-      <div>
-        <h2>この図の見方</h2>
-        <p>
-          <%= if @view == "painters" do %>
-            上から下へ時代が流れます（並びは生年順）。丸の大きさは知られている度合い
-            （日本語版 Wikipedia の月間閲覧数）で、名前を押すと代表作が出ます。 <strong>破線の枠</strong>は同じ様式の画家をまとめたものです。並びは生年順のままなので、
-            同じ時代に複数の様式が並走していれば枠も重なります。 <strong>1 人が複数の様式に属していれば、その全部の枠に入ります</strong>（時期で作風が
-            変わった画家を 1 つに決めると、どれを選んでも間違いになるためです）。 <strong>濃い矢印</strong>は AI が調べた影響関係（何を受けたかが線に出ます）。 <strong>薄い線</strong>は記事どうしが相互にリンクしているというだけの関係で、
-            Wikipedia から機械的に引いたものです。左の目盛りは年表ですが、
-            丸を等間隔に並べているので、画家が多い時代ほど間隔が広がります。
-            図は<strong>引きずって移動、Ctrl+ホイールで拡大縮小</strong>できます
-            （素のホイールはページのスクロールに使います）。
-          <% else %>
-            実線は家族、点線はコンビとメンバーの関係です。
-          <% end %>
-        </p>
-      </div>
-      <div>
-        <h2>出典</h2>
-        <ul>
-          <%= for source <- @relation.sources do %>
-            <li><a href={source.url} target="_blank" rel="noreferrer">{source.label}</a></li>
-          <% end %>
-        </ul>
-      </div>
-    </section>
+
   </div>
 </main>
 
@@ -330,6 +539,16 @@
   // 端を越えたあとの動きの重さ（1 が抵抗なし）と、伸びきるまでの px。
   // **止まるのではなく重くする** —— 端で完全に動かなくなると、行き止まりなのか
   // 操作が効いていないのかが区別できない
+  // 年代の札を画面のどれだけ内側に置くか（px）と、画面上での字の大きさ（px）
+  const LABEL_INSET = 8
+  const LABEL_PX = 11
+  // 地域の札を画面の上端からどれだけ下に置くか（px）
+  const LABEL_TOP = 16
+
+  // 器に収まっている軸の置き場所。**真ん中に寄せる** —— 上や左に寄せると、
+  // 短い図（様式で絞ったとき）で下半分が空白になり、壊れているように見える
+  const centre = (slack) => [slack / 2, slack / 2]
+
   const RUBBER = 0.45
   const RUBBER_MAX = 110
 
@@ -435,7 +654,40 @@
       this.svg.style.transformOrigin = "0 0"
       this.svg.style.transform =
         `translate(${this.tx}px, ${this.ty}px) scale(${this.scale})`
+      this.pinLabels()
       this.report()
+    },
+
+    // 年代の札を画面の左端に留める。
+    //
+    // **図と一緒に流さない。** 少し右へ引きずるだけで年表が画面の外へ出てしまい、
+    // 拡大したときにいちばん知りたい「いまどのあたりの時代か」が読めなくなる。
+    // 縦は図と一緒に動かす（そこがずれたら年表の意味が無い）。
+    //
+    // 図そのものは CSS の transform で動かしているので、札はその逆を当てて
+    // 打ち消す —— 字の大きさも倍率で割り戻して、拡大しても同じ大きさに見せる。
+    pinLabels() {
+      const labels = this.svg.querySelector("[data-pinned-labels]")
+      if (!labels) { return }
+      const box = this.el.getBoundingClientRect()
+      const view = (this.svg.getAttribute("viewBox") || "").split(/\s+/)
+      const vw = parseFloat(view[2])
+      // 図の 1 単位が画面の何 px か（viewBox の伸縮ぶんだけで、倍率は別に掛ける）
+      const unit = vw > 0 && box.width > 0 ? box.width / vw : 0
+      if (!(unit > 0)) { return }
+      const perUnit = unit * this.scale
+      // 画面の左端（LABEL_INSET px 内側）に来る図の座標。札は x=8 に書いてあるので、
+      // そこからの差を transform で足す
+      const target = (LABEL_INSET - this.tx) / perUnit
+      labels.setAttribute("transform", `translate(${target - 8}, 0)`)
+      labels.style.fontSize = `${LABEL_PX / perUnit}px`
+
+      // 地域の札は上端に留める（横は図と一緒に動かす —— そこがずれたら軸の意味が無い）
+      const top = this.svg.querySelector("[data-pinned-top]")
+      if (top) {
+        top.setAttribute("transform", `translate(0, ${(LABEL_TOP - this.ty) / perUnit})`)
+        top.style.fontSize = `${LABEL_PX / perUnit}px`
+      }
     },
 
     // 倍率を変える。**押した点を動かさない** —— 中心を固定して拡大すると、
@@ -477,9 +729,11 @@
     range() {
       const {box, width, height} = this.metrics()
       if (!isFinite(width) || !isFinite(height)) { return null }
+      // **収まっているほうは真ん中に置く。** 上に寄せると、短い図（様式で絞ったとき）
+      // で下半分が空白になり、壊れているように見える
       return {
-        x: width <= box.width ? [0, 0] : [box.width - width, 0],
-        y: height <= box.height ? [0, 0] : [box.height - height, 0],
+        x: width <= box.width ? centre(box.width - width) : [box.width - width, 0],
+        y: height <= box.height ? centre(box.height - height) : [box.height - height, 0],
       }
     },
 

@@ -58,6 +58,42 @@ defmodule Antenna.Relations.Graph do
   # 記事どうしが相互にリンクしている、というだけの線。**Chiezo が機械的に付ける**ので、
   # AI を待たずに図がつながる。何の関係かまでは分からないので、影響の線とは分けて描く
   @related_prefix "関連"
+  # 図の横軸に使う地域。Wikipedia のカテゴリ（「19世紀フランスの画家」）から
+  # 機械的に取れるので、AI に判断させない
+  @region_prefix "地域"
+
+  # 横軸に使う大きなまとまり。**細かい国名のままでは軸にならない** —— 40 を超える
+  # 地域が横に並んでも、どこを見ればいいか分からない。順は西から東へ。
+  # **どこにも当てはまらないものは「その他」に入れる**（落とすと図から消える）
+  @region_bands [
+    {"ヨーロッパ",
+     ~w(フランス ドイツ イタリア イングランド オランダ スペイン ロシア フランドル
+        ベルギー オーストリア スコットランド スイス ポーランド スウェーデン デンマーク
+        ハンガリー チェコ ノルウェー アイルランド ポルトガル フィンランド イギリス
+        ウクライナ ギリシャ ルーマニア セルビア ウェールズ スロベニア クロアチア
+        カタルーニャ ソビエト連邦 リトアニア ラトビア エストニア ブルガリア
+        スロバキア アイスランド マルタ ルクセンブルク)},
+    {"南北アメリカ",
+     ~w(アメリカ合衆国 カナダ メキシコ ブラジル アルゼンチン チリ ペルー キューバ
+        ウルグアイ コロンビア ベネズエラ ハイチ エクアドル)},
+    {"アジア・その他",
+     ~w(日本 中国 朝鮮 韓国 インド ベトナム フィリピン タイ インドネシア
+        オーストラリア ニュージーランド トルコ イラン イスラエル エジプト
+        南アフリカ共和国 モロッコ アルメニア ジョージア)}
+  ]
+
+  # 丸に出す代表作の数。**1 つに絞らない** —— 多作の画家を 1 枚で代表させると、
+  # どれを選んでも「その人らしさ」を外す。ただし並べすぎると読むほうが疲れるので 3 つまで。
+  # 絵は 1 枚ずつ Wikipedia に取りに行くので、数がそのまま待ち時間になる
+  @max_works 3
+
+  # 押したときに出す説明の長さ。**記事の冒頭をそのまま持つと重い** ——
+  # 8,000 人ぶんが画面の裏に載るので、1 人ぶんの読み出しに足りる長さで切る
+  @summary_chars 240
+
+  # 名前の後ろに付ける、代表作を持っている印。**札の幅にも数える** ——
+  # 幅に入れないと、印のぶんだけ名前が札からはみ出す（札にした意味が消える）
+  @work_mark "◆"
 
   # 丸の大きさ。**知名度で変える** —— どれが中心的な画家かが、読む前に分かる。
   # 知名度そのものは jawiki の月次ページビュー（`Antenna.Fame`）
@@ -95,41 +131,128 @@ defmodule Antenna.Relations.Graph do
   @min_name_ratio 0.22
   @max_name_ratio 0.85
 
+  # 名前の字の**絶対の上限**（px）。升目に対する比だけでは足りない ——
+  # 人数が少ない図（様式で絞ったときなど）は升目が上限いっぱいまで広がり、
+  # 字が 93px、札が幅 400px になって隣と重なり、重なりを避ける仕組みが
+  # ほとんどの丸を間引いてしまった（39 人のうち 4 人しか出なかった）。
+  # **読める大きさに天井を置けば、札が升目に収まる**
+  @max_name_px 22.0
+
+  # 絞り込んだ図（凡例を押したとき）で目指す字の大きさ。**列数をここから決める** ——
+  # 読ませるための図なので、詰め込むより読めるほうを取る。全体の図は今までどおり
+  # 面の縦横比から列を決め、収まらない札は重なりを避ける仕組みが間引く
+  @fitted_font 16.0
+
   # 様式と年代の字。名前より小さく、名前に対する比で決める
   @sub_size_ratio 0.62
   @min_sub_size 4.0
 
   # 札の高さ（字の大きさの何倍か）と、左右に足す余白（同じく字の大きさに対する比）
   @label_line_height 1.7
+  # 様式を入れる 2 行目の高さ（様式の字の大きさの何倍か）。
+  # **札の中に入れる** —— 外に置くと、隣の丸の札と重なったときにどちらの様式か
+  # 分からなくなる（札の中なら、札ごと重なりを避ける仕組みに乗る）
+  @note_line_height 1.35
   @label_padding 0.9
 
   # 半角文字 1 つを全角何文字ぶんとして数えるか（幅の見積もりに使う）
   @halfwidth_ratio 0.55
 
-  # 枠の内側に足す余白。丸と札が枠線に触れると、囲われているのか重なっているのかが
-  # 読めなくなる
-  @cluster_padding 26
 
-  # 枠を描く最小の人数。**1 人を囲っても意味が増えない**（様式は丸の下に書いてある）
-  @cluster_min_members 2
-
-  # 同じ様式が並びの上でこれだけ離れたら、別の塊として扱う（間に何人挟まるまで許すか）。
-  #
-  # **離れた 2 人を 1 つの枠で囲うと嘘になる。** 並びは生年順なので、間には
-  # 別の様式の画家が何十人も入る —— 実測では、2 人しかいない様式が高さ 2,994 の枠に
-  # なり、無関係な画家を丸ごと囲っていた。
-  #
-  # **少しの挟まりは許す。** 1 人挟まるたびに割ると、枠だらけになって読めない
-  @cluster_index_gap 4
-
-  # 枠の中身のうち、その様式の人が占めるべき割合。これを下回る枠は行ごとに割り直す
-  @cluster_purity 0.5
+  # どの帯にも当てはまらない画家の行き先。**落とさない** —— 地域が取れていない人
+  # （時代区分のカテゴリしか持たない人など）は必ずいるので、落とすと図から消える
+  @other_band "その他"
 
   @doc "代表作を載せるタグの頭。"
   def work_tag, do: @work_prefix
 
   @doc "相互リンクの相手を載せるタグの頭。"
   def related_tag, do: @related_prefix
+
+  @doc "地域を載せるタグの頭。"
+  def region_tag, do: @region_prefix
+
+  @doc """
+  その図に出てくる様式へ色を振ります（様式 → 色相 0〜359）。
+
+  **名前のハッシュでは近い色になります。** 実測では印象派が 159、フランス象徴派が
+  164 で、並べてもほとんど同じ緑でした。**人数の多い順に黄金角（137.5°）ずつ
+  ずらす**と、何色あっても隣どうしが離れます。
+
+  **表は持ちません。** 様式は AI が足していくので、いくつ増えるか分からない ——
+  表にすると、載っていない様式だけ色が無くなります。
+  """
+  def style_hues(nodes) do
+    nodes
+    |> Enum.flat_map(&styles_of/1)
+    |> Enum.frequencies()
+    |> Enum.sort_by(fn {style, count} -> {-count, style} end)
+    |> Enum.with_index()
+    |> Map.new(fn {{style, _count}, index} -> {style, rem(round(index * 137.508), 360)} end)
+  end
+
+  @doc "その画家の色（様式を持たなければ nil）。"
+  def hue_of(node), do: node[:hue]
+
+  @doc """
+  ひとつの様式だけを取り出して、**その人たちだけで置き直した図**を返します。
+
+  **絞るだけでは足りません。** 位置はもとのままなので、39 人が高さ 2,500 の面に
+  散らばって、拡大しないと読めない —— 絞ったのに読めないなら絞った意味がありません。
+  置き直せば人数に合う升目になり、全部が一度に読める大きさになります。
+
+  縦軸（年代）と横軸（地域）はそのままです。
+  """
+  def only(relation, style) when is_binary(style) do
+    kept = Enum.filter(relation.nodes, &(style in styles_of(&1)))
+    refocus(relation, kept)
+  end
+
+  def only(relation, _style), do: relation
+
+  defp refocus(%{nodes: []} = relation, _kept), do: relation
+
+  defp refocus(relation, []), do: relation
+
+  defp refocus(relation, kept) do
+    ids = MapSet.new(kept, & &1.id)
+
+    edges =
+      Enum.filter(relation.edges, fn edge ->
+        MapSet.member?(ids, edge.from) and MapSet.member?(ids, edge.to)
+      end)
+
+    # 升目が変わるので、大きさも付け直す（知名度は `sized` が残しておいたものを使う）
+    bare = Enum.map(kept, &Map.drop(&1, [:cell]))
+    laid = layout(bare, edges, fitted_columns(bare))
+    fame = Map.new(laid.nodes, &{&1.article, &1[:views] || 0})
+
+    %{
+      relation
+      | nodes: refit(laid.nodes, fame),
+        edges: edges,
+        ticks: ticks(laid.nodes),
+        bands: laid.bands,
+        height: laid.height
+    }
+  end
+
+  @doc "横軸に並べる地域のまとまり（西から東へ）。"
+  def region_bands, do: Enum.map(@region_bands, &elem(&1, 0)) ++ [@other_band]
+
+  @doc """
+  その画家をどの帯に入れるか。**1 つに決めます**。
+
+  複数の地域に跨る画家（移り住んだ人）はいますが、横軸は 1 人 1 か所でないと
+  軸として読めません。**先に出てきた帯を採る**ので、並びが優先順位になります。
+  """
+  def band_of(node) do
+    regions = tag_values(node[:tags] || [], @region_prefix)
+
+    Enum.find_value(@region_bands, @other_band, fn {band, members} ->
+      if Enum.any?(regions, &(&1 in members)), do: band
+    end)
+  end
 
   @doc "Chiezo の `filter` が返した文書の並びを、図のデータにします。"
   def from_docs(docs) when is_list(docs) do
@@ -146,15 +269,31 @@ defmodule Antenna.Relations.Graph do
     # **線を先に組む。** 置き方が線の形を見るようになったので、順序が逆だと
     # 何も繋がっていない前提で並べることになる
     edges = edges(docs, by_name)
-    placed = layout(nodes, edges)
+    laid = layout(nodes, edges)
+    hues = style_hues(laid.nodes)
+    counts = laid.nodes |> Enum.flat_map(&styles_of/1) |> Enum.frequencies()
+
+    # **色は 1 人 1 つ。** 丸は 1 つしか無いので、複数の様式を持つ人はどれかに決める
+    # しかない。どれを選んでも同じくらい正しくないので、**選び方が毎回同じ**である
+    # ことのほうを取る（人数の多い様式を採る）。名前の下には全部書いてある
+    coloured =
+      Enum.map(laid.nodes, fn node ->
+        Map.put(node, :hue, node |> styles_of() |> Enum.map(&hues[&1]) |> Enum.min(fn -> nil end))
+      end)
 
     %{
-      nodes: placed,
+      nodes: coloured,
       edges: edges,
-      ticks: ticks(placed),
-      clusters: clusters(placed),
+      ticks: ticks(laid.nodes),
+      bands: laid.bands,
+      # 色の凡例に使う（様式・人数・色相）。**図に出ているものだけ**を数える
+      styles:
+        hues
+        |> Enum.map(fn {style, hue} -> {style, Map.get(counts, style, 0), hue} end)
+        |> Enum.sort_by(fn {style, count, _hue} -> {-count, style} end),
       width: canvas_width(length(nodes)),
-      height: canvas_height(length(nodes))
+      # **高さは置いてみないと分からない** —— 行の数は年代の混み具合で決まる
+      height: laid.height
     }
   end
 
@@ -165,131 +304,54 @@ defmodule Antenna.Relations.Graph do
       nodes: [],
       edges: [],
       ticks: [],
-      clusters: [],
+      bands: [],
+      styles: [],
       width: @canvas_width,
       height: @canvas_height
     }
 
-  @doc """
-  同じ様式の画家を囲う枠。`%{style:, x:, y:, width:, height:}` を返します。
-
-  **丸の位置は動かしません。** 並びは生年順のままで、枠はその上から囲うだけです ——
-  様式でまとめ直すと、いつの人かが図から読めなくなります（様式は時代とおおむね
-  対応するので、生年順に並べた時点で同じ様式の人は近くに来ます）。
-
-  **1 人が複数の枠に入ります。** 時期で作風の変わった画家（キュビスムも新古典主義も
-  やった人）を 1 つの様式に決めると、どれを選んでも間違いになります。そのぶん枠は
-  重なりますが、重なっているのが事実です。
-
-  **1 人の様式は囲いません**（`@cluster_min_members`）。様式は丸の下にも書いてあるので、
-  囲っても増える情報が無く、枠だけが増えます。
-
-  **離れて現れる同じ様式は、別の枠に分けます**（`@cluster_index_gap`）。並びは生年順なので、
-  1 つの様式が図の上と下に散っていることがあります。それを 1 つの枠で囲うと、
-  あいだにいる無関係な画家まで囲ってしまい、枠が嘘になります。
-
-  枠は重なりえます。同じ時代に複数の様式が並走していれば実際に重なっているので、
-  そこを避けて描くと嘘になります。**広い枠から先に描く**ので、狭い枠は上に乗ります。
-  """
-  def clusters(nodes) do
-    nodes
-    # **1 人が複数の枠に入る。** 時期で作風の変わった画家は、そのどれもが本当なので、
-    # 1 つに決めずに全部の枠へ入れる（そのぶん枠は重なる）
-    |> Enum.flat_map(fn node -> for style <- styles_of(node), do: {style, node} end)
-    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-    |> Enum.flat_map(fn {style, members} ->
-      members
-      |> segments(nodes)
-      |> Enum.filter(&(length(&1) >= @cluster_min_members))
-      |> Enum.map(&box(style, &1))
-    end)
-    # 広いものから描く。狭い枠が広い枠に隠れると、囲われていないように見える
-    |> Enum.sort_by(&(-(&1.width * &1.height)))
-  end
-
-  @doc false
-  # 囲える塊に分ける。
-  #
-  # **まず並び順で切る。** 生年順に置いてあるので、並びが続いている者どうしは
-  # 図の上でも隣り合う。あいだに他の様式が少し挟まるのは許す（`@cluster_index_gap`）——
-  # 1 人挟まるたびに枠が割れると、枠だらけになって読めない。
-  #
-  # **囲った中身が他人ばかりなら、行ごとに割り直す。** 折り返しをまたぐ塊を 1 つの
-  # 四角で囲うと、行の端から端までが入り、あいだの無関係な画家まで囲ってしまう
-  # （実測では、2 人しかいない様式が高さ 2,994 の枠になって数十人を巻き込んでいた）。
-  # 縦 1 列に並ぶ図では折り返しが無いので、この割り直しは働かない。
-  defp segments(members, all) do
-    members
-    |> Enum.sort_by(&index_of/1)
-    |> runs()
-    |> Enum.flat_map(&split_unless_pure(&1, all))
-  end
-
-  # 並びが続いている者をひと続きにする
-  defp runs([]), do: []
-
-  defp runs([first | rest]) do
-    {last_run, done} =
-      Enum.reduce(rest, {[first], []}, fn node, {[previous | _] = run, done} ->
-        if index_of(node) - index_of(previous) <= @cluster_index_gap,
-          do: {[node | run], done},
-          else: {[node], [Enum.reverse(run) | done]}
-      end)
-
-    Enum.reverse([Enum.reverse(last_run) | done])
-  end
-
-  defp split_unless_pure(run, all) do
-    if pure?(run, all),
-      do: [run],
-      else: run |> Enum.group_by(& &1.y) |> Enum.map(fn {_y, row} -> row end)
-  end
-
-  # 囲いの中に、その様式の人がどれくらい入っているか
-  defp pure?(run, all) do
-    %{x: x, y: y, width: width, height: height} = box(nil, run)
-
-    inside =
-      Enum.count(all, fn node ->
-        node.x >= x and node.x <= x + width and node.y >= y and node.y <= y + height
-      end)
-
-    inside == 0 or length(run) / inside >= @cluster_purity
-  end
-
-  defp index_of(node), do: Map.get(node, :index) || 0
-
-  defp box(style, members) do
-    lefts = for n <- members, do: n.x - radius_of(n)
-    rights = for n <- members, do: n.x + radius_of(n)
-
-    # 下側は年代の札のぶんまで見る（枠が札を切ると、誰の年代か分からなくなる）
-    tops = for n <- members, do: n.y - radius_of(n)
-    bottoms = for n <- members, do: n.y + radius_of(n) + 20
-
-    x = Enum.min(lefts) - @cluster_padding
-    y = Enum.min(tops) - @cluster_padding
-
-    %{
-      style: style,
-      members: length(members),
-      x: x,
-      y: y,
-      width: Enum.max(rights) + @cluster_padding - x,
-      height: Enum.max(bottoms) + @cluster_padding - y
-    }
-  end
-
-  # 枠を測るときの半径。大きさが決まる前のノード（`sized/2` を通す前）は、
-  # その図の升目から出る最小の丸として扱う
-  defp radius_of(node), do: Map.get(node, :radius) || cell_of(node) * @min_radius_ratio
-
-  # 古い形（様式を 1 つしか持たない図）も読めるようにしておく
   defp styles_of(node) do
     case Map.get(node, :styles) do
       list when is_list(list) -> list
       _ -> List.wrap(node.note)
     end
+  end
+
+  # **いちばん長い名前が収まる列数。** 絞り込んだ図は読ませるためのものなので、
+  # 1 行に何人詰められるかではなく、名前が読めるかで決める
+  defp fitted_columns(nodes) do
+    widest =
+      nodes
+      |> Enum.map(&text_width(label_of(&1), @fitted_font))
+      |> Enum.max(fn -> 0.0 end)
+
+    ((@canvas_width - @gutter) / max(widest + @fitted_font * @label_padding, 1))
+    |> floor()
+    |> max(1)
+    |> min(length(nodes))
+  end
+
+  # 絞り込んだ図の字の大きさ。**読ませるための図なので、下を持ち上げる** ——
+  # 全体の図の決め方（升目 × 知名度）をそのまま使うと、無名の画家が 7px になって
+  # 読めない。`@fitted_font` を基準にして知名度で上下させ、**名前が長くて升目から
+  # はみ出すぶんだけ縮める**（縮めないと隣と重なり、重なりを避ける仕組みが間引く）。
+  defp refit(nodes, fame) do
+    top = fame |> Map.values() |> Enum.max(fn -> 0 end)
+
+    Enum.map(nodes, fn node ->
+      ratio = fame_ratio(Map.get(fame, node.article, 0), top)
+      want = @fitted_font * (0.75 + 0.75 * ratio)
+      budget = (node[:cell_w] || @max_cell) * 0.96
+      # その名前を書いたときに札が升目へ収まる字の大きさ
+      fits = budget / max(text_width(label_of(node), 1.0) + @label_padding, 1.0)
+
+      # **升目と知名度はそのまま渡す。** ここで 0 を渡すと丸の半径まで潰れ、
+      # 「小さすぎる丸は描かない」仕組みが全部を間引いてしまう（絞り込むと
+      # 図が真っ白になった）。差し替えるのは字の大きさだけ
+      node
+      |> Map.merge(scale(ratio, cell_of(node), label_of(node), note?(node), min(want, fits)))
+      |> Map.put(:views, Map.get(fame, node.article, 0))
+    end)
   end
 
   @doc """
@@ -363,15 +425,18 @@ defmodule Antenna.Relations.Graph do
     top = fame |> Map.values() |> Enum.max(fn -> 0 end)
 
     Enum.map(nodes, fn node ->
-      Map.merge(
-        node,
-        scale(fame_ratio(Map.get(fame, node.article, 0), top), cell_of(node), node.name)
-      )
+      views = Map.get(fame, node.article, 0)
+
+      node
+      |> Map.merge(scale(fame_ratio(views, top), cell_of(node), label_of(node), note?(node)))
+      # **知られている度合いは残す。** 絞り込みで置き直すときに、もう一度
+      # 外へ引きに行かずに大きさを付け直せる
+      |> Map.put(:views, views)
     end)
   end
 
   def sized(nodes, _fame),
-    do: Enum.map(nodes, &Map.merge(&1, scale(0.0, cell_of(&1), &1.name)))
+    do: Enum.map(nodes, &Map.merge(&1, scale(0.0, cell_of(&1), label_of(&1), note?(&1))))
 
   # その図の升目。置く前のノード（テストが直に渡す場合）は既定の大きさで扱う
   defp cell_of(node), do: Map.get(node, :cell) || @max_cell
@@ -387,19 +452,44 @@ defmodule Antenna.Relations.Graph do
   defp fame_ratio(_views, _top), do: 0.0
 
   # **札も字も同じ升目から決める。** 別々に決めると、小さい札から名前がはみ出す
-  defp scale(ratio, cell, name) do
+  # 札に実際に書かれるもの。**印のぶんまで数える** —— 数えないと、印を付けた丸だけ
+  # 名前がはみ出す
+  defp label_of(node) do
+    if node[:works] in [nil, []], do: node.name, else: node.name <> @work_mark
+  end
+
+  defp note?(node), do: node[:note] not in [nil, ""]
+
+  defp scale(ratio, cell, name, note?, forced \\ nil) do
     radius = cell * (@min_radius_ratio + (@max_radius_ratio - @min_radius_ratio) * ratio)
-    font = cell * (@min_name_ratio + (@max_name_ratio - @min_name_ratio) * ratio)
-    height = max(font * @label_line_height, radius * 2)
+
+    # **天井は升目の側に置く。** 字そのものを切ると、上限に当たった人どうしの
+    # 差が消える —— 人数の少ない図では全員が上限に当たり、知名度で大きさを
+    # 変えている意味がまるごと無くなった（有名も無名も同じ 22px になった）
+    font =
+      forced ||
+        cell
+        |> min(@max_name_px / @max_name_ratio)
+        |> Kernel.*(@min_name_ratio + (@max_name_ratio - @min_name_ratio) * ratio)
+    sub = max(font * @sub_size_ratio, @min_sub_size)
+    # **札の大きさは字だけで決める。** 丸はもう描いていないので、半径を下限に
+    # 使うと札が中身と関係なく膨らむ —— 人数の少ない図では半径が 264 まで育ち、
+    # 札が幅 528 になって隣と重なり、ほとんどの丸が間引かれた。
+    # 半径は「小さすぎるものを描かない」「大きい順に描く」ための物差しとして残す
+    height = font * @label_line_height + if note?, do: sub * @note_line_height, else: 0.0
 
     %{
+      # 札の中の 2 行の置き場所。**ここで出す** —— 画面側で組み直すと、
+      # 高さの決め方と 2 か所で辻褄を合わせることになる
+      name_dy: Float.round(if(note?, do: -sub * @note_line_height / 2, else: 0.0), 1),
+      note_dy: Float.round(font * @label_line_height / 2, 1),
       # 大きさの物差しは残す（描く数を絞るのも、並べ替えるのもこれで決める）
       radius: max(round(radius), 2),
       name_size: Float.round(font, 1),
-      sub_size: Float.round(max(font * @sub_size_ratio, @min_sub_size), 1),
+      sub_size: Float.round(sub, 1),
       # 名前が収まる札の大きさ。**丸だと名前がはみ出す** —— 円は角へ行くほど
       # 内側が痩せるので、横に長い名前を入れるには不釣り合いに大きな円が要る
-      label_width: Float.round(max(text_width(name, font) + font * @label_padding, height), 1),
+      label_width: Float.round(text_width(name, font) + font * @label_padding, 1),
       label_height: Float.round(height, 1)
     }
   end
@@ -436,6 +526,26 @@ defmodule Antenna.Relations.Graph do
 
   defp article_title(_doc), do: nil
 
+  # 記事の冒頭。**切ったことは出さない** —— 「…」だけ見せて全文へ誘うより、
+  # 出典のリンクがすぐ上にあるほうが早い
+  defp summary_of(%{"body" => body}) when is_binary(body) do
+    case body |> String.split() |> Enum.join(" ") |> String.slice(0, @summary_chars) do
+      "" -> nil
+      text -> text
+    end
+  end
+
+  defp summary_of(_doc), do: nil
+
+  defp article_url(%{"extra" => %{"url" => url}}) when is_binary(url), do: url
+  defp article_url(_doc), do: nil
+
+  @doc "代表作を持っている印（名前の後ろに出す）。"
+  def work_mark, do: @work_mark
+
+  @doc "丸に出す代表作の上限。"
+  def max_works, do: @max_works
+
   defp to_node(%{"title" => title} = doc) when is_binary(title) do
     name = String.trim(title)
     tags = tags_of(doc)
@@ -451,9 +561,19 @@ defmodule Antenna.Relations.Graph do
           styles: tag_values(tags, @style_prefix),
           note: styles_note(tags),
           years: tag_value(tags, @years_prefix),
-          work: tag_value(tags, @work_prefix),
+          # **代表作は複数持つ。** 抽出が人気の順に何枚か拾ってくるので、
+          # そのまま並べる（`@max_works` まで）
+          works: tags |> tag_values(@work_prefix) |> Enum.take(@max_works),
+          # 押したときに出す、その画家の短い説明（記事の冒頭）
+          summary: summary_of(doc),
           # 出典（Wikipedia の記事）。知名度を引くのと、絵を探すのに使う
           article: article_title(doc),
+          # **押したときに出す出典の URL。** 代表作の記事ではなく画家の記事を指す ——
+          # 画家を押したのだから、行き先は画家であるべき
+          url: article_url(doc),
+          # **Chiezo に入っているタグをそのまま持つ。** どういう条件でこの人が
+          # 名簿に入り、何が分かっているのかは、これを見せないと読み取れない
+          tags: tags,
           kind: :artist
         }
       ]
@@ -558,26 +678,159 @@ defmodule Antenna.Relations.Graph do
   # **時代は縦に流す。** 人数が増えても幅が要らないので、たくさん並べられる
   # （横に流していた頃は 12 人で幅 2400 になり、画面に収まらなかった）。
   # 左右は重なりを避けるためだけに振る
-  defp layout([], _edges), do: []
+  @doc false
+  # 置き方。**縦は年代、横は地域**。
+  #
+  # 横を地域の帯に割ると、縦の年表と噛み合わせるところが難しくなる。帯ごとに
+  # 格子を持たせると、同じ高さが帯ごとに別の年代を指してしまう（日本の画家は
+  # 近代に偏っているので、帯の先頭どうしが 300 年ずれる）。
+  #
+  # **行を「年代のまとまり」にして解く。** 生年順に並べたものを上から詰め、
+  # **どこかの帯が自分の列を使い切ったところで行を切る**。こうすると 1 行は
+  # どの帯でも同じ年代を指し、行の高さは「その年代でいちばん混んでいる帯」で決まる。
+  # 目盛りの間隔が一定でないのは元からの性質で、そこは変わらない。
+  #
+  # **帯の幅は人数の比で決める。** 等分すると、人数の多い帯だけが縦に伸びる。
+  defp layout(nodes, edges, columns \\ nil)
 
-  defp layout(nodes, edges) do
-    %{columns: columns, x_step: x_step, y_step: y_step, cell: cell} = grid(length(nodes))
+  defp layout([], _edges, _columns), do: %{nodes: [], height: @canvas_height, bands: []}
 
-    # 行は生年順のまま。**横の並びだけ、繋がりの形で決め直す**
-    rows = Enum.group_by(Enum.with_index(nodes), fn {_node, i} -> div(i, columns) end)
-    initial = Map.new(Enum.with_index(nodes), fn {node, i} -> {node.id, rem(i, columns)} end)
-    columns_by_id = reorder(rows, initial, adjacency(edges))
+  defp layout(nodes, edges, wanted) do
+    %{columns: from_aspect, cell: cell} = grid(length(nodes))
+    columns = wanted || from_aspect
+    plan = band_plan(nodes, columns)
+    ranks = style_ranks(nodes)
+    caps = Map.new(plan, &{&1.band, &1.columns})
+    offsets = Map.new(plan, &{&1.band, &1.offset})
+    total_columns = Enum.sum(Enum.map(plan, & &1.columns))
+    x_step = (@canvas_width - @gutter) / total_columns
 
-    Enum.with_index(nodes, fn node, index ->
-      Map.merge(node, %{
-        x: @gutter + (Map.fetch!(columns_by_id, node.id) + 0.5) * x_step,
-        y: (div(index, columns) + 0.5) * y_step,
-        # 丸と字の大きさは升目に対する比で決めるので、1 人ずつ持たせる
-        cell: cell,
-        # 並び順（生年順）。枠を切るときに「隣り合っているか」の判断に使う
-        index: index
-      })
+    rows = buckets(nodes, caps)
+    height = max(@canvas_height, length(rows) * cell)
+    y_step = height / length(rows)
+
+    seats =
+      for {row, index} <- Enum.with_index(rows),
+          {band, members} <- row,
+          {node, slot} <- Enum.with_index(members),
+          into: %{},
+          do: {node.id, {index, Map.fetch!(offsets, band) + slot}}
+
+    groups =
+      for {row, index} <- Enum.with_index(rows),
+          {band, members} <- row,
+          into: %{},
+          do: {{index, band}, Enum.map(members, &{&1, 0})}
+
+    initial = Map.new(seats, fn {id, {_row, column}} -> {id, column} end)
+    # **まず繋がりで寄せ、そのうえで様式ごとにまとめ直す。** 色で様式を見せるので、
+    # 同じ色が隣り合っていたほうが読める（席を予約すると図が 4 割伸びるので、
+    # 並べ替えだけで寄せる）
+    columns_by_id =
+      groups
+      |> reorder(initial, adjacency(edges))
+      |> group_by_style(groups, ranks)
+
+    placed =
+      Enum.with_index(nodes, fn node, index ->
+        {row, _column} = Map.fetch!(seats, node.id)
+        seat = Map.fetch!(columns_by_id, node.id)
+
+        Map.merge(node, %{
+          x: @gutter + (seat + 0.5) * x_step,
+          y: (row + 0.5) * y_step,
+          band: band_of(node),
+          # 枠を作るのに要る升目の座標と大きさ（枠は升目の並びから作る）
+          row: row,
+          seat: seat,
+          cell_w: x_step,
+          cell_h: y_step,
+          # 丸と字の大きさは升目に対する比で決めるので、1 人ずつ持たせる
+          cell: cell,
+          # 並び順（生年順）。目盛りを切るときに使う
+          index: index
+        })
+      end)
+
+    %{
+      nodes: placed,
+      height: height,
+      bands:
+        Enum.map(plan, fn band ->
+          %{
+            band: band.band,
+            members: band.members,
+            x: @gutter + band.offset * x_step,
+            width: band.columns * x_step
+          }
+        end)
+    }
+  end
+
+  # 帯ごとの列数と、左からの位置。**人数の比で割る**（等分すると多い帯だけ縦に伸びる）。
+  # 1 人でもいる帯には必ず 1 列は与える —— 0 列だと置き場が無くなる
+  defp band_plan(nodes, columns) do
+    counts = Enum.frequencies_by(nodes, &band_of/1)
+    total = Enum.sum(Map.values(counts))
+
+    region_bands()
+    |> Enum.filter(&Map.has_key?(counts, &1))
+    |> Enum.map_reduce(0, fn band, offset ->
+      members = Map.fetch!(counts, band)
+      share = max(1, round(columns * members / total))
+      {%{band: band, columns: share, offset: offset, members: members}, offset + share}
     end)
+    |> elem(0)
+  end
+
+  # 行に切る。**どこかの帯が自分の列を使い切ったところで切る**ので、
+  # 1 行はどの帯でも同じ年代を指す
+  defp buckets(nodes, caps) do
+    {done, current} =
+      Enum.reduce(nodes, {[], %{}}, fn node, {done, current} ->
+        band = band_of(node)
+
+        if length(Map.get(current, band, [])) >= Map.fetch!(caps, band),
+          do: {[current | done], %{band => [node]}},
+          else: {done, Map.update(current, band, [node], &[node | &1])}
+      end)
+
+    [current | done]
+    |> Enum.reject(&(&1 == %{}))
+    |> Enum.reverse()
+    |> Enum.map(fn row -> Map.new(row, fn {band, members} -> {band, Enum.reverse(members)} end) end)
+  end
+
+  # 行 × 帯の中を、様式ごとにまとめ直す。**席の数は変えない**（並べ替えるだけ）。
+  # 様式を持たない画家は後ろへ回す
+  defp group_by_style(positions, groups, ranks) do
+    Enum.reduce(groups, positions, fn {_key, members}, positions ->
+      nodes = Enum.map(members, &elem(&1, 0))
+      seats = nodes |> Enum.map(&positions[&1.id]) |> Enum.sort()
+
+      nodes
+      |> Enum.sort_by(&{style_rank(&1, ranks), positions[&1.id]})
+      |> Enum.zip(seats)
+      |> Enum.reduce(positions, fn {node, seat}, acc -> Map.put(acc, node.id, seat) end)
+    end)
+  end
+
+  defp style_rank(node, ranks) do
+    case styles_of(node) do
+      [] -> :infinity
+      styles -> styles |> Enum.map(&Map.get(ranks, &1, 0.0)) |> Enum.min()
+    end
+  end
+
+  # 様式に順位を振る。**その様式の画家の平均の位置**（＝おおよその年代）で並べるので、
+  # どの行でも同じ様式がだいたい同じ席に来る —— これが無いと、行ごとに様式の並びが
+  # 変わって、枠が 1 行ぶんに割れる
+  defp style_ranks(nodes) do
+    nodes
+    |> Enum.with_index()
+    |> Enum.flat_map(fn {node, index} -> for style <- styles_of(node), do: {style, index} end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Map.new(fn {style, indexes} -> {style, Enum.sum(indexes) / length(indexes)} end)
   end
 
   defp adjacency(edges) do
@@ -682,6 +935,4 @@ defmodule Antenna.Relations.Graph do
     }
 
   defp canvas_width(_count), do: @canvas_width
-
-  defp canvas_height(count), do: grid(count).height
 end

@@ -132,6 +132,211 @@ defmodule Antenna.Relations.GraphTest do
     assert famous.sub_size < famous.name_size
   end
 
+  describe "横軸は地域" do
+    defp regional(region, year, name),
+      do: painter(name, ["年代:#{year}-#{year + 50}", "地域:#{region}"])
+
+    test "帯は人数の比で幅を取る" do
+      # 等分すると、人数の多い帯だけが縦に伸びる
+      docs =
+        for({r, n} <- [{"フランス", 60}, {"アメリカ合衆国", 10}], i <- 1..n,
+            do: regional(r, 1800 + i, "#{r}#{i}"))
+
+      graph = Graph.from_docs(docs)
+      [europe, americas] = graph.bands
+      assert europe.band == "ヨーロッパ"
+      assert americas.band == "南北アメリカ"
+      assert europe.members == 60 and americas.members == 10
+      assert europe.width > americas.width
+    end
+
+    test "帯は重ならず、左から順に並ぶ" do
+      docs =
+        for({r, n} <- [{"フランス", 30}, {"アメリカ合衆国", 20}, {"日本", 25}], i <- 1..n,
+            do: regional(r, 1800 + i, "#{r}#{i}"))
+
+      graph = Graph.from_docs(docs)
+      assert Enum.map(graph.bands, & &1.band) == ["ヨーロッパ", "南北アメリカ", "アジア・その他"]
+
+      graph.bands
+      |> Enum.chunk_every(2, 1, :discard)
+      |> Enum.each(fn [left, right] -> assert_in_delta left.x + left.width, right.x, 0.01 end)
+    end
+
+    test "画家は自分の帯の中に置かれる" do
+      docs =
+        for({r, n} <- [{"フランス", 30}, {"日本", 30}], i <- 1..n,
+            do: regional(r, 1800 + i, "#{r}#{i}"))
+
+      graph = Graph.from_docs(docs)
+      bands = Map.new(graph.bands, &{&1.band, &1})
+
+      for node <- graph.nodes do
+        band = Map.fetch!(bands, node.band)
+        assert node.x >= band.x and node.x <= band.x + band.width
+      end
+    end
+
+    test "同じ高さは、どの帯でも同じ年代を指す" do
+      # **ここが要。** 帯ごとに格子を持たせると、日本の画家は近代に偏っているので
+      # 帯の先頭どうしが何百年もずれる
+      docs =
+        for({r, years} <- [{"フランス", 1400..1460}, {"日本", 1400..1460}], y <- years,
+            do: regional(r, y, "#{r}#{y}"))
+
+      graph = Graph.from_docs(docs)
+
+      for {_y, members} <- Enum.group_by(graph.nodes, & &1.y) do
+        years = for m <- members, [a | _] = String.split(m.years, "-"), do: String.to_integer(a)
+        # 同じ行に並ぶのは同じころの人（行は年代のまとまり）
+        assert Enum.max(years) - Enum.min(years) <= 40
+      end
+    end
+
+    test "地域が取れていない画家も落とさない" do
+      # 時代区分のカテゴリしか持たない人は必ずいる。落とすと図から消える
+      graph = Graph.from_docs([painter("地域なし", ["年代:1800-1850"])])
+      assert [%{band: "その他"}] = graph.nodes
+      assert [%{band: "その他"}] = graph.bands
+    end
+
+    test "複数の地域を持つ画家は 1 つの帯に決める" do
+      # 横軸は 1 人 1 か所でないと軸として読めない（先に出てきた帯を採る）
+      graph =
+        Graph.from_docs([
+          painter("ピカソ", ["年代:1881-1973", "地域:スペイン", "地域:フランス"])
+        ])
+
+      assert [%{band: "ヨーロッパ"}] = graph.nodes
+    end
+  end
+
+  describe "様式は色で見せる" do
+    test "色は隣どうしが離れる" do
+      # **名前のハッシュでは近い色になる。** 実測では印象派 159 とフランス象徴派 164 が
+      # ほとんど同じ緑だった。人数の多い順に黄金角ずつずらす
+      docs =
+        for {style, n} <- [{"印象派", 5}, {"ロマン派", 4}, {"象徴派", 3}, {"未来派", 2}],
+            i <- 1..n,
+            do: painter("#{style}#{i}", ["年代:#{1800 + i}-1900", "様式:#{style}"])
+
+      graph = Graph.from_docs(docs)
+      hues = Enum.map(graph.styles, fn {_style, _count, hue} -> hue end)
+
+      assert length(Enum.uniq(hues)) == 4
+      assert Enum.all?(hues, &(&1 in 0..359))
+      # どの 2 色も、色相環の上で十分に離れている
+      for a <- hues, b <- hues, a != b do
+        gap = abs(a - b)
+        assert min(gap, 360 - gap) >= 30
+      end
+    end
+
+    test "凡例には図に出ている様式だけを出す" do
+      # 名簿にあっても 1 人も描かれていない様式を並べると、探しても見つからない色が載る
+      graph = Graph.from_docs([painter("モネ", ["年代:1840-1926", "様式:印象派"])])
+      assert [{"印象派", 1, _hue}] = graph.styles
+    end
+
+    test "様式を持たない画家には色を当てない" do
+      graph = Graph.from_docs([painter("無所属", ["年代:1800-1850"])])
+      assert [node] = graph.nodes
+      assert Graph.hue_of(node) == nil
+    end
+
+    test "複数の様式を持つ画家にも色は 1 つ" do
+      # 丸は 1 つしか無い。どれを選んでも同じくらい正しくないので、選び方が毎回
+      # 同じであることのほうを取る（名前の下には全部書いてある）
+      docs = [painter("ピカソ", ["年代:1881-1973", "様式:キュビスム", "様式:新古典主義"])]
+      assert [a] = Graph.from_docs(docs).nodes
+      assert [b] = Graph.from_docs(docs).nodes
+      assert Graph.hue_of(a) == Graph.hue_of(b)
+      assert Graph.hue_of(a) != nil
+      assert a.note == "キュビスム・新古典主義"
+    end
+  end
+
+  describe "ひとつの様式だけを見る" do
+    test "その様式の画家だけになり、線もその中だけになる" do
+      docs =
+        [painter("モネ", ["年代:1840-1926", "地域:フランス", "様式:印象派"]),
+         painter("ルノワール", ["年代:1841-1919", "地域:フランス", "様式:印象派",
+                            "影響元:モネ:光"])] ++
+          for i <- 1..30, do: painter("その他#{i}", ["年代:#{1800 + i}-1900", "地域:フランス"])
+
+      graph = Graph.from_docs(docs)
+      only = Graph.only(graph, "印象派")
+
+      assert Enum.map(only.nodes, & &1.name) |> Enum.sort() == ["モネ", "ルノワール"]
+      assert length(only.edges) == 1
+    end
+
+    test "絞ったら置き直す（拡大しなくても読める大きさになる）" do
+      # **絞るだけでは足りない。** 位置がもとのままだと、数人が広い面に散らばって
+      # 拡大しないと読めず、絞った意味が無い
+      docs =
+        [painter("モネ", ["年代:1840-1926", "地域:フランス", "様式:印象派"]),
+         painter("ルノワール", ["年代:1841-1919", "地域:フランス", "様式:印象派"])] ++
+          for i <- 1..200, do: painter("その他#{i}", ["年代:#{1700 + i}-1900", "地域:フランス"])
+
+      graph = Graph.sized(Graph.from_docs(docs).nodes, %{}) |> then(&%{Graph.from_docs(docs) | nodes: &1})
+      only = Graph.only(graph, "印象派")
+
+      [before_node | _] = Enum.filter(graph.nodes, &("印象派" in &1.styles))
+      [after_node | _] = only.nodes
+      # 升目が広がって、字も札も大きくなる
+      assert after_node.name_size > before_node.name_size
+      assert only.height <= graph.height
+    end
+
+    test "絞ったら全員が描かれる" do
+      # **絞ったのに出ないなら、絞った意味が無い。** 一度は丸の半径が 264 まで育って
+      # 札が幅 528 になり、隣と重なって 39 人のうち 4 人しか出なかった
+      docs =
+        for i <- 1..40 do
+          styles = if rem(i, 2) == 0, do: ["様式:印象派"], else: []
+          painter("とても長い名前の画家#{i}", ["年代:#{1800 + i}-1900", "地域:フランス" | styles])
+        end
+
+      graph = Graph.from_docs(docs)
+      graph = %{graph | nodes: Graph.sized(graph.nodes, %{})}
+      only = Graph.only(graph, "印象派")
+      view = %{x: 0, y: 0, w: 1200, h: only.height, ppu: 1.0}
+
+      assert length(AntennaWeb.RelationsLive.drawn_nodes(only, view)) == length(only.nodes)
+      # 札が升目に収まっている（収まらないと重なりを避ける仕組みが間引く）
+      assert Enum.all?(only.nodes, &(&1.label_width <= &1.cell_w))
+    end
+
+    test "知らない様式を渡しても壊さない" do
+      graph = Graph.from_docs([painter("モネ", ["年代:1840-1926", "様式:印象派"])])
+      assert Graph.only(graph, "そんな派").nodes == graph.nodes
+      assert Graph.only(graph, nil).nodes == graph.nodes
+    end
+  end
+
+  test "様式は札の中に入る（札はそのぶん高くなる）" do
+    # 外に置くと、隣の札と重なったときにどちらの様式か分からなくなる。
+    # **人数の多い図で比べる** —— 少人数だと升目が上限まで広がり、丸の大きさのほうが
+    # 札の高さを決めてしまって、行数の差が出ない
+    docs =
+      for i <- 1..60 do
+        styles = if rem(i, 2) == 0, do: ["様式:印象派"], else: []
+        painter("画家#{i}", ["年代:#{1800 + i}-1900" | styles])
+      end
+
+    sized = Graph.sized(Graph.from_docs(docs).nodes, %{})
+    with_note = Enum.find(sized, &(&1.note != nil))
+    without = Enum.find(sized, &(&1.note == nil))
+
+    # 札は 2 行ぶんの高さを必ず持つ（丸のほうが大きければ、そちらで足りている）
+    assert with_note.label_height >= with_note.name_size * 1.7 + with_note.sub_size * 1.35
+    # 名前は上へ、様式は下へずれる（どちらも札の中）
+    assert with_note.name_dy < 0
+    assert with_note.note_dy > 0
+    assert without.name_dy == 0.0
+  end
+
   test "知名度が引けなくても図は出る" do
     graph = Graph.from_docs([painter("A", ["年代:1900"])])
     assert [%{radius: r}] = Graph.sized(graph.nodes, %{})
@@ -148,7 +353,50 @@ defmodule Antenna.Relations.GraphTest do
         }
       ])
 
-    assert [%{article: "クロード・モネ", work: "印象・日の出"}] = graph.nodes
+    assert [%{article: "クロード・モネ", works: ["印象・日の出"]}] = graph.nodes
+    # 押したときの行き先は**画家の記事**（代表作の記事ではない）
+    assert [%{url: "https://ja.wikipedia.org/wiki/クロード・モネ"}] = graph.nodes
+  end
+
+  test "代表作は 1 つに絞らない（多くても 3 つ）" do
+    # 多作の画家を 1 枚で代表させると、どれを選んでも「その人らしさ」を外す
+    graph =
+      Graph.from_docs([
+        painter("ピカソ", [
+          "年代:1881-1973",
+          "代表作:ゲルニカ",
+          "代表作:アヴィニヨンの娘たち",
+          "代表作:泣く女",
+          "代表作:игра"
+        ])
+      ])
+
+    assert [%{works: works}] = graph.nodes
+    assert length(works) == Graph.max_works()
+    assert "ゲルニカ" in works
+  end
+
+  test "タグはそのまま持ち回る（押したときに出す）" do
+    # どういう条件でこの人が名簿に入り、何が分かっているのかは、これが無いと読めない
+    graph = Graph.from_docs([painter("A", ["年代:1900", "様式:印象派"])])
+    assert [%{tags: tags}] = graph.nodes
+    assert "様式:印象派" in tags
+  end
+
+  test "代表作を持つ丸は、印のぶんまで札を広げる" do
+    # 幅に入れないと、印のぶんだけ名前が札からはみ出す（札にした意味が消える）。
+    # 人数の多い図で比べるのは、上の「様式は札の中に入る」と同じ理由
+    docs =
+      for i <- 1..60 do
+        works = if rem(i, 2) == 0, do: ["代表作:何か"], else: []
+        painter("同じ名前#{i}", ["年代:#{1800 + i}-1900" | works])
+      end
+
+    sized = Graph.sized(Graph.from_docs(docs).nodes, %{})
+    with_work = Enum.find(sized, &(&1.works != []))
+    without = Enum.find(sized, &(&1.works == []))
+
+    assert with_work.label_width > without.label_width
   end
 
   test "出典が Wikipedia でなければ記事名は持たない" do
@@ -240,155 +488,8 @@ defmodule Antenna.Relations.GraphTest do
     end
   end
 
-  describe "様式の枠" do
-    test "同じ様式の画家をまとめて囲う" do
-      graph =
-        Graph.from_docs([
-          painter("モネ", ["様式:印象派", "年代:1840"]),
-          painter("ルノワール", ["様式:印象派", "年代:1841"]),
-          painter("ピカソ", ["様式:キュビスム", "年代:1881"]),
-          painter("ブラック", ["様式:キュビスム", "年代:1882"])
-        ])
-
-      styles = Enum.map(graph.clusters, & &1.style)
-      assert "印象派" in styles
-      assert "キュビスム" in styles
-    end
-
-    test "1 人しかいない様式は囲わない" do
-      # 様式は丸の下にも書いてあるので、囲っても増える情報が無い
-      graph =
-        Graph.from_docs([
-          painter("モネ", ["様式:印象派", "年代:1840"]),
-          painter("ルノワール", ["様式:印象派", "年代:1841"]),
-          painter("ひとり", ["様式:点描", "年代:1859"])
-        ])
-
-      refute "点描" in Enum.map(graph.clusters, & &1.style)
-    end
-
-    test "様式の無い画家は囲わない" do
-      graph =
-        Graph.from_docs([
-          painter("A", ["年代:1840"]),
-          painter("B", ["年代:1841"])
-        ])
-
-      assert graph.clusters == []
-    end
-
-    test "同じ様式でも離れていれば別の枠にする" do
-      # 並びは生年順なので、あいだには別の様式の画家が何十人も入る。
-      # 1 つの枠で囲うと、その人たちまで囲ってしまう
-      docs =
-        [painter("初期の A", ["様式:象徴派", "年代:1500"])] ++
-          for i <- 1..12, do: painter("あいだ #{i}", ["年代:#{1600 + i}"])
-
-      graph = Graph.from_docs(docs ++ [painter("後の B", ["様式:象徴派", "年代:1900"])])
-
-      # 離れた 2 人なので、どちらの塊も 1 人ずつ。枠は立たない
-      assert graph.clusters == []
-    end
-
-    test "近くに並んでいれば 1 つの枠にまとまる" do
-      graph =
-        Graph.from_docs([
-          painter("A", ["様式:象徴派", "年代:1840"]),
-          painter("B", ["様式:象徴派", "年代:1841"]),
-          painter("C", ["様式:象徴派", "年代:1842"])
-        ])
-
-      assert [%{members: 3}] = graph.clusters
-    end
-
-    test "1 人が複数の様式に属していれば、どちらの枠にも入る" do
-      # 時期で作風が変わった画家を 1 つに決めると、どれを選んでも間違いになる
-      graph =
-        Graph.from_docs([
-          painter("ブラック", ["様式:キュビスム", "年代:1882"]),
-          painter("ピカソ", ["様式:キュビスム", "様式:新古典主義", "年代:1881"]),
-          painter("アングル風", ["様式:新古典主義", "年代:1880"])
-        ])
-
-      by_style = Map.new(graph.clusters, &{&1.style, &1})
-      picasso = Enum.find(graph.nodes, &(&1.name == "ピカソ"))
-
-      for style <- ["キュビスム", "新古典主義"] do
-        box = Map.fetch!(by_style, style)
-        assert picasso.y > box.y and picasso.y < box.y + box.height
-      end
-    end
-
-    test "複数の様式は丸の下に並べて出す" do
-      # 1 つに切り詰めると、枠が 2 つ掛かっている丸だけ片方しか書かれていない
-      graph = Graph.from_docs([painter("ピカソ", ["様式:キュビスム", "様式:新古典主義"])])
-
-      assert [%{note: "キュビスム・新古典主義", styles: ["キュビスム", "新古典主義"]}] = graph.nodes
-    end
-
-    test "様式を持たない画家は styles が空" do
-      assert [%{styles: [], note: nil}] = Graph.from_docs([painter("A", ["年代:1900"])]).nodes
-    end
-
-    test "枠はその様式の丸を全部含む" do
-      graph =
-        Graph.from_docs([
-          painter("モネ", ["様式:印象派", "年代:1840"]),
-          painter("ルノワール", ["様式:印象派", "年代:1841"]),
-          painter("ドガ", ["様式:印象派", "年代:1834"])
-        ])
-
-      [box] = graph.clusters
-      members = Enum.filter(graph.nodes, &(&1.note == "印象派"))
-
-      for node <- members do
-        assert node.x > box.x and node.x < box.x + box.width
-        assert node.y > box.y and node.y < box.y + box.height
-      end
-
-      assert box.members == 3
-    end
-
-    test "丸の大きさが決まってから組み直せる" do
-      # 半径まで含めて囲うので、知名度を当てる前に測ると大きい丸がはみ出す
-      graph =
-        Graph.from_docs([
-          %{
-            "title" => "有名",
-            "tags" => ["画家", "様式:印象派", "年代:1840"],
-            "extra" => %{"url" => "https://ja.wikipedia.org/wiki/有名"}
-          },
-          %{
-            "title" => "無名",
-            "tags" => ["画家", "様式:印象派", "年代:1841"],
-            "extra" => %{"url" => "https://ja.wikipedia.org/wiki/無名"}
-          }
-        ])
-
-      sized = Graph.sized(graph.nodes, %{"有名" => 100_000, "無名" => 100})
-      [box] = Graph.clusters(sized)
-      famous = Enum.find(sized, &(&1.name == "有名"))
-
-      assert box.x <= famous.x - famous.radius
-      assert box.x + box.width >= famous.x + famous.radius
-    end
-
-    test "広い枠から先に描く" do
-      # 狭い枠が広い枠に隠れると、囲われていないように見える
-      graph =
-        Graph.from_docs([
-          painter("A", ["様式:広い", "年代:1700"]),
-          painter("B", ["様式:狭い", "年代:1800"]),
-          painter("C", ["様式:狭い", "年代:1801"]),
-          painter("D", ["様式:広い", "年代:1900"])
-        ])
-
-      areas = Enum.map(graph.clusters, &(&1.width * &1.height))
-      assert areas == Enum.sort(areas, :desc)
-    end
-  end
-
-  test "文書が無ければ枠も無い" do
-    assert Graph.empty().clusters == []
+  test "文書が無ければ帯も無い" do
+    assert Graph.empty().bands == []
+    assert Graph.empty().nodes == []
   end
 end

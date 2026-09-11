@@ -136,9 +136,6 @@ article p:last-child { color: #475569; line-height: 1.7; }
 /* 様式の枠。**薄く敷く** —— 主役は丸と線なので、囲いが目立つと図が読みにくくなる。
    1 人が複数の様式に属していると枠は重なるので、塗りは重ねても濃くなりすぎない
    薄さにしてある（重なったところが少し濃くなり、二重に属していると分かる） */
-.relation-cluster rect { fill: rgba(98, 84, 214, .045); stroke: #c9c6ee; stroke-width: 1.5; stroke-dasharray: 8 6; }
-.relation-cluster text { fill: #7a72c4; font-size: 12px; font-weight: 800; }
-.relation-cluster .cluster-count { fill: #a7a2cd; font-size: 10px; font-weight: 600; }
 .relation-edge { stroke: #b6bdd2; stroke-width: 2; }
 .relation-edge.family { stroke: #d07b91; }
 .relation-edge.duo { stroke: #7770cc; stroke-dasharray: 7 6; }
@@ -155,14 +152,20 @@ article p:last-child { color: #475569; line-height: 1.7; }
    style で当てる（ここに font-size を書くと、CSS のほうが強いので全員同じになる）。
    フチを付けるのは、線や枠の上に名前が重なっても読めるようにするため */
 .node-name { fill: #202942; font-weight: 800; }
-.node-note, .year-label { fill: #6d7890; }
+/* 様式は札の中の 2 行目。名前より控えめにして、名前の読みを邪魔しない */
+.node-note { fill: #5a6280; font-weight: 600; }
+.year-label { fill: #6d7890; }
 .year-bar { fill: #d29b58; }
-.relation-guide { display: grid; gap: 1.5rem; margin: 1.5rem 0 3rem; padding: 1.35rem 1.5rem; border-radius: 1rem; background: white; }
+/* 凡例の真下に置く説明。**1 段で幅いっぱいに使う** —— 右半分に出典を並べていた
+   名残で 2 段組にしていたが、出典を消したので右が空いたままになっていた */
+.relation-guide { margin: 0.4rem 0 1.6rem; padding: 1.1rem 1.4rem; border-radius: 1rem; background: white; }
 .relation-guide h2 { margin-bottom: .4rem; font-size: .9rem; }
-.relation-guide p, .relation-guide li { margin: 0; color: #647089; font-size: .86rem; line-height: 1.7; }
+.relation-guide p, .relation-guide li { margin: 0; color: #647089; font-size: .88rem; line-height: 1.8; }
 .relation-guide ul { margin: 0; padding-left: 1.15rem; }
 .relation-guide a { color: #554bc0; }
-@media (min-width: 768px) { .relation-guide { grid-template-columns: 1fr 1fr; } }
+/* 段落のあいだだけ空ける。**幅は抑えない** —— ページ側が 72rem で抑えてあるので、
+   ここで折り返すと右半分が空くだけになる */
+.relation-guide p + p { margin-top: .6rem; }
 @media (max-width: 560px) { .relation-actions { align-items: flex-start; flex-direction: column; } }
 
 /* 収集の操作（依頼・いま集めさせる・読み直す）。狭い画面では折り返す */
@@ -189,7 +192,18 @@ article p:last-child { color: #475569; line-height: 1.7; }
 
 /* 代表作。画像は Wikipedia のものを指すだけで、こちらには持たない */
 .relation-tick line { stroke: #e2e4f3; stroke-width: 1.5; stroke-dasharray: 6 6; }
-.relation-tick text { fill: #97a0bb; font-size: 10px; font-weight: 600; }
+/* 年代の札は画面の左端に貼り付く（横位置と字の大きさは PanZoom が当て直す）。
+   図の上に重なるので、白く縁取って読めるようにする —— 縁取りが無いと、
+   引きずって図が下に来たときに名前と混ざって読めない */
+.tick-labels text {
+  fill: #7e879f;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
 
 .artwork-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 1.5rem; background: rgba(24, 22, 51, .55); }
 .artwork { margin: 0; width: min(34rem, 100%); max-height: 86vh; overflow-y: auto; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f8f8ff; box-shadow: 0 1.4rem 3rem rgba(24, 22, 51, .3); }
@@ -215,3 +229,92 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .backend-hint dd { margin: 0; }
 .topic-form fieldset { margin: .8rem 0; padding: .8rem 1rem; border: 1px solid #e2e8f0; border-radius: .8rem; }
 .topic-form legend { padding: 0 .4rem; font-size: .85rem; font-weight: 700; color: #334155; }
+
+/* 代表作が入っている印。名前より控えめにして、名前の読みを邪魔しない */
+.relation-node .work-mark { fill: #c9a227; }
+
+/* 押したときに出す、その画家のこと */
+.artwork-source { margin: 0 0 0.6rem; font-size: 0.9rem; }
+.artwork-tags {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.7rem;
+  margin: 0 0 0.9rem;
+  font-size: 0.85rem;
+}
+.artwork-tags dt { color: #7e879f; font-weight: 700; }
+.artwork-tags dd { margin: 0; overflow-wrap: anywhere; }
+/* 代表作は何枚でも縦に並べる（多くても 3 枚） */
+.artwork-figure { margin: 0 0 1rem; }
+.artwork-figure img { display: block; max-width: 100%; border-radius: 8px; }
+.artwork-figure figcaption { display: grid; gap: 0.2rem; margin-top: 0.4rem; }
+
+/* 地域の帯。**塗りは交互にごく薄く** —— 濃くすると丸より帯が目に入る。
+   境目の線だけははっきりさせて、どこで地域が変わるかを読めるようにする */
+.relation-band rect { fill: #6b74a8; fill-opacity: 0.035; }
+.relation-band:nth-of-type(even) rect { fill-opacity: 0.075; }
+.relation-band line { stroke: #c9cee6; stroke-width: 1.5; }
+
+/* 地域の札は画面の上端に貼り付く（縦位置と字の大きさは PanZoom が当て直す）*/
+.band-labels text {
+  fill: #6b74a8;
+  font-weight: 700;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.band-labels .band-count { fill: #97a0bb; font-weight: 600; }
+
+/* 様式の色の凡例。図の下に置く —— 図の上に重ねると、狭い画面で図を覆う */
+.style-legend { margin: 0.5rem 0 1.4rem; }
+.style-legend ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+.style-legend li { display: flex; }
+/* 押すとその様式だけになる。押せることが見た目で分かるように枠を持たせる */
+.style-legend button {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid #dfe3f0;
+  border-radius: 999px;
+  background: #fff;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.style-legend button:hover { border-color: #a8a2e0; }
+.style-legend button.on { border-color: #4338a8; background: #efecff; font-weight: 700; }
+.style-legend button.clear { color: #5a6280; }
+.style-legend .swatch {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 4px;
+  border: 1px solid rgba(29, 36, 58, .25);
+}
+.style-legend .muted-note { margin-left: 0.2rem; }
+
+/* 影響の線の押す的。**見えないが太い** —— 線そのものは細くて当たらない */
+.edge-target { stroke: transparent; stroke-width: 14; cursor: pointer; fill: none; }
+.edge-target:hover { stroke: rgba(67, 56, 168, .12); }
+
+.edge-reason { margin: 0 0 0.7rem; }
+.edge-links { margin: 0.6rem 0 0; padding-left: 1.1rem; font-size: 0.9rem; }
+
+/* モーダルから「この画家を詳しく調べて」を頼む */
+.ask-more { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: 0.8rem; }
+.ask-more summary { cursor: pointer; font-weight: 700; font-size: 0.9rem; }
+.ask-more textarea { width: 100%; font: inherit; }
+.ask-more button { margin-top: 0.3rem; }
+/* 依頼文の中の小見出し（抽出の指定 / 指示文） */
+.news-prompt h3 { font-size: 0.9rem; margin: 1rem 0 0.3rem; }

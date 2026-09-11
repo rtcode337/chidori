@@ -114,6 +114,27 @@ defmodule Antenna.Chiezo do
     end
   end
 
+  @doc """
+  **この部分を集中的に直して**、を Chiezo へ割り込ませます。
+
+  定時の巡回とは別の道で、進み具合にも次の予定にも触りません。名指しした画家は
+  必ず AI に見せられます（区画を渡すだけでは、直してほしい 1 人が差し込みに載る
+  保証がない）。
+  """
+  def focus(base, name, note, titles) do
+    body = Jason.encode!(%{note: note, titles: titles, requested_by: "antenna"})
+
+    case post(base <> "/v1/collect/" <> name <> "/focus", body, @timeout) do
+      {:ok, %{status: status}} when status in 200..299 -> :ok
+      {:ok, %{status: 403}} -> {:error, :collection_disabled}
+      {:ok, %{status: 404}} -> {:error, :not_requested}
+      {:ok, %{status: 409}} -> {:error, :chiezo_busy}
+      {:ok, %{status: 503}} -> {:error, :collect_disabled}
+      {:ok, %{status: status, body: raw}} -> {:error, {:chiezo_refused, status, reason_of(raw)}}
+      {:error, _reason} -> {:error, :chiezo_unavailable}
+    end
+  end
+
   defp decoded(raw) do
     case Jason.decode(raw) do
       {:ok, %{} = value} -> {:ok, value}
