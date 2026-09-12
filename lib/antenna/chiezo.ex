@@ -312,6 +312,8 @@ defmodule Antenna.Chiezo do
         interval_minutes: s["interval_minutes"],
         cover_days: s["cover_days"],
         partitions_per_run: s["partitions_per_run"],
+        # 時計を持たない巡回（割り込み用）。定時には走らず、頼まれたときだけ動く
+        on_demand: s["on_demand"] == true,
         enabled: s["enabled"] != false,
         next_run_at: s["next_run_at"],
         last_run_at: s["last_run_at"],

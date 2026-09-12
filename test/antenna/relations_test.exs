@@ -72,14 +72,18 @@ defmodule Antenna.RelationsTest do
       # （50 人ずつで聞いていた頃、AI の答えが出力上限に当たって途中で切れた）
       assert payload["partition"] == %{"by" => "title", "target" => 25}
 
-      # **巡回は 2 本。** ざっとは 14 日で一周（1 回に見る区画数は Chiezo が
+      # **巡回は 3 本。** ざっとは 14 日で一周（1 回に見る区画数は Chiezo が
       # 区画の数から計算するので、画家が増えても一周の日数は変わらない）、
-      # じっくりは 1 日 1 区画を考える量を上げて見直す
-      assert [rough, deep] = payload["sweeps"]
+      # じっくりは 1 日 1 区画を考える量を上げて見直す。
+      # 3 本目は**時計を持たない** —— 画家のモーダルから頼む割り込み用で、
+      # 頼む相手を定時のものと別に決めておくためのもの
+      assert [rough, deep, on_demand] = payload["sweeps"]
       assert rough["name"] == "ざっと"
       assert rough["cover_days"] == 14
       assert deep["partitions_per_run"] == 1
       assert deep["effort"] == "high"
+      assert on_demand["on_demand"] == true
+      refute Map.has_key?(on_demand, "interval_minutes")
 
       assert_received {:read, url}
       # 一枚ものなので、新しい順に何件かではなく全部を引く
@@ -137,7 +141,8 @@ defmodule Antenna.RelationsTest do
       assert url =~ "/v1/collect/antenna_painters"
       assert patch["prompt"] =~ "{partition}"
       assert patch["partition"] == %{"by" => "title", "target" => 25}
-      assert [%{"name" => "ざっと"}, %{"name" => "じっくり"}] = patch["sweeps"]
+      assert [%{"name" => "ざっと"}, %{"name" => "じっくり"}, %{"on_demand" => true}] =
+               patch["sweeps"]
 
       # **走らせない**
       refute_received {:ran, _url}

@@ -71,9 +71,13 @@ defmodule Antenna.Relations do
   # **2 本に分ける理由。** 進み方も、頼む相手も、1 回に食べる量も違う ——
   # ざっとは影響関係の空欄を埋めて回り、じっくりは既に入っているものを疑う。
   # 1 本の間隔では両方は表せない
+  # **3 本目は時計を持たない。** 画家のモーダルから頼む「この画家を詳しく調べて」は
+  # 割り込みとして走るので、**頼む相手を定時のものと別に決めておける**必要がある ——
+  # あれは人が待っている場面で、ざっとの相手をそのまま使う理由が無い
   @sweeps [
     %{name: "ざっと", interval_minutes: @rough_minutes, cover_days: @rough_days},
-    %{name: "じっくり", interval_minutes: @deep_minutes, partitions_per_run: 1, effort: "high"}
+    %{name: "じっくり", interval_minutes: @deep_minutes, partitions_per_run: 1, effort: "high"},
+    %{name: "割り込み", on_demand: true}
   ]
 
   # 押すたびに AI へ投げると枠を使い切る。こちら側で間隔を空ける
@@ -674,12 +678,22 @@ defmodule Antenna.Relations do
       # 断られるので、それだけだと antenna 側で指示文や区画を直しても永遠に届かない
       # （画面には Chiezo の中身が出るので、直したはずのものが出ないことになる）。
       # **走らせはしない** —— 走らせると定時の巡回がその回ぶん先送りになる
-      if existing do
-        progress(:pushing)
-        Chiezo.patch(base_url, name, base_attrs(name, choices))
-      end
+      #
+      # **断られたら黙って済ませない。** 読み直しは成功するので、結果だけ見ていると
+      # 「押したのに何も変わらない」としか映らない（送れていないことに気づけない）
+      pushed =
+        if existing do
+          progress(:pushing)
+          Chiezo.patch(base_url, name, base_attrs(name, choices))
+        else
+          :ok
+        end
 
-      reading(fetch_painters(base_url, fallback))
+      case {pushed, reading(fetch_painters(base_url, fallback))} do
+        {:ok, read} -> read
+        {{:error, reason}, {:ok, relation}} -> {:ok, relation, reason}
+        {{:error, reason}, _unreadable} -> {:error, reason}
+      end
     end
   end
 
@@ -978,8 +992,14 @@ defmodule Antenna.Relations do
   defp with_choices(sweeps, choices) do
     for sweep <- sweeps do
       case Map.get(choices, sweep.name) do
-        nil -> sweep
-        picked -> Map.merge(sweep, Map.reject(picked, fn {_k, v} -> v in [nil, ""] end))
+        nil ->
+          sweep
+
+        # **空文字は落とさない。** あれは「Chiezo の既定にまかせる」を選んだという
+        # 意思表示で、落とすと一度決めた相手を外せなくなる（Chiezo 側が空を
+        # 「指定しない」に倒す）
+        picked ->
+          Map.merge(sweep, Map.reject(picked, fn {_k, v} -> is_nil(v) end))
       end
     end
   end

@@ -108,6 +108,7 @@ defmodule AntennaWeb.RelationsLiveTest do
     test "いま何をしているのかを出す", %{conn: conn} do
       # 押しても数分は Chiezo 側に何も出ない（先に AI へ指定を書かせるため）。
       # 「収集中…」だけだと、押せていないのと区別が付かない
+      restart_relations()
       System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
       on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
       test_pid = self()
@@ -219,6 +220,15 @@ defmodule AntennaWeb.RelationsLiveTest do
 
       refute render_keydown(live, "close_work", %{"key" => "Escape"}) =~ ~s(role="dialog")
     end
+  end
+
+  # **収集の状態は 1 つのプロセスに溜まる。** 押した時刻も覚えているので、
+  # 前のテストが押していると次のテストが「少し待ってから」で弾かれる（並びで
+  # 結果が変わる）。押すテストは、まっさらな状態から始める
+  defp restart_relations do
+    :ok = Supervisor.terminate_child(Antenna.Supervisor, Antenna.Relations)
+    {:ok, _pid} = Supervisor.restart_child(Antenna.Supervisor, Antenna.Relations)
+    :ok
   end
 
   defp wait_until(check, tries \\ 100) do
@@ -334,6 +344,118 @@ defmodule AntennaWeb.RelationsLiveTest do
 
       assert RelationsLive.edge_lines(relation, [a]) == []
       assert [_line] = RelationsLive.edge_lines(relation, [a, b])
+    end
+  end
+
+  describe "巡回ごとに相手を選ぶ" do
+    defp painters_collection_json do
+      item = %{
+        "name" => "antenna_painters",
+        "enabled" => true,
+        "prompt" => "x",
+        "cursor" => "",
+        "extract" => %{"source" => "jawiki", "tag" => "画家"},
+        "sweeps" => [
+          %{"name" => "ざっと", "interval_minutes" => 360, "enabled" => true, "backend" => "claude"},
+          %{"name" => "じっくり", "interval_minutes" => 1440, "enabled" => true},
+          %{"name" => "割り込み", "on_demand" => true, "enabled" => true}
+        ]
+      }
+
+      {Jason.encode!(%{"collections" => [item]}), Jason.encode!(item)}
+    end
+
+    defp stub_chiezo(test_pid) do
+      {collections, one} = painters_collection_json()
+
+      Antenna.HttpStub.stub(fn
+        %{url: "http://chiezo.test:7010/v1/ai/backends"} ->
+          Antenna.HttpStub.ok(
+            ~s({"backends":[{"id":"codex","label":"Codex","models":[],"efforts":["low","high"]},{"id":"claude","label":"Claude","models":[],"efforts":["low","medium","high"]}]})
+          )
+
+        %{url: "http://chiezo.test:7010/v1/ingest/status"} ->
+          Antenna.HttpStub.ok(~s({"running":false}))
+
+        %{method: :patch, body: body} ->
+          send(test_pid, {:patched, body})
+          Antenna.HttpStub.ok("{}")
+
+        %{method: :post} ->
+          Antenna.HttpStub.ok("{}")
+
+        %{url: url} ->
+          cond do
+            String.contains?(url, "/filter?") -> Antenna.HttpStub.ok(~s({"results":[],"total":0}))
+            String.ends_with?(url, "/v1/collect") -> Antenna.HttpStub.ok(collections)
+            true -> Antenna.HttpStub.ok(one)
+          end
+      end)
+    end
+
+    setup do
+      System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+      stub_chiezo(self())
+      restart_relations()
+    end
+
+    test "選んだ相手が、図が届いても元に戻らない", %{conn: conn} do
+      # **これが「選んだのに反映されない」の正体だった。** フォームの中身を
+      # サーバーが覚えていないと、図や状態が届いた拍子に描き直されて、
+      # 選んだところが Chiezo に入っている値へ戻る（選んだつもりで押すと、
+      # いま入っている値がそのまま送り返される）
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      assert wait_until(fn -> render(live) =~ "ざっと" end)
+
+      live
+      |> element("form#collect-form")
+      |> render_change(%{"sweep|ざっと|backend" => "codex", "sweep|ざっと|effort" => "high"})
+
+      # 図が届いたことにして描き直す（実際には読み直しが終わったとき）
+      send(live.pid, {:relation_updated, Antenna.Relations.current("painters")})
+      html = live |> element("form#collect-form table") |> render()
+
+      assert html =~ ~s(<option value="codex" selected=)
+      assert html =~ ~s(<option value="high" selected=)
+    end
+
+    test "時計を持たない巡回にも相手を選べる", %{conn: conn} do
+      # 画家のモーダルから頼む「詳しく調べて」は割り込みとして走る。**人が待っている
+      # 場面**なので、定時の巡回と同じ相手を使う理由が無い
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      assert wait_until(fn -> render(live) =~ "割り込み" end)
+
+      html = live |> element("form#collect-form table") |> render()
+      assert html =~ "時計なし"
+      assert html =~ "頼まれたとき"
+      assert html =~ ~s(name="sweep|割り込み|backend")
+    end
+
+    test "選んだものが Chiezo へ送られる", %{conn: conn} do
+      # **空文字も送る。** あれは「Chiezo の既定にまかせる」を選んだという意思表示で、
+      # 落とすと一度決めた相手を画面から外せない
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      assert wait_until(fn -> render(live) =~ "ざっと" end)
+
+      live
+      |> element("form#collect-form")
+      |> render_change(%{
+        "sweep|ざっと|backend" => "codex",
+        "sweep|ざっと|effort" => "high",
+        "sweep|じっくり|backend" => ""
+      })
+
+      live |> element("form#collect-form") |> render_submit(%{})
+
+      assert_receive {:patched, body}, 5_000
+      sweeps = Jason.decode!(body)["sweeps"]
+      rough = Enum.find(sweeps, &(&1["name"] == "ざっと"))
+      deep = Enum.find(sweeps, &(&1["name"] == "じっくり"))
+
+      assert rough["backend"] == "codex"
+      assert rough["effort"] == "high"
+      assert deep["backend"] == ""
     end
   end
 

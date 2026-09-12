@@ -53,7 +53,11 @@ defmodule AntennaWeb.RelationsLive do
        # 2 つ重ねると、出ていないものが「動かなかった」のか「別の様式」なのか読めない
        changed_only: false,
        focus_sent: nil,
-       backends: []
+       backends: [],
+       # 巡回ごとに選んだ相手。**サーバー側で覚える** —— 覚えないと、図が届いた
+       # 拍子にフォームが描き直されて、選んだところが元の値に戻る（選んだつもりで
+       # 押すと、いま入っている値がそのまま送り返される）
+       picks: %{}
      )
      # 検索。`focus` が決まっているあいだは、その人と繋がっている相手を
      # 大きさに関わらず描く（周りの関連図を見るのが目的なので）
@@ -94,9 +98,13 @@ defmodule AntennaWeb.RelationsLive do
   # 「収集の設定を更新」。**画面で選んだ相手を一緒に送る** ——
   # antenna は覚えない（正は Chiezo が持っているもの）ので、押したときに載せる
   def handle_event("collect", params, socket) do
-    Relations.collect_now(socket.assigns.view, sweep_choices(params))
+    Relations.collect_now(socket.assigns.view, picks(socket, params))
     {:noreply, socket}
   end
+
+  # 選び直したら、その場で覚える。**送るのは押したときだけ**で、ここでは何もしない
+  def handle_event("pick_sweep", params, socket),
+    do: {:noreply, assign(socket, picks: picks(socket, params))}
 
   # モーダルから「この画家を詳しく調べて」を Chiezo へ割り込ませる。
   # **定時の巡回には触らない**ので、待たずに頼める
@@ -268,6 +276,14 @@ defmodule AntennaWeb.RelationsLive do
     {:noreply, assign(socket, artwork: [])}
   end
 
+  # 送る値。**覚えているほうを勝たせる** —— 画面が描き直されるとフォームは
+  # サーバーが言うとおりに戻るので、覚えているものが選んだ本人の意思に近い。
+  # 一度も選んでいなければ、いま出ている値（＝ Chiezo に入っている値）がそのまま返る
+  defp picks(socket, params),
+    do: Map.merge(sweep_choices(params), socket.assigns.picks, fn _name, from_form, remembered ->
+      Map.merge(from_form, remembered)
+    end)
+
   # `sweep|ざっと|backend` の形で届くものを、巡回ごとにまとめ直す
   defp sweep_choices(params) do
     for {key, value} <- params, reduce: %{} do
@@ -309,6 +325,20 @@ defmodule AntennaWeb.RelationsLive do
   def collection_facts(_relation), do: []
 
   @doc """
+  その巡回でいま選ばれているもの。**覚えているほうを先に見ます**。
+
+  画面が描き直されるとフォームはサーバーが言うとおりに戻るので、覚えたものを
+  出し直さないと、選んだところが勝手に元へ戻ります（選んだつもりで押すと、
+  いま入っている値がそのまま送り返される）。
+  """
+  def pick_of(picks, name, field, fallback) do
+    case get_in(picks, [name, field]) do
+      nil -> fallback
+      picked -> picked
+    end
+  end
+
+  @doc """
   その相手が受け付ける「考える量」。**相手を選び直すまでは、いまの相手のぶん**。
 
   相手ごとに段階が違うので（claude は 5 段、antigravity は 3 段）、まとめて並べると
@@ -339,6 +369,7 @@ defmodule AntennaWeb.RelationsLive do
           effort: c.effort,
           interval_minutes: c.interval_minutes,
           cover_days: nil,
+          on_demand: false,
           enabled: c.enabled,
           next_run_at: c.next_run_at,
           last_run_at: c.last_run_at,
@@ -361,11 +392,18 @@ defmodule AntennaWeb.RelationsLive do
       backend: sweep.backend,
       model: sweep.model,
       effort: sweep.effort,
-      interval: if(sweep.interval_minutes, do: "#{sweep.interval_minutes} 分ごと", else: "—"),
+      interval:
+        cond do
+          sweep[:on_demand] -> "時計なし"
+          sweep.interval_minutes -> "#{sweep.interval_minutes} 分ごと"
+          true -> "—"
+        end,
       round: if(sweep[:cover_days], do: "#{round(sweep.cover_days)} 日で一周", else: nil),
       next:
         cond do
           not sweep.enabled -> "止めている"
+          # 時計を持たない巡回（割り込み用）。押されたときだけ動く
+          sweep[:on_demand] -> "頼まれたとき"
           next = Jst.format(sweep.next_run_at) -> next
           true -> "いますぐ"
         end,
