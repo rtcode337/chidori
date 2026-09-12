@@ -763,7 +763,6 @@ defmodule AntennaWeb.RelationsLive do
 
   @doc "いま何をしているか。分からなければ nil。"
   def step_text(%{step: :checking}), do: "収集があるか確かめています…"
-  def step_text(%{step: :drafting}), do: "AI に抽出の指定を書かせています…"
   def step_text(%{step: :requesting}), do: "Chiezo に収集を依頼しています…"
   def step_text(%{step: :pushing}), do: "Chiezo の設定を書き換えています…"
   def step_text(%{step: :collecting}), do: "Chiezo に集めさせています…"
@@ -771,11 +770,6 @@ defmodule AntennaWeb.RelationsLive do
   def step_text(_relation), do: nil
 
   @doc "その段でどれくらい待つのか。押した人が席を立ってよいかの目安。"
-  def step_note(%{step: :drafting}),
-    do:
-      "どのカテゴリから引けるかを AI が Chiezo の索引で確かめています。" <>
-        "数分から十数分かかり、この間は Chiezo 側にはまだ何も出ません。"
-
   def step_note(%{step: :collecting}),
     do: "指定どおりに引いて長期記憶へ焼いています。AI は動きません。"
 
@@ -870,14 +864,6 @@ defmodule AntennaWeb.RelationsLive do
   # **指定が書けなければ収集を作らない。** 作ってしまうと、名簿が空のまま AI に
   # 「いまの内容から 10 人ほど選べ」と頼むことになり、10 件の図ができて終わる
   # （実測）。そのとき押した人には、なぜそうなったのかが読めない
-  defp reason_text({:extract_refused, nil}),
-    do:
-      "Wikipedia から機械的に引く条件を書けなかったため、収集を作りませんでした。" <>
-        "もう一度押すと書き直させます。"
-
-  defp reason_text({:extract_refused, why}),
-    do: "Wikipedia から機械的に引く条件を書けなかったため、収集を作りませんでした: #{why}"
-
   defp reason_text({:extract_failed, _detail}),
     do:
       "Wikipedia から機械的に引く条件を AI に書かせられませんでした。" <>

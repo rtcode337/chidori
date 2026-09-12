@@ -106,8 +106,8 @@ defmodule AntennaWeb.RelationsLiveTest do
     end
 
     test "いま何をしているのかを出す", %{conn: conn} do
-      # 押しても数分は Chiezo 側に何も出ない（先に AI へ指定を書かせるため）。
-      # 「収集中…」だけだと、押せていないのと区別が付かない
+      # 押してから設定が届くまでに何往復かある。「収集中…」だけだと、
+      # 押せていないのと区別が付かない
       restart_relations()
       System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
       on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
@@ -117,11 +117,11 @@ defmodule AntennaWeb.RelationsLiveTest do
         %{url: "http://chiezo.test:7010/v1/ingest/status"} ->
           Antenna.HttpStub.ok(~s({"running":false}))
 
-        %{method: :post, url: "http://chiezo.test:7010/v1/collect/draft-extract"} ->
+        %{method: :post, url: "http://chiezo.test:7010/v1/collect"} ->
           send(test_pid, {:asked, self()})
 
           receive do
-            :go -> Antenna.HttpStub.ok(~s({"extract":{"source":"jawiki","tag":"x"}}))
+            :go -> Antenna.HttpStub.ok("{}")
           after
             5_000 -> {:error, :timeout}
           end
@@ -144,11 +144,19 @@ defmodule AntennaWeb.RelationsLiveTest do
       live |> element("form[phx-submit=collect]") |> render_submit(%{})
 
       assert_receive {:asked, worker}, 2_000
-      assert wait_until(fn -> render(live) =~ "AI に抽出の指定を書かせています" end)
-      # 待っているあいだ、Chiezo 側にはまだ何も出ないことも書いておく
-      assert render(live) =~ "Chiezo 側にはまだ何も出ません"
+      assert wait_until(fn -> render(live) =~ "Chiezo に収集を依頼しています" end)
 
       send(worker, :go)
+
+      assert wait_until(fn ->
+               receive do
+                 {:asked, pid} -> send(pid, :go)
+               after
+                 0 -> :ok
+               end
+
+               Antenna.Relations.current("painters").status != :loading
+             end)
     end
 
     test "押した合図はサーバーの応答を待たずに出す", %{conn: conn} do
