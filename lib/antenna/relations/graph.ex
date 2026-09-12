@@ -172,6 +172,12 @@ defmodule Antenna.Relations.Graph do
   @doc "地域を載せるタグの頭。"
   def region_tag, do: @region_prefix
 
+  @doc "年代を載せるタグの頭。縦軸（時代）はこれで決まる。"
+  def years_tag, do: @years_prefix
+
+  @doc "様式を載せるタグの頭。色と凡例はこれで決まる。"
+  def style_tag, do: @style_prefix
+
   @doc """
   その図に出てくる様式へ色を振ります（様式 → 色相 0〜359）。
 
