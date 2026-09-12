@@ -305,6 +305,10 @@ defmodule Antenna.Relations do
       # Chiezo 側で取り込みが走っているか。**ボタンは止めない** —— 押しても
       # 送るだけ（走らせはしない）ので、取り込み中でも困らない
       busy: %{},
+      # 割り込み（この画家を詳しく調べて）の届き具合。**断られたら知らせる** ——
+      # 取り込み中の Chiezo は受け付けないので、黙って捨てると「頼んだのに何も
+      # 起きない」だけが残る
+      focus: %{},
       # 押して送っている最中か。**開いたときの読み直しと区別する** ——
       # 一緒にすると、読むだけのときに「送っています」と出てボタンも押せなくなる
       pushing: %{},
@@ -359,21 +363,29 @@ defmodule Antenna.Relations do
   def handle_cast({:focus, key, painter, note}, state) do
     case chiezo_base_url() do
       nil ->
-        {:noreply, broadcast(put_in(state.reasons[key], :chiezo_not_configured), key)}
+        {:noreply, broadcast(focused(state, key, painter, {:error, :chiezo_not_configured}), key)}
 
       base_url ->
-        # **待たせない。** 割り込みは Chiezo 側で数分かかるので、押した合図だけ返す
+        # **待たせない。** 割り込みは Chiezo 側で数分かかるので、押した合図だけ返す。
+        # **ただし断られたら知らせる** —— 取り込みが走っている間は Chiezo が受け付けない
+        # ので、黙って捨てると「頼んだのに何も起きない」だけが残る（実際にそうなった）
+        me = self()
+
         Task.Supervisor.start_child(Antenna.TaskSupervisor, fn ->
-          ask_focus(base_url, painter, note)
+          send(me, {:focus_done, key, painter, ask_focus(base_url, painter, note)})
         end)
 
-        {:noreply, state}
+        {:noreply, broadcast(put_in(state.focus[key], %{painter: painter, state: :sending}), key)}
     end
   end
 
   def handle_cast({:collect, key, choices}, state) do
     cond do
-      state.statuses[key] == :loading ->
+      # **送っている最中だけ止める。** 読み直しの最中も止めていたが、あれのせいで
+      # 押下が黙って捨てられていた —— 8,000 件の読み直しは数十秒かかり、そのあいだ
+      # ボタンは押せるのに何も起きない（画面には何も出ないので、設定が送られていない
+      # ことに気づきようがない）。送るのは読み直しとは別の往復なので、重なって困らない
+      state.pushing[key] ->
         {:noreply, state}
 
       throttled?(state, key) ->
@@ -448,6 +460,10 @@ defmodule Antenna.Relations do
   end
 
   # 走っている途中から届く「いま何をしているか」。そのまま画面へ流す
+  # 割り込みの結果が返ってきた（待っていたのはタスクの側）
+  def handle_info({:focus_done, key, painter, result}, state),
+    do: {:noreply, broadcast(focused(state, key, painter, result), key)}
+
   def handle_info({:progress, key, step}, state) do
     {:noreply, broadcast(put_in(state.step[key], step), key)}
   end
@@ -465,6 +481,14 @@ defmodule Antenna.Relations do
   end
 
   def handle_info(_message, state), do: {:noreply, state}
+
+  # 割り込みの結果。**成否どちらも残す** —— 押した人が知りたいのは「届いたか」で、
+  # 届かなかったときこそ知らせる必要がある
+  defp focused(state, key, painter, :ok),
+    do: put_in(state.focus[key], %{painter: painter, state: :sent})
+
+  defp focused(state, key, painter, {:error, reason}),
+    do: put_in(state.focus[key], %{painter: painter, state: :failed, reason: reason})
 
   # 確かめるのは別のプロセス。GenServer を HTTP で止めない
   defp check_busy(key) do
@@ -556,6 +580,7 @@ defmodule Antenna.Relations do
     |> Map.put(:collected_at, Map.get(state.collected_at, key))
     |> Map.put(:checked_at, Map.get(state.checked_at, key))
     |> Map.put(:busy, Map.get(state.busy, key, false))
+    |> Map.put(:focus, Map.get(state.focus, key))
     # **押して送っている最中かどうか。** 開いたときの読み直しと区別する ——
     # 読むだけのときに「送っています」と出すのは嘘で、しかもボタンが押せなくなる
     |> Map.put(:pushing, Map.get(state.pushing, key, false))

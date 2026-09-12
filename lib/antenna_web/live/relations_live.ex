@@ -102,9 +102,15 @@ defmodule AntennaWeb.RelationsLive do
     {:noreply, socket}
   end
 
-  # 選び直したら、その場で覚える。**送るのは押したときだけ**で、ここでは何もしない
+  # 選び直したら、その場で覚える。**送るのは押したときだけ**で、ここでは何もしない。
+  #
+  # **ここでは覚えているほうを勝たせない。** この事象そのものが選び直しなので、
+  # 前に覚えた値を優先すると、一度覚えた欄を二度と変えられなくなる ——
+  # 相手を選んだ拍子に「考える量: 空」まで覚えてしまい、そのあと考える量を選んでも
+  # 空のまま送られていた（画面では選べているように見えるので、押すまで気づけない）。
+  # フォームは変更のたびに丸ごと届くので、この控えだけで全部の欄が揃う
   def handle_event("pick_sweep", params, socket),
-    do: {:noreply, assign(socket, picks: picks(socket, params))}
+    do: {:noreply, assign(socket, picks: sweep_choices(params))}
 
   # モーダルから「この画家を詳しく調べて」を Chiezo へ割り込ませる。
   # **定時の巡回には触らない**ので、待たずに頼める
@@ -276,9 +282,11 @@ defmodule AntennaWeb.RelationsLive do
     {:noreply, assign(socket, artwork: [])}
   end
 
-  # 送る値。**覚えているほうを勝たせる** —— 画面が描き直されるとフォームは
-  # サーバーが言うとおりに戻るので、覚えているものが選んだ本人の意思に近い。
-  # 一度も選んでいなければ、いま出ている値（＝ Chiezo に入っている値）がそのまま返る
+  # 押したときに送る値。**覚えているほうを勝たせる** —— 画面が描き直されると
+  # フォームはサーバーが言うとおりに戻るので、覚えているものが選んだ本人の意思に近い。
+  # 一度も選んでいなければ、いま出ている値（＝ Chiezo に入っている値）がそのまま返る。
+  #
+  # **選び直し（`pick_sweep`）では使わない。** あちらはフォームのほうが新しい
   defp picks(socket, params),
     do: Map.merge(sweep_choices(params), socket.assigns.picks, fn _name, from_form, remembered ->
       Map.merge(from_form, remembered)
@@ -474,6 +482,24 @@ defmodule AntennaWeb.RelationsLive do
   """
   def shown(relation, %{changed_only: true}), do: Graph.only_changed(relation)
   def shown(relation, %{style_filter: style}), do: Graph.only(relation, style)
+
+  @doc """
+  割り込み（この画家を詳しく調べて）の届き具合。**断られたことも出します**。
+
+  取り込みが走っている間の割り込みは Chiezo が受け付けません。黙って捨てると
+  「頼んだのに何も起きない」だけが残り、押した人には確かめようがない
+  （実際、定時の巡回が走っている最中に押して、そのまま消えていた）。
+  """
+  def focus_state(relation, painter) do
+    case relation[:focus] do
+      %{painter: ^painter} = focus -> focus
+      _ -> nil
+    end
+  end
+
+  @doc "割り込みが断られた理由の一文。"
+  def focus_error(%{reason: reason}), do: reason_text(reason)
+  def focus_error(_focus), do: nil
 
   @doc """
   直近の巡回で動いたものの一言。動いたものが無ければ nil。
@@ -806,6 +832,11 @@ defmodule AntennaWeb.RelationsLive do
 
   defp reason_text(:chiezo_not_configured),
     do: "CHIEZO_BASE_URL が設定されていないため収集できません。"
+
+  defp reason_text(:chiezo_busy),
+    do:
+      "いま Chiezo が取り込み中なので、割り込みを受け付けてもらえませんでした。" <>
+        "終わってからもう一度押してください。"
 
   defp reason_text(:chiezo_unavailable), do: "Chiezoに接続できませんでした。"
   defp reason_text({:chiezo_status, status}), do: "Chiezoが #{status} を返しました。"

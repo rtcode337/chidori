@@ -207,6 +207,8 @@ article p:last-child { color: #475569; line-height: 1.7; }
 
 /* この図がどこから来るかの断り。状態の下に小さく置く */
 .muted-note { margin: .35rem 0 0; color: #7c869b; font-size: .78rem; line-height: 1.6; }
+/* 断られたことの知らせ。**薄くしない** —— 押した人が読み飛ばすと、頼めたつもりのまま待つ */
+.warn-note { margin: .35rem 0 0; color: #b42318; font-size: .82rem; line-height: 1.6; }
 
 /* 代表作。画像は Wikipedia のものを指すだけで、こちらには持たない */
 .relation-tick line { stroke: #e2e4f3; stroke-width: 1.5; stroke-dasharray: 6 6; }

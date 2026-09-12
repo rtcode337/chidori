@@ -565,9 +565,15 @@
              進み具合にも次の予定にも触らない --%>
         <details :if={@view == "painters"} class="ask-more">
           <summary>この画家を詳しく調べてもらう</summary>
-          <%= if @focus_sent == @detail.name do %>
+          <% asked = focus_state(@relation, @detail.name) %>
+          <%= if asked && asked.state == :failed do %>
+            <%!-- **断られたことは必ず出す。** 黙って捨てると「頼んだのに何も
+                 起きない」だけが残り、押した人には確かめようがない --%>
+            <p class="warn-note">{focus_error(asked)}</p>
+          <% end %>
+          <%= if @focus_sent == @detail.name and (asked == nil or asked.state != :failed) do %>
             <p class="muted-note">
-              Chiezo に頼みました。**結果が図に出るのは、次に Chiezo が集めたあと**です。
+              Chiezo に頼みました。<strong>結果が図に出るのは、次に Chiezo が集めたあと</strong>です。
             </p>
           <% else %>
             <form phx-submit="focus_painter">

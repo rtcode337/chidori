@@ -432,6 +432,99 @@ defmodule AntennaWeb.RelationsLiveTest do
       assert html =~ ~s(name="sweep|割り込み|backend")
     end
 
+    test "選び直した欄が、前に覚えた値に上書きされない", %{conn: conn} do
+      # **一度覚えた欄を二度と変えられなくなっていた。** 相手を選んだ拍子に
+      # 「考える量: 空」まで覚え、そのあと考える量を選んでも空のまま送られる ——
+      # 画面では選べているように見えるので、押すまで気づけない
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      assert wait_until(fn -> render(live) =~ "割り込み" end)
+
+      # まず相手を選ぶ（このとき考える量は空のまま送られてくる）
+      live
+      |> element("form#collect-form")
+      |> render_change(%{"sweep|割り込み|backend" => "codex", "sweep|割り込み|effort" => ""})
+
+      # 次に考える量を選ぶ
+      live
+      |> element("form#collect-form")
+      |> render_change(%{"sweep|割り込み|backend" => "codex", "sweep|割り込み|effort" => "high"})
+
+      live |> element("form#collect-form") |> render_submit(%{})
+
+      assert_receive {:patched, body}, 5_000
+      sweep = Enum.find(Jason.decode!(body)["sweeps"], &(&1["name"] == "割り込み"))
+      assert sweep["effort"] == "high"
+    end
+
+    test "読み直している最中に押しても、設定は送られる", %{conn: conn} do
+      # **押下が黙って捨てられていた。** 8,000 件の読み直しは数十秒かかり、そのあいだ
+      # ボタンは押せるのに何も起きない —— 画面には何も出ないので、設定が送られて
+      # いないことに気づきようがなかった
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      assert wait_until(fn -> render(live) =~ "ざっと" end)
+
+      # 溜まったものの読み出しだけを止めて、読み直しが終わらない状態を作る
+      {collections, one} = painters_collection_json()
+      test_pid = self()
+
+      Antenna.HttpStub.stub(fn
+        %{method: :patch, body: body} ->
+          send(test_pid, {:patched, body})
+          Antenna.HttpStub.ok("{}")
+
+        %{method: :post} ->
+          Antenna.HttpStub.ok("{}")
+
+        %{url: url} ->
+          cond do
+            String.contains?(url, "/filter?") ->
+              send(test_pid, {:reading, self()})
+
+              receive do
+                :go -> Antenna.HttpStub.ok(~s({"results":[],"total":0}))
+              after
+                5_000 -> {:error, :timeout}
+              end
+
+            String.ends_with?(url, "/v1/collect") ->
+              Antenna.HttpStub.ok(collections)
+
+            String.contains?(url, "/v1/ingest/status") ->
+              Antenna.HttpStub.ok(~s({"running":false}))
+
+            true ->
+              Antenna.HttpStub.ok(one)
+          end
+      end)
+
+      Antenna.Relations.refresh("painters")
+      assert_receive {:reading, reader}, 2_000
+      assert Antenna.Relations.current("painters").status == :loading
+
+      live
+      |> element("form#collect-form")
+      |> render_change(%{"sweep|ざっと|backend" => "codex"})
+
+      live |> element("form#collect-form") |> render_submit(%{})
+
+      assert_receive {:patched, body}, 5_000
+      sweep = Enum.find(Jason.decode!(body)["sweeps"], &(&1["name"] == "ざっと"))
+      assert sweep["backend"] == "codex"
+
+      # 止めたままにすると、次のテストへ :loading のまま持ち越す
+      send(reader, :go)
+
+      assert wait_until(fn ->
+               receive do
+                 {:reading, pid} -> send(pid, :go)
+               after
+                 0 -> :ok
+               end
+
+               Antenna.Relations.current("painters").status != :loading
+             end)
+    end
+
     test "選んだものが Chiezo へ送られる", %{conn: conn} do
       # **空文字も送る。** あれは「Chiezo の既定にまかせる」を選んだという意思表示で、
       # 落とすと一度決めた相手を画面から外せない
@@ -456,6 +549,30 @@ defmodule AntennaWeb.RelationsLiveTest do
       assert rough["backend"] == "codex"
       assert rough["effort"] == "high"
       assert deep["backend"] == ""
+    end
+  end
+
+  describe "この画家を詳しく調べてもらう" do
+    alias AntennaWeb.RelationsLive
+
+    test "断られたら、その理由を出す" do
+      # **黙って捨てない。** 取り込みが走っている間の割り込みは Chiezo が受け付けない
+      # ので、捨てると「頼んだのに何も起きない」だけが残る（実際にそうなった）
+      relation = %{focus: %{painter: "モネ", state: :failed, reason: :chiezo_busy}}
+      asked = RelationsLive.focus_state(relation, "モネ")
+
+      assert asked.state == :failed
+      assert RelationsLive.focus_error(asked) =~ "取り込み中"
+    end
+
+    test "別の画家のぶんは出さない" do
+      relation = %{focus: %{painter: "モネ", state: :failed, reason: :chiezo_busy}}
+      assert RelationsLive.focus_state(relation, "ゴッホ") == nil
+    end
+
+    test "まだ何も頼んでいなければ何も出さない" do
+      assert RelationsLive.focus_state(%{}, "モネ") == nil
+      assert RelationsLive.focus_error(%{painter: "モネ", state: :sent}) == nil
     end
   end
 
