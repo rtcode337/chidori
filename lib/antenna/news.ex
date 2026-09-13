@@ -71,12 +71,6 @@ defmodule Antenna.News do
             # まとめ（`@digest_tag` の付いた1件）。**記事と別に持つ** ——
             # 一覧に混ぜると、まとめが記事のふりをして並ぶ
             digests: [],
-            # 選ばれたもの（見出し → なぜ）。**選ぶたびに AI を呼ばない**ので、
-            # 溜まったものが変わっていなければ前の結果をそのまま出す
-            picks: %{},
-            picked_titles: [],
-            picked_from: nil,
-            selecting: false,
             checked_at: nil,
             reason: nil,
             task: nil,
@@ -186,16 +180,6 @@ defmodule Antenna.News do
   end
 
   @doc """
-  溜まったものから重要なものを選ばせます。
-
-  **溜まったものが変わっていなければ呼び直しません** —— 画面を開くたびに AI を
-  呼ぶと枠を食い切ります。`force` を立てると、変わっていなくても選び直します。
-  """
-  def select(server, topic, force \\ false) do
-    GenServer.cast(server, {:select, topic, force})
-  end
-
-  @doc """
   収集状態の変化を受け取ります。LiveView が接続時に呼びます。
 
   **話題ごとに分けて配ります** —— 1 本にまとめると、見ていない話題が集め終わった
@@ -220,9 +204,6 @@ defmodule Antenna.News do
       collection: nil,
       articles: [],
       digests: [],
-      picks: %{},
-      picked_titles: [],
-      selecting: false,
       checked_at: nil,
       reason: nil,
       configured: chiezo_base_url() != nil
@@ -243,6 +224,9 @@ defmodule Antenna.News do
 
   @doc """
   誰に頼むか。`ANTENNA_NEWS_BACKEND` / `_MODEL` / `_EFFORT` で指定します。
+
+  **これは収集ぜんたいの下敷き**で、巡回ごとの相手は画面の表から選びます
+  （巡回に書いてあればそちらが勝ちます）。
 
   **未指定なら Chiezo の既定にまかせます**（有効にしてある相手の先頭）。
   どの相手に頼むかは本来 Chiezo 側の判断なので、antenna から名指しするのは
@@ -327,55 +311,6 @@ defmodule Antenna.News do
   end
 
   @impl true
-  def handle_cast({:select, topic, force}, state) do
-    signature = signature(state.articles)
-
-    cond do
-      state.selecting or state.articles == [] ->
-        {:noreply, state}
-
-      not force and state.picked_from == signature ->
-        # 溜まったものが変わっていない。前の結果をそのまま使う
-        {:noreply, state}
-
-      true ->
-        base = chiezo_base_url()
-
-        if base && topic do
-          articles = state.articles
-
-          Task.Supervisor.async_nolink(Antenna.TaskSupervisor, fn ->
-            {:selected, signature, Antenna.Selection.pick(base, topic, articles)}
-          end)
-
-          {:noreply, broadcast(%{state | selecting: true})}
-        else
-          {:noreply, state}
-        end
-    end
-  end
-
-  @impl true
-  def handle_info({_ref, {:selected, signature, result}}, state) do
-    state =
-      case result do
-        {:ok, picks} ->
-          %{
-            state
-            | selecting: false,
-              picked_from: signature,
-              picks: Map.new(picks, &{&1.title, &1.why}),
-              picked_titles: Enum.map(picks, & &1.title)
-          }
-
-        {:error, reason} ->
-          Logger.warning("選別に失敗した: #{inspect(reason)}")
-          %{state | selecting: false}
-      end
-
-    {:noreply, broadcast(state)}
-  end
-
   def handle_info({ref, result}, %__MODULE__{task: %Task{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
     {:noreply, broadcast(apply_result(state, result))}
@@ -394,7 +329,6 @@ defmodule Antenna.News do
   def handle_info(_message, state), do: {:noreply, state}
 
   defp apply_result(state, {:ok, %{collection: collection, articles: articles} = read}) do
-    # 溜まったものが入れ替わったら、前の選別はもう当てにならない
     %{
       state
       | status: :ready,
@@ -428,9 +362,6 @@ defmodule Antenna.News do
     state
   end
 
-  # 溜まったものが変わったかの目印。見出しの並びが同じなら選び直さない
-  defp signature(articles), do: articles |> Enum.map(& &1.title) |> :erlang.phash2()
-
   # 画面へ渡す形。内部で持っているタスクや計測用の時刻は出さない
   defp public(state) do
     %{
@@ -441,9 +372,6 @@ defmodule Antenna.News do
       collection: state.collection,
       articles: state.articles,
       digests: state.digests,
-      picks: state.picks,
-      picked_titles: state.picked_titles,
-      selecting: state.selecting,
       checked_at: state.checked_at,
       reason: state.reason,
       configured: chiezo_base_url() != nil
@@ -596,9 +524,10 @@ defmodule Antenna.News do
         sweeps: with_choices(sweeps(topic), choices),
         requested_by: "antenna"
       },
+      # 収集ぜんたいの相手。**巡回に書いてなければここへ落ちる**（Chiezo 側の決まり）。
       # 名指ししないものは送らない —— null を送ると「指定しない」と同じだが、
       # 依頼の本文に空の項目が並ぶと、何を決めて何を任せたのかが読めない
-      collect_settings(topic) |> Enum.reject(&(elem(&1, 1) == nil)) |> Map.new()
+      backend_settings() |> Enum.reject(&(elem(&1, 1) == nil)) |> Map.new()
     )
   end
 
@@ -1005,15 +934,6 @@ defmodule Antenna.News do
     do: "antenna の「#{name}」。#{interest_of(topic)}"
 
   defp description(_topic), do: "antenna のニュース。#{@default_interest}"
-
-  # 誰に集めさせるか。**話題の設定が先で、環境変数は後** —— 画面（`/settings`）で
-  # 決めた相手が無視されると、設定した側からは何も起きていないように見える。
-  # どちらも空なら Chiezo の既定にまかせる
-  defp collect_settings(%{collect_backend: backend} = topic) when is_binary(backend) do
-    %{backend: backend, model: topic.collect_model, effort: topic.collect_effort}
-  end
-
-  defp collect_settings(_topic), do: backend_settings()
 
   @critical_keywords ~w(
     地震 津波 避難 警報 台風 大雨 災害 感染症 選挙 首相 日銀 金利 戦争

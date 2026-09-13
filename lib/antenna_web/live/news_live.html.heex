@@ -9,7 +9,6 @@
       <nav aria-label="主要メニュー">
         <a class="active" href={~p"/news"}>最新情報</a>
         <a href={~p"/relations"}>関連図</a>
-        <a href={~p"/settings"}>設定</a>
       </nav>
     </header>
 
@@ -23,7 +22,7 @@
 
     </section>
 
-    <%!-- 話題ごとのタブ。**集める相手も溜まるものも話題ごとに別**なので、
+    <%!-- 話題ごとのタブ。**集めるものも溜まるものも話題ごとに別**なので、
          1 つに混ぜると、どちらの状態を見ているのか読めなくなる。
          並ぶのは `Antenna.Topics` の話題そのもの（定義はコードにある） --%>
     <nav :if={@topics != []} class="relation-tabs" aria-label="話題">
@@ -61,28 +60,11 @@
               <% end %>
             </h2>
             <p :if={article.summary} class="news-summary">{article.summary}</p>
-            <%!-- AI が選んだ理由。関心に照らして「なぜ今読むべきか」を言う。
-                 選ばれていないものは、集めたときの理由だけを出す --%>
-            <p :if={pick_reason(@news, article)} class="news-pick">
-              {pick_reason(@news, article)}
-            </p>
-            <p :if={!pick_reason(@news, article)} class="news-reason">{article.reason}</p>
+            <%!-- なぜこの重さなのか。読んだ AI が付けた印なら、その旨も含めて出る --%>
+            <p class="news-reason">{article.reason}</p>
           </div>
-          <span class={
-            cond do
-              pick_reason(@news, article) -> "picked"
-              article.importance == 2 -> "priority"
-              true -> "standard"
-            end
-          }>
-            <%= cond do %>
-              <% pick_reason(@news, article) -> %>
-                いま読む
-              <% article.importance == 2 -> %>
-                優先
-              <% true -> %>
-                注目
-            <% end %>
+          <span class={importance_class(article.importance)}>
+            {importance_label(article.importance)}
           </span>
         </article>
       <% end %>

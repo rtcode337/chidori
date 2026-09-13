@@ -186,6 +186,53 @@ defmodule AntennaWeb.NewsLiveTest do
     assert html =~ ~p"/relations"
   end
 
+  test "設定の画面へは行かせない", %{conn: conn} do
+    # 誰に頼むかは巡回ごとに収集の枠で選ぶ。**別の置き場を残すと、どちらが効くのか
+    # 押す前に読めない**（しかも片方は何にも効かない欄になる）
+    {:ok, _live, html} = live(conn, ~p"/news")
+
+    refute html =~ "/settings"
+  end
+
+  describe "一覧の並び" do
+    defp article(title, importance),
+      do: %{
+        title: title,
+        importance: importance,
+        url: nil,
+        image: nil,
+        summary: nil,
+        tags: [],
+        collected_at: nil,
+        reason: ""
+      }
+
+    test "重要度の高い順に並べる" do
+      # 重要度を付けるのは情報更新の巡回で、読んだうえでの判断。新しい順のまま
+      # 出すと、その判断が一覧に現れない
+      news = %{
+        articles: [article("急がない", 0), article("注目", 1), article("優先", 2)]
+      }
+
+      assert Enum.map(AntennaWeb.NewsLive.sorted_articles(news), & &1.title) ==
+               ["優先", "注目", "急がない"]
+    end
+
+    test "同じ重さのものは、届いた並び（新しい順）のまま" do
+      news = %{articles: [article("新しい", 1), article("古い", 1)]}
+
+      assert Enum.map(AntennaWeb.NewsLive.sorted_articles(news), & &1.title) ==
+               ["新しい", "古い"]
+    end
+
+    test "重要度の低いものも消さない" do
+      # 重要度は並びであって、ふるい分けではない
+      news = %{articles: [article("急がない", 0)]}
+
+      assert length(AntennaWeb.NewsLive.sorted_articles(news)) == 1
+    end
+  end
+
   describe "話題のタブ" do
     test "既定の話題がタブに並ぶ", %{conn: conn} do
       {:ok, _live, html} = live(conn, ~p"/news")

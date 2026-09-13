@@ -47,9 +47,11 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .news-list h2 a:hover { color: #c2410c; text-decoration: underline; }
 .news-source { color: #64748b; font-size: .8rem; }
 .news-reason { color: #475569; font-size: .9rem; line-height: 1.6; }
-.priority, .standard { flex: 0 0 auto; border-radius: 99px; padding: .3rem .6rem; font-size: .75rem; font-weight: 800; }
+/* 重要度の札。3 段で、上と下だけ色を変える（真ん中がいちばん多いので目立たせない） */
+.priority, .standard, .later { flex: 0 0 auto; border-radius: 99px; padding: .3rem .6rem; font-size: .75rem; font-weight: 800; }
 .priority { background: #ffedd5; color: #9a3412; }
 .standard { background: #e2e8f0; color: #334155; }
+.later { background: #f1f5f9; color: #94a3b8; }
 .news-message { border: 1px solid #fed7aa; border-radius: 1rem; background: #fff7ed; padding: 1rem 1.2rem; color: #9a3412; line-height: 1.7; }
 .news-page footer { margin-top: 2rem; border-top: 1px solid #e2e8f0; padding: 1.5rem 0; color: #64748b; font-size: .85rem; line-height: 1.7; }
 .news-page footer a { color: #c2410c; }
@@ -250,18 +252,6 @@ article p:last-child { color: #475569; line-height: 1.7; }
 /* 代表作を持つノードは押せる */
 .relation-node.has-work { cursor: pointer; }
 .relation-node.has-work:hover rect { stroke: #554bc0; stroke-width: 3; }
-
-/* AI が選んだもの。集めたときの理由とは別の色にする（誰の判断か分かるように） */
-.picked { flex: 0 0 auto; border-radius: 99px; padding: .3rem .6rem; font-size: .75rem; font-weight: 800; background: #dcfce7; color: #166534; }
-.news-pick { margin: .4rem 0 0; color: #166534; font-size: .9rem; line-height: 1.7; }
-
-/* 相手ごとに渡せるモデルの案内 */
-.backend-hint { display: grid; gap: .3rem; margin: .8rem 0; font-size: .8rem; color: #64748b; }
-.backend-hint div { display: flex; gap: .6rem; }
-.backend-hint dt { font-weight: 700; }
-.backend-hint dd { margin: 0; }
-.topic-form fieldset { margin: .8rem 0; padding: .8rem 1rem; border: 1px solid #e2e8f0; border-radius: .8rem; }
-.topic-form legend { padding: 0 .4rem; font-size: .85rem; font-weight: 700; color: #334155; }
 
 /* 代表作が入っている印。名前より控えめにして、名前の読みを邪魔しない */
 .relation-node .work-mark { fill: #c9a227; }

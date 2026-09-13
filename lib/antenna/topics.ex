@@ -8,16 +8,10 @@ defmodule Antenna.Topics do
   永遠に届きませんでした**（最初の 1 回だけ配る作りだったため。実際、技術のタブが
   出ないまま気づかれずにいた）。
 
-  **DB が持つのは設定だけ** —— その話題を誰に頼むか。行は保存したときに作られ、
-  定義に無い行は読みません（話題を消したときに、設定だけが残っても害が無いように）。
-
-  **相手は 2 つ持ちます**（集める相手と選ぶ相手）。役割が違うので、速さと質の釣り合いも
-  別に決めたい —— 集めるのは web を歩く仕事、選ぶのは溜まったものを読む仕事。
-  どちらも未指定なら Chiezo の既定にまかせます。
+  **DB は持ちません。** 話題ごとに持つ設定はもう無く、誰に頼むかは巡回ごとに
+  画面の表から選んで Chiezo へ送ります —— 収集の設定を持っているのは Chiezo なので、
+  こちらに写しを置くと、どちらが本物か分からなくなります。
   """
-
-  alias Antenna.Repo
-  alias Antenna.Topics.Topic
 
   @doc """
   antenna が持っている話題。**この並びがタブの並び**。
@@ -63,86 +57,13 @@ defmodule Antenna.Topics do
     ]
   end
 
-  @doc """
-  話題の一覧（定義の順）。**保存してある設定を重ねて返します**。
-
-  まだ設定していない話題も出ます（相手は Chiezo の既定にまかせる、という状態）。
-  """
-  def list do
-    saved = Map.new(Repo.all(Topic), &{&1.collection, &1})
-    Enum.map(defined(), &merge(&1, saved[&1.collection]))
-  end
+  @doc "話題の一覧（定義の順）。そのままタブの並びになります。"
+  def list, do: defined()
 
   @doc "1 つぶん。定義に無い名前なら nil。"
   def get(collection) when is_binary(collection) do
-    Enum.find(list(), &(&1.collection == collection))
+    Enum.find(defined(), &(&1.collection == collection))
   end
 
   def get(_collection), do: nil
-
-  @doc """
-  その話題の設定を保存します。**行が無ければ作ります**。
-
-  定義に無い話題は保存できません —— 設定だけがあって話題が無い状態を作らないため。
-  """
-  def save_settings(collection, attrs) when is_binary(collection) do
-    case get(collection) do
-      nil ->
-        {:error, :unknown_topic}
-
-      topic ->
-        row = Repo.get_by(Topic, collection: collection) || %Topic{}
-
-        row
-        |> Topic.changeset(Map.merge(settings_only(attrs), %{
-          "name" => topic.name,
-          "collection" => collection
-        }))
-        |> Repo.insert_or_update()
-    end
-  end
-
-  @doc "書きかけの入力を持ち回る形。保存はしません。"
-  def change(topic, attrs \\ %{}) do
-    row = Repo.get_by(Topic, collection: topic.collection) || %Topic{}
-    Topic.changeset(row, Map.merge(settings_only(attrs), %{
-      "name" => topic.name,
-      "collection" => topic.collection
-    }))
-  end
-
-  # **設定だけを受け取る。** 名前も収集名も関心もコードが持っているので、
-  # 画面から送られてきても読まない（読むと、定義と DB が別々に動き出す）
-  @settings ~w(collect_backend collect_model collect_effort
-               select_backend select_model select_effort)
-
-  defp settings_only(attrs) do
-    for {key, value} <- attrs, to_string(key) in @settings, into: %{} do
-      {to_string(key), value}
-    end
-  end
-
-  defp merge(topic, nil), do: Map.merge(blank_settings(), topic)
-
-  defp merge(topic, row) do
-    Map.merge(topic, %{
-      collect_backend: row.collect_backend,
-      collect_model: row.collect_model,
-      collect_effort: row.collect_effort,
-      select_backend: row.select_backend,
-      select_model: row.select_model,
-      select_effort: row.select_effort
-    })
-  end
-
-  defp blank_settings do
-    %{
-      collect_backend: nil,
-      collect_model: nil,
-      collect_effort: nil,
-      select_backend: nil,
-      select_model: nil,
-      select_effort: nil
-    }
-  end
 end

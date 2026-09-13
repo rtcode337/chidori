@@ -5,9 +5,13 @@ defmodule AntennaWeb.NewsLive do
   収集は数十秒から数分かかることがあるので、押した人に再読み込みをさせません。
   結果は `Antenna.News` からの通知で届きます。
 
-  **話題ごとにタブで分けます。** 集める相手も溜まるものも話題ごとに別なので、
+  **話題ごとにタブで分けます。** 集めるものも溜まるものも話題ごとに別なので、
   1 つに混ぜると、どちらの状態を見ているのか読めなくなります。タブに並ぶのは
   `Antenna.Topics` の話題そのもので、並びも定義のとおりです。
+
+  **一覧の並びは重要度です。** 先頭に出すのは要約の巡回が書いたまとめで、その下に
+  1 件ずつを重要度の高い順に並べます —— どちらも収集の側が付けたもので、
+  この画面では何も判断しません。
   """
 
   use AntennaWeb, :live_view
@@ -128,8 +132,6 @@ defmodule AntennaWeb.NewsLive do
 
     # 話題を切り替えた直後は、前の話題の結果が遅れて届くことがある
     if topic && news.name == topic.collection do
-      # 溜まったものが変わっていれば選び直す（変わっていなければ何も起きない）
-      if news.status == :ready, do: News.select(News.server(topic.collection), topic)
       {:noreply, assign(socket, news: news)}
     else
       {:noreply, socket}
@@ -145,21 +147,27 @@ defmodule AntennaWeb.NewsLive do
   end
 
   @doc """
-  選ばれたものを先に、それ以外を後に並べる。
+  重要度の高い順に並べる。**同じ重さのものは新しい順のまま**（並べ替えは安定なので、
+  Chiezo が返した並びがそのまま残る）。
 
-  **選ばれなかったものも消さない** —— 選別は絞り込みであって検閲ではないので、
-  選から漏れたものも読めるようにしておく。
+  重要度を付けるのは情報更新の巡回で、読んだうえでの判断です。ここで並べ替えずに
+  出すと、その判断が画面に現れません —— 新しい順に並ぶだけなら、印を付けた意味が
+  一覧から消えます。
+
+  **低いものも消しません** —— 重要度は並びであって、ふるい分けではない。
   """
-  def sorted_articles(%{articles: articles, picked_titles: picked}) when picked != [] do
-    order = picked |> Enum.with_index() |> Map.new()
-    {chosen, rest} = Enum.split_with(articles, &Map.has_key?(order, &1.title))
-    Enum.sort_by(chosen, &order[&1.title]) ++ rest
-  end
+  def sorted_articles(%{articles: articles}), do: Enum.sort_by(articles, &(-&1.importance))
 
-  def sorted_articles(%{articles: articles}), do: articles
+  def sorted_articles(_news), do: []
 
-  @doc "AI がこれを選んだ理由（選ばれていなければ nil）。"
-  def pick_reason(news, article), do: Map.get(news.picks || %{}, article.title)
+  @doc "重要度の見え方。0〜2 の 3 段で、高いものだけ色を変える。"
+  def importance_class(2), do: "priority"
+  def importance_class(0), do: "later"
+  def importance_class(_importance), do: "standard"
+
+  def importance_label(2), do: "優先"
+  def importance_label(0), do: "急がない"
+  def importance_label(_importance), do: "注目"
 
   @doc """
   いまの状態を1文で言う。押した人が次に何をすればよいか分かる言い方にする。

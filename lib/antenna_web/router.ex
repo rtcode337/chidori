@@ -22,7 +22,6 @@ defmodule AntennaWeb.Router do
     # 収集は数十秒かかるので LiveView にする。押した人に再読み込みをさせない
     live "/news", NewsLive, :index
     live "/relations", RelationsLive, :index
-    live "/settings", SettingsLive, :index
   end
 
   # Other scopes may use custom stacks.
