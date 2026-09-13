@@ -62,8 +62,6 @@ defmodule Antenna.RelationsTest do
       assert {:ok, relation} = Relations.request_painters(@base, fallback())
 
       assert_received {:requested, payload}
-      # 整理する収集として依頼する（実行のたびに育てていく）
-      assert payload["mode"] == "refine"
       assert payload["prompt"] =~ "{current}"
       assert payload["requested_by"] == "antenna"
 
@@ -277,13 +275,13 @@ defmodule Antenna.RelationsTest do
       # 数字だけ出しても、押した人には次に何をすればよいか分からない
       # （実際に「400」とだけ出て、Chiezo の版が古いという理由に辿り着けなかった）
       HttpStub.stub(fn %{method: :post} ->
-        {:ok, %{status: 400, body: ~s({"error":"mode は append / refine のどれかにしてください"})}}
+        {:ok, %{status: 400, body: ~s({"error":"kind は flow / stock のどれかにしてください"})}}
       end)
 
       assert {:error, {:chiezo_refused, 400, message}} =
                Relations.request_painters(@base, fallback())
 
-      assert message =~ "mode"
+      assert message =~ "kind"
     end
 
     @tag :capture_log

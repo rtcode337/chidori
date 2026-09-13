@@ -65,7 +65,6 @@ defmodule AntennaWeb.NewsLiveTest do
       "description" => "antenna のニュース",
       "enabled" => true,
       "interval_minutes" => 360,
-      "mode" => "refine",
       "kind" => "flow",
       "keep_days" => 30,
       "prompt" => "{cursor} 以降のニュース。{recent}",

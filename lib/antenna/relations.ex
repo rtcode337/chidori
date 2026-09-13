@@ -623,7 +623,7 @@ defmodule Antenna.Relations do
   @doc """
   画家の図を溜めておく Chiezo の収集の名前。`ANTENNA_PAINTERS_COLLECTION` で変えられます。
 
-  **整理する収集**（`mode=refine`）として置きます。図は流れではなく一枚もので、
+  **網羅の収集**として置きます。図は流れではなく一枚もので、
   作り直すたびに全体が入れ替わるのが正しい振る舞いだからです。
   """
   def painters_collection do
@@ -1027,7 +1027,6 @@ defmodule Antenna.Relations do
       description: "antenna の関連図（画家の影響と時代）",
       prompt: painters_prompt(),
       interval_minutes: @rough_minutes,
-      mode: "refine",
       partition: @partition,
       sweeps: with_choices(@sweeps, choices),
       # **名簿の引き方も送る。** ここが antenna 側にあるので、直したいときに直せる

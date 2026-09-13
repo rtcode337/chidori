@@ -584,7 +584,6 @@ defmodule Antenna.News do
         interval_minutes: @collect_minutes,
         # **育てる側で置く。** 溜めるだけなら足すほうでよいが、この収集は
         # 重要度やタグを後から付け直す（それができるのは育てる側だけ）
-        mode: "refine",
         # **流れ。** 時とともに増えるものを追っていて、直近だけが対象 ——
         # 古いものは順に要らなくなるので、Chiezo に期限で落としてもらう
         # （落とさないと、この収集は永久に増え続ける）
@@ -712,7 +711,6 @@ defmodule Antenna.News do
       last_status: item["last_status"],
       last_error: item["last_error"],
       last_added: item["last_added"] || 0,
-      mode: item["mode"] || "append",
       kind: item["kind"] || "stock",
       keep_days: item["keep_days"] || 0,
       # 誰に頼んでいるか。**Chiezo が持っているものが正** —— 依頼した後は

@@ -26,7 +26,6 @@ defmodule Antenna.NewsTest do
         "next_run_at" => "2026-09-07T09:00:00+00:00",
         "last_run_at" => "2026-09-07T03:00:00+00:00",
         "last_status" => "ok",
-        "mode" => "append",
         "prompt" => "{cursor} 以降のニュースを10件。next_cursor に続きを。",
         "last_added" => 3,
         "requested_by" => "antenna",
@@ -103,7 +102,6 @@ defmodule Antenna.NewsTest do
       c = News.to_collection(collection())
 
       assert c.enabled
-      assert c.mode == "append"
       # Chiezo が実際に持っている本文（向こうの画面から直せる）
       assert c.prompt =~ "{cursor}"
       # 誰に頼んでいるかも Chiezo 側が正
@@ -225,8 +223,6 @@ defmodule Antenna.NewsTest do
       # 実行のたびに進む印を使う（前回以降を集めるため）
       assert payload["prompt"] =~ "{cursor}"
       assert payload["prompt"] =~ "next_cursor"
-      # 育てる側で置く。重要度やタグを後から付け直すのは、そちらでしかできない
-      assert payload["mode"] == "refine"
       # **流れ。** 時とともに増えるものを追っていて、古いものは順に要らなくなる
       # （落とさないと、この収集は永久に増え続ける）
       assert payload["kind"] == "flow"

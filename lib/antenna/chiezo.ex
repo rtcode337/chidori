@@ -247,9 +247,8 @@ defmodule Antenna.Chiezo do
       last_error: item["last_error"],
       last_added: item["last_added"] || 0,
       last_removed: item["last_removed"] || 0,
-      mode: item["mode"] || "append",
-      # 収集の種類（流れ / 網羅）。**`mode` とは別の軸** ——
-      # あちらは「返ってきた 1 件で何ができるか」、こちらは「何を集めているのか」
+      # 収集の種類（流れ / 網羅）。その収集が何を集めているのか
+      # （返ってきた 1 件で何ができるかは、Chiezo が巡回ごとに決める）
       kind: item["kind"] || "stock",
       keep_days: item["keep_days"] || 0,
       prompt: item["prompt"] || "",
