@@ -8,6 +8,9 @@ defmodule AntennaWeb.RelationsLive do
 
   use AntennaWeb, :live_view
 
+  import AntennaWeb.Collect
+  import AntennaWeb.CollectPanel
+
   alias Antenna.Jst
   alias Antenna.Relations
   alias Antenna.Relations.Mark
@@ -107,6 +110,12 @@ defmodule AntennaWeb.RelationsLive do
        do: start_async(socket, :backends, &Relations.ai_backends/0),
        else: socket
      )}
+  end
+
+  # **取り直す口。** 開くたびに聞きに行くのをやめた代わりに、押したときだけ取りに行く
+  def handle_event("reload", _params, socket) do
+    Relations.refresh(socket.assigns.view)
+    {:noreply, socket}
   end
 
   @impl true
@@ -266,12 +275,6 @@ defmodule AntennaWeb.RelationsLive do
     {:noreply, focus_node(socket, name)}
   end
 
-  # **取り直す口。** 開くたびに聞きに行くのをやめた代わりに、押したときだけ取りに行く
-  def handle_event("reload", _params, socket) do
-    Relations.refresh(socket.assigns.view)
-    {:noreply, socket}
-  end
-
   def handle_event("clear_search", _params, socket) do
     {:noreply, assign(socket, query: "", matches: [], focus: nil)}
   end
@@ -344,26 +347,7 @@ defmodule AntennaWeb.RelationsLive do
   # 一度も選んでいなければ、いま出ている値（＝ Chiezo に入っている値）がそのまま返る。
   #
   # **選び直し（`pick_sweep`）では使わない。** あちらはフォームのほうが新しい
-  defp picks(socket, params),
-    do: Map.merge(sweep_choices(params), socket.assigns.picks, fn _name, from_form, remembered ->
-      Map.merge(from_form, remembered)
-    end)
-
-  # `sweep|ざっと|backend` の形で届くものを、巡回ごとにまとめ直す
-  defp sweep_choices(params) do
-    for {key, value} <- params, reduce: %{} do
-      acc ->
-        case String.split(key, "|") do
-          ["sweep", name, field] when field in ~w(backend model effort) ->
-            Map.update(acc, name, %{String.to_atom(field) => value}, fn picked ->
-              Map.put(picked, String.to_atom(field), value)
-            end)
-
-          _ ->
-            acc
-        end
-    end
-  end
+  defp picks(socket, params), do: merged_picks(socket.assigns.picks, params)
 
   @impl true
   def handle_info({:relation_updated, relation}, socket) do
@@ -390,99 +374,10 @@ defmodule AntennaWeb.RelationsLive do
   def collection_facts(_relation), do: []
 
   @doc """
-  その巡回でいま選ばれているもの。**覚えているほうを先に見ます**。
-
-  画面が描き直されるとフォームはサーバーが言うとおりに戻るので、覚えたものを
-  出し直さないと、選んだところが勝手に元へ戻ります（選んだつもりで押すと、
-  いま入っている値がそのまま送り返される）。
+  いつ読んだか。**開くたびに取り直さない**ので、いま見ているものの古さが読めないと困ります。
   """
-  def pick_of(picks, name, field, fallback) do
-    case get_in(picks, [name, field]) do
-      nil -> fallback
-      picked -> picked
-    end
-  end
-
-  @doc """
-  その相手が受け付ける「考える量」。**相手を選び直すまでは、いまの相手のぶん**。
-
-  相手ごとに段階が違うので（claude は 5 段、antigravity は 3 段）、まとめて並べると
-  選べない値が出ます。
-  """
-  def efforts_for(backends, backend) do
-    case Enum.find(backends || [], &(&1.id == backend)) do
-      nil -> []
-      found -> found.efforts
-    end
-  end
-
-  @doc """
-  巡回ごとの行（名前・いつ走るか・一周のうちどこまで・前回）。
-
-  **巡回を書いていない収集にも 1 行出ます**（定義そのものが 1 本の巡回として動く）。
-  """
-  def sweep_rows(%{collection: %{sweeps: sweeps}} = relation) when sweeps != [],
-    do: Enum.map(sweeps, &sweep_row(&1, relation))
-
-  def sweep_rows(%{collection: c}) when is_map(c) do
-    [
-      sweep_row(
-        %{
-          name: "既定",
-          backend: c.backend,
-          model: c.model,
-          effort: c.effort,
-          interval_minutes: c.interval_minutes,
-          cover_days: nil,
-          on_demand: false,
-          enabled: c.enabled,
-          next_run_at: c.next_run_at,
-          last_run_at: c.last_run_at,
-          last_status: c.last_status,
-          last_error: c.last_error,
-          partitions_visited: 0
-        },
-        %{collection: c}
-      )
-    ]
-  end
-
-  def sweep_rows(_relation), do: []
-
-  defp sweep_row(sweep, %{collection: c}) do
-    total = c[:partitions_total] || 0
-
-    %{
-      name: sweep.name,
-      backend: sweep.backend,
-      model: sweep.model,
-      effort: sweep.effort,
-      interval:
-        cond do
-          sweep[:on_demand] -> "時計なし"
-          sweep.interval_minutes -> "#{sweep.interval_minutes} 分ごと"
-          true -> "—"
-        end,
-      round: if(sweep[:cover_days], do: "#{round(sweep.cover_days)} 日で一周", else: nil),
-      next:
-        cond do
-          not sweep.enabled -> "止めている"
-          # 時計を持たない巡回（割り込み用）。押されたときだけ動く
-          sweep[:on_demand] -> "頼まれたとき"
-          next = Jst.format(sweep.next_run_at) -> next
-          true -> "いますぐ"
-        end,
-      progress: if(total > 0, do: "#{total} のうち #{sweep.partitions_visited}", else: "—"),
-      last: last_text(sweep)
-    }
-  end
-
-  defp last_text(%{last_run_at: nil}), do: "まだ"
-
-  defp last_text(%{last_status: "error", last_error: error}) when is_binary(error),
-    do: "失敗: #{error}"
-
-  defp last_text(c), do: Jst.format(c.last_run_at) || "まだ"
+  def checked_text(%{checked_at: at}) when at != nil, do: "最後に取得: #{Jst.format(at)}"
+  def checked_text(_relation), do: "まだ取得していません"
 
   @doc """
   AI に頼んでいる本文。**依頼した後は Chiezo が持っているものを出す** ——
@@ -605,12 +500,6 @@ defmodule AntennaWeb.RelationsLive do
   """
   def unit_of("painters"), do: "画家"
   def unit_of(_view), do: "人"
-
-  @doc """
-  いつ読んだか。**開くたびに取り直さない**ので、いま見ているものの古さが読めないと困ります。
-  """
-  def checked_text(%{checked_at: at}) when at != nil, do: "最後に取得: #{Jst.format(at)}"
-  def checked_text(_relation), do: "まだ取得していません"
 
   @doc """
   そのノードに付いている「見た」印。まだ無ければ空の印を返します。
