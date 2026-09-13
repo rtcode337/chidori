@@ -205,6 +205,41 @@ defmodule AntennaWeb.NewsLive do
     do: "いま Chiezo が持っている内容です。直すのは Chiezo の管理画面の「集める」から。"
 
   @doc """
+  まとめの本文を、段落と出典に読み分けます。
+
+  **出典の URL は、溜まっている記事に突き合わせて見出しでリンクにします** ——
+  裸の URL のままだと、押す前にどこへ行くのか読めません。突き合わない URL は
+  そのまま出します（AI が上に無いものを書いたときに、黙って消さないため）。
+  """
+  def digest_blocks(body, articles) when is_binary(body) do
+    known = Map.new(articles, &{&1.url, &1.title})
+
+    body
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(fn line ->
+      case source_url_in(line) do
+        nil -> {:text, line}
+        url -> {:link, url, known[url] || url}
+      end
+    end)
+  end
+
+  def digest_blocks(_body, _articles), do: []
+
+  # 「出典: <URL>」の行と、URL だけの行を拾う
+  defp source_url_in(line) do
+    case Regex.run(~r{https?://\S+}, line) do
+      [url] -> if String.replace(line, url, "") |> String.trim() |> short?(), do: url, else: nil
+      _ -> nil
+    end
+  end
+
+  # URL の前に付くのは「出典:」程度の短い言葉だけ。本文の途中の URL はリンクにしない
+  defp short?(rest), do: String.length(rest) <= 6
+
+  @doc """
   押す口の文字。**何を待っているのかまで出します** ——
   「送っています…」だけだと、押せていないのと区別が付きません。
   """

@@ -48,6 +48,8 @@
     <section class="news-list" aria-live="polite">
       <%= for article <- sorted_articles(@news) do %>
         <article>
+          <%!-- 配信元が配っている絵。**無いほうが多い**ので、あるときだけ出す --%>
+          <img :if={article.image} class="news-thumb" src={article.image} alt="" loading="lazy" />
           <div>
             <p class="news-source">{article.collected_at}</p>
             <h2>

@@ -145,6 +145,33 @@ defmodule AntennaWeb.NewsLiveTest do
       refute html =~ "整理する（磨いていく）"
     end
 
+    test "まとめの出典は、記事の見出しでリンクになる" do
+      # 裸の URL のままだと、押す前にどこへ行くのか読めない
+      articles = [%{url: "https://example.com/1", title: "React 19.3 が出た"}]
+
+      body = """
+      この期間は基盤の入れ替えが続きました。
+
+      React の新版
+      新しい版が出ました。移行の要点はここです。
+      出典: https://example.com/1
+      """
+
+      assert AntennaWeb.NewsLive.digest_blocks(body, articles) == [
+               {:text, "この期間は基盤の入れ替えが続きました。"},
+               {:text, "React の新版"},
+               {:text, "新しい版が出ました。移行の要点はここです。"},
+               {:link, "https://example.com/1", "React 19.3 が出た"}
+             ]
+    end
+
+    test "溜まっている記事に無い出典も、消さずに出す" do
+      # AI が上に無いものを書いたときに、黙って消さない
+      blocks = AntennaWeb.NewsLive.digest_blocks("出典: https://example.org/x", [])
+
+      assert blocks == [{:link, "https://example.org/x", "https://example.org/x"}]
+    end
+
     test "まとめは記事の一覧に混ぜない", %{conn: conn} do
       html = shown(conn)
 
