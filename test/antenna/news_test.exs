@@ -424,6 +424,35 @@ defmodule Antenna.NewsTest do
       refute prompts["要約"] =~ "削除"
     end
 
+    test "漏れ探しは、まとめより高い頻度で回る" do
+      # まとめの窓に 1 回しか入らないと、直前に起きたことが最大 12 時間ぶん
+      # 抜けたまままとめられる —— ニュースは新しさが落ちると意味が薄い
+      sweeps = defined_topic("antenna_tech") |> News.sweeps() |> Map.new(&{&1.name, &1})
+
+      assert sweeps["漏れ探し"].interval_minutes < sweeps["要約"].interval_minutes
+      # 印を付ける回も、まとめより先に回る（まとめる頃には印が付いている）
+      assert sweeps["情報更新"].interval_minutes < sweeps["要約"].interval_minutes
+    end
+
+    test "まとめの見出しは回ごとに変わる" do
+      # 見出しは重複の鍵。日付だけだと、1 日に 2 回まとめたときの 2 回目が
+      # 丸ごと捨てられる（要約は足すだけの回なので、既にある見出しは入らない）
+      prompt = News.digest_prompt(defined_topic("antenna_tech"))
+
+      assert prompt =~ "{now}"
+      assert prompt =~ "丸ごと捨てられます"
+    end
+
+    test "漏れ探しは、ニュース以外も探す" do
+      # 配信元から機械的に入るのは決まった媒体のぶんだけ。
+      # 記事も論文も、探しに行かなければ永遠に入らない
+      prompt = News.find_missing_prompt(defined_topic("antenna_tech"))
+
+      assert prompt =~ "話題になっている"
+      assert prompt =~ "論文"
+      assert prompt =~ "ニュースだけではありません"
+    end
+
     test "整理の回の依頼文には、今あるものの差し込み口が要る" do
       # Chiezo が作る時点で弾く決まり（無いと、AI は今あるものを知らないまま書く）
       topic = defined_topic("antenna_tech")
