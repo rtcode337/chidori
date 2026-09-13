@@ -22,6 +22,8 @@ defmodule Antenna.Application do
       {Registry, keys: :unique, name: Antenna.News.Registry},
       {DynamicSupervisor, name: Antenna.News.Supervisor, strategy: :one_for_one},
       Antenna.Relations,
+      # 代表作の絵の覚え書き（置き場を持つだけ。引くのは押した人のプロセス）
+      Antenna.Artwork,
       # Start to serve requests, typically the last entry
       AntennaWeb.Endpoint
     ]
