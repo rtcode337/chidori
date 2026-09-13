@@ -416,29 +416,29 @@
           {collect_label(@relation)}
         </button>
       </form>
+
+      <%!-- **どちらも Chiezo が持っているもの**なので、1 つにまとめる。
+           機械で引いたものと AI が書いたものの線引きが、この図でいちばん大事なところ --%>
+      <details :if={@view == "painters"} class="news-prompt">
+        <summary>Chiezo への依頼文</summary>
+        <p class="news-prompt-note">{prompt_note(@relation)}</p>
+
+        <h3>抽出の指定（Wikipedia から機械的に引く条件）</h3>
+        <p class="news-prompt-note">
+          名簿・年代・様式・地域・代表作・相互リンクは、この指定で日本語版 Wikipedia から
+          引いています。<strong>AI は関わりません</strong>（決まった結果が出ます）。
+        </p>
+        <pre :if={extract_text(@relation)}>{extract_text(@relation)}</pre>
+        <p :if={!extract_text(@relation)} class="muted-note">まだ指定が入っていません。</p>
+
+        <h3>指示文（AI に頼んでいる内容）</h3>
+        <p class="news-prompt-note">
+          AI が書くのは<strong>影響関係と説明</strong>と、カテゴリに無い様式です。
+          誰を見るかは Chiezo が区画で渡すので、指示文には書いてありません。
+        </p>
+        <pre>{prompt_text(@relation)}</pre>
+      </details>
     </section>
-
-    <%!-- **どちらも Chiezo が持っているもの**なので、1 つにまとめる。
-         機械で引いたものと AI が書いたものの線引きが、この図でいちばん大事なところ --%>
-    <details :if={@view == "painters"} class="news-prompt">
-      <summary>Chiezo への依頼文</summary>
-      <p class="news-prompt-note">{prompt_note(@relation)}</p>
-
-      <h3>抽出の指定（Wikipedia から機械的に引く条件）</h3>
-      <p class="news-prompt-note">
-        名簿・年代・様式・地域・代表作・相互リンクは、この指定で日本語版 Wikipedia から
-        引いています。<strong>AI は関わりません</strong>（決まった結果が出ます）。
-      </p>
-      <pre :if={extract_text(@relation)}>{extract_text(@relation)}</pre>
-      <p :if={!extract_text(@relation)} class="muted-note">まだ指定が入っていません。</p>
-
-      <h3>指示文（AI に頼んでいる内容）</h3>
-      <p class="news-prompt-note">
-        AI が書くのは<strong>影響関係と説明</strong>と、カテゴリに無い様式です。
-        誰を見るかは Chiezo が区画で渡すので、指示文には書いてありません。
-      </p>
-      <pre>{prompt_text(@relation)}</pre>
-    </details>
 
     <%!-- 押した人のこと。**絵は持たず、Wikipedia のものを指すだけ**。
          図の外に重ねて出す —— 図の下に足すと、押した人が画面の外にいることがある --%>
