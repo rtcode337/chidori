@@ -66,6 +66,8 @@ defmodule AntennaWeb.NewsLiveTest do
       "enabled" => true,
       "interval_minutes" => 360,
       "mode" => "refine",
+      "kind" => "flow",
+      "keep_days" => 30,
       "prompt" => "{cursor} 以降のニュース。{recent}",
       "sweeps" => [
         %{"name" => "見出し", "interval_minutes" => 60, "use_feed" => true, "enabled" => true},
@@ -129,6 +131,19 @@ defmodule AntennaWeb.NewsLiveTest do
 
       refute html =~ ~s(name="sweep|見出し|backend")
       assert html =~ "AI を使いません"
+    end
+
+    test "収集の状態は、関連図と同じ並びで出す", %{conn: conn} do
+      # 画面ごとに書いていた頃は、見出しも並びも食い違っていた
+      html = shown(conn)
+
+      assert html =~ "状態"
+      assert html =~ "集め方"
+      assert html =~ "溜まった数"
+      # **言い方は収集の種類から出す。** 流れ（ニュース）と網羅（画家の名簿）は
+      # そもそも別のことをしているので、同じ言い方になるほうがおかしい
+      assert html =~ "流れを追う"
+      refute html =~ "整理する（磨いていく）"
     end
 
     test "まとめは記事の一覧に混ぜない", %{conn: conn} do

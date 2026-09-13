@@ -585,6 +585,10 @@ defmodule Antenna.News do
         # **育てる側で置く。** 溜めるだけなら足すほうでよいが、この収集は
         # 重要度やタグを後から付け直す（それができるのは育てる側だけ）
         mode: "refine",
+        # **流れ。** 時とともに増えるものを追っていて、直近だけが対象 ——
+        # 古いものは順に要らなくなるので、Chiezo に期限で落としてもらう
+        # （落とさないと、この収集は永久に増え続ける）
+        kind: "flow",
         feed: feed_spec(topic),
         sweeps: with_choices(sweeps(topic), choices),
         requested_by: "antenna"
@@ -709,6 +713,8 @@ defmodule Antenna.News do
       last_error: item["last_error"],
       last_added: item["last_added"] || 0,
       mode: item["mode"] || "append",
+      kind: item["kind"] || "stock",
+      keep_days: item["keep_days"] || 0,
       # 誰に頼んでいるか。**Chiezo が持っているものが正** —— 依頼した後は
       # 向こうの画面から変えられるので、antenna の設定を映しても嘘になりうる
       backend: item["backend"],
@@ -718,6 +724,8 @@ defmodule Antenna.News do
       # そこに出る値はどれか 1 本のものにしかならない
       sweeps: Antenna.Chiezo.sweeps_of(item),
       partitions_total: item["partitions_total"] || 0,
+      # 進み具合（次の実行で {cursor} に入る値）。**画面の状態と並べて出す**
+      cursor: item["cursor"] || "",
       # Chiezo が実際に持っている本文。**antenna の雛形とは限らない** ——
       # 依頼した後は Chiezo の画面から直せるので、いま何を頼んでいるかは向こうが正
       prompt: item["prompt"] || "",

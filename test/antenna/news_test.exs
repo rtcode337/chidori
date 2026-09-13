@@ -227,6 +227,9 @@ defmodule Antenna.NewsTest do
       assert payload["prompt"] =~ "next_cursor"
       # 育てる側で置く。重要度やタグを後から付け直すのは、そちらでしかできない
       assert payload["mode"] == "refine"
+      # **流れ。** 時とともに増えるものを追っていて、古いものは順に要らなくなる
+      # （落とさないと、この収集は永久に増え続ける）
+      assert payload["kind"] == "flow"
       # 巡回は仕事ごとに分ける（集める・漏れを探す・読んで印を付ける・まとめる・割り込み）
       assert Enum.map(payload["sweeps"], & &1["name"]) ==
                ["集める", "漏れ探し", "情報更新", "要約", "割り込み"]

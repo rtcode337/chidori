@@ -248,6 +248,10 @@ defmodule Antenna.Chiezo do
       last_added: item["last_added"] || 0,
       last_removed: item["last_removed"] || 0,
       mode: item["mode"] || "append",
+      # 収集の種類（流れ / 網羅）。**`mode` とは別の軸** ——
+      # あちらは「返ってきた 1 件で何ができるか」、こちらは「何を集めているのか」
+      kind: item["kind"] || "stock",
+      keep_days: item["keep_days"] || 0,
       prompt: item["prompt"] || "",
       cursor: item["cursor"] || "",
       # 最初の 1 回を機械的に埋める指定（持っていなければ nil）。

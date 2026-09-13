@@ -15,7 +15,6 @@ defmodule AntennaWeb.NewsLive do
   import AntennaWeb.Collect
   import AntennaWeb.CollectPanel
 
-  alias Antenna.Jst
   alias Antenna.News
   alias Antenna.Topics
 
@@ -206,24 +205,6 @@ defmodule AntennaWeb.NewsLive do
     do: "いま Chiezo が持っている内容です。直すのは Chiezo の管理画面の「集める」から。"
 
   @doc """
-  Chiezo の収集の状態を短く並べたもの。動いているかの判断に要る3つを出す。
-  """
-  def collection_facts(%{collection: nil}), do: []
-
-  # **巡回ごとの値は表のほうに出す**（相手も間隔も次の予定も巡回ごとに違うので、
-  # ここに 1 つだけ出すと、どれか 1 本のものにしかならない）。
-  # ここに残すのは、収集ぜんたいで 1 つに決まることだけ
-  def collection_facts(%{collection: c}) do
-    [
-      {"状態", if(c.enabled, do: "有効", else: "止まっている")},
-      {"既定の相手", backend_text(c)},
-      {"集め方", if(c.mode == "refine", do: "整理する（磨いていく）", else: "集める（足していく）")},
-      {"溜まった数", "#{c.docs} 件"},
-      {"前回", last_text(c)}
-    ]
-  end
-
-  @doc """
   押す口の文字。**何を待っているのかまで出します** ——
   「送っています…」だけだと、押せていないのと区別が付きません。
   """
@@ -280,20 +261,6 @@ defmodule AntennaWeb.NewsLive do
   def sweep_prompts(_topic), do: []
 
   # 相手は Chiezo が持っているものを出す。未指定なら誰に行くかは Chiezo が決める
-  defp backend_text(%{backend: nil}), do: "Chiezo の既定にまかせる"
-
-  defp backend_text(%{backend: backend} = c) do
-    detail = Enum.reject([c.model, c.effort], &(&1 in [nil, ""]))
-    if detail == [], do: backend, else: "#{backend}（#{Enum.join(detail, " / ")}）"
-  end
-
-  defp last_text(%{last_run_at: nil}), do: "まだ集めていません"
-
-  defp last_text(%{last_status: "error", last_error: error}) when is_binary(error),
-    do: "失敗: #{error}"
-
-  defp last_text(%{last_run_at: at}), do: Jst.format(at)
-
   defp reason_text(:chiezo_not_configured),
     do: "Chiezo の場所が設定されていないため、収集を頼めません。"
 

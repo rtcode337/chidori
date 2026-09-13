@@ -75,6 +75,9 @@ defmodule Antenna.RelationsTest do
       # **実在しない見出しを指すタグは Chiezo が焼く前に落とす。** AI は代表作を
       # 挙げられても、それが記事として存在するかは知らない —— 図は「タグがある =
       # 押せば何か出る」として印を付けるので、混ざっていると押しても何も出ない印が並ぶ
+      # **網羅。** ある括りの全部が対象で、古いものが要らなくなることはない
+      assert payload["kind"] == "stock"
+
       assert payload["verify_tags"] == [
                %{"prefix" => "代表作", "source" => "jawiki"},
                %{"prefix" => "関連", "source" => "jawiki"}

@@ -64,6 +64,56 @@ defmodule AntennaWeb.Collect do
   end
 
   @doc """
+  収集の状態。**関連図でも最新情報でも同じものを、同じ並びで出します** ——
+  画面ごとに書いていた頃は、見出しも並びも食い違っていました。
+
+  **巡回ごとの値はここに出しません**（相手も間隔も次の予定も巡回ごとに違うので、
+  1 つだけ出すと、どれか 1 本のものにしかならない）。ここに出すのは、
+  収集ぜんたいで 1 つに決まることだけです。
+  """
+  def collection_facts(%{collection: c} = state) when is_map(c) do
+    [
+      {"状態", if(c.enabled, do: "有効", else: "止まっている")},
+      {"集め方", kind_text(c)},
+      {"溜まった数", "#{c.docs} 件"},
+      partitions_fact(c),
+      cursor_fact(c),
+      # 集まるものが変わらなかった日でも、**押した結果はここが動く**
+      {"最後に確かめた", Jst.format(state[:checked_at]) || "まだ確かめていません"}
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  def collection_facts(_state), do: []
+
+  @doc """
+  集め方の言い方。**収集の種類から出します**。
+
+  流れ（ニュースのように時とともに増えるもの）と網羅（画家の名簿のようにある括りの
+  全部）は、そもそも別のことをしています —— 同じ言い方になるほうがおかしい。
+  """
+  def kind_text(%{kind: "flow"} = c), do: "流れを追う（新しいものを足し、直近を整理する）#{held(c)}"
+
+  def kind_text(_collection),
+    do: "全部を精査する（その括りの全部を集めて、端から端まで見直す）"
+
+  defp held(%{keep_days: days}) when is_integer(days) and days > 0,
+    do: "。#{days} 日ぶんを持ち、古いものは順に落ちます"
+
+  defp held(_collection), do: ""
+
+  # 区画を持たない収集（最新情報のような）には出さない
+  defp partitions_fact(%{partitions_total: total}) when is_integer(total) and total > 0,
+    do: {"区画", "#{total}"}
+
+  defp partitions_fact(_collection), do: nil
+
+  defp cursor_fact(%{cursor: cursor}) when is_binary(cursor) and cursor != "",
+    do: {"進み具合", cursor}
+
+  defp cursor_fact(_collection), do: nil
+
+  @doc """
   巡回ごとの行（名前・いつ走るか・一周のうちどこまで・前回）。
 
   **巡回を書いていない収集にも 1 行出ます**（定義そのものが 1 本の巡回として動く）。

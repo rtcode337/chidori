@@ -1032,6 +1032,9 @@ defmodule Antenna.Relations do
       sweeps: with_choices(@sweeps, choices),
       # **名簿の引き方も送る。** ここが antenna 側にあるので、直したいときに直せる
       extract: painters_extract(),
+      # **網羅。** ある括りの全部が対象で、増減はしても古いものが要らなくなることは
+      # ない —— 期限で落とすと穴が開く
+      kind: "stock",
       # **実在しない見出しを指すタグは、Chiezo が焼く前に落とす。** AI は代表作を
       # 挙げられても、それが記事として存在するかは知らない —— 図は「タグがある =
       # 押せば何か出る」として印を付けるので、混ざっていると押しても何も出ない印が

@@ -355,25 +355,6 @@ defmodule AntennaWeb.RelationsLive do
   end
 
   @doc """
-  Chiezo の収集の状態。動いているかの判断に要るものを並べる。
-
-  **画家の図だけが持つ** —— 人物のほうはまだその場で AI に聞く形で、
-  向こうに溜め先が無い。
-  """
-  def collection_facts(%{collection: c} = relation) when is_map(c) do
-    [
-      {"状態", if(c.enabled, do: "有効", else: "止まっている")},
-      {"溜まった数", "#{c.docs} 件"},
-      {"区画", if(c[:partitions_total] in [nil, 0], do: "まだ割っていません", else: "#{c.partitions_total}")},
-      {"進み具合", if(c.cursor == "", do: "（まだ無し。次は一気に作ります）", else: c.cursor)},
-      # 集まるものが変わらなかった日でも、**押した結果はここが動く**
-      {"最後に確かめた", Jst.format(relation[:checked_at]) || "まだ確かめていません"}
-    ]
-  end
-
-  def collection_facts(_relation), do: []
-
-  @doc """
   いつ読んだか。**開くたびに取り直さない**ので、いま見ているものの古さが読めないと困ります。
   """
   def checked_text(%{checked_at: at}) when at != nil, do: "最後に取得: #{Jst.format(at)}"
@@ -729,8 +710,10 @@ defmodule AntennaWeb.RelationsLive do
   defp at_border(from, to) do
     dx = to.x - from.x
     dy = to.y - from.y
+    half_w = label_width_of(to) / 2
+    half_h = label_height_of(to) / 2
 
-    case reaches(dx, dy, label_width_of(to) / 2, label_height_of(to) / 2) do
+    case reaches(dx, dy, half_w, half_h) do
       # 同じところに重なっている（動かしようが無い）
       [] -> {to.x, to.y}
       ratios -> shrunk(to, dx, dy, Enum.min(ratios))
