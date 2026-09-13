@@ -95,8 +95,13 @@ defmodule Antenna.Chiezo do
   必ず AI に見せられます（区画を渡すだけでは、直してほしい 1 人が差し込みに載る
   保証がない）。
   """
-  def focus(base, name, note, titles) do
-    body = Jason.encode!(%{note: note, titles: titles, requested_by: "antenna"})
+  def focus(base, name, note, titles, sweep \\ nil) do
+    # **どの巡回として走らせるかを名指しできる。** 相手も考える量も依頼文も
+    # 巡回ごとに違うので、名指ししないと「どの設定で走ったのか」が言えない
+    body =
+      %{note: note, titles: titles, requested_by: "antenna"}
+      |> then(&if(sweep, do: Map.put(&1, :sweep, sweep), else: &1))
+      |> Jason.encode!()
 
     case post(base <> "/v1/collect/" <> name <> "/focus", body, @timeout) do
       {:ok, %{status: status}} when status in 200..299 -> :ok

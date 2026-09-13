@@ -68,7 +68,10 @@ defmodule Antenna.RelationsTest do
       # **回る先は Chiezo に割らせる。** 全員が必ずどこかの区画に入る見出し順で、
       # 1 区画 25 人 —— **1 回の答えが長くなりすぎない大きさ**にしてある
       # （50 人ずつで聞いていた頃、AI の答えが出力上限に当たって途中で切れた）
-      assert payload["partition"] == %{"by" => "title", "target" => 25}
+      # **区画は地域 × 生年。** 辞書順の塊には意味が無く、同じ区画に入った 2 人に
+      # 何の関係も無かった（影響関係も漏れも見つけようがない）
+      assert payload["partition"] ==
+               %{"by" => "band", "prefix" => "地域", "value" => "年代", "target" => 25}
 
       # **実在しない見出しを指すタグは Chiezo が焼く前に落とす。** AI は代表作を
       # 挙げられても、それが記事として存在するかは知らない —— 図は「タグがある =
@@ -82,24 +85,30 @@ defmodule Antenna.RelationsTest do
              ]
 
       # **巡回は 5 本で、頼むことが違う。** 名簿は機械で引き直すだけ（AI を呼ばない）、
-      # ざっとは空欄を埋め（14 日で一周）、じっくりは入っている内容を疑い、
+      # ざっとは区画の材料を埋め（数日で一周）、調査は区画ごとに仕上げ、
       # 漏れ探しは足すだけ、割り込みは時計を持たない
-      assert [roster, rough, deep, missing, on_demand] = payload["sweeps"]
+      # **仕事は 3 つ。** 名簿を作る → 区画の材料を埋める → 区画ごとに仕上げる
+      assert [roster, rough, survey] = payload["sweeps"]
       # 名簿の回は、AI が肉付けしたぶんを薄い内容で上書きしないよう足すだけにする
       assert roster["use_extract"] == true
       assert roster["only_new"] == true
+      # **一度きり。** 元の Wikipedia が変わらない限り何度やっても同じ
+      assert roster["once"] == true
+
       assert rough["name"] == "ざっと"
-      assert rough["cover_days"] == 14
+      # 一周を数日で終える（区画の材料が埋まるまで、後の回は走れない）
+      assert rough["cover_days"] == 3
+      assert rough["after"] == "名簿"
       # 埋める回は収集の依頼文のまま（巡回ごとには持たない）
       refute Map.has_key?(rough, "prompt")
-      assert deep["partitions_per_run"] == 1
-      assert deep["effort"] == "high"
-      assert deep["prompt"] =~ "入っている内容を疑う回"
-      # 足すだけの回。既にいる画家には触らせない（Chiezo 側で弾く）
-      assert missing["only_new"] == true
-      assert missing["prompt"] =~ "漏れている人を足して"
-      assert on_demand["on_demand"] == true
-      refute Map.has_key?(on_demand, "interval_minutes")
+
+      assert survey["name"] == "調査"
+      assert survey["partitions_per_run"] == 1
+      assert survey["effort"] == "high"
+      # **ざっとが一周するまで走らない。** 年代の分からない人が 3 割いる状態で
+      # 漏れを探させても、その人たちは別の区画にいるだけ
+      assert survey["after"] == "ざっと"
+      assert survey["prompt"] =~ "この区画ぶんだけ仕上げて"
 
       assert_received {:read, url}
       # 一枚ものなので、新しい順に何件かではなく全部を引く
@@ -156,13 +165,12 @@ defmodule Antenna.RelationsTest do
       assert_received {:patched, url, patch}
       assert url =~ "/v1/collect/antenna_painters"
       assert patch["prompt"] =~ "{partition}"
-      assert patch["partition"] == %{"by" => "title", "target" => 25}
+      assert patch["partition"] ==
+               %{"by" => "band", "prefix" => "地域", "value" => "年代", "target" => 25}
       assert [
-               %{"use_extract" => true},
-               %{"name" => "ざっと"},
-               %{"name" => "じっくり"},
-               %{"name" => "漏れ探し"},
-               %{"on_demand" => true}
+               %{"use_extract" => true, "once" => true},
+               %{"name" => "ざっと", "after" => "名簿"},
+               %{"name" => "調査", "after" => "ざっと"}
              ] = patch["sweeps"]
 
       # **走らせない**
@@ -302,24 +310,17 @@ defmodule Antenna.RelationsTest do
     end
   end
 
-  test "じっくりの回は、疑うだけでなく空いているところを埋める" do
-    # 名簿は機械で作るので、一周目は説明も代表作も空。疑うだけの回にすると、
-    # いちばん考える量の多い回が「消すことしかしない」回になる
-    prompt = Relations.painters_review_prompt()
-
-    assert prompt =~ "空いているところは埋めてください"
-    assert prompt =~ "確信が持てるものだけ"
-  end
-
-  test "漏れ探しは、この範囲の全員が見えている前提で頼む" do
-    # 範囲は名前で区切ってあるので、その範囲の人は漏れなく差し込まれている。
-    # 「もう居るかは気にしなくてよい」と書いていた頃は、既にいる有名な画家を
-    # 挙げ直すだけで終わっていた（実測で 20 人挙げて全員が既存）
-    prompt = Relations.painters_missing_prompt()
+  test "区画ごとの回は、漏れ探し・磨き・削除をまとめて頼む" do
+    # 3 本に分けていた頃は、同じ区画を 3 回渡して 3 回とも同じ人たちを読ませていた。
+    # 読む材料が同じなら、仕事も一度に頼むほうが安く、判断も揃う
+    prompt = Relations.painters_survey_prompt()
 
     assert prompt =~ "上に並んでいるのが、この範囲の全員です"
-    assert prompt =~ "0 件で構いません"
-    refute prompt =~ "もう居るかどうかは気にしなくて構いません"
+    assert prompt =~ "漏れを足す"
+    assert prompt =~ "内容を磨く"
+    assert prompt =~ "要らないものを消す"
+    # 挙げるものが無ければ挙げなくてよい（既にいる人を挙げ直させない）
+    assert prompt =~ "足さなくて構いません"
   end
 
   test "指示文が頼むのは、Wikipedia に書いていないことだけ" do
@@ -329,8 +330,10 @@ defmodule Antenna.RelationsTest do
     assert prompt =~ "影響元:"
     assert prompt =~ "代表作:"
 
-    # 名簿・年代・様式は抽出で入るので、書かせない（書かせると存在しない画家が混ざる）
-    assert prompt =~ "名簿と年代は Wikipedia から機械的に入れてあります"
+    # **区画の材料がいちばん急ぎ。** 年代と地域が空だと「年代不明」の置き場に入り、
+    # 同じ時代・同じ地域の画家と一緒に見てもらえない（実測で 3 割が年代を持たない）
+    assert prompt =~ "まず「年代」と「地域」を埋めてください"
+    assert prompt =~ "この 2 つで区画が決まる"
 
     # 様式のカテゴリは疎（ゴッホもピカソも持っていない）。空の人には足させる
     assert prompt =~ "空の人には様式のタグを足してください"

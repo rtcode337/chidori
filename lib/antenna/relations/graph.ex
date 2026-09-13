@@ -169,6 +169,9 @@ defmodule Antenna.Relations.Graph do
   @doc "相互リンクの相手を載せるタグの頭。"
   def related_tag, do: @related_prefix
 
+  @doc "影響関係を載せるタグの頭。"
+  def influence_tag, do: @influence_prefix
+
   @doc "地域を載せるタグの頭。"
   def region_tag, do: @region_prefix
 

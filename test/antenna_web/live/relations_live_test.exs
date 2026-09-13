@@ -443,7 +443,7 @@ defmodule AntennaWeb.RelationsLiveTest do
         "extract" => %{"source" => "jawiki", "tag" => "画家"},
         "sweeps" => [
           %{"name" => "ざっと", "interval_minutes" => 360, "enabled" => true, "backend" => "claude"},
-          %{"name" => "じっくり", "interval_minutes" => 1440, "enabled" => true},
+          %{"name" => "調査", "interval_minutes" => 1440, "enabled" => true},
           %{"name" => "割り込み", "on_demand" => true, "enabled" => true}
         ]
       }
@@ -510,7 +510,7 @@ defmodule AntennaWeb.RelationsLiveTest do
       # 画家のモーダルから頼む「詳しく調べて」は割り込みとして走る。**人が待っている
       # 場面**なので、定時の巡回と同じ相手を使う理由が無い
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
-      assert wait_until(fn -> render(live) =~ "割り込み" end)
+      assert wait_until(fn -> render(live) =~ "調査" end)
 
       html = live |> element("form#collect-form table") |> render()
       assert html =~ "時計なし"
@@ -528,17 +528,17 @@ defmodule AntennaWeb.RelationsLiveTest do
       # まず相手を選ぶ（このとき考える量は空のまま送られてくる）
       live
       |> element("form#collect-form")
-      |> render_change(%{"sweep|割り込み|backend" => "codex", "sweep|割り込み|effort" => ""})
+      |> render_change(%{"sweep|調査|backend" => "codex", "sweep|調査|effort" => ""})
 
       # 次に考える量を選ぶ
       live
       |> element("form#collect-form")
-      |> render_change(%{"sweep|割り込み|backend" => "codex", "sweep|割り込み|effort" => "high"})
+      |> render_change(%{"sweep|調査|backend" => "codex", "sweep|調査|effort" => "high"})
 
       live |> element("form#collect-form") |> render_submit(%{})
 
       assert_receive {:patched, body}, 5_000
-      sweep = Enum.find(Jason.decode!(body)["sweeps"], &(&1["name"] == "割り込み"))
+      sweep = Enum.find(Jason.decode!(body)["sweeps"], &(&1["name"] == "調査"))
       assert sweep["effort"] == "high"
     end
 
@@ -622,7 +622,7 @@ defmodule AntennaWeb.RelationsLiveTest do
       |> render_change(%{
         "sweep|ざっと|backend" => "codex",
         "sweep|ざっと|effort" => "high",
-        "sweep|じっくり|backend" => ""
+        "sweep|調査|backend" => ""
       })
 
       live |> element("form#collect-form") |> render_submit(%{})
@@ -630,7 +630,7 @@ defmodule AntennaWeb.RelationsLiveTest do
       assert_receive {:patched, body}, 5_000
       sweeps = Jason.decode!(body)["sweeps"]
       rough = Enum.find(sweeps, &(&1["name"] == "ざっと"))
-      deep = Enum.find(sweeps, &(&1["name"] == "じっくり"))
+      deep = Enum.find(sweeps, &(&1["name"] == "調査"))
 
       assert rough["backend"] == "codex"
       assert rough["effort"] == "high"
