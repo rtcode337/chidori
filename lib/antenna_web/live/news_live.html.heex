@@ -7,15 +7,15 @@
         <strong>antenna</strong>
       </a>
       <nav aria-label="主要メニュー">
-        <a class="active" href={~p"/news"}>ニュース</a>
+        <a class="active" href={~p"/news"}>最新情報</a>
         <a href={~p"/relations"}>関連図</a>
         <a href={~p"/settings"}>設定</a>
       </nav>
     </header>
 
     <section class="news-intro">
-      <p>DAILY NEWS</p>
-      <h1>今日、押さえておきたいニュース</h1>
+      <p>DAILY UPDATES</p>
+      <h1>{if @topic, do: "今日、押さえておきたい#{@topic.name}", else: "最新情報"}</h1>
       <p>
         集めるのは Chiezo です。antenna は収集を依頼して、溜まったものを読みます。
         依頼して作られる収集は止まった状態なので、<strong>この画面から AI が勝手に動くことはありません</strong>。
@@ -58,6 +58,19 @@
         <% end %>
       </div>
     </section>
+
+    <%!-- 話題ごとのタブ。**集める相手も溜まるものも話題ごとに別**なので、
+         1 つに混ぜると、どちらの状態を見ているのか読めなくなる。
+         並ぶのは `Antenna.Topics` の話題そのもの（定義はコードにある） --%>
+    <nav :if={@topics != []} class="relation-tabs" aria-label="話題">
+      <.link
+        :for={topic <- @topics}
+        patch={~p"/news?view=#{topic.collection}"}
+        class={if @topic && @topic.collection == topic.collection, do: "selected"}
+      >
+        {topic.name}
+      </.link>
+    </nav>
 
     <section class="news-list" aria-live="polite">
       <%= if message = status_message(@news) do %>
@@ -116,7 +129,7 @@
     <details class="news-prompt">
       <summary>AI に頼んでいる内容</summary>
       <p class="news-prompt-note">{prompt_note(@news)}</p>
-      <pre>{prompt_text(@news)}</pre>
+      <pre>{prompt_text(@news, @topic)}</pre>
     </details>
 
     <footer>

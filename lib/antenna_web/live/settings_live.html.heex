@@ -7,7 +7,7 @@
         <strong>antenna</strong>
       </a>
       <nav aria-label="主要メニュー">
-        <a href={~p"/news"}>ニュース</a>
+        <a href={~p"/news"}>最新情報</a>
         <a href={~p"/relations"}>関連図</a>
         <a class="active" href={~p"/settings"}>設定</a>
       </nav>
@@ -34,21 +34,21 @@
           <p class="news-source">Chiezo の収集: {topic.collection}</p>
           <p class="news-reason">関心: {topic.interest}</p>
 
-          <%= if @editing == topic.id do %>
+          <%= if @editing == topic.collection do %>
             <%!-- 話題ごとに 1 枚出るので、id も話題ごとに分ける
                   （同じ id が並ぶと、切断からの復帰でフォームを取り違える） --%>
             <.form
               for={@form}
-              id={"topic-form-#{topic.id}"}
+              id={"topic-form-#{topic.collection}"}
               phx-submit="save"
               phx-change="validate"
               class="topic-form"
             >
               <p :if={@error} class="news-message">{@error}</p>
 
-              <label>関心（何を集めて、何を選んでほしいか）</label>
-              <.input field={@form[:interest]} type="textarea" rows="3" />
-
+              <%!-- **関心はここで直せない。** 何を集める話題かは antenna の機能
+                   （関連図のタブと同じ立ち位置）なので、定義の側が持っている。
+                   ここで直せるのは「誰に頼むか」だけ --%>
               <fieldset>
                 <legend>集める相手</legend>
                 <.input
@@ -147,7 +147,7 @@
               </div>
             </dl>
             <div class="news-actions">
-              <button type="button" phx-click="edit" phx-value-id={topic.id}>設定を変える</button>
+              <button type="button" phx-click="edit" phx-value-collection={topic.collection}>設定を変える</button>
             </div>
           <% end %>
         </div>

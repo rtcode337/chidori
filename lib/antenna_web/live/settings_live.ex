@@ -17,8 +17,6 @@ defmodule AntennaWeb.SettingsLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    Topics.ensure_default()
-
     {:ok,
      socket
      |> assign(page_title: "設定", editing: nil, saved: nil, error: nil)
@@ -27,9 +25,13 @@ defmodule AntennaWeb.SettingsLive do
   end
 
   @impl true
-  def handle_event("edit", %{"id" => id}, socket) do
-    topic = Topics.get!(id)
-    {:noreply, assign(socket, editing: topic.id, form: to_form(Topics.change(topic)), saved: nil)}
+  # **鍵は収集名。** 話題の定義はコードにあり、DB の行は設定を保存したときに
+  # 初めてできる —— id で指すと、まだ保存していない話題を開けない
+  def handle_event("edit", %{"collection" => collection}, socket) do
+    topic = Topics.get(collection)
+
+    {:noreply,
+     assign(socket, editing: collection, form: to_form(Topics.change(topic)), saved: nil)}
   end
 
   def handle_event("cancel", _params, socket) do
@@ -44,18 +46,18 @@ defmodule AntennaWeb.SettingsLive do
   #
   # 保存はしません。ここで持ち回るのは書きかけの入力だけで、書き込むのは "save" です。
   def handle_event("validate", %{"topic" => attrs}, socket) do
-    topic = Topics.get!(socket.assigns.editing)
+    topic = Topics.get(socket.assigns.editing)
     {:noreply, assign(socket, form: to_form(Topics.change(topic, attrs)))}
   end
 
   def handle_event("save", %{"topic" => attrs}, socket) do
-    topic = Topics.get!(socket.assigns.editing)
+    topic = Topics.get(socket.assigns.editing)
 
-    case Topics.update(topic, attrs) do
-      {:ok, saved} ->
+    case Topics.save_settings(socket.assigns.editing, attrs) do
+      {:ok, _row} ->
         {:noreply,
          socket
-         |> assign(editing: nil, error: nil, saved: saved.name)
+         |> assign(editing: nil, error: nil, saved: topic.name)
          |> load_topics()}
 
       {:error, changeset} ->

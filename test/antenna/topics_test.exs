@@ -3,70 +3,82 @@ defmodule Antenna.TopicsTest do
 
   alias Antenna.Topics
 
-  defp valid(overrides \\ %{}) do
-    Map.merge(%{name: "ニュース", collection: "antenna_news"}, overrides)
+  test "話題は定義から出る（DB に行が無くても出る）" do
+    # **話題は antenna の機能。** 関連図の「人物」「画家」と同じ立ち位置で、
+    # 集め方も関心も話題ごとに違う。DB に持たせていた頃は、コードに足した話題が
+    # 既に使っている環境へ永遠に届かなかった（最初の 1 回だけ配る作りだったため）
+    names = Enum.map(Topics.list(), & &1.name)
+
+    assert "ニュース" in names
+    assert "技術" in names
+    assert Enum.map(Topics.defined(), & &1.collection) == Enum.map(Topics.list(), & &1.collection)
   end
 
-  test "話題を作れる" do
-    assert {:ok, topic} = Topics.create(valid())
-    assert topic.name == "ニュース"
-    # 相手は未指定が初期状態（Chiezo の既定にまかせる）
+  test "設定していない話題は、相手が未指定で出る" do
+    topic = Topics.get("antenna_tech")
+
+    assert topic.interest =~ "ソフトウェア開発"
     assert topic.collect_backend == nil
     assert topic.select_backend == nil
   end
 
-  test "集める相手と選ぶ相手を別に持てる" do
-    assert {:ok, topic} =
-             Topics.create(
-               valid(%{
-                 collect_backend: "claude",
-                 collect_model: "haiku",
-                 select_backend: "antigravity",
-                 select_effort: "low"
-               })
-             )
+  test "設定は保存でき、次に読むとき重なる" do
+    assert {:ok, _row} =
+             Topics.save_settings("antenna_tech", %{
+               "collect_backend" => "claude",
+               "collect_model" => "haiku",
+               "select_backend" => "antigravity",
+               "select_effort" => "low"
+             })
 
+    topic = Topics.get("antenna_tech")
     assert topic.collect_backend == "claude"
-    assert topic.select_backend == "antigravity"
     assert topic.select_effort == "low"
+    # 名前も関心も定義のまま（保存で上書きされない）
+    assert topic.name == "技術"
+    assert topic.interest =~ "ソフトウェア開発"
+  end
+
+  test "同じ話題を 2 回保存しても行は増えない" do
+    {:ok, _} = Topics.save_settings("antenna_tech", %{"collect_backend" => "claude"})
+    {:ok, _} = Topics.save_settings("antenna_tech", %{"collect_backend" => "codex"})
+
+    assert Topics.get("antenna_tech").collect_backend == "codex"
+    assert Antenna.Repo.aggregate(Antenna.Topics.Topic, :count) == 1
   end
 
   test "空欄は「指定しない」に倒す" do
     # 画面のフォームは空欄を空文字で送る。空のまま持つと Chiezo へ空の相手を送ることになる
-    assert {:ok, topic} = Topics.create(valid(%{collect_backend: "  ", select_model: ""}))
+    {:ok, _} = Topics.save_settings("antenna_news", %{"collect_backend" => "  ",
+                                                      "select_model" => ""})
+    topic = Topics.get("antenna_news")
     assert topic.collect_backend == nil
     assert topic.select_model == nil
   end
 
-  test "収集の名前は Chiezo のソース名の決まりに従う" do
-    assert {:error, changeset} = Topics.create(valid(%{collection: "Antenna News"}))
-    assert %{collection: [_]} = errors_on(changeset)
+  test "名前と収集名は画面から書き換えられない" do
+    # **定義と DB が別々に動き出さないように**、設定だけを読む
+    {:ok, _} =
+      Topics.save_settings("antenna_tech", %{
+        "name" => "別の名前",
+        "collection" => "other",
+        "interest" => "別の関心",
+        "collect_backend" => "claude"
+      })
+
+    topic = Topics.get("antenna_tech")
+    assert topic.name == "技術"
+    assert topic.interest =~ "ソフトウェア開発"
+    assert Topics.get("other") == nil
   end
 
-  test "同じ名前も同じ収集も 2 つ持てない" do
-    assert {:ok, _} = Topics.create(valid())
-    assert {:error, changeset} = Topics.create(valid(%{collection: "other_news"}))
-    assert %{name: [_]} = errors_on(changeset)
-
-    assert {:error, changeset} = Topics.create(valid(%{name: "別の話題"}))
-    assert %{collection: [_]} = errors_on(changeset)
+  test "定義に無い話題は保存できない" do
+    assert Topics.save_settings("nosuch", %{"collect_backend" => "claude"}) ==
+             {:error, :unknown_topic}
   end
 
-  test "収集の名前から引ける" do
-    {:ok, topic} = Topics.create(valid())
-    assert Topics.get_by_collection("antenna_news").id == topic.id
-    assert Topics.get_by_collection("nosuch") == nil
-  end
-
-  test "1 つも無ければニュースの話題を置く" do
-    assert Topics.list() == []
-    Topics.ensure_default()
-    assert [%{name: "ニュース", collection: "antenna_news"}] = Topics.list()
-  end
-
-  test "すでにあれば置き直さない" do
-    {:ok, _} = Topics.create(valid(%{name: "自分で作った", collection: "mine"}))
-    Topics.ensure_default()
-    assert [%{name: "自分で作った"}] = Topics.list()
+  test "知らない収集の名前を引いても壊れない" do
+    assert Topics.get("nosuch") == nil
+    assert Topics.get(nil) == nil
   end
 end

@@ -10,7 +10,12 @@ defmodule Antenna.News do
   有効にしたときだけです。だからこの画面から AI が勝手に動くことはありません。
 
   Chiezo への問い合わせは `Task.Supervisor` の下で動かし、この GenServer では
-  待ちません。結果は `subscribe/0` した先へ届きます。
+  待ちません。結果は `subscribe/1` した先へ届きます。
+
+  **話題ごとに 1 つ立ちます。** 「ニュース」と「技術」では集める相手も溜まるものも
+  別なので、1 つの入れ物に混ぜると、片方を読み直したときにもう片方の状態まで
+  入れ替わります。立てるのは開かれたときで、話題（`Antenna.Topics`）が増えても
+  誰も開いていないものまで常駐しないようにしてあります。
   """
 
   use GenServer
@@ -18,8 +23,6 @@ defmodule Antenna.News do
   require Logger
 
   alias Antenna.Http
-
-  @topic "news"
 
   @user_agent "antenna/0.1 (+https://github.com/rtcode337/antenna)"
 
@@ -38,7 +41,11 @@ defmodule Antenna.News do
   @default_collection "antenna_news"
   @interval_minutes 360
 
-  defstruct status: :idle,
+  # 話題に関心が書かれていないときの言い方
+  @default_interest "暮らし・社会・経済への影響が大きいこと"
+
+  defstruct collection_name: nil,
+            status: :idle,
             collection: nil,
             articles: [],
             # 選ばれたもの（見出し → なぜ）。**選ぶたびに AI を呼ばない**ので、
@@ -53,38 +60,70 @@ defmodule Antenna.News do
             last_run_at: nil
 
   @doc """
-  名前を渡せるようにしてある。テストが本番と同じ入れ物を共有すると、
-  片方のテストの収集状態がもう片方へ漏れる。
+  話題 1 つぶんの入れ物を立てます。
+
+  名前を渡せるようにしてあるのは、テストが本番と同じ入れ物を共有すると、
+  片方のテストの収集状態がもう片方へ漏れるためです。
   """
   def start_link(options) do
-    GenServer.start_link(__MODULE__, :ok, name: Keyword.get(options, :name, __MODULE__))
+    collection = Keyword.get(options, :collection) || collection_name()
+    name = Keyword.get(options, :name, via(collection))
+    GenServer.start_link(__MODULE__, collection, name: name)
   end
 
   @doc """
-  いまの収集状態。画面はこれだけを見ます。
+  その話題の入れ物。**まだ無ければ立てます** ——
+  開かれた話題のぶんだけ立てるので、起動時にはまだ無い。
   """
-  def current(server \\ __MODULE__) do
+  def server(collection) when is_binary(collection) do
+    case DynamicSupervisor.start_child(
+           Antenna.News.Supervisor,
+           {__MODULE__, collection: collection}
+         ) do
+      {:ok, _pid} -> via(collection)
+      {:error, {:already_started, _pid}} -> via(collection)
+      # 立てられなくても画面は出す（状態が読めないだけ）
+      {:error, _reason} -> via(collection)
+    end
+  end
+
+  defp via(collection), do: {:via, Registry, {Antenna.News.Registry, collection}}
+
+  @doc """
+  いまの収集状態。画面はこれだけを見ます。
+
+  **話題が読めないときも形の揃った空を返します** —— 画面はこれだけを見るので、
+  落ちると開けなくなる。
+  """
+  def current(server) do
     GenServer.call(server, :current)
+  catch
+    :exit, _reason -> empty()
   end
 
   @doc """
   Chiezo に溜まっているものを読み直します。AI は動きません。
   """
-  def refresh(server \\ __MODULE__) do
+  def refresh(server) do
     GenServer.cast(server, {:command, :refresh})
   end
 
   @doc """
   収集そのものを Chiezo へ依頼します。作られるのは止まった状態です。
+
+  **話題は呼ぶ側が渡します。** 依頼の本文も相手も話題の設定から作りますが、
+  それを取りに行くのはここではありません —— DB を読むのは画面のある側の仕事で、
+  ここから読むと、問い合わせを動かしている Task から読むことになります
+  （テストの sandbox では持ち主のいないプロセスになり、読めません）。
   """
-  def request_collection(server \\ __MODULE__) do
-    GenServer.cast(server, {:command, :request})
+  def request_collection(server, topic \\ nil) do
+    GenServer.cast(server, {:command, {:request, topic}})
   end
 
   @doc """
   予定を待たずに1回集めさせます。止まっている収集は Chiezo が断ります。
   """
-  def run_now(server \\ __MODULE__) do
+  def run_now(server) do
     GenServer.cast(server, {:command, :run})
   end
 
@@ -94,16 +133,44 @@ defmodule Antenna.News do
   **溜まったものが変わっていなければ呼び直しません** —— 画面を開くたびに AI を
   呼ぶと枠を食い切ります。`force` を立てると、変わっていなくても選び直します。
   """
-  def select(server \\ __MODULE__, force \\ false) do
-    GenServer.cast(server, {:select, force})
+  def select(server, topic, force \\ false) do
+    GenServer.cast(server, {:select, topic, force})
   end
 
   @doc """
   収集状態の変化を受け取ります。LiveView が接続時に呼びます。
+
+  **話題ごとに分けて配ります** —— 1 本にまとめると、見ていない話題が集め終わった
+  拍子に、いま開いている画面まで書き換わります。
   """
-  def subscribe do
-    Phoenix.PubSub.subscribe(Antenna.PubSub, @topic)
+  def subscribe(collection \\ nil) do
+    Phoenix.PubSub.subscribe(Antenna.PubSub, topic(collection || collection_name()))
   end
+
+  @doc "受け取るのをやめます。話題を切り替えたときに呼びます。"
+  def unsubscribe(collection) when is_binary(collection) do
+    Phoenix.PubSub.unsubscribe(Antenna.PubSub, topic(collection))
+  end
+
+  @doc """
+  話題を開いていないときに画面へ渡す空の状態。
+  """
+  def empty do
+    %{
+      name: nil,
+      status: :idle,
+      collection: nil,
+      articles: [],
+      picks: %{},
+      picked_titles: [],
+      selecting: false,
+      checked_at: nil,
+      reason: nil,
+      configured: chiezo_base_url() != nil
+    }
+  end
+
+  defp topic(collection), do: "news:" <> collection
 
   @doc """
   Chiezo に置く収集の名前。`ANTENNA_NEWS_COLLECTION` で変えられます。
@@ -162,8 +229,8 @@ defmodule Antenna.News do
   def chiezo_url(_path), do: nil
 
   @impl true
-  def init(:ok) do
-    {:ok, %__MODULE__{}}
+  def init(collection) do
+    {:ok, %__MODULE__{collection_name: collection}}
   end
 
   @impl true
@@ -185,7 +252,7 @@ defmodule Antenna.News do
         {:noreply, broadcast(%{state | reason: :too_soon})}
 
       true ->
-        name = collection_name()
+        name = state.collection_name
         base = chiezo_base_url()
 
         task =
@@ -201,7 +268,7 @@ defmodule Antenna.News do
   end
 
   @impl true
-  def handle_cast({:select, force}, state) do
+  def handle_cast({:select, topic, force}, state) do
     signature = signature(state.articles)
 
     cond do
@@ -214,7 +281,6 @@ defmodule Antenna.News do
 
       true ->
         base = chiezo_base_url()
-        topic = Antenna.Topics.get_by_collection(collection_name())
 
         if base && topic do
           articles = state.articles
@@ -293,7 +359,12 @@ defmodule Antenna.News do
   defp now_ms, do: System.monotonic_time(:millisecond)
 
   defp broadcast(state) do
-    Phoenix.PubSub.broadcast(Antenna.PubSub, @topic, {:news_updated, public(state)})
+    Phoenix.PubSub.broadcast(
+      Antenna.PubSub,
+      topic(state.collection_name),
+      {:news_updated, public(state)}
+    )
+
     state
   end
 
@@ -303,6 +374,9 @@ defmodule Antenna.News do
   # 画面へ渡す形。内部で持っているタスクや計測用の時刻は出さない
   defp public(state) do
     %{
+      # どの話題のものか。**画面が取り違えないための印** —— 話題を切り替えた直後に
+      # 前の話題の結果が届くことがある
+      name: state.collection_name,
       status: state.status,
       collection: state.collection,
       articles: state.articles,
@@ -319,8 +393,8 @@ defmodule Antenna.News do
 
   defp perform(:refresh, base, name), do: read(base, name)
 
-  defp perform(:request, base, name) do
-    with :ok <- create_collection(base, name) do
+  defp perform({:request, topic}, base, name) do
+    with :ok <- create_collection(base, name, topic) do
       read(base, name)
     end
   end
@@ -403,14 +477,14 @@ defmodule Antenna.News do
     end
   end
 
-  defp create_collection(base, name) do
+  defp create_collection(base, name, topic) do
     payload =
       Jason.encode!(
         Map.merge(
           %{
             name: name,
-            description: "antenna のニュース。暮らしや社会への影響が大きい話題を集める",
-            prompt: prompt(),
+            description: description(topic),
+            prompt: prompt(topic),
             interval_minutes: @interval_minutes,
             # ニュースは足していくもの。Chiezo の既定と同じだが、
             # 集め方が 2 つある層なので、どちらのつもりかは明示して置く
@@ -419,7 +493,7 @@ defmodule Antenna.News do
           },
           # 名指ししないものは送らない —— null を送ると「指定しない」と同じだが、
           # 依頼の本文に空の項目が並ぶと、何を決めて何を任せたのかが読めない
-          backend_settings() |> Enum.reject(&(elem(&1, 1) == nil)) |> Map.new()
+          collect_settings(topic) |> Enum.reject(&(elem(&1, 1) == nil)) |> Map.new()
         )
       )
 
@@ -552,19 +626,54 @@ defmodule Antenna.News do
 
   defp trimmed(_value), do: nil
 
-  @doc false
-  # Chiezo へ渡す収集の本文。`{cursor}` は実行のたびに進む印で、
-  # AI が `next_cursor` で次を返す（前回以降を集めるのに使う）
-  def prompt do
+  @doc """
+  Chiezo へ渡す収集の本文。
+
+  **何を集めるかは話題の「関心」から作ります** —— 話題ごとに本文を丸ごと持たせると、
+  話題を足すたびに同じ形の文をもう一度書くことになります。関心は話題の定義
+  （`Antenna.Topics.defined/0`）にあります。
+
+  `{cursor}` は実行のたびに進む印で、AI が `next_cursor` で次を返します
+  （前回以降を集めるのに使う）。
+  """
+  def prompt(topic \\ nil) do
     """
-    {cursor} 以降に日本語で報じられたニュースのうち、暮らし・社会・経済への影響が大きいものを10件集めてください。
-    title はそのニュースを一意に指す短い見出しにします（同じ出来事には同じ見出しを使ってください）。
+    {cursor} 以降に日本語で報じられたもののうち、次に当てはまるものを10件集めてください。
+
+    #{interest_of(topic)}
+
+    title はそれを一意に指す短い見出しにします（同じ出来事には同じ見出しを使ってください）。
     body には3行程度の要約を書き、記事本文はそのまま写さないでください。
     url には出典の記事のURLを必ず入れます。
-    tags には分野を1〜3個入れます（例: 暮らし / 経済 / 災害 / 政治 / スポーツ / エンタメ）。
+    tags には分野を1〜3個入れます。
     next_cursor には、今回集めた中でいちばん新しい記事の日時をISO8601で入れてください。
     """
   end
+
+  # 関心が空のままでも集めさせない文にはしない —— 指定なしで頼むと、
+  # 何を集めればよいか決まらないまま AI が埋めることになる
+  defp interest_of(%{interest: interest}) when is_binary(interest) do
+    case String.trim(interest) do
+      "" -> @default_interest
+      text -> text
+    end
+  end
+
+  defp interest_of(_topic), do: @default_interest
+
+  defp description(%{name: name} = topic) when is_binary(name),
+    do: "antenna の「#{name}」。#{interest_of(topic)}"
+
+  defp description(_topic), do: "antenna のニュース。#{@default_interest}"
+
+  # 誰に集めさせるか。**話題の設定が先で、環境変数は後** —— 画面（`/settings`）で
+  # 決めた相手が無視されると、設定した側からは何も起きていないように見える。
+  # どちらも空なら Chiezo の既定にまかせる
+  defp collect_settings(%{collect_backend: backend} = topic) when is_binary(backend) do
+    %{backend: backend, model: topic.collect_model, effort: topic.collect_effort}
+  end
+
+  defp collect_settings(_topic), do: backend_settings()
 
   @critical_keywords ~w(
     地震 津波 避難 警報 台風 大雨 災害 感染症 選挙 首相 日銀 金利 戦争

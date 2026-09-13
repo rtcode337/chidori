@@ -1,55 +1,99 @@
 defmodule AntennaWeb.NewsLive do
   @moduledoc """
-  ニュースの一覧。集めるのは Chiezo の「集める」層で、この画面は依頼と閲覧だけを持ちます。
+  最新情報の一覧。集めるのは Chiezo の「集める」層で、この画面は依頼と閲覧だけを持ちます。
 
   収集は数十秒から数分かかることがあるので、押した人に再読み込みをさせません。
   結果は `Antenna.News` からの通知で届きます。
+
+  **話題ごとにタブで分けます。** 集める相手も溜まるものも話題ごとに別なので、
+  1 つに混ぜると、どちらの状態を見ているのか読めなくなります。タブに並ぶのは
+  `Antenna.Topics` の話題そのもので、並びも定義のとおりです。
   """
 
   use AntennaWeb, :live_view
 
   alias Antenna.Jst
   alias Antenna.News
+  alias Antenna.Topics
 
   @impl true
   def mount(_params, _session, socket) do
-    # 画面が繋がってから購読する。最初の静的な描画では受け取る相手がいない
+    # 話題が 1 つも無いと、タブも収集も出せない
+    {:ok, assign(socket, topics: Topics.list())}
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    topic = pick_topic(socket.assigns.topics, params["view"])
+
+    # 話題を切り替えたら購読も付け替える。付け替えないと、見ていない話題の
+    # 収集結果でこの画面が書き換わる
     if connected?(socket) do
-      News.subscribe()
-      # Chiezo の側は勝手に進むので、開くたびにいまの状態を取り直す
-      News.refresh()
+      if previous = socket.assigns[:topic] do
+        News.unsubscribe(previous.collection)
+      end
+
+      if topic do
+        News.subscribe(topic.collection)
+        # Chiezo の側は勝手に進むので、開くたびにいまの状態を取り直す
+        News.refresh(News.server(topic.collection))
+      end
     end
 
-    {:ok, assign(socket, page_title: "ニュース", news: News.current())}
+    {:noreply,
+     assign(socket,
+       topic: topic,
+       page_title: if(topic, do: "最新情報 — #{topic.name}", else: "最新情報"),
+       news: if(topic, do: News.current(News.server(topic.collection)), else: News.empty())
+     )}
   end
 
   @impl true
   def handle_event("refresh", _params, socket) do
-    News.refresh()
-    {:noreply, socket}
+    with_server(socket, &News.refresh/1)
   end
 
   def handle_event("request", _params, socket) do
-    News.request_collection()
-    {:noreply, socket}
+    # 依頼の本文も相手も話題の設定から作る。DB を読むのは画面のあるこちら側
+    topic = socket.assigns.topic
+    with_server(socket, &News.request_collection(&1, topic))
   end
 
   def handle_event("run", _params, socket) do
-    News.run_now()
-    {:noreply, socket}
+    with_server(socket, &News.run_now/1)
   end
 
   def handle_event("select", _params, socket) do
     # 押したときは、溜まったものが変わっていなくても選び直す
-    News.select(News, true)
+    topic = socket.assigns.topic
+    with_server(socket, &News.select(&1, topic, true))
+  end
+
+  defp with_server(socket, fun) do
+    if topic = socket.assigns.topic, do: fun.(News.server(topic.collection))
     {:noreply, socket}
   end
 
   @impl true
   def handle_info({:news_updated, news}, socket) do
-    # 溜まったものが変わっていれば選び直す（変わっていなければ何も起きない）
-    if news.status == :ready, do: News.select()
-    {:noreply, assign(socket, news: news)}
+    topic = socket.assigns.topic
+
+    # 話題を切り替えた直後は、前の話題の結果が遅れて届くことがある
+    if topic && news.name == topic.collection do
+      # 溜まったものが変わっていれば選び直す（変わっていなければ何も起きない）
+      if news.status == :ready, do: News.select(News.server(topic.collection), topic)
+      {:noreply, assign(socket, news: news)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @doc """
+  どの話題を見るか。**知らない名前が来たら先頭に落とします** ——
+  消した話題のリンクを踏んだだけで空白の画面を出す理由が無い。
+  """
+  def pick_topic(topics, view) do
+    Enum.find(topics, &(&1.collection == view)) || List.first(topics)
   end
 
   @doc """
@@ -101,10 +145,11 @@ defmodule AntennaWeb.NewsLive do
   antenna の雛形を出し続けると、実際に投げている文と画面が食い違う。
   まだ依頼していないときは、これから送る雛形を出す。
   """
-  def prompt_text(%{collection: %{prompt: prompt}}) when is_binary(prompt) and prompt != "",
-    do: prompt
+  def prompt_text(%{collection: %{prompt: prompt}}, _topic)
+      when is_binary(prompt) and prompt != "",
+      do: prompt
 
-  def prompt_text(_news), do: News.prompt()
+  def prompt_text(_news, topic), do: News.prompt(topic)
 
   def prompt_note(%{collection: nil}), do: "「収集を依頼する」を押すと、この内容で Chiezo に頼みます。"
 

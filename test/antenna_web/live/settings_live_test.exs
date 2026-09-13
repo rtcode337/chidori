@@ -66,7 +66,7 @@ defmodule AntennaWeb.SettingsLiveTest do
       stub_backends()
       {:ok, live, _html} = live(conn, ~p"/settings")
 
-      html = live |> element("button", "設定を変える") |> render_click()
+      html = live |> element("article.topic:first-of-type button", "設定を変える") |> render_click()
 
       assert html =~ ~s(name="topic[collect_model]")
       assert html =~ ~s(name="topic[collect_effort]")
@@ -79,7 +79,7 @@ defmodule AntennaWeb.SettingsLiveTest do
     test "相手を選び直すと候補が入れ替わる", %{conn: conn} do
       stub_backends()
       {:ok, live, _html} = live(conn, ~p"/settings")
-      live |> element("button", "設定を変える") |> render_click()
+      live |> element("article.topic:first-of-type button", "設定を変える") |> render_click()
 
       # **セレクトの中だけを見る。** 相手ごとの一覧（backend_hint）にも同じモデル名が
       # 並ぶので、画面全体で当てると相手を替えても当たり続ける
@@ -98,7 +98,7 @@ defmodule AntennaWeb.SettingsLiveTest do
       # ここで持ち回るのは書きかけの入力だけ。書き込むのは保存を押したとき
       stub_backends()
       {:ok, live, _html} = live(conn, ~p"/settings")
-      live |> element("button", "設定を変える") |> render_click()
+      live |> element("article.topic:first-of-type button", "設定を変える") |> render_click()
 
       live
       |> form(".topic-form", topic: %{collect_backend: "claude", collect_model: "opus"})
