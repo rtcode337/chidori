@@ -35,4 +35,14 @@ defmodule Antenna.Jst do
   end
 
   def format(other), do: other
+
+  @doc """
+  日本時間での「今日」。
+
+  **実行環境のローカル日付に頼りません** —— UTC で動くコンテナでは、
+  日本の朝 9 時までが前日になります（「見た日」の既定値がそこでずれる）。
+  """
+  def today(now \\ DateTime.utc_now()) do
+    now |> DateTime.add(@offset_seconds, :second) |> DateTime.to_date()
+  end
 end

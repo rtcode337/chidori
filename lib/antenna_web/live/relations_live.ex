@@ -10,6 +10,8 @@ defmodule AntennaWeb.RelationsLive do
 
   alias Antenna.Jst
   alias Antenna.Relations
+  alias Antenna.Relations.Mark
+  alias Antenna.Relations.Marks
 
   # 1 度に描く丸の上限。**図がどれだけ大きくても、ここで頭打ちにする** ——
   # 4,250 人ぶんを SVG に並べると、線と札を合わせて 2 万を超える要素になり、
@@ -54,6 +56,10 @@ defmodule AntennaWeb.RelationsLive do
        changed_only: false,
        focus_sent: nil,
        backends: [],
+       # 「見た」印。**ノード名で引く** —— 図は読み直すたびに id が振り直されるので、
+       # id で持つと印が別人へ移る
+       marks: %{},
+       mark_saved: nil,
        # 巡回ごとに選んだ相手。**サーバー側で覚える** —— 覚えないと、図が届いた
        # 拍子にフォームが描き直されて、選んだところが元の値に戻る（選んだつもりで
        # 押すと、いま入っている値がそのまま送り返される）
@@ -83,7 +89,14 @@ defmodule AntennaWeb.RelationsLive do
       Relations.refresh(view)
     end
 
-    socket = assign(socket, view: view, relation: Relations.current(view))
+    socket =
+      assign(socket,
+        view: view,
+        relation: Relations.current(view),
+        # 印は図ごとに別。切り替えたら引き直す
+        marks: Marks.for_view(view),
+        mark_saved: nil
+      )
 
     # 相手の一覧は**繋がってから、待たずに**引く。画面の中で同期に引くと、Chiezo が
     # 遅いあいだページが固まる（選択肢が無くても図は読めるので、待つ価値が無い）
@@ -128,18 +141,19 @@ defmodule AntennaWeb.RelationsLive do
 
       # もう一度押したら閉じる
       detail_name(socket.assigns.detail) == name ->
-        {:noreply, assign(socket, detail: nil, artwork: nil)}
+        {:noreply, assign(socket, detail: nil, artwork: nil, mark_saved: nil)}
 
       works_of(node) == [] ->
         # 絵が無いことは分かっているので、探しているふりをしない
-        {:noreply, assign(socket, detail: node, artwork: [], edge: nil, focus_sent: nil)}
+        {:noreply,
+         assign(socket, detail: node, artwork: [], edge: nil, focus_sent: nil, mark_saved: nil)}
 
       true ->
         works = works_of(node)
 
         {:noreply,
          socket
-         |> assign(detail: node, artwork: :loading, edge: nil, focus_sent: nil)
+         |> assign(detail: node, artwork: :loading, edge: nil, focus_sent: nil, mark_saved: nil)
          |> start_async(:artwork, fn ->
            works |> Enum.map(&Antenna.Artwork.lookup/1) |> Enum.reject(&is_nil/1)
          end)}
@@ -191,9 +205,34 @@ defmodule AntennaWeb.RelationsLive do
      )}
   end
 
+  # 「見た」印とメモを書く。**空にしたら消える** —— 何も書かれていない印が
+  # 残っていると、図の上で見たものと見分けが付かない
+  def handle_event("save_mark", %{"name" => name} = params, socket) do
+    attrs = %{
+      # チェックが外れているとキーごと来ない（HTML のチェックボックス）
+      "seen" => params["seen"] == "on",
+      "seen_on" => blank_to_nil(params["seen_on"]),
+      "note" => params["note"] || ""
+    }
+
+    case Marks.put(socket.assigns.view, name, attrs) do
+      {:ok, mark} ->
+        marks =
+          if mark,
+            do: Map.put(socket.assigns.marks, name, mark),
+            else: Map.delete(socket.assigns.marks, name)
+
+        {:noreply, assign(socket, marks: marks, mark_saved: name)}
+
+      {:error, _changeset} ->
+        # 書けなかったことは黙って捨てない。押した人には確かめようがない
+        {:noreply, put_flash(socket, :error, "メモを保存できませんでした。")}
+    end
+  end
+
   # 閉じ方は3つとも同じところへ来る（ボタン・図の外を押す・Esc）
   def handle_event("close_work", _params, socket) do
-    {:noreply, assign(socket, detail: nil, artwork: nil, edge: nil)}
+    {:noreply, assign(socket, detail: nil, artwork: nil, edge: nil, mark_saved: nil)}
   end
 
   # 図が「いまどこを、どれくらいの倍率で見ているか」を知らせてくる。
@@ -519,6 +558,44 @@ defmodule AntennaWeb.RelationsLive do
   @doc "いま開いている人の名前（開いていなければ nil）。"
   def detail_name(nil), do: nil
   def detail_name(node), do: node[:name]
+
+  @doc """
+  そのノードに付いている「見た」印。まだ無ければ空の印を返します。
+
+  空を返すのは、**フォームを 2 通り書かずに済ませる**ため —— 初めて書く人と
+  書き直す人で見た目が変わる理由が無い。
+  """
+  def mark_of(marks, name), do: Map.get(marks, name) || %Mark{}
+
+  @doc "印が付いているか。図の上の目印と、札の出し分けに使う。"
+  def marked?(marks, name), do: Map.has_key?(marks, name)
+
+  @doc """
+  「見た日」の欄に最初から入れておく日付。
+
+  既に書いてあるならそれを、無ければ**日本時間の今日**を入れます ——
+  展覧会から帰って書くことがほとんどなので、打ち直さずに済む側へ寄せます。
+  """
+  def seen_on_value(%Mark{seen_on: %Date{} = date}), do: Date.to_iso8601(date)
+  def seen_on_value(_mark), do: Jst.today() |> Date.to_iso8601()
+
+  @doc "印を1行で言う（ノードの札の下に出す）。"
+  def mark_summary(%Mark{seen: true, seen_on: %Date{} = date}),
+    do: "見た（#{Date.to_iso8601(date)}）"
+
+  def mark_summary(%Mark{seen: true}), do: "見た"
+  def mark_summary(%Mark{note: note}) when is_binary(note) and note != "", do: "メモあり"
+  def mark_summary(_mark), do: nil
+
+  # 空欄は「入れていない」。空文字のまま渡すと日付として読めずに弾かれる
+  defp blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      text -> text
+    end
+  end
+
+  defp blank_to_nil(value), do: value
 
   @doc """
   その画家について Chiezo に入っているタグを、読める形に分けます。

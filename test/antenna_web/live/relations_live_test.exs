@@ -3,6 +3,8 @@ defmodule AntennaWeb.RelationsLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias AntennaWeb.RelationsLive
+
   test "人物の関連図を表示する", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/relations")
 
@@ -691,6 +693,41 @@ defmodule AntennaWeb.RelationsLiveTest do
       html = live |> element(~s|button[phx-click="clear_search"]|) |> render_click()
 
       refute html =~ "relation-matches"
+    end
+  end
+
+  describe "見た記録" do
+    alias Antenna.Relations.Mark
+    alias Antenna.Relations.Marks
+
+    test "書いた印が、次に開いたときにも出ている", %{conn: conn} do
+      {:ok, _} =
+        Marks.put("painters", "クロード・モネ", %{
+          "seen" => true,
+          "seen_on" => "2026-09-12",
+          "note" => "回顧展で見た"
+        })
+
+      # **図はまだ Chiezo から読めていなくても、印だけは読めている必要がある** ——
+      # 印は antenna が持っているもので、向こうの都合で消えてはいけない
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+
+      assert %Mark{note: "回顧展で見た"} = :sys.get_state(live.pid).socket.assigns.marks["クロード・モネ"]
+    end
+
+    test "見た日の既定は日本時間の今日", %{conn: _conn} do
+      # UTC で動くコンテナでは、日本の朝 9 時までが前日になる
+      assert RelationsLive.seen_on_value(%Mark{}) == Date.to_iso8601(Antenna.Jst.today())
+      assert RelationsLive.seen_on_value(%Mark{seen_on: ~D[2026-01-02]}) == "2026-01-02"
+    end
+
+    test "印の一言は、見たかどうかとメモの有無で変わる" do
+      assert RelationsLive.mark_summary(%Mark{seen: true, seen_on: ~D[2026-09-12]}) ==
+               "見た（2026-09-12）"
+
+      assert RelationsLive.mark_summary(%Mark{seen: true}) == "見た"
+      assert RelationsLive.mark_summary(%Mark{note: "行きたい"}) == "メモあり"
+      assert RelationsLive.mark_summary(%Mark{}) == nil
     end
   end
 end

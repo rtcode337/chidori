@@ -21,4 +21,11 @@ defmodule Antenna.JstTest do
     assert Jst.format("いつか") == "いつか"
     assert Jst.format(nil) == nil
   end
+
+  test "「今日」も日本時間で数える" do
+    # UTC のままだと、日本の朝 9 時までが前日になる
+    assert Jst.today(~U[2026-09-12 00:30:00Z]) == ~D[2026-09-12]
+    assert Jst.today(~U[2026-09-11 15:00:00Z]) == ~D[2026-09-12]
+    assert Jst.today(~U[2026-09-11 14:59:00Z]) == ~D[2026-09-11]
+  end
 end

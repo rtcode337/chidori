@@ -178,6 +178,7 @@
               to_string(node.kind),
               works_of(node) != [] && "has-work",
               node[:changed?] && "changed",
+              marked?(@marks, node.name) && "marked",
               node.id == @focus && "focused"
             ]}
             phx-click="show_node"
@@ -560,6 +561,45 @@
             <p class="muted-note">代表作の絵は見つかりませんでした。</p>
         <% end %>
 
+        <%!-- 見に行った記録。**図に出ているのは Chiezo から読んだものだけ**で、
+             利用者が自分で書いたことはどこにも残せなかった。展覧会で実物を見た、
+             という記録は Chiezo には置けない（あちらは題材も好みも持たない側） --%>
+        <% mark = mark_of(@marks, @detail.name) %>
+        <details class="seen-mark" open={marked?(@marks, @detail.name)}>
+          <summary>
+            見た記録
+            <span :if={mark_summary(mark)} class="seen-badge">{mark_summary(mark)}</span>
+          </summary>
+          <form phx-submit="save_mark">
+            <input type="hidden" name="name" value={@detail.name} />
+            <p class="seen-row">
+              <label>
+                <input type="checkbox" name="seen" checked={mark.seen} /> 見た
+              </label>
+              <label>
+                見た日
+                <input type="date" name="seen_on" value={seen_on_value(mark)} />
+              </label>
+            </p>
+            <p>
+              <label>
+                メモ（どこで、何を見たか）<br />
+                <textarea
+                  name="note"
+                  rows="3"
+                  placeholder="例: 〇〇美術館の回顧展。晩年の風景画がまとめて出ていた"
+                >{mark.note}</textarea>
+              </label>
+            </p>
+            <p class="muted-note">
+              ここに書いたことは antenna にだけ残ります（Chiezo へは送りません）。
+              <strong>印もメモも空にして保存すると、記録ごと消えます。</strong>
+            </p>
+            <button type="submit" phx-disable-with="保存しています…">記録を保存</button>
+            <span :if={@mark_saved == @detail.name} class="muted-note">保存しました。</span>
+          </form>
+        </details>
+
         <%!-- **この人を詳しく調べて、を頼める。** 巡回は 8,000 人を順に回るので、
              気になった 1 人に当たるのは何日も先になる。割り込みは定時の巡回の
              進み具合にも次の予定にも触らない --%>
@@ -598,8 +638,6 @@
         </details>
       </section>
     </div>
-
-
   </div>
 </main>
 

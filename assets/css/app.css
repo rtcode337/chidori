@@ -122,6 +122,9 @@ article p:last-child { color: #475569; line-height: 1.7; }
    探して選んだ人の印より先に書く（同じ強さなので後に書いたほうが勝つ ——
    自分で選んだ相手の印が、動いた印に負けないように） */
 .relation-node.changed rect { stroke: #1d7a5f; stroke-width: 3; stroke-dasharray: 5 3; }
+/* 見に行ったものの目印。**巡回で動いたもの(破線)とは別の見え方にする** ——
+   同じ形にすると、自分が付けた印なのか Chiezo が動かしたのか読み分けられない */
+.relation-node.marked rect { stroke: #b45309; stroke-width: 3; }
 
 /* 探して選んだ人。**周りの関連図を読むために寄っている**ので、どれがその人かが
    一目で分かる必要がある */
@@ -345,6 +348,15 @@ article p:last-child { color: #475569; line-height: 1.7; }
 
 .edge-reason { margin: 0 0 0.7rem; }
 .edge-links { margin: 0.6rem 0 0; padding-left: 1.1rem; font-size: 0.9rem; }
+
+/* 見に行った記録(展覧会で実物を見た、など)。antenna にだけ残る */
+.seen-mark { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: 0.8rem; }
+.seen-mark summary { cursor: pointer; font-weight: 700; font-size: 0.9rem; }
+.seen-mark textarea { width: 100%; font: inherit; }
+.seen-mark button { margin-top: 0.3rem; }
+.seen-row { display: flex; flex-wrap: wrap; gap: 0.9rem; align-items: center; margin: 0.6rem 0 0.2rem; }
+.seen-row label { font-size: 0.9rem; }
+.seen-badge { margin-left: 0.4rem; padding: 0.05rem 0.45rem; border-radius: 0.6rem; background: #fef3c7; color: #92400e; font-size: 0.75rem; font-weight: 700; }
 
 /* モーダルから「この画家を詳しく調べて」を頼む */
 .ask-more { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: 0.8rem; }
