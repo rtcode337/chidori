@@ -33,12 +33,55 @@ defmodule AntennaWeb.RelationsLiveTest do
     assert html =~ "人物のつながり"
   end
 
+  test "開くたびに Chiezo へ聞きに行かない", %{conn: conn} do
+    # 8,000 人ぶんを読むので数秒かかるのに、Chiezo の側は数時間に 1 度しか動かない。
+    # 開いた回数だけ待たされる意味が無い
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+    restart_relations()
+    test_pid = self()
+
+    Antenna.HttpStub.stub(fn
+      %{url: "http://chiezo.test:7010/v1/ai/backends"} ->
+        Antenna.HttpStub.ok(~s({"backends":[]}))
+
+      %{url: url} ->
+        send(test_pid, {:asked, url})
+        Antenna.HttpStub.ok(~s({"results":[],"total":0}))
+    end)
+
+    {:ok, _live, _html} = live(conn, ~p"/relations?view=painters")
+    assert_receive {:asked, _url}, 2_000
+    assert wait_until(fn -> Antenna.Relations.current("painters").checked_at != nil end)
+
+    # 2 回目に開いても聞きに行かない
+    flush()
+    {:ok, live, html} = live(conn, ~p"/relations?view=painters")
+    refute_receive {:asked, _url}, 300
+    assert html =~ "最新の情報を取得"
+
+    # 押したときだけ取りに行く
+    live |> element("button", "最新の情報を取得") |> render_click()
+    assert_receive {:asked, _url}, 2_000
+  end
+
+  defp flush do
+    receive do
+      _message -> flush()
+    after
+      0 -> :ok
+    end
+  end
+
   describe "押した合図" do
     test "開いたときの読み直し中は、押せるまま", %{conn: conn} do
       # **読むだけなので止める理由が無い。** 一緒くたに :loading で止めていた頃は、
       # 開くたびに数秒ボタンが押せず、しかも「送っています」と嘘が出ていた
       System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
       on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+      # 開いたときに読みに行くのは、まだ 1 度も読めていないときだけ。
+      # 前のテストが読んでいると、このテストの合図が来ない
+      restart_relations()
       test_pid = self()
 
       Antenna.HttpStub.stub(fn
@@ -88,6 +131,7 @@ defmodule AntennaWeb.RelationsLiveTest do
       # 変わるので、いま読んでいるものが最新でないと分かる
       System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
       on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+      restart_relations()
 
       Antenna.HttpStub.stub(fn
         %{url: "http://chiezo.test:7010/v1/ingest/status"} ->
@@ -719,6 +763,34 @@ defmodule AntennaWeb.RelationsLiveTest do
       # UTC で動くコンテナでは、日本の朝 9 時までが前日になる
       assert RelationsLive.seen_on_value(%Mark{}) == Date.to_iso8601(Antenna.Jst.today())
       assert RelationsLive.seen_on_value(%Mark{seen_on: ~D[2026-01-02]}) == "2026-01-02"
+    end
+
+    test "見た印の付いたものが、行き先の一覧に並ぶ" do
+      relation = %{
+        nodes: [%{name: "クロード・モネ"}, %{name: "エドガー・ドガ"}, %{name: "誰も見ていない人"}]
+      }
+
+      marks = %{
+        "クロード・モネ" => %Mark{seen: true, seen_on: ~D[2026-09-01]},
+        "エドガー・ドガ" => %Mark{seen: true, seen_on: ~D[2026-09-10]},
+        # 図に出ていないものは並べない（選んでも動かない行き先になる）
+        "図にいない人" => %Mark{seen: true}
+      }
+
+      assert RelationsLive.seen_options(relation, marks) == [
+               {"エドガー・ドガ", "エドガー・ドガ（2026-09-10）"},
+               {"クロード・モネ", "クロード・モネ（2026-09-01）"}
+             ]
+    end
+
+    test "日付を書いていない印は後ろに回る" do
+      relation = %{nodes: [%{name: "あ"}, %{name: "い"}]}
+      marks = %{"あ" => %Mark{note: "行きたい"}, "い" => %Mark{seen: true, seen_on: ~D[2020-01-01]}}
+
+      assert RelationsLive.seen_options(relation, marks) == [
+               {"い", "い（2020-01-01）"},
+               {"あ", "あ"}
+             ]
     end
 
     test "印の一言は、見たかどうかとメモの有無で変わる" do

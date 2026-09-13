@@ -15,6 +15,16 @@
       <p>{@relation.eyebrow}</p>
       <h1>{@relation.title}</h1>
       <p>{@relation.description}</p>
+
+      <%!-- **開くたびには取りに行かない。** 8,000 人ぶんを読むので数秒かかるのに、
+           Chiezo の側は数時間に 1 度しか動かない。いつのものを見ているかを出して、
+           取り直すかは読む人に決めてもらう --%>
+      <p class="relation-checked">
+        <span class="muted-note">{checked_text(@relation)}</span>
+        <button type="button" phx-click="reload" disabled={@relation[:step] != nil}>
+          {if @relation[:step], do: "読んでいます…", else: "最新の情報を取得"}
+        </button>
+      </p>
     </section>
 
     <nav class="relation-tabs" aria-label="関連図の種類">
@@ -35,8 +45,10 @@
       id={"relation-canvas-#{@view}"}
       phx-hook=".PanZoom"
     >
-      <%!-- 名前で探して寄る。**候補を出すまでは図を動かさない** —— 打っている
-           途中で図が飛び回ると、どこを見ていたのか分からなくなる --%>
+      <%!-- 行き先を選ぶ口。**名前で探す**のと、**前に見た印から選ぶ**のを並べて置く ——
+           名前を思い出せないときに使うのが後者なので、探す欄の中には入れられない --%>
+      <% seen = seen_options(@relation, @marks) %>
+      <div class="relation-find">
       <form
         id={"relation-search-#{@view}"}
         class="relation-search"
@@ -68,6 +80,22 @@
           </li>
         </ul>
       </form>
+      <form
+        :if={seen != []}
+        id={"relation-seen-#{@view}"}
+        class="relation-seen"
+        phx-change="focus_marked"
+      >
+        <select name="name" aria-label={"見た#{unit_of(@view)}を探す"}>
+          <%!-- 先頭は行き先ではなく口の名前。**選ばれている行き先が分かる**ように、
+               寄っているものはそのまま選ばれた状態で残す --%>
+          <option value="">見た{unit_of(@view)}（{length(seen)}）</option>
+          <option :for={{name, label} <- seen} value={name} selected={@query == name}>
+            {label}
+          </option>
+        </select>
+      </form>
+      </div>
       <div class="relation-tools">
         <button type="button" data-zoom="in" aria-label="拡大">＋</button>
         <button type="button" data-zoom="out" aria-label="縮小">−</button>
@@ -952,7 +980,7 @@
       }
 
       this.onPointerDown = (ev) => {
-        if (ev.target.closest(".relation-tools") || ev.target.closest(".relation-search")) {
+        if (ev.target.closest(".relation-tools") || ev.target.closest(".relation-find")) {
           return
         }
         // **指は何本でも来る。** 1 本ぶんしか覚えないと、2 本目を置いた瞬間に

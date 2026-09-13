@@ -85,8 +85,10 @@ defmodule AntennaWeb.RelationsLive do
       end
 
       Relations.subscribe(view)
-      # Chiezo の側は antenna と関係なく進むので、開くたびに取り直す
-      Relations.refresh(view)
+      # **開くたびには取り直さない。** 8,000 人ぶんを読むので数秒かかるうえ、
+      # Chiezo の側は数時間に 1 度しか動かない —— 開いた回数だけ待たされる意味が無い。
+      # まだ 1 度も読めていないときだけ取りに行き、あとは「最新の情報を取得」で
+      if Relations.current(view)[:checked_at] == nil, do: Relations.refresh(view)
     end
 
     socket =
@@ -254,16 +256,20 @@ defmodule AntennaWeb.RelationsLive do
   # **寄せるのは画面の側**（`focus` を figure へ送る）。サーバーが持っているのは
   # 図の座標だけで、いま器が何 px なのかは向こうしか知らない。
   def handle_event("focus", %{"name" => name}, socket) do
-    case Enum.find(socket.assigns.relation.nodes, &(&1.name == name)) do
-      nil ->
-        {:noreply, socket}
+    {:noreply, focus_node(socket, name)}
+  end
 
-      node ->
-        {:noreply,
-         socket
-         |> assign(focus: node.id, query: name, matches: [])
-         |> push_event("focus", %{x: node.x, y: node.y})}
-    end
+  # 見た印を付けたものへ寄る。**名前を思い出せなくても行き先が選べる**のが、
+  # この口の役目 —— 探す欄は名前を打てる人のためのもので、
+  # 「前に見たあの画家」を探すのには使えない
+  def handle_event("focus_marked", %{"name" => name}, socket) do
+    {:noreply, focus_node(socket, name)}
+  end
+
+  # **取り直す口。** 開くたびに聞きに行くのをやめた代わりに、押したときだけ取りに行く
+  def handle_event("reload", _params, socket) do
+    Relations.refresh(socket.assigns.view)
+    {:noreply, socket}
   end
 
   def handle_event("clear_search", _params, socket) do
@@ -291,6 +297,18 @@ defmodule AntennaWeb.RelationsLive do
   # 出すのは、もとになった記事・Chiezo に入っているタグ・（あれば）代表作の絵。
   #
   # **絵は押されたときだけ引く** —— 先に集めると、見ない絵まで毎回取りに行くことになる
+  defp focus_node(socket, name) do
+    case Enum.find(socket.assigns.relation.nodes, &(&1.name == name)) do
+      nil ->
+        socket
+
+      node ->
+        socket
+        |> assign(focus: node.id, query: name, matches: [])
+        |> push_event("focus", %{x: node.x, y: node.y})
+    end
+  end
+
   defp search(relation, q) do
     case String.trim(q) do
       "" ->
@@ -558,6 +576,41 @@ defmodule AntennaWeb.RelationsLive do
   @doc "いま開いている人の名前（開いていなければ nil）。"
   def detail_name(nil), do: nil
   def detail_name(node), do: node[:name]
+
+  @doc """
+  見た印の付いた行き先。**図に出ているものだけ**を並べます ——
+  選んでも動かない行き先を混ぜると、押し間違えたのか壊れているのか読めません。
+
+  並びは見た日の新しい順（日付を書いていないものは後ろ）。
+  """
+  def seen_options(relation, marks) do
+    names = MapSet.new(relation.nodes, & &1.name)
+
+    marks
+    |> Enum.filter(fn {name, _mark} -> MapSet.member?(names, name) end)
+    |> Enum.sort_by(fn {name, mark} -> {seen_order(mark), name} end)
+    |> Enum.map(fn {name, mark} -> {name, seen_label(name, mark)} end)
+  end
+
+  # 日付を書いていないものは後ろ。**書いた順では並べない** ——
+  # 後から日付だけ直したときに、並びが書いた順のまま残る
+  defp seen_order(%Mark{seen_on: %Date{} = date}), do: {0, -Date.to_gregorian_days(date)}
+  defp seen_order(_mark), do: {1, 0}
+
+  defp seen_label(name, %Mark{seen_on: %Date{} = date}), do: "#{name}（#{Date.to_iso8601(date)}）"
+  defp seen_label(name, _mark), do: name
+
+  @doc """
+  数える単位。図ごとに並んでいるものが違うので、口の名前もそれに合わせます。
+  """
+  def unit_of("painters"), do: "画家"
+  def unit_of(_view), do: "人"
+
+  @doc """
+  いつ読んだか。**開くたびに取り直さない**ので、いま見ているものの古さが読めないと困ります。
+  """
+  def checked_text(%{checked_at: at}) when at != nil, do: "最後に取得: #{Jst.format(at)}"
+  def checked_text(_relation), do: "まだ取得していません"
 
   @doc """
   そのノードに付いている「見た」印。まだ無ければ空の印を返します。
