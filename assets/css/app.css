@@ -359,6 +359,13 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .edge-reason { margin: 0 0 0.7rem; }
 .edge-links { margin: 0.6rem 0 0; padding-left: 1.1rem; font-size: 0.9rem; }
 
+/* 区画の一覧。**400 行あるので畳んで置く** —— 開いたときだけ場所を取る */
+.partition-list { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: .8rem; }
+.partition-list summary { cursor: pointer; font-weight: 700; font-size: .9rem; }
+.partition-table { width: 100%; border-collapse: collapse; margin-top: .6rem; font-size: .82rem; }
+.partition-table th, .partition-table td { border-bottom: 1px solid #eef0f7; padding: .3rem .5rem; text-align: left; }
+.partition-table button { padding: .2rem .6rem; border: 1px solid #dcdff0; border-radius: .5rem; background: #fff; color: #4338a8; font-size: .78rem; white-space: nowrap; }
+
 /* 記事に付く絵。**無いほうが多い**ので、あるときだけ場所を取る */
 .news-thumb { width: 92px; height: 69px; object-fit: cover; border-radius: .5rem; flex: none; background: #f1f2f8; }
 

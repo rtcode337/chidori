@@ -403,6 +403,45 @@
         </button>
       </form>
 
+      <%!-- **区画の一覧。** どこがまだ見られていないかは、ここにしか無い ——
+           「ここを先に見てほしい」を頼む口でもある。400 区画あるので畳んで置く --%>
+      <% rows = partition_rows(@relation, "調査") %>
+      <details :if={rows != []} class="partition-list">
+        <summary>区画（{length(rows)}）— まだ見ていないものが先</summary>
+        <p class="muted-note">
+          区画は「地域 × 生年」で切ってあります。
+          <strong>押すと、その区画を先に調べてもらえます</strong>（印が付くので、
+          巡回が同じところをもう一度見ることはありません）。
+        </p>
+        <table class="partition-table">
+          <thead>
+            <tr>
+              <th>区画</th>
+              <th>人数</th>
+              <th>調査が見たのは</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={row <- Enum.take(rows, 60)}>
+              <td>{row.key}</td>
+              <td>{row.count}</td>
+              <td>{row.seen || "まだ"}</td>
+              <td>
+                <form phx-submit="focus_partition">
+                  <input type="hidden" name="key" value={row.key} />
+                  <button type="submit" phx-disable-with="頼んでいます…">先に調べる</button>
+                </form>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p :if={length(rows) > 60} class="muted-note">
+          先頭の 60 区画だけ出しています（残り {length(rows) - 60} 区画）。
+          並びは「調査がいちばん長く見ていない順」なので、上から順に回ってきます。
+        </p>
+      </details>
+
       <%!-- **どちらも Chiezo が持っているもの**なので、1 つにまとめる。
            機械で引いたものと AI が書いたものの線引きが、この図でいちばん大事なところ --%>
       <details :if={@view == "painters"} class="news-prompt">

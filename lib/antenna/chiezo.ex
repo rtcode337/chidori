@@ -95,12 +95,15 @@ defmodule Antenna.Chiezo do
   必ず AI に見せられます（区画を渡すだけでは、直してほしい 1 人が差し込みに載る
   保証がない）。
   """
-  def focus(base, name, note, titles, sweep \\ nil) do
+  def focus(base, name, note, titles, sweep \\ nil, partition \\ nil) do
     # **どの巡回として走らせるかを名指しできる。** 相手も考える量も依頼文も
-    # 巡回ごとに違うので、名指ししないと「どの設定で走ったのか」が言えない
+    # 巡回ごとに違うので、名指ししないと「どの設定で走ったのか」が言えない。
+    # **区画を名指しすると、その区画に印が付く**（先に見てほしいと頼んだのだから、
+    # 巡回が同じところをもう一度見る必要は無い）
     body =
       %{note: note, titles: titles, requested_by: "antenna"}
       |> then(&if(sweep, do: Map.put(&1, :sweep, sweep), else: &1))
+      |> then(&if(partition, do: Map.put(&1, :partition, partition), else: &1))
       |> Jason.encode!()
 
     case post(base <> "/v1/collect/" <> name <> "/focus", body, @timeout) do
@@ -268,6 +271,9 @@ defmodule Antenna.Chiezo do
       # 収集に 1 つだけ持たせると、そこに出る値はどちらか片方のものにしかならない
       sweeps: sweeps_of(item),
       partitions_total: item["partitions_total"] || 0,
+      # 区画の一覧。**どこがまだ見られていないかは、ここにしか無い** ——
+      # 先に見てほしいところを頼むのに要る
+      partitions: partitions_of(item),
       docs: 0,
       recent: [],
       requested_by: item["requested_by"] || "",
@@ -307,6 +313,24 @@ defmodule Antenna.Chiezo do
   end
 
   def sweeps_of(_item), do: []
+
+  @doc """
+  区画の一覧（鍵・母集団の数・見終えた巡回）。
+
+  **巡回ごとに別々の印を持ちます** —— ざっとが見終えた区画を調査はまだ見ていない、
+  が普通に起きます。
+  """
+  def partitions_of(%{"partitions" => list}) when is_list(list) do
+    for p <- list, is_map(p), is_binary(p["key"]) do
+      %{
+        key: p["key"],
+        count: p["count"] || 0,
+        visits: if(is_map(p["visits"]), do: p["visits"], else: %{})
+      }
+    end
+  end
+
+  def partitions_of(_item), do: []
 
   @doc """
   Chiezo で頼める相手の一覧。**画面の選択肢に使う**ので、向こうが有効にしている

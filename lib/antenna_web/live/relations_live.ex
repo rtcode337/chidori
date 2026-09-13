@@ -112,6 +112,13 @@ defmodule AntennaWeb.RelationsLive do
      )}
   end
 
+  # **この区画を先に調べて、を頼む。** 区画を名指しするので、その区画には印が付く
+  # —— 先に見てほしいと頼んだのだから、巡回が同じところをもう一度見る必要は無い
+  def handle_event("focus_partition", %{"key" => key} = params, socket) do
+    Relations.focus_partition(socket.assigns.view, key, partition_note(key, params["note"]))
+    {:noreply, socket}
+  end
+
   # **取り直す口。** 開くたびに聞きに行くのをやめた代わりに、押したときだけ取りに行く
   def handle_event("reload", _params, socket) do
     Relations.refresh(socket.assigns.view)
@@ -452,6 +459,35 @@ defmodule AntennaWeb.RelationsLive do
   @doc "いま開いている人の名前（開いていなければ nil）。"
   def detail_name(nil), do: nil
   def detail_name(node), do: node[:name]
+
+  @doc """
+  区画への割り込みの指示文。**必ず区画の名前で始めます**。
+
+  区画は `partition` で別に渡していて、Chiezo はそちらを見て範囲を差し込みます。
+  ただし**指示文だけを読んだ人には、どこ宛てか分かりません**。
+  """
+  def partition_note(key, note) do
+    case String.trim(note || "") do
+      "" -> "#{key} の区画を先に調べてください。"
+      written -> "#{key} の区画について。#{written}"
+    end
+  end
+
+  @doc """
+  区画の一覧。**まだ見ていないものが先**（次に回ってくる順）。
+
+  400 区画あるので、そのまま並べると画面が埋まります。畳んだ中に出して、
+  先頭だけが見えるようにします。
+  """
+  def partition_rows(%{collection: %{partitions: list}}, sweep) when is_list(list) do
+    list
+    |> Enum.sort_by(&{Map.get(&1.visits, sweep) || "", &1.key})
+    |> Enum.map(fn p ->
+      %{key: p.key, count: p.count, seen: Jst.format(Map.get(p.visits, sweep))}
+    end)
+  end
+
+  def partition_rows(_relation, _sweep), do: []
 
   @doc """
   見た印の付いた行き先。**図に出ているものだけ**を並べます ——

@@ -772,6 +772,36 @@ defmodule AntennaWeb.RelationsLiveTest do
     end
   end
 
+  describe "区画の一覧" do
+    alias AntennaWeb.RelationsLive
+
+    test "まだ見ていない区画が先に並ぶ" do
+      # 並びがそのまま「次に回ってくる順」になる
+      relation = %{
+        collection: %{
+          partitions: [
+            %{key: "日本|1900-1910", count: 25, visits: %{"調査" => "2026-09-01T00:00:00Z"}},
+            %{key: "フランス|1840-1869", count: 24, visits: %{}},
+            %{key: "イタリア|1500-1600", count: 20, visits: %{"調査" => "2026-08-01T00:00:00Z"}}
+          ]
+        }
+      }
+
+      assert Enum.map(RelationsLive.partition_rows(relation, "調査"), & &1.key) ==
+               ["フランス|1840-1869", "イタリア|1500-1600", "日本|1900-1910"]
+    end
+
+    test "区画を持たない図では空" do
+      assert RelationsLive.partition_rows(%{collection: nil}, "調査") == []
+    end
+
+    test "頼みごとは必ず区画の名前で始まる" do
+      # 指示文だけを読んだ人には、どこ宛てか分からない
+      assert RelationsLive.partition_note("日本|1900-1910", nil) =~ "日本|1900-1910"
+      assert RelationsLive.partition_note("日本|1900-1910", "年代を埋めて") =~ "年代を埋めて"
+    end
+  end
+
   describe "見た記録" do
     alias Antenna.Relations.Mark
     alias Antenna.Relations.Marks

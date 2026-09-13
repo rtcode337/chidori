@@ -99,11 +99,16 @@ defmodule Antenna.RelationsTest do
       # 一周を数日で終える（区画の材料が埋まるまで、後の回は走れない）
       assert rough["cover_days"] == 3
       assert rough["after"] == "名簿"
+      # **一周したら止まる。** 行き渡れば用が済む回で、止めないと 2 周目 3 周目が
+      # 回り続け、同じことを何度も聞くために枠を使う
+      assert rough["one_lap"] == true
       # 埋める回は収集の依頼文のまま（巡回ごとには持たない）
       refute Map.has_key?(rough, "prompt")
 
       assert survey["name"] == "調査"
-      assert survey["partitions_per_run"] == 1
+      # **一周の日数で決める。** 1 日 1 区画にしていた頃は、400 区画を一周するのに
+      # 400 日かかっていた —— 手入れの回が一周しないなら、区画で割っている意味が無い
+      assert survey["cover_days"] == 21
       assert survey["effort"] == "high"
       # **ざっとが一周するまで走らない。** 年代の分からない人が 3 割いる状態で
       # 漏れを探させても、その人たちは別の区画にいるだけ

@@ -76,8 +76,14 @@ defmodule Antenna.Relations do
   # **一周を数日で終える。** 400 区画を 1 時間ごとに 6 区画ずつで 2〜3 日
   @rough_minutes 60
   @rough_days 3
-  # 少数をじっくり調べる巡回。1 日 1 区画を、考える量を上げて見直す
-  @deep_minutes 1440
+  # **区画ごとに仕上げる回。** 6 時間ごとに何区画かまとめて見る ——
+  # 1 時間ごとだと、走っている時間のほうが長くなる。400 区画なら 1 回 5 区画で、
+  # 20 日ほどで一周する。1 日 1 区画にしていた頃は一周に 400 日かかっていた
+  # (手入れの回が一周しないなら、区画で割っている意味が無い)。
+  # **一周の日数で決める**ので、区画が増えても 1 回あたりが自動で増える
+  @survey_minutes 360
+  @survey_days 21
+
   # 名簿を機械で取り込み直す巡回。**週 1 で足りる** —— Wikipedia のカテゴリが
   # 増える速さはその程度で、AI を呼ばないぶん頻度を上げても得るものが無い
   @roster_minutes 10_080
@@ -105,15 +111,22 @@ defmodule Antenna.Relations do
     %{name: "名簿", interval_minutes: @roster_minutes, use_extract: true, only_new: true, once: true},
     # **区画の材料を埋める回。** 年代と地域が入っていないと区画が決まらないので、
     # そこが最優先。ついでに説明・代表作・様式も埋め、明らかに画家でない人は消す。
-    # **一周を数日で終える速さ**にしてある（1 時間ごと・1 回 6 区画で 2〜3 日）
-    %{name: "ざっと", interval_minutes: @rough_minutes, cover_days: @rough_days, after: "名簿"},
+    # **一周したら止まる** —— 行き渡れば用が済む回で、止めないと 2 周目 3 周目が
+    # 回り続け、同じことを何度も聞くために枠を使う。そのあとの手入れは調査が引き継ぐ
+    %{
+      name: "ざっと",
+      interval_minutes: @rough_minutes,
+      cover_days: @rough_days,
+      after: "名簿",
+      one_lap: true
+    },
     # **区画ごとに仕上げる回。** 漏れを探し、内容を磨き、要らないものを消す。
     # 3 本に分けていた頃は、同じ区画を 3 回渡して 3 回とも同じものを読ませていた。
     # **割り込みもここへ頼む**（時計を持たない 1 本は置かない）
     %{
       name: "調査",
-      interval_minutes: @deep_minutes,
-      partitions_per_run: 1,
+      interval_minutes: @survey_minutes,
+      cover_days: @survey_days,
       effort: "high",
       prompt: :survey,
       after: "ざっと"
@@ -287,6 +300,16 @@ defmodule Antenna.Relations do
   end
 
   @doc """
+  **この区画を先に調べて**、を Chiezo へ割り込ませます。
+
+  区画を名指しするので、**その区画には印が付きます** —— 先に見てほしいと頼んだ
+  のだから、巡回が同じところをもう一度見る必要はありません。
+  """
+  def focus_partition(key, partition, note) when is_binary(key) and is_binary(partition) do
+    GenServer.cast(__MODULE__, {:focus_partition, valid_key(key), partition, note})
+  end
+
+  @doc """
   Chiezo に溜まっているものを読み直します。**依頼も収集もしません**。
 
   画面を開いたときに呼びます —— Chiezo の側は antenna と関係なく進むので、
@@ -416,6 +439,23 @@ defmodule Antenna.Relations do
         end)
 
         {:noreply, broadcast(put_in(state.focus[key], %{painter: painter, state: :sending}), key)}
+    end
+  end
+
+  def handle_cast({:focus_partition, key, partition, note}, state) do
+    case chiezo_base_url() do
+      nil ->
+        {:noreply, broadcast(focused(state, key, partition, {:error, :chiezo_not_configured}), key)}
+
+      base_url ->
+        me = self()
+
+        Task.Supervisor.start_child(Antenna.TaskSupervisor, fn ->
+          send(me, {:focus_done, key, partition, ask_partition(base_url, partition, note)})
+        end)
+
+        {:noreply,
+         broadcast(put_in(state.focus[key], %{painter: partition, state: :sending}), key)}
     end
   end
 
@@ -767,6 +807,12 @@ defmodule Antenna.Relations do
   **区画ではなく名指しで渡します** —— 区画を渡すだけでは、直してほしい 1 人が
   差し込みに載る保証がありません。
   """
+  def ask_partition(base_url, key, note) do
+    # **区画を名指しした割り込み。** その区画に印が付くので、巡回が同じところを
+    # もう一度見ることはない —— 「ここを先に見てほしい」を頼む口
+    Chiezo.focus(base_url, painters_collection(), note, [], @survey_sweep, key)
+  end
+
   def ask_focus(base_url, name, note) do
     # **調査の回に頼む。** 割り込み専用の巡回は置いていない —— 同じ仕事
     # （漏れ探し・磨き・削除）を頼むのだから、設定も依頼文もそこのものでよい
