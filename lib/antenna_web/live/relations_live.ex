@@ -704,11 +704,15 @@ defmodule AntennaWeb.RelationsLive do
     for edge <- relation.edges,
         from = by_id[edge.from],
         to = by_id[edge.to] do
+      # **矢印の先は札の枠で止める。** 中央まで引くと、先端が札の下に隠れて
+      # 「どちらへ向かっているのか」が読めない（矢印の意味がまるごと消える）
+      {x2, y2} = at_border(from, to)
+
       %{
         x1: from.x,
         y1: from.y,
-        x2: to.x,
-        y2: to.y,
+        x2: x2,
+        y2: y2,
         kind: edge.kind,
         label: edge.label,
         # 押されたときに誰と誰の線かを引き当てる
@@ -720,6 +724,31 @@ defmodule AntennaWeb.RelationsLive do
     end
   end
 
+  # 札の枠と、中央どうしを結んだ線が交わるところ。**札は軸に平行な長方形**なので、
+  # 「横で当たるか、縦で当たるか」の近いほうを取れば求まる
+  defp at_border(from, to) do
+    dx = to.x - from.x
+    dy = to.y - from.y
+
+    case reaches(dx, dy, label_width_of(to) / 2, label_height_of(to) / 2) do
+      # 同じところに重なっている（動かしようが無い）
+      [] -> {to.x, to.y}
+      ratios -> shrunk(to, dx, dy, Enum.min(ratios))
+    end
+  end
+
+  defp reaches(dx, dy, half_w, half_h) do
+    [
+      if(dx != 0, do: half_w / abs(dx)),
+      if(dy != 0, do: half_h / abs(dy))
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # 1 を超えるのは、相手が近すぎて札の中に始点がいるとき（そのときは中央でよい）
+  defp shrunk(to, dx, dy, ratio) when ratio >= 1, do: {to.x - dx, to.y - dy}
+  defp shrunk(to, dx, dy, ratio), do: {to.x - dx * ratio, to.y - dy * ratio}
+
   @doc """
   名前を入れる札の大きさ。**名前がはみ出さない幅**を `Graph.sized/2` が見積もっています。
 
@@ -729,7 +758,7 @@ defmodule AntennaWeb.RelationsLive do
   def label_height_of(node), do: node[:label_height] || radius_of(node) * 1.6
 
   @doc "丸の半径。知名度が引けていなければ既定の大きさ。"
-  def radius_of(node), do: node[:radius] || if(node.kind == :group, do: 47, else: 42)
+  def radius_of(node), do: node[:radius] || if(node[:kind] == :group, do: 47, else: 42)
 
   @doc """
   名前の字の大きさ。**知名度で 1 人ずつ違う**（`Graph.sized/2` が決める）。

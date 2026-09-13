@@ -298,16 +298,48 @@ defmodule AntennaWeb.RelationsLiveTest do
 
     test "エッジごとに両端の座標を返す" do
       relation = %{
-        nodes: [%{id: "a", x: 10, y: 20}, %{id: "b", x: 30, y: 60}],
+        nodes: [
+          %{id: "a", x: 10, y: 20},
+          %{id: "b", x: 30, y: 60, label_width: 20, label_height: 10}
+        ],
         edges: [%{from: "a", to: "b", kind: :influence, label: "光"}]
       }
 
       assert [line] = RelationsLive.edge_lines(relation, relation.nodes)
-      assert {line.x1, line.y1, line.x2, line.y2} == {10, 20, 30, 60}
+      assert {line.x1, line.y1} == {10, 20}
       assert line.label == "光"
 
-      # 線の上に出す札の位置も一緒に出す（テンプレートで計算し直さない）
+      # 線の上に出す札の位置は**中央どうし**で出す（札が片方へ寄らない）
       assert line.mid_x == 20
+    end
+
+    test "矢印の先は、相手の札の枠で止める" do
+      # 中央まで引くと、先端が札の下に隠れて「どちらへ向かっているのか」が読めない
+      relation = %{
+        nodes: [
+          %{id: "a", x: 0, y: 0},
+          %{id: "b", x: 100, y: 0, label_width: 20, label_height: 10}
+        ],
+        edges: [%{from: "a", to: "b", kind: :influence, label: nil}]
+      }
+
+      assert [line] = RelationsLive.edge_lines(relation, relation.nodes)
+      # 真横から来るので、左の辺（中央から幅の半分だけ手前）で止まる
+      assert {line.x2, line.y2} == {90.0, 0.0}
+    end
+
+    test "斜めから来る線は、近いほうの辺で止める" do
+      relation = %{
+        nodes: [
+          %{id: "a", x: 0, y: 0},
+          %{id: "b", x: 100, y: 100, label_width: 20, label_height: 10}
+        ],
+        edges: [%{from: "a", to: "b", kind: :influence, label: nil}]
+      }
+
+      assert [line] = RelationsLive.edge_lines(relation, relation.nodes)
+      # 45 度なので上の辺のほうが近い（高さの半分 = 5 だけ手前）
+      assert {line.x2, line.y2} == {95.0, 95.0}
     end
 
     test "図に出ていない相手への線は落とす" do
