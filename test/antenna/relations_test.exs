@@ -302,6 +302,26 @@ defmodule Antenna.RelationsTest do
     end
   end
 
+  test "じっくりの回は、疑うだけでなく空いているところを埋める" do
+    # 名簿は機械で作るので、一周目は説明も代表作も空。疑うだけの回にすると、
+    # いちばん考える量の多い回が「消すことしかしない」回になる
+    prompt = Relations.painters_review_prompt()
+
+    assert prompt =~ "空いているところは埋めてください"
+    assert prompt =~ "確信が持てるものだけ"
+  end
+
+  test "漏れ探しは、この範囲の全員が見えている前提で頼む" do
+    # 範囲は名前で区切ってあるので、その範囲の人は漏れなく差し込まれている。
+    # 「もう居るかは気にしなくてよい」と書いていた頃は、既にいる有名な画家を
+    # 挙げ直すだけで終わっていた（実測で 20 人挙げて全員が既存）
+    prompt = Relations.painters_missing_prompt()
+
+    assert prompt =~ "上に並んでいるのが、この範囲の全員です"
+    assert prompt =~ "0 件で構いません"
+    refute prompt =~ "もう居るかどうかは気にしなくて構いません"
+  end
+
   test "指示文が頼むのは、Wikipedia に書いていないことだけ" do
     prompt = Relations.painters_prompt()
 
