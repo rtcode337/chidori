@@ -589,7 +589,8 @@ defmodule Antenna.Relations.Graph do
           note: styles_note(tags),
           years: tag_value(tags, @years_prefix),
           # **代表作は複数持つ。** 抽出が人気の順に何枚か拾ってくるので、
-          # そのまま並べる（`@max_works` まで）
+          # そのまま並べる（`@max_works` まで）。**実在しない作品名は入ってこない** ——
+          # Chiezo が焼く前に落とす（収集の `verify_tags`）
           works: tags |> tag_values(@work_prefix) |> Enum.take(@max_works),
           # 押したときに出す、その画家の短い説明（記事の冒頭）
           summary: summary_of(doc),
