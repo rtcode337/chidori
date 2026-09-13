@@ -51,7 +51,7 @@ defmodule Antenna.ArtworkTest do
     assert art.extract == "モネの作品。"
     # 札に出すだけなので原寸は指さない
     assert art.image ==
-             "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/Sunrise.jpg/640px-Sunrise.jpg"
+             "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/Sunrise.jpg/500px-Sunrise.jpg"
 
     refute_received :went_outside
   end
@@ -78,7 +78,23 @@ defmodule Antenna.ArtworkTest do
 
   test "SVG の縮小版は PNG になる" do
     assert Artwork.thumb("https://upload.wikimedia.org/wikipedia/commons/1/12/A.svg") ==
-             "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/A.svg/640px-A.svg.png"
+             "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/A.svg/500px-A.svg.png"
+  end
+
+  test "受け付けない幅を頼まれたら、組み替えずに原寸を指す" do
+    # Commons は決まった幅しか受け付けず、それ以外は 400 を返す。組み替えた URL を
+    # そのまま出すと、絵が 1 枚残らず消える（640 を頼んでいて実際にそうなった）
+    original = "https://upload.wikimedia.org/wikipedia/commons/5/54/A.jpg"
+
+    assert Artwork.thumb(original, 640) == original
+    assert Artwork.thumb(original, 800) == original
+  end
+
+  test "受け付ける幅なら組み替える" do
+    original = "https://upload.wikimedia.org/wikipedia/commons/5/54/A.jpg"
+
+    assert Artwork.thumb(original, 250) ==
+             "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/A.jpg/250px-A.jpg"
   end
 
   test "Chiezo が無くても絵は出す" do

@@ -28,8 +28,15 @@ defmodule Antenna.Artwork do
   @timeout 10_000
   @connect_timeout 5_000
 
-  # 札に出す大きさ。**原寸は要らない**（絵は数 MB あることがある）
-  @thumb_width 640
+  # Commons が受け付ける縮小版の横幅。**一覧に無い幅は 400 で断られます** ——
+  # 向こうが決まった値だけに絞ったので、好きな幅を頼むことはできません
+  # （実測: 80 / 100 / 200 / 320 / 400 / 640 / 800 / 1024 / 2560 はどれも断られる）。
+  # ファイルによらず同じ一覧です
+  @thumb_widths [20, 40, 60, 120, 250, 330, 500, 960, 1280, 1920]
+
+  # 札に出す大きさ。**原寸は要らない**（絵は数 MB あることがある）。
+  # **一覧から選びます** —— 一覧に無い値を書くと、絵が 1 枚残らず消えます
+  @thumb_width 500
 
   @table :antenna_artwork
   # 覚えておく長さ。**永久には持たない** —— 画像の無かった作品に後から画像が付く
@@ -105,23 +112,29 @@ defmodule Antenna.Artwork do
   （絵は数 MB あることがあり、そのまま指すと開くたびにそれだけ流れます）。
 
   Commons の縮小版は置き場の規則で決まるので、URL を組み替えるだけで指せます。
-  組み替えられない形（Commons 以外・すでに縮小版）はそのまま返します。
+
+  **組み替えられなければ原寸を指します。** 組み替えられないのは、Commons 以外・
+  すでに縮小版・`@thumb_widths` に無い幅を頼まれたとき。小さいほうがよいという
+  都合より、**絵が出ることのほうが大事**です —— 向こうが受け付ける幅を絞ったとき、
+  組み替えた URL は 400 を返すので、そのまま出すと絵が 1 枚残らず消えます。
   """
-  def thumb(url) when is_binary(url) do
+  def thumb(url, width \\ @thumb_width)
+
+  def thumb(url, width) when is_binary(url) do
     case String.split(url, "/wikipedia/commons/") do
       # すでに縮小版（`thumb/` 配下）なら触らない
       [_head, "thumb/" <> _rest] -> url
-      [head, rest] -> thumb_path(head, rest, Path.basename(rest))
+      [head, rest] when width in @thumb_widths -> thumb_path(head, rest, Path.basename(rest), width)
       _other -> url
     end
   end
 
-  def thumb(url), do: url
+  def thumb(url, _width), do: url
 
-  defp thumb_path(head, rest, name) do
+  defp thumb_path(head, rest, name, width) do
     # SVG の縮小版は PNG になる（置き場の規則）
     suffix = if String.ends_with?(String.downcase(name), ".svg"), do: ".png", else: ""
-    head <> "/wikipedia/commons/thumb/" <> rest <> "/#{@thumb_width}px-" <> name <> suffix
+    head <> "/wikipedia/commons/thumb/" <> rest <> "/#{width}px-" <> name <> suffix
   end
 
   defp trimmed(value) when is_binary(value) do
