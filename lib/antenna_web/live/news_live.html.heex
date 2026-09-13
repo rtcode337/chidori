@@ -21,42 +21,6 @@
         依頼して作られる収集は止まった状態なので、<strong>この画面から AI が勝手に動くことはありません</strong>。
       </p>
 
-      <div class="news-actions">
-        <%= if @news.collection do %>
-          <button type="button" phx-click="run" disabled={@news.status == :loading}>
-            {if @news.status == :loading, do: "問い合わせ中…", else: "いま集めさせる"}
-          </button>
-        <% else %>
-          <button
-            type="button"
-            phx-click="request"
-            disabled={@news.status == :loading or not @news.configured}
-          >
-            {if @news.status == :loading, do: "問い合わせ中…", else: "収集を依頼する"}
-          </button>
-        <% end %>
-        <button
-          type="button"
-          class="news-secondary"
-          phx-click="select"
-          disabled={@news.articles == [] or @news.selecting}
-        >
-          {if @news.selecting, do: "選んでいます…", else: "AI に選ばせる"}
-        </button>
-        <button
-          type="button"
-          class="news-secondary"
-          phx-click="refresh"
-          disabled={@news.status == :loading or not @news.configured}
-        >
-          読み直す
-        </button>
-        <%= if @news.collection && @news.collection.url do %>
-          <a class="news-secondary" href={@news.collection.url} target="_blank" rel="noreferrer">
-            Chiezo で見る
-          </a>
-        <% end %>
-      </div>
     </section>
 
     <%!-- 話題ごとのタブ。**集める相手も溜まるものも話題ごとに別**なので、
@@ -72,18 +36,16 @@
       </.link>
     </nav>
 
+    <%!-- まとめ。**記事の一覧より先に出す** —— 溜まったものをそのまま並べても
+         読めないので、何が起きたかを先に言う（通知に出すのもここの1行目） --%>
+    <section :if={@news.digests != []} class="news-digest" aria-label="まとめ">
+      <% digest = List.first(@news.digests) %>
+      <p class="news-source">{digest.collected_at}</p>
+      <h2>{digest.title}</h2>
+      <pre>{digest.summary}</pre>
+    </section>
+
     <section class="news-list" aria-live="polite">
-      <%= if message = status_message(@news) do %>
-        <p class="news-message">{message}</p>
-      <% end %>
-
-      <dl :if={@news.collection} class="collect-facts">
-        <div :for={{label, value} <- collection_facts(@news)}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
-        </div>
-      </dl>
-
       <%= for article <- sorted_articles(@news) do %>
         <article>
           <div>
@@ -124,13 +86,77 @@
       <% end %>
     </section>
 
-    <%!-- AI に何を頼んでいるかは、押す前にも後にも読めるようにする。
-         畳んでおくのは、ふだんは読みたいのが結果のほうだから --%>
-    <details class="news-prompt">
-      <summary>AI に頼んでいる内容</summary>
-      <p class="news-prompt-note">{prompt_note(@news)}</p>
-      <pre>{prompt_text(@news, @topic)}</pre>
-    </details>
+    <%!-- Chiezo の状態と、そこへ送る設定を **1 つの枠にまとめる**（関連図と同じ形）。
+         状態を見る場所と、直す場所と、押す場所が離れていると、何がどこへ効くのか
+         読めない --%>
+    <section class="collect-panel" aria-label="最新情報の収集">
+      <h2>Chiezo の収集</h2>
+      <p aria-live="polite">{status_message(@news) || collection_note(@news)}</p>
+
+      <dl :if={@news.collection} class="collect-facts">
+        <div :for={{label, value} <- collection_facts(@news)}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      </dl>
+
+      <%!-- **選んだところはサーバーが覚える**（`phx-change`）。覚えないと、収集の
+           状態が届いた拍子にフォームが描き直され、選んだ相手が元の値に戻る --%>
+      <form id="collect-form" phx-submit="collect" phx-change="pick_sweep">
+        <.sweep_table state={@news} picks={@picks} backends={@backends} />
+
+        <p class="muted-note">{sweep_note(@topic)}</p>
+        <button
+          type="submit"
+          phx-disable-with="送っています…"
+          disabled={@news.status == :loading or not @news.configured}
+        >
+          {collect_label(@news)}
+        </button>
+      </form>
+
+      <p :if={@news.collection && @news.collection.url} class="muted-note">
+        <a href={@news.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
+      </p>
+
+      <%!-- **この場で 1 回だけ頼める。** 定時の巡回は決まった仕事しかしないので、
+           「この話の続きを追って」のような頼みごとの行き先がここにしかない。
+           割り込みは定時の巡回の進み具合にも次の予定にも触らない --%>
+      <details :if={@news.collection} class="ask-more">
+        <summary>いま頼む（割り込み）</summary>
+        <form phx-submit="ask">
+          <p>
+            <label>
+              頼みたいこと<br />
+              <textarea
+                name="note"
+                rows="3"
+                placeholder="例: この件の続報を追って、関係する発表もまとめて"
+              ></textarea>
+            </label>
+          </p>
+          <p class="muted-note">
+            定時の巡回とは別に 1 回だけ走ります。巡回の依頼文は書き換わりません。
+          </p>
+          <button type="submit" disabled={@asking} phx-disable-with="頼んでいます…">
+            Chiezo に頼む
+          </button>
+        </form>
+      </details>
+
+      <%!-- AI に何を頼んでいるかは、押す前にも後にも読めるようにする。
+           畳んでおくのは、ふだんは読みたいのが結果のほうだから --%>
+      <details class="news-prompt">
+        <summary>Chiezo への依頼文</summary>
+        <p class="news-prompt-note">{prompt_note(@news)}</p>
+        <pre>{prompt_text(@news, @topic)}</pre>
+        <div :for={{name, text} <- sweep_prompts(@topic)}>
+          <h3>{name}</h3>
+          <pre>{text}</pre>
+        </div>
+      </details>
+    </section>
+
 
     <footer>
       <p>

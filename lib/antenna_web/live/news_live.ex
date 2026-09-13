@@ -12,14 +12,27 @@ defmodule AntennaWeb.NewsLive do
 
   use AntennaWeb, :live_view
 
+  import AntennaWeb.Collect
+  import AntennaWeb.CollectPanel
+
   alias Antenna.Jst
   alias Antenna.News
   alias Antenna.Topics
 
   @impl true
   def mount(_params, _session, socket) do
-    # 話題が 1 つも無いと、タブも収集も出せない
-    {:ok, assign(socket, topics: Topics.list())}
+    # 相手の一覧は**繋がってから、待たずに**引く。画面の中で同期に引くと、Chiezo が
+    # 遅いあいだページが固まる（選択肢が無くても記事は読めるので、待つ価値が無い）
+    socket = assign(socket, topics: Topics.list(), backends: [], picks: %{}, asking: false)
+
+    socket =
+      if connected?(socket) do
+        start_async(socket, :backends, fn -> Antenna.Relations.ai_backends() end)
+      else
+        socket
+      end
+
+    {:ok, socket}
   end
 
   @impl true
@@ -49,30 +62,66 @@ defmodule AntennaWeb.NewsLive do
   end
 
   @impl true
-  def handle_event("refresh", _params, socket) do
-    with_server(socket, &News.refresh/1)
+
+  # **選んだところはサーバーが覚える。** 覚えないと、収集の状態が届いた拍子に
+  # フォームが描き直され、選んだ相手が元の値へ戻る（選んだつもりで押すと、
+  # いま入っている値がそのまま送り返される）
+  def handle_event("pick_sweep", params, socket) do
+    {:noreply, assign(socket, picks: sweep_choices(params))}
   end
 
-  def handle_event("request", _params, socket) do
-    # 依頼の本文も相手も話題の設定から作る。DB を読むのは画面のあるこちら側
+  # **押す口はここだけ。** 収集がまだ無ければ作り、あれば設定を送り直して読み直す ——
+  # 関連図と同じ形にしてある。ボタンを役割ごとに並べていた頃は、どれを押せば
+  # 何が起きるのかが押す前に読めなかった（しかも走らせる口が混ざっていた）
+  def handle_event("collect", params, socket) do
     topic = socket.assigns.topic
-    with_server(socket, &News.request_collection(&1, topic))
+    picks = merged_picks(socket.assigns.picks, params)
+    with_server(socket, &News.setup(&1, topic, picks))
   end
 
-  def handle_event("run", _params, socket) do
-    with_server(socket, &News.run_now/1)
-  end
-
-  def handle_event("select", _params, socket) do
-    # 押したときは、溜まったものが変わっていなくても選び直す
+  # **この場で 1 回だけ頼む。** 定時の巡回は決まった仕事しかしないので、
+  # 「この話の続きを追って」のような頼みごとの行き先がここしかない
+  def handle_event("ask", %{"note" => note}, socket) do
     topic = socket.assigns.topic
-    with_server(socket, &News.select(&1, topic, true))
+
+    case String.trim(note) do
+      "" ->
+        {:noreply, put_flash(socket, :error, "頼みたいことを書いてください。")}
+
+      written ->
+        {:noreply,
+         socket
+         |> assign(asking: true)
+         |> start_async(:ask, fn -> News.ask_focus(topic.collection, written) end)}
+    end
   end
+
 
   defp with_server(socket, fun) do
     if topic = socket.assigns.topic, do: fun.(News.server(topic.collection))
     {:noreply, socket}
   end
+
+  @impl true
+  def handle_async(:ask, {:ok, :ok}, socket) do
+    {:noreply,
+     socket
+     |> assign(asking: false)
+     |> put_flash(:info, "Chiezo へ頼みました。次の巡回とは別に走ります。")}
+  end
+
+  def handle_async(:ask, {:ok, {:error, reason}}, socket),
+    do: {:noreply, socket |> assign(asking: false) |> put_flash(:error, ask_error(reason))}
+
+  # 起きなかったことは黙って捨てない。押した人には確かめようがない
+  def handle_async(:ask, _result, socket),
+    do: {:noreply, socket |> assign(asking: false) |> put_flash(:error, ask_error(:unknown))}
+
+  def handle_async(:backends, {:ok, list}, socket) when is_list(list),
+    do: {:noreply, assign(socket, backends: list)}
+
+  # 引けなくても記事は読める。**選べないだけ**
+  def handle_async(:backends, _result, socket), do: {:noreply, socket}
 
   @impl true
   def handle_info({:news_updated, news}, socket) do
@@ -161,17 +210,74 @@ defmodule AntennaWeb.NewsLive do
   """
   def collection_facts(%{collection: nil}), do: []
 
+  # **巡回ごとの値は表のほうに出す**（相手も間隔も次の予定も巡回ごとに違うので、
+  # ここに 1 つだけ出すと、どれか 1 本のものにしかならない）。
+  # ここに残すのは、収集ぜんたいで 1 つに決まることだけ
   def collection_facts(%{collection: c}) do
     [
       {"状態", if(c.enabled, do: "有効", else: "止まっている")},
-      {"頼む相手", backend_text(c)},
+      {"既定の相手", backend_text(c)},
       {"集め方", if(c.mode == "refine", do: "整理する（磨いていく）", else: "集める（足していく）")},
-      {"間隔", if(c.interval_minutes, do: "#{c.interval_minutes} 分ごと", else: "—")},
-      {"次に集める", at_text(c.next_run_at, c.enabled)},
       {"溜まった数", "#{c.docs} 件"},
       {"前回", last_text(c)}
     ]
   end
+
+  @doc """
+  押す口の文字。**何を待っているのかまで出します** ——
+  「送っています…」だけだと、押せていないのと区別が付きません。
+  """
+  def collect_label(%{status: :loading}), do: "送っています…"
+  def collect_label(%{collection: nil}), do: "収集を依頼する"
+  def collect_label(_news), do: "収集の設定を更新"
+
+  @doc """
+  収集がどうなっているかの一言。**押す前に、何が起きるのかが読めるように**。
+  """
+  def collection_note(%{collection: nil, configured: false}),
+    do: "Chiezo の場所（CHIEZO_BASE_URL）が設定されていないので、まだ依頼できません。"
+
+  def collection_note(%{collection: nil}),
+    do: "まだ Chiezo に収集がありません。押すと、止まった状態の収集が作られます。"
+
+  def collection_note(%{collection: %{enabled: false}}),
+    do: "Chiezo 側で止まっています。動かすのは Chiezo の画面からです。"
+
+  def collection_note(_news), do: "押すと、いまの設定を Chiezo へ送り直します（走らせはしません）。"
+
+  @doc false
+  # 断られた理由。**数字だけ出しても、押した人には次に何をすればよいか分からない**
+  def ask_error(:collection_disabled), do: "この収集は Chiezo 側で止まっています。"
+  def ask_error(:not_requested), do: "まだ収集を依頼していません。"
+  def ask_error(:chiezo_busy), do: "Chiezo がいま別の依頼を抱えています。少し待ってください。"
+  def ask_error(:chiezo_not_configured), do: "Chiezo の場所が設定されていません。"
+  def ask_error({:chiezo_refused, _status, reason}) when is_binary(reason), do: reason
+  def ask_error(_reason), do: "Chiezo へ頼めませんでした。"
+
+  @doc """
+  その話題を何で集めているかの一言。**機械で引いているかどうかが読めないと、
+  抜けを AI のせいにしてしまいます**。
+  """
+  def sweep_note(%{feeds: [_ | _] = feeds}) do
+    "見出しは #{length(feeds)} 本の配信元から機械的に取り込みます（AI は呼びません）。" <>
+      "漏れ探し・情報更新・要約だけが AI の仕事です。"
+  end
+
+  def sweep_note(_topic),
+    do: "この話題には配信元を付けていないので、集めるところから AI に頼みます。"
+
+  @doc """
+  巡回ごとの依頼文。**回ごとに頼むことが違う**ので、1 つの文だけを出すと、
+  実際に走っている内容と画面が食い違います。
+  """
+  def sweep_prompts(%{} = topic) do
+    for sweep <- News.sweeps(topic),
+        text = Map.get(sweep, :prompt),
+        is_binary(text) and text != "",
+        do: {sweep.name, text}
+  end
+
+  def sweep_prompts(_topic), do: []
 
   # 相手は Chiezo が持っているものを出す。未指定なら誰に行くかは Chiezo が決める
   defp backend_text(%{backend: nil}), do: "Chiezo の既定にまかせる"
@@ -180,10 +286,6 @@ defmodule AntennaWeb.NewsLive do
     detail = Enum.reject([c.model, c.effort], &(&1 in [nil, ""]))
     if detail == [], do: backend, else: "#{backend}（#{Enum.join(detail, " / ")}）"
   end
-
-  defp at_text(_at, false), do: "—（止まっています）"
-  defp at_text(nil, _enabled), do: "—"
-  defp at_text(at, _enabled), do: Jst.format(at)
 
   defp last_text(%{last_run_at: nil}), do: "まだ集めていません"
 

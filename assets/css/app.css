@@ -358,6 +358,12 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .edge-reason { margin: 0 0 0.7rem; }
 .edge-links { margin: 0.6rem 0 0; padding-left: 1.1rem; font-size: 0.9rem; }
 
+/* まとめ。**記事の一覧より先に出す** —— 溜まったものをそのまま並べても読めないので、
+   何が起きたかを先に言う(通知に出すのもここの1行目) */
+.news-digest { margin: 1.5rem 0; padding: 1.1rem 1.3rem; border: 1px solid #fde68a; border-radius: .9rem; background: #fffbeb; }
+.news-digest h2 { margin: .2rem 0 .6rem; font-size: 1.05rem; }
+.news-digest pre { margin: 0; white-space: pre-wrap; font: inherit; font-size: .92rem; line-height: 1.8; color: #3b4463; }
+
 /* 見に行った記録(展覧会で実物を見た、など)。antenna にだけ残る */
 .seen-mark { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: 0.8rem; }
 .seen-mark summary { cursor: pointer; font-weight: 700; font-size: 0.9rem; }

@@ -10,7 +10,7 @@ defmodule Antenna.TopicsTest do
     names = Enum.map(Topics.list(), & &1.name)
 
     assert "ニュース" in names
-    assert "技術" in names
+    assert "技術ニュース" in names
     assert Enum.map(Topics.defined(), & &1.collection) == Enum.map(Topics.list(), & &1.collection)
   end
 
@@ -35,7 +35,7 @@ defmodule Antenna.TopicsTest do
     assert topic.collect_backend == "claude"
     assert topic.select_effort == "low"
     # 名前も関心も定義のまま（保存で上書きされない）
-    assert topic.name == "技術"
+    assert topic.name == "技術ニュース"
     assert topic.interest =~ "ソフトウェア開発"
   end
 
@@ -67,7 +67,7 @@ defmodule Antenna.TopicsTest do
       })
 
     topic = Topics.get("antenna_tech")
-    assert topic.name == "技術"
+    assert topic.name == "技術ニュース"
     assert topic.interest =~ "ソフトウェア開発"
     assert Topics.get("other") == nil
   end

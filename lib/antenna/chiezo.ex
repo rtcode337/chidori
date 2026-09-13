@@ -269,7 +269,11 @@ defmodule Antenna.Chiezo do
 
   def to_map(_item), do: nil
 
-  defp sweeps_of(%{"sweeps" => list}) when is_list(list) do
+  @doc """
+  巡回の一覧。**Chiezo が持っているものが正**（依頼したあとは向こうの画面から
+  変えられるので、antenna が送った設定を映しても嘘になりえます）。
+  """
+  def sweeps_of(%{"sweeps" => list}) when is_list(list) do
     for s <- list, is_map(s) do
       %{
         name: s["name"] || "",
@@ -281,6 +285,9 @@ defmodule Antenna.Chiezo do
         partitions_per_run: s["partitions_per_run"],
         # 時計を持たない巡回（割り込み用）。定時には走らず、頼まれたときだけ動く
         on_demand: s["on_demand"] == true,
+        # **機械で引く回。** AI を呼ばないので、相手を選ばせても何も起きない
+        use_extract: s["use_extract"] == true,
+        use_feed: s["use_feed"] == true,
         enabled: s["enabled"] != false,
         next_run_at: s["next_run_at"],
         last_run_at: s["last_run_at"],
@@ -291,7 +298,7 @@ defmodule Antenna.Chiezo do
     end
   end
 
-  defp sweeps_of(_item), do: []
+  def sweeps_of(_item), do: []
 
   @doc """
   Chiezo で頼める相手の一覧。**画面の選択肢に使う**ので、向こうが有効にしている

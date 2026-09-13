@@ -39,7 +39,23 @@ defmodule Antenna.News do
 
   # 収集の既定。名前は Chiezo のソース名になるので英小文字・数字・_ だけ
   @default_collection "antenna_news"
-  @interval_minutes 360
+
+  # 巡回の時計。**引き方で変える** —— 機械で引く回は AI の枠を使わないので短くてよく、
+  # 判断の要る回は長い（頻繁に読み直しても、中身はそれほど変わらない）
+  @feed_minutes 60
+  @collect_minutes 360
+  @missing_minutes 720
+  @refine_minutes 360
+  @digest_minutes 720
+
+  # まとめに付ける印。**同じ収集の中に、記事とまとめが混ざる**ので、
+  # これが無いと画面でも通知でも見分けられない
+  @digest_tag "まとめ"
+  # 重要度の印。AI が付け直す（antenna 側の語の一致より、読んだうえでの判断が先）
+  @importance_tag "重要度"
+  # 墓標。**これを付けて返した1件は Chiezo から消える**（そして墓場に残るので戻らない）。
+  # 溜めるほうを機械にまかせた以上、選り分ける口がどこかに要る
+  @tombstone_tag "削除"
 
   # 話題に関心が書かれていないときの言い方
   @default_interest "暮らし・社会・経済への影響が大きいこと"
@@ -48,6 +64,9 @@ defmodule Antenna.News do
             status: :idle,
             collection: nil,
             articles: [],
+            # まとめ（`@digest_tag` の付いた1件）。**記事と別に持つ** ——
+            # 一覧に混ぜると、まとめが記事のふりをして並ぶ
+            digests: [],
             # 選ばれたもの（見出し → なぜ）。**選ぶたびに AI を呼ばない**ので、
             # 溜まったものが変わっていなければ前の結果をそのまま出す
             picks: %{},
@@ -121,6 +140,41 @@ defmodule Antenna.News do
   end
 
   @doc """
+  画面で選んだ設定（巡回ごとの相手）を送り直します。**走らせはしません** ——
+  走らせると、定時の巡回がその回ぶん先送りになります。
+
+  **依頼のときと同じものを送ります。** 作るときの `POST` は「もうある」で断られるので、
+  これが無いと、antenna 側で依頼文や巡回を直しても永遠に届きません。
+  """
+  def push_settings(server, topic, choices \\ %{}) do
+    GenServer.cast(server, {:command, {:push, topic, choices}})
+  end
+
+  @doc """
+  収集を用意します —— **無ければ作り、あれば設定を送り直します**。
+
+  画面の押す口が 1 つなので、こちらで場合分けします。作るときの `POST` は
+  「もうある」で断られるだけなので、続けて送り直せば、どちらの状態から押しても同じ
+  ところへ着きます。**走らせはしません**（走らせると、定時の巡回がその回ぶん先送りになる）。
+  """
+  def setup(server, topic, choices \\ %{}) do
+    GenServer.cast(server, {:command, {:setup, topic, choices}})
+  end
+
+  @doc """
+  その場で 1 回だけ、頼みたいことを Chiezo へ割り込ませます。
+
+  **定時の巡回とは別の道**で、進み具合にも次の予定にも触りません。
+  巡回の依頼文は書き換わりません（この回だけの文として渡ります）。
+  """
+  def ask_focus(collection, note) do
+    case chiezo_base_url() do
+      nil -> {:error, :chiezo_not_configured}
+      base -> Antenna.Chiezo.focus(base, collection, note, [])
+    end
+  end
+
+  @doc """
   予定を待たずに1回集めさせます。止まっている収集は Chiezo が断ります。
   """
   def run_now(server) do
@@ -161,6 +215,7 @@ defmodule Antenna.News do
       status: :idle,
       collection: nil,
       articles: [],
+      digests: [],
       picks: %{},
       picked_titles: [],
       selecting: false,
@@ -334,13 +389,14 @@ defmodule Antenna.News do
 
   def handle_info(_message, state), do: {:noreply, state}
 
-  defp apply_result(state, {:ok, %{collection: collection, articles: articles}}) do
+  defp apply_result(state, {:ok, %{collection: collection, articles: articles} = read}) do
     # 溜まったものが入れ替わったら、前の選別はもう当てにならない
     %{
       state
       | status: :ready,
         collection: collection,
         articles: articles,
+        digests: Map.get(read, :digests, []),
         checked_at: DateTime.utc_now(),
         reason: nil,
         task: nil
@@ -380,6 +436,7 @@ defmodule Antenna.News do
       status: state.status,
       collection: state.collection,
       articles: state.articles,
+      digests: state.digests,
       picks: state.picks,
       picked_titles: state.picked_titles,
       selecting: state.selecting,
@@ -396,6 +453,22 @@ defmodule Antenna.News do
   defp perform({:request, topic}, base, name) do
     with :ok <- create_collection(base, name, topic) do
       read(base, name)
+    end
+  end
+
+  defp perform({:setup, topic, choices}, base, name) do
+    case create_collection(base, name, topic) do
+      :ok -> perform({:push, topic, choices}, base, name)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp perform({:push, topic, choices}, base, name) do
+    # **断られても読み直す。** 読み直しは成功するので、結果だけ見ていると
+    # 「押したのに何も変わらない」としか映らない（送れていないことに気づけない）
+    case {Antenna.Chiezo.patch(base, name, attrs(name, topic, choices)), read(base, name)} do
+      {:ok, read} -> read
+      {{:error, reason}, _read} -> {:error, reason}
     end
   end
 
@@ -462,7 +535,12 @@ defmodule Antenna.News do
               |> to_collection()
               |> Map.put(:docs, docs_count(base, name))
 
-            {:ok, %{collection: collection, articles: to_articles(detail["recent"])}}
+            {:ok,
+             %{
+               collection: collection,
+               articles: to_articles(detail["recent"]),
+               digests: to_digests(detail["recent"])
+             }}
 
           _ ->
             {:error, :chiezo_unexpected_body}
@@ -478,24 +556,7 @@ defmodule Antenna.News do
   end
 
   defp create_collection(base, name, topic) do
-    payload =
-      Jason.encode!(
-        Map.merge(
-          %{
-            name: name,
-            description: description(topic),
-            prompt: prompt(topic),
-            interval_minutes: @interval_minutes,
-            # ニュースは足していくもの。Chiezo の既定と同じだが、
-            # 集め方が 2 つある層なので、どちらのつもりかは明示して置く
-            mode: "append",
-            requested_by: "antenna"
-          },
-          # 名指ししないものは送らない —— null を送ると「指定しない」と同じだが、
-          # 依頼の本文に空の項目が並ぶと、何を決めて何を任せたのかが読めない
-          collect_settings(topic) |> Enum.reject(&(elem(&1, 1) == nil)) |> Map.new()
-        )
-      )
+    payload = Jason.encode!(attrs(name, topic, %{}))
 
     case post(base <> "/v1/collect", payload, @request_timeout) do
       {:ok, %{status: status}} when status in 200..299 -> :ok
@@ -507,6 +568,102 @@ defmodule Antenna.News do
       {:error, _reason} -> {:error, :chiezo_unavailable}
     end
   end
+
+  @doc """
+  Chiezo へ送る収集の設定ひとそろい。**依頼のときも、送り直すときも同じもの**を送ります
+  —— 別々に組み立てると、片方だけ直る。
+
+  `choices` は画面で選んだ巡回ごとの相手。
+  """
+  def attrs(name, topic, choices \\ %{}) do
+    Map.merge(
+      %{
+        name: name,
+        description: description(topic),
+        prompt: prompt(topic),
+        interval_minutes: @collect_minutes,
+        # **育てる側で置く。** 溜めるだけなら足すほうでよいが、この収集は
+        # 重要度やタグを後から付け直す（それができるのは育てる側だけ）
+        mode: "refine",
+        feed: feed_spec(topic),
+        sweeps: with_choices(sweeps(topic), choices),
+        requested_by: "antenna"
+      },
+      # 名指ししないものは送らない —— null を送ると「指定しない」と同じだが、
+      # 依頼の本文に空の項目が並ぶと、何を決めて何を任せたのかが読めない
+      collect_settings(topic) |> Enum.reject(&(elem(&1, 1) == nil)) |> Map.new()
+    )
+  end
+
+  @doc """
+  その話題の巡回。**引き方の違う仕事を、別の時計で回します**。
+
+  1 つの文で全部を頼むと、どの回も同じ薄さの仕事になります —— 集めるのと、
+  漏れを探すのと、読んで重要度を付けるのと、まとめるのは別の仕事です。
+
+  - 見出し / 集める —— 溜める回。配信元があれば機械で引き、無ければ AI に集めさせる
+  - 漏れ探し —— 配信元が拾わなかったものを AI が探す（足すだけ）
+  - 情報更新 —— 前回から入ったものを読んで、重要度と分野のタグを付け直し、
+    宣伝や的外れなものを落とす（**落とす力を持つのはこの回だけ**）
+  - 要約 —— 前回から入ったものを 1 件にまとめて残す（通知と画面で読むもの）
+  - 割り込み —— 時計を持たない 1 本。頼まれたときだけ動く
+  """
+  def sweeps(topic) do
+    [
+      intake(topic),
+      %{
+        name: "漏れ探し",
+        interval_minutes: @missing_minutes,
+        only_new: true,
+        prompt: find_missing_prompt(topic)
+      },
+      %{name: "情報更新", interval_minutes: @refine_minutes, prompt: refine_prompt(topic)},
+      %{
+        name: "要約",
+        interval_minutes: @digest_minutes,
+        # **まとめる回に消す力を持たせない。** 読んで書くだけの回なので、
+        # 触れるのは自分が足す 1 件だけでよい
+        only_new: true,
+        prompt: digest_prompt(topic)
+      },
+      %{name: "割り込み", on_demand: true}
+    ]
+  end
+
+  # 溜める回。**配信元があれば機械で引く** —— 見出し・要約・URL・配信日は機械が
+  # 正確に取れるので、AI の枠は「何が重要か」「どうまとめるか」へ回す。
+  # **足すだけと組にする** —— 組にしないと、情報更新が付けたタグを配信の薄い内容で上書きする
+  defp intake(%{feeds: [_ | _]}),
+    do: %{name: "見出し", interval_minutes: @feed_minutes, use_feed: true, only_new: true}
+
+  defp intake(topic),
+    do: %{
+      name: "集める",
+      interval_minutes: @collect_minutes,
+      only_new: true,
+      prompt: prompt(topic)
+    }
+
+  # 画面で選んだ相手を巡回に載せる。**antenna は覚えない** —— 正は Chiezo が持っている
+  defp with_choices(sweeps, choices) do
+    for sweep <- sweeps do
+      case Map.get(choices, sweep.name) do
+        nil -> sweep
+        # 空文字は落とさない（「Chiezo の既定にまかせる」という意思表示）
+        picked -> Map.merge(sweep, Map.reject(picked, fn {_k, v} -> is_nil(v) end))
+      end
+    end
+  end
+
+  @doc """
+  機械で引く配信元の指定（無ければ nil）。
+
+  **前回より後、で絞りません。** 絞る基準は収集ぜんたいの前回の実行なので、
+  巡回を分けていると、別の巡回が走った拍子に見出しの回が取りこぼします
+  （重複は Chiezo が見出しで弾くので、毎回まるごと引いてよい）。
+  """
+  def feed_spec(%{feeds: [_ | _] = feeds}), do: %{urls: feeds}
+  def feed_spec(_topic), do: nil
 
   defp run_collection(base, name) do
     case post(base <> "/v1/collect/" <> name <> "/run", "", @run_timeout) do
@@ -557,6 +714,10 @@ defmodule Antenna.News do
       backend: item["backend"],
       model: item["model"],
       effort: item["effort"],
+      # 巡回。**相手も進み具合も巡回ごとに違う**ので、収集に 1 つだけ持たせると、
+      # そこに出る値はどれか 1 本のものにしかならない
+      sweeps: Antenna.Chiezo.sweeps_of(item),
+      partitions_total: item["partitions_total"] || 0,
       # Chiezo が実際に持っている本文。**antenna の雛形とは限らない** ——
       # 依頼した後は Chiezo の画面から直せるので、いま何を頼んでいるかは向こうが正
       prompt: item["prompt"] || "",
@@ -575,6 +736,23 @@ defmodule Antenna.News do
   # **原文の URL は `extra` の中**（Chiezo が集めた1件の出典）。本文の要約は
   # `opening`。どちらも無いことがあるので、無ければその欄を出さない
   def to_articles(recent) when is_list(recent) do
+    recent |> to_entries() |> Enum.reject(&digest?/1)
+  end
+
+  def to_articles(_recent), do: []
+
+  @doc false
+  # まとめ（`@digest_tag` の付いたもの）。**記事と別に返す** ——
+  # 一覧に混ぜると、まとめが記事のふりをして並ぶ
+  def to_digests(recent) when is_list(recent) do
+    recent |> to_entries() |> Enum.filter(&digest?/1)
+  end
+
+  def to_digests(_recent), do: []
+
+  defp digest?(%{tags: tags}), do: @digest_tag in tags
+
+  defp to_entries(recent) do
     Enum.flat_map(recent, fn
       %{"title" => title} = item when is_binary(title) ->
         title = String.trim(title)
@@ -582,15 +760,19 @@ defmodule Antenna.News do
         if title == "" do
           []
         else
-          {importance, reason} = importance(title)
+          tags = tags_of(item)
+          {importance, reason} = importance(title, tags)
           extra = if is_map(item["extra"]), do: item["extra"], else: %{}
 
           [
             %{
               title: title,
+              tags: tags,
               url: source_url(extra["url"]),
               summary: trimmed(item["opening"]),
-              collected_at: item["updated_at"] || extra["collected_at"],
+              # **配信日があればそちら** —— 集めた日だけだと、半年前の記事を
+              # 今日拾ったのか、今日出たものなのかが読めない
+              collected_at: extra["published_at"] || item["updated_at"] || extra["collected_at"],
               importance: importance,
               reason: reason
             }
@@ -602,7 +784,8 @@ defmodule Antenna.News do
     end)
   end
 
-  def to_articles(_recent), do: []
+  defp tags_of(%{"tags" => tags}) when is_list(tags), do: Enum.map(tags, &to_string/1)
+  defp tags_of(_item), do: []
 
   # 出典は AI が入れたものなので、そのまま信じてリンクにしない
   defp source_url(url) when is_binary(url) do
@@ -642,13 +825,129 @@ defmodule Antenna.News do
 
     #{interest_of(topic)}
 
-    title はそれを一意に指す短い見出しにします（同じ出来事には同じ見出しを使ってください）。
+    {feed}
+
+    前回から新しく入ったものは次のとおりです。**同じ出来事には同じ title を使ってください**
+    （見出しが重複の鍵なので、言い回しを変えると同じ話が二重に溜まります）。
+    {recent}
+
+    title はそれを一意に指す短い見出しにします。
     body には3行程度の要約を書き、記事本文はそのまま写さないでください。
     url には出典の記事のURLを必ず入れます。
-    tags には分野を1〜3個入れます。
+    tags には次を入れてください。
+    - 種別（#{kinds()} のどれか 1 つ）
+    - 分野を1〜3個
     next_cursor には、今回集めた中でいちばん新しい記事の日時をISO8601で入れてください。
     """
   end
+
+  @doc """
+  漏れを探す回の依頼文。**この回は足すだけ**です。
+
+  機械で引く配信元は決まった相手しか見ないので、そこに載らないものは永遠に入りません。
+  """
+  def find_missing_prompt(topic) do
+    """
+    {cursor} 以降に日本語で報じられたもののうち、**まだ入っていないもの**を
+    web で調べて足してください。この回は足すだけです。
+
+    集めているのは次のようなものです。
+    #{interest_of(topic)}
+
+    {feed}
+
+    前回から新しく入ったものは次のとおりです。
+    {recent}
+
+    決まった配信元だけを見ていると、そこに載らないものは永遠に入りません ——
+    **上に並んでいない出どころ**（公式の発表、一次情報、別の媒体）を当たってください。
+
+    **もう入っているかどうかは気にしなくて構いません**（既にある見出しは Chiezo が
+    弾きます）。そのぶん、**確信が持てるものだけ**を挙げてください。
+
+    足す 1 件ごとに、次の形にしてください。
+    - title: それを一意に指す短い見出し
+    - body: 3行程度の要約（記事本文はそのまま写さない）
+    - url: 出典の記事の URL（必ず入れる）
+    - tags: 種別（#{kinds()} のどれか 1 つ）と、分野を1〜3個
+    """
+  end
+
+  @doc """
+  読んで印を付け直す回の依頼文。**この回は足しません。読んで、選り分けます**。
+
+  何が重要かは読んでみないと決まりません —— 語の一致で決めると、
+  同じ語を含むだけの1件が上に出ます。
+
+  **落とす力を持つのはこの回だけ**です。溜めるほうを機械にまかせた以上、
+  宣伝記事も的外れなものもそのまま入るので、人が読む前にここで落とします。
+  """
+  def refine_prompt(topic) do
+    """
+    前回から新しく入ったものを読んで、**印を付け直し、要らないものを落としてください**。
+    この回で新しいものを集める必要はありません。
+
+    何を大事とみなすかは次のとおりです。
+    #{interest_of(topic)}
+
+    {recent}
+
+    見出しは配信元から機械的に取り込んでいるので、**関係のないものも混ざります**。
+    次のものは **tags に "#{@tombstone_tag}" だけを入れて返してください**（墓標。その1件が消えます）。
+    - 上の関心とまったく関係のないもの
+    - 中身が宣伝・求人・販促だけのもの
+    - 同じ出来事を指す1件が既にあるもの（**残すほうは1つだけ**。先に入っているほうを残す）
+
+    **迷ったら落とさないでください。** 消したものは Chiezo が覚えていて、
+    次に同じ見出しが流れてきても戻りません。
+
+    残すものは、1 件ごとに次の形で返してください。
+    - title: **そのままにしてください**（見出しが重複の鍵です。変えると別の1件になります）
+    - body: 要約。読みにくければ書き直してよい（記事本文はそのまま写さない）
+    - url: いま入っているものをそのまま
+    - tags:
+      - "#{@importance_tag}:高" / "#{@importance_tag}:中" / "#{@importance_tag}:低" を
+        **必ず 1 つ**（上の関心に照らして、いま読む価値があるかで決める）
+      - 種別（#{kinds()} のどれか 1 つ。いま付いているものが正しければそのまま）
+      - 分野を1〜3個（配信元の名前はそのまま残してください）
+
+    **読んだものだけを返してください。** 上に出ていないものを返す必要はありません。
+    """
+  end
+
+  @doc """
+  まとめる回の依頼文。**通知と画面で読むもの**を1件作ります。
+
+  溜まったものをそのまま並べても読めません —— 何が起きたかを先に言うのが、
+  通知の1行と画面の先頭に要るものです。
+  """
+  def digest_prompt(topic) do
+    """
+    前回のまとめから今回までに入ったものを、**1 件のまとめ**にしてください。
+
+    読む人が知りたいのは次のようなことです。
+    #{interest_of(topic)}
+
+    {recent}
+
+    返すのは **items に 1 件だけ**です。
+
+    - title: "#{@digest_tag}: <その期間を一言で>（<いちばん新しい記事の日付。YYYY-MM-DD>）"
+      **日付まで入れてください** —— 同じ見出しだと、前のまとめを上書きしてしまいます
+    - body: 次の形で書いてください。**通知に出しても読める長さ**にします
+      - 1 行目: 全体を 40 字以内で 1 行（通知の本文はここしか読まれません）
+      - 続けて、箇条書きで 5 件まで。1 行 60 字以内で、**大事な順**に
+      - 記号や飾りは使わない（通知は素の文字で届きます）
+    - url: いちばん大事な 1 件の出典（無ければ空でよい）
+    - tags: "#{@digest_tag}" を**必ず**付けてください（画面と通知はこれで見分けます）
+
+    まとめるものが無ければ、**1 件も返さないでください**（空のまとめは要りません）。
+    """
+  end
+
+  # 種別の言い方。**配信元の指定と揃える** —— 別々に書くと、機械が付ける種別と
+  # AI が付ける種別が食い違う
+  defp kinds, do: "ニュース / 記事 / 論文"
 
   # 関心が空のままでも集めさせない文にはしない —— 指定なしで頼むと、
   # 何を集めればよいか決まらないまま AI が埋めることになる
@@ -680,8 +979,27 @@ defmodule Antenna.News do
   )
 
   @doc false
-  # 重要度の判定。語の並びだけで決まるのでここだけでテストできる
-  def importance(title) do
+  # 重要度の判定。**AI が付けた印が先** —— 語の一致で決めると、同じ語を含むだけの
+  # 1 件が上に出る（読んだうえでの判断には勝てない）。印が無いときだけ語で見る
+  def importance(title, tags \\ []) do
+    case marked_importance(tags) do
+      nil -> from_words(title)
+      marked -> marked
+    end
+  end
+
+  defp marked_importance(tags) do
+    Enum.find_value(tags, fn tag ->
+      case String.split(tag, ":", parts: 2) do
+        [@importance_tag, "高"] -> {2, "AI が、いま読む価値が高いと判断しました"}
+        [@importance_tag, "中"] -> {1, "AI が読んで、ふつうの重さと判断しました"}
+        [@importance_tag, "低"] -> {0, "AI が読んで、急がないと判断しました"}
+        _ -> nil
+      end
+    end)
+  end
+
+  defp from_words(title) do
     if Enum.any?(@critical_keywords, &String.contains?(title, &1)) do
       {2, "暮らしや社会への影響が大きい可能性があります"}
     else

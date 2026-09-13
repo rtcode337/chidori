@@ -38,6 +38,11 @@ defmodule Antenna.NewsTest do
 
   defp list_body(collections), do: Jason.encode!(%{"collections" => collections})
 
+  # 話題の定義そのもの。**DB は見ない** —— 巡回も配信元も定義が持っているので、
+  # 保存してある設定が無くても組み立てられる
+  defp defined_topic(collection),
+    do: Enum.find(Antenna.Topics.defined(), &(&1.collection == collection))
+
   defp detail_body(recent, overrides \\ %{}) do
     collection(overrides) |> Map.put("recent", recent) |> Jason.encode!()
   end
@@ -220,8 +225,15 @@ defmodule Antenna.NewsTest do
       # 実行のたびに進む印を使う（前回以降を集めるため）
       assert payload["prompt"] =~ "{cursor}"
       assert payload["prompt"] =~ "next_cursor"
-      # 足していく収集だと明示する（集め方が 2 つある層なので）
-      assert payload["mode"] == "append"
+      # 育てる側で置く。重要度やタグを後から付け直すのは、そちらでしかできない
+      assert payload["mode"] == "refine"
+      # 巡回は仕事ごとに分ける（集める・漏れを探す・読んで印を付ける・まとめる・割り込み）
+      assert Enum.map(payload["sweeps"], & &1["name"]) ==
+               ["集める", "漏れ探し", "情報更新", "要約", "割り込み"]
+      # 割り込みは時計を持たない 1 本（頼まれたときだけ動く）
+      assert List.last(payload["sweeps"])["on_demand"] == true
+      # 配信元を持たない話題なので、外の道具は付けない（集めるところから AI に頼む）
+      refute payload["feed"]
 
       # 名指ししていないので、相手は Chiezo にまかせる（項目ごと送らない）
       refute Map.has_key?(payload, "backend")
@@ -361,10 +373,79 @@ defmodule Antenna.NewsTest do
     end
   end
 
-  describe "importance/1" do
+  describe "importance/2" do
     test "暮らしに関わる語を含む見出しを上に置く" do
       assert {2, _reason} = News.importance("大雨の警報が出ました")
       assert {1, _reason} = News.importance("新しい展覧会が始まりました")
+    end
+
+    test "AI が読んで付けた印のほうが先" do
+      # 語の一致で決めると、同じ語を含むだけの1件が上に出る（読んだ判断には勝てない）
+      assert {0, _reason} = News.importance("大雨の警報が出ました", ["重要度:低"])
+      assert {2, _reason} = News.importance("新しい展覧会が始まりました", ["重要度:高"])
+    end
+  end
+
+  describe "巡回" do
+    test "仕事ごとに別の時計で回す" do
+      names = defined_topic("antenna_news") |> News.sweeps() |> Enum.map(& &1.name)
+
+      assert names == ["集める", "漏れ探し", "情報更新", "要約", "割り込み"]
+    end
+
+    test "配信元を持つ話題は、集めるところを機械にまかせる" do
+      [intake | _rest] = defined_topic("antenna_tech") |> News.sweeps()
+
+      assert intake.name == "見出し"
+      assert intake.use_feed == true
+      # **足すだけと組にする** —— 組にしないと、情報更新が付けたタグを
+      # 配信の薄い内容で上書きする
+      assert intake.only_new == true
+    end
+
+    test "配信元は束の名前つきで渡す" do
+      spec = defined_topic("antenna_tech") |> News.feed_spec()
+
+      assert Enum.any?(spec.urls, &(&1.tags == ["ニュース"]))
+      assert Enum.any?(spec.urls, &(&1.tags == ["記事"]))
+    end
+
+    test "配信元を持たない話題に外の道具は付けない" do
+      assert defined_topic("antenna_news") |> News.feed_spec() == nil
+    end
+
+    test "落とす力を持つのは情報更新の回だけ" do
+      # 溜めるほうを機械にまかせた以上、選り分ける口がどこかに要る。
+      # ただし足すだけの回に消す力を持たせない（足すはずの回が消し始める）
+      topic = defined_topic("antenna_tech")
+      prompts = for s <- News.sweeps(topic), into: %{}, do: {s.name, Map.get(s, :prompt)}
+
+      assert prompts["情報更新"] =~ "削除"
+      refute prompts["漏れ探し"] =~ "削除"
+      refute prompts["要約"] =~ "削除"
+    end
+
+    test "整理の回の依頼文には、今あるものの差し込み口が要る" do
+      # Chiezo が作る時点で弾く決まり（無いと、AI は今あるものを知らないまま書く）
+      topic = defined_topic("antenna_tech")
+
+      for sweep <- News.sweeps(topic), text = Map.get(sweep, :prompt), is_binary(text) do
+        assert text =~ "{recent}" or text =~ "{current}",
+               "#{sweep.name} の依頼文に差し込み口がありません"
+      end
+    end
+  end
+
+  describe "まとめ" do
+    test "記事の一覧には混ぜない" do
+      # 一覧に混ぜると、まとめが記事のふりをして並ぶ
+      recent = [
+        recent("ふつうの記事"),
+        Map.put(recent("まとめ: 今日の動き（2026-09-13）"), "tags", ["まとめ"])
+      ]
+
+      assert Enum.map(News.to_articles(recent), & &1.title) == ["ふつうの記事"]
+      assert Enum.map(News.to_digests(recent), & &1.title) == ["まとめ: 今日の動き（2026-09-13）"]
     end
   end
 end
