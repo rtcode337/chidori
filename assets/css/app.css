@@ -349,6 +349,12 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .edge-reason { margin: 0 0 0.7rem; }
 .edge-links { margin: 0.6rem 0 0; padding-left: 1.1rem; font-size: 0.9rem; }
 
+/* データ収集の画面。**関連図と同じ枠を使う**（`.relations-page` を重ねてある）——
+   状態を見て、直して、押す、という作りが同じなので、体裁を分ける理由が無い。
+   ここに置くのは、この画面にしか無いものだけ */
+.collect-page .collect-panel + .collect-panel { margin-top: 1.25rem; }
+.collect-page .collect-panel table { margin-bottom: 0; }
+
 /* 区画の一覧。**400 行あるので畳んで置く** —— 開いたときだけ場所を取る */
 .partition-list { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: .8rem; }
 .partition-list summary { cursor: pointer; font-weight: 700; font-size: .9rem; }

@@ -860,6 +860,8 @@ defmodule TazunaWeb.RelationsLiveTest do
   end
 
   describe "区画の一覧" do
+    # 区画の並べ方はどの収集でも同じなので、共有の側にある
+    alias TazunaWeb.Collect
     alias TazunaWeb.RelationsLive
 
     test "まだ見ていない区画が先に並ぶ" do
@@ -874,12 +876,12 @@ defmodule TazunaWeb.RelationsLiveTest do
         }
       }
 
-      assert Enum.map(RelationsLive.partition_rows(relation, "調査"), & &1.key) ==
+      assert Enum.map(Collect.partition_rows(relation, "調査"), & &1.key) ==
                ["フランス|1840-1869", "イタリア|1500-1600", "日本|1900-1910"]
     end
 
     test "区画を持たない図では空" do
-      assert RelationsLive.partition_rows(%{collection: nil}, "調査") == []
+      assert Collect.partition_rows(%{collection: nil}, "調査") == []
     end
 
     test "頼みごとは必ず区画の名前で始まる" do

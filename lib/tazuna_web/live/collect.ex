@@ -205,4 +205,64 @@ defmodule TazunaWeb.Collect do
     do: "失敗: #{error}"
 
   defp last_text(c), do: Jst.format(c.last_run_at) || "まだ"
+
+  @doc """
+  区画の一覧。**まだ見ていないものが先**（次に回ってくる順）。
+
+  数百あるので、そのまま並べると画面が埋まります。畳んだ中に出して、
+  先頭だけが見えるようにします。
+
+  **見た印は巡回ごとに別**なので、どの巡回の目で見るかを渡します ——
+  ざっとが見終えた区画をじっくりはまだ見ていない、が普通に起きます。
+  """
+  def partition_rows(%{collection: %{partitions: list}}, sweep) when is_list(list) do
+    list
+    |> Enum.sort_by(&{Map.get(&1.visits, sweep) || "", &1.key})
+    |> Enum.map(fn p ->
+      %{key: p.key, count: p.count, seen: Jst.format(Map.get(p.visits, sweep))}
+    end)
+  end
+
+  def partition_rows(_state, _sweep), do: []
+
+  @doc """
+  断られた理由の一文。**どの画面でも同じことが起きる**ので、ここに 1 つだけ置きます
+  —— 画面ごとに書くと、同じ理由の説明が食い違ったまま片方だけ直ります。
+
+  **知らない理由でも、そのまま出します。** 「失敗しました」だけだと、押した人にも
+  直す人にも何も分かりません（実際にこれが出て、原因を画面から辿れなかった）。
+  ここに来るのは自分たちが返した印であって、外から来た文言ではありません。
+  """
+  def reason_text(:chiezo_not_configured),
+    do: "CHIEZO_BASE_URL が設定されていないため、Chiezo に頼めません。"
+
+  def reason_text(:chiezo_unavailable), do: "Chiezo に接続できませんでした。"
+  def reason_text({:chiezo_status, status}), do: "Chiezo が #{status} を返しました。"
+  def reason_text(:chiezo_unexpected_body), do: "Chiezo の応答を解釈できませんでした。"
+  def reason_text({:chiezo_refused, status, nil}), do: "Chiezo が依頼を断りました（#{status}）。"
+  def reason_text({:chiezo_refused, _status, message}), do: "Chiezo が依頼を断りました: #{message}"
+
+  def reason_text(:chiezo_busy),
+    do:
+      "いま Chiezo が取り込み中なので、割り込みを受け付けてもらえませんでした。" <>
+        "終わってからもう一度押してください。"
+
+  def reason_text(:collect_unsupported),
+    do: "この Chiezo には「集める」層がありません。Chiezo を新しくすると使えるようになります。"
+
+  def reason_text(:collect_disabled),
+    do:
+      "Chiezo 側で「集める」層が無効です。" <>
+        "CHIEZO_NOTES_DIR と CHIEZO_TRIGGER_URL を設定すると有効になります。"
+
+  def reason_text(:collection_disabled),
+    do:
+      "この収集は Chiezo 側で止まっています。" <>
+        "Chiezo の管理画面の「集める」で有効にすると動き出します。"
+
+  def reason_text(:not_requested), do: "Chiezo にこの収集がありません。もう一度押すと作り直します。"
+  def reason_text(:collection_crashed), do: "問い合わせの途中で問題が起きました。もう一度押してください。"
+  def reason_text(:too_soon), do: "続けて押しています。少し時間を置いてからもう一度押してください。"
+  def reason_text(nil), do: ""
+  def reason_text(reason), do: "Chiezo とのやり取りに失敗しました（#{inspect(reason)}）。"
 end

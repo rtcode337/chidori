@@ -438,7 +438,7 @@ defmodule TazunaWeb.RelationsLive do
   end
 
   @doc "割り込みが断られた理由の一文。"
-  def focus_error(%{reason: reason}), do: reason_text(reason)
+  def focus_error(%{reason: reason}), do: relation_reason(reason)
   def focus_error(_focus), do: nil
 
   @doc """
@@ -472,22 +472,6 @@ defmodule TazunaWeb.RelationsLive do
       written -> "#{key} の区画について。#{written}"
     end
   end
-
-  @doc """
-  区画の一覧。**まだ見ていないものが先**（次に回ってくる順）。
-
-  400 区画あるので、そのまま並べると画面が埋まります。畳んだ中に出して、
-  先頭だけが見えるようにします。
-  """
-  def partition_rows(%{collection: %{partitions: list}}, sweep) when is_list(list) do
-    list
-    |> Enum.sort_by(&{Map.get(&1.visits, sweep) || "", &1.key})
-    |> Enum.map(fn p ->
-      %{key: p.key, count: p.count, seen: Jst.format(Map.get(p.visits, sweep))}
-    end)
-  end
-
-  def partition_rows(_relation, _sweep), do: []
 
   @doc """
   見た印の付いた行き先。**図に出ているものだけ**を並べます ——
@@ -872,7 +856,7 @@ defmodule TazunaWeb.RelationsLive do
         _ -> "表示例を表示しています。"
       end
 
-    prefix <> reason_text(reason)
+    prefix <> relation_reason(reason)
   end
 
   @doc """
@@ -889,41 +873,15 @@ defmodule TazunaWeb.RelationsLive do
 
   def source_note(_view), do: "「関連図を収集」を押すと、その場で AI に調べさせて図を作り直します。"
 
-  defp reason_text(:too_soon), do: "続けて収集しようとしています。少し時間を置いてから押してください。"
-
-  defp reason_text(:chiezo_not_configured),
-    do: "CHIEZO_BASE_URL が設定されていないため収集できません。"
-
-  defp reason_text(:chiezo_busy),
-    do:
-      "いま Chiezo が取り込み中なので、割り込みを受け付けてもらえませんでした。" <>
-        "終わってからもう一度押してください。"
-
-  defp reason_text(:chiezo_unavailable), do: "Chiezoに接続できませんでした。"
-  defp reason_text({:chiezo_status, status}), do: "Chiezoが #{status} を返しました。"
-  defp reason_text(:chiezo_unexpected_body), do: "Chiezoの応答を解釈できませんでした。"
-
-  defp reason_text({:chiezo_refused, status, nil}), do: "Chiezo が依頼を断りました（#{status}）。"
-
-  defp reason_text({:chiezo_refused, _status, message}), do: "Chiezo が依頼を断りました: #{message}"
-
-  defp reason_text(:collect_unsupported),
-    do: "この Chiezo には「集める」層がありません。Chiezo を新しくすると使えるようになります。"
-
-  defp reason_text(:collect_disabled),
-    do: "Chiezo 側で「集める」層が無効です。CHIEZO_NOTES_DIR と CHIEZO_TRIGGER_URL を設定すると有効になります。"
-
-  defp reason_text(:collection_disabled),
-    do:
-      "この収集は Chiezo 側で止まっているので、集めさせられませんでした。" <>
-        "Chiezo の管理画面の「集める」で有効にすると、押したときに集まります。"
-
-  defp reason_text(:collection_missing),
+  # **この図でしか起きない理由だけを書く。** 残りは画面をまたいで同じことが
+  # 起きるので、共有の `TazunaWeb.Collect.reason_text/1` が言う ——
+  # 画面ごとに書くと、同じ理由の説明が食い違ったまま片方だけ直る
+  defp relation_reason(:collection_missing),
     do:
       "この図の収集は、まだ Chiezo に作られていません。" <>
         "「関連図を収集」を押すと、Chiezo に依頼して作ります。"
 
-  defp reason_text(:nothing_collected),
+  defp relation_reason(:nothing_collected),
     do:
       "Chiezo にまだ何も溜まっていません。Chiezo の管理画面の「集める」で" <>
         "この図の収集を有効にすると、集まったものがここに出ます。"
@@ -931,18 +889,13 @@ defmodule TazunaWeb.RelationsLive do
   # **指定が書けなければ収集を作らない。** 作ってしまうと、名簿が空のまま AI に
   # 「いまの内容から 10 人ほど選べ」と頼むことになり、10 件の図ができて終わる
   # （実測）。そのとき押した人には、なぜそうなったのかが読めない
-  defp reason_text({:extract_failed, _detail}),
+  defp relation_reason({:extract_failed, _detail}),
     do:
       "Wikipedia から機械的に引く条件を AI に書かせられませんでした。" <>
         "収集は作っていません。もう一度押すか、相手を変えて試してください。"
 
-  defp reason_text(:invalid_ai_response), do: "AIの応答から関連図を作れませんでした。もう一度収集してください。"
-  defp reason_text(:collection_crashed), do: "収集の途中で問題が起きました。もう一度収集してください。"
-  defp reason_text(:not_requested), do: "Chiezo にこの収集がありません。もう一度押すと作り直します。"
-  defp reason_text(nil), do: ""
+  defp relation_reason(:invalid_ai_response),
+    do: "AIの応答から関連図を作れませんでした。もう一度収集してください。"
 
-  # **知らない理由でも、そのまま出す。** 「収集に失敗しました」だけだと、押した人にも
-  # 直す人にも何も分からない（実際にこれが出て、原因を画面から辿れなかった）。
-  # ここに来るのは自分たちが返した印であって、外から来た文言ではない
-  defp reason_text(reason), do: "収集に失敗しました（#{inspect(reason)}）。"
+  defp relation_reason(reason), do: reason_text(reason)
 end

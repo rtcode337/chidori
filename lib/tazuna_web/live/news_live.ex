@@ -302,29 +302,4 @@ defmodule TazunaWeb.NewsLive do
   end
 
   def sweep_prompts(_topic), do: []
-
-  # 相手は Chiezo が持っているものを出す。未指定なら誰に行くかは Chiezo が決める
-  defp reason_text(:chiezo_not_configured),
-    do: "Chiezo の場所が設定されていないため、収集を頼めません。"
-
-  defp reason_text(:collect_unsupported),
-    do: "この Chiezo には「集める」層がまだありません。Chiezo を新しくすると使えるようになります。"
-
-  defp reason_text(:collect_disabled),
-    do: "Chiezo 側で「集める」層が無効です。CHIEZO_NOTES_DIR と CHIEZO_TRIGGER_URL を設定すると有効になります。"
-
-  defp reason_text(:collection_disabled),
-    do: "収集はまだ止まっています。Chiezo の管理画面の「集める」で有効にしてください。"
-
-  defp reason_text(:not_requested), do: "Chiezo にこの収集がありません。先に依頼してください。"
-  defp reason_text(:too_soon), do: "続けて集めさせようとしています。少し時間を置いてから押してください。"
-  defp reason_text({:chiezo_refused, status, nil}), do: "Chiezo が依頼を断りました（#{status}）。"
-
-  defp reason_text({:chiezo_refused, _status, message}), do: "Chiezo が依頼を断りました: #{message}"
-
-  defp reason_text(:chiezo_unavailable), do: "Chiezo に接続できませんでした。"
-  defp reason_text({:chiezo_status, status}), do: "Chiezo が #{status} を返しました。"
-  defp reason_text(:chiezo_unexpected_body), do: "Chiezo の応答を解釈できませんでした。"
-  defp reason_text(:collection_crashed), do: "問い合わせの途中で問題が起きました。もう一度押してください。"
-  defp reason_text(_reason), do: "Chiezo とのやり取りに失敗しました。"
 end
