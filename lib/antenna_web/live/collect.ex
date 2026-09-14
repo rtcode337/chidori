@@ -167,8 +167,13 @@ defmodule AntennaWeb.Collect do
       # 呼ばずに返すので、相手もモデルも読まれない。
       # **選べるのに効かない欄は「設定したつもり」を作る**
       mechanical: sweep[:use_extract] == true or sweep[:use_feed] == true,
+      # **走らない回に「いますぐ」と出さない。** 予定を持っていないだけの回と、
+      # 先の回の一周を待っている回は、どちらも予定が空 —— 区別せずに出すと、
+      # 3 日動かないものを「いますぐ」と読んで待ち続けることになる。
+      # **理由は Chiezo が言う**（こちらで場合分けを書き写さない）
       next:
         cond do
+          sweep[:blocked] not in [nil, ""] -> sweep.blocked
           not sweep.enabled -> "止めている"
           # 時計を持たない巡回（割り込み用）。押されたときだけ動く
           sweep[:on_demand] -> "頼まれたとき"

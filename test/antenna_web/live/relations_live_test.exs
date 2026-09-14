@@ -506,6 +506,40 @@ defmodule AntennaWeb.RelationsLiveTest do
       assert html =~ ~s(<option value="high" selected=)
     end
 
+    test "走らない理由は Chiezo が言う" do
+      # **予定を持っていないことと、走らないことは違う。** どちらも予定が空なので、
+      # 区別せずに出すと「いますぐ」と書いてある回を何日も待ち続けることになる
+      rows =
+        AntennaWeb.Collect.sweep_rows(%{
+          collection: %{
+            enabled: true,
+            partitions_total: 10,
+            sweeps: [
+              %{
+                name: "調査",
+                backend: nil,
+                model: nil,
+                effort: nil,
+                interval_minutes: 360,
+                cover_days: nil,
+                on_demand: false,
+                use_extract: false,
+                use_feed: false,
+                enabled: true,
+                blocked: "「ざっと」の一周待ち",
+                next_run_at: nil,
+                last_run_at: nil,
+                last_status: nil,
+                last_error: nil,
+                partitions_visited: 0
+              }
+            ]
+          }
+        })
+
+      assert [%{next: "「ざっと」の一周待ち"}] = rows
+    end
+
     test "時計を持たない巡回にも相手を選べる", %{conn: conn} do
       # 画家のモーダルから頼む「詳しく調べて」は割り込みとして走る。**人が待っている
       # 場面**なので、定時の巡回と同じ相手を使う理由が無い

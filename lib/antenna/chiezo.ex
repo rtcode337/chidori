@@ -307,7 +307,11 @@ defmodule Antenna.Chiezo do
         last_run_at: s["last_run_at"],
         last_status: s["last_status"],
         last_error: s["last_error"],
-        partitions_visited: s["partitions_visited"] || 0
+        partitions_visited: s["partitions_visited"] || 0,
+        # **なぜ定時に走らないか**（走るなら空）。Chiezo が言う ——
+        # 予定を持っていないだけの回と、先の回を待っている回は、どちらも予定が空。
+        # こちらで場合分けを書き写すと、向こうの決まりが変わったときに食い違う
+        blocked: s["blocked"] || ""
       }
     end
   end
