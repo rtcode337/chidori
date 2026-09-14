@@ -127,21 +127,23 @@ defmodule Tazuna.Datasets.MealsTest do
       assert south < 24.0 and north > 45.0
     end
 
-    test "1 区画は、1 回に差し込めるぶんに収まる" do
-      # 超えると差し込みが切られ、「この範囲の全部が並んでいる」という
-      # 漏れ探しの前提が崩れる。**枠は 2 つあり、厳しいほうが効く**（Chiezo の
-      # MAX_MATERIAL_DOCS と MAX_MATERIAL_CHARS）
+    test "1 区画は、AI が 1 回で返せるぶんに収まる" do
+      # **入り口より出口が先に効く。** この回は残す店ぜんぶにタグと紹介文を
+      # 付けさせるので、区画の件数がそのまま返る件数になる。
+      # 実測（Antigravity に 150 件ぶんを返させた）: 150 件が切れずに全部返り、
+      # 47,685 文字・2 分 50 秒。1 件あたり約 318 文字・約 1.1 秒
       target = Meals.partition().target
+      measured_items = 150
+      bridge_seconds = 840
 
+      assert target <= measured_items
+      assert target * 1.1 < bridge_seconds
+
+      # 差し込みの枠（Chiezo の MAX_MATERIAL_DOCS / MAX_MATERIAL_CHARS）にも収まる。
+      # **育ったあとの姿で見る** —— 機械で引いた直後は 1 行 83 文字だが、
+      # AI が説明を書いたあとは 249 文字になる
       assert target <= 300
-
-      # **育ったあとの姿で見る。** 機械で引いた直後は 1 行 83 文字だが、AI が説明を
-      # 書いたあとは 249 文字になる（本文 200 文字 + タグ 5 つ）——
-      # 「件数に収まっているから大丈夫」は、育つ前の姿しか見ていない
       assert target * 249 <= 80_000
-
-      # 区画は割り直される前に少しあふれるので、件数の上限には寄せきらない
-      assert target < 300
     end
   end
 
@@ -182,14 +184,25 @@ defmodule Tazuna.Datasets.MealsTest do
       # Chiezo は 1 回に見る区画を 20 までに抑える（区画ごとに AI を 1 回、直列に
       # 呼ぶため）。**届かない日数を書くと、その日数では回りきらないのに画面には
       # 書いた日数が出る**
-      partitions = 2_080
+      partitions = 3_470
       per_run_cap = 20
 
       for sweep <- sweeps, days = Map.get(sweep, :cover_days), days do
         runs = days * 24 * 60 / sweep.interval_minutes
 
-        assert ceil(partitions / runs) <= per_run_cap,
+        per_run = ceil(partitions / runs)
+
+        assert per_run <= per_run_cap,
                "#{sweep.name} は #{days} 日では回りきりません"
+
+        # **1 回の取り込みが、次の予定に追いつかれない長さであること。**
+        # 区画ごとに AI を 1 回、直列に呼ぶ（実測で 1 件 1.1 秒）ので、
+        # 追いつかれると走りっぱなしになる
+        minutes = per_run * Meals.partition().target * 1.1 / 60
+
+        assert minutes < sweep.interval_minutes,
+               "#{sweep.name} は 1 回に #{round(minutes)} 分かかり、" <>
+                 "#{sweep.interval_minutes} 分後の次の予定に追いつかれます"
       end
     end
   end
