@@ -96,7 +96,17 @@ defmodule Antenna.Relations.Graph do
   @work_mark "◆"
 
   # 丸の大きさ。**知名度で変える** —— どれが中心的な画家かが、読む前に分かる。
-  # 知名度そのものは jawiki の月次ページビュー（`Antenna.Fame`）
+  # 知名度そのものは jawiki の月次ページビュー（収集の `extra.pageviews_month`）。
+  #
+  # **事実と判断を別の鍵に分ける。** ページビューは機械が写す事実で、誰も書き換えない。
+  # 日本語版の読まれ方が実態とずれている画家（海外で高名だが日本で知られていない、
+  # 逆に最近テレビで扱われた）は、AI が倍率を書いて直す。同じ鍵を書き換えさせると
+  # 元の値が失われ、取り込み直しても新しいページビューを反映できなくなる
+  @views_key "pageviews_month"
+  @fame_scale_key "fame_scale"
+  # 倍率の効かせ方の上下。**桁で狂わせない** —— 1 人の書き間違いで図が壊れる
+  @min_fame_scale 0.1
+  @max_fame_scale 10.0
   #
   # **差は大きく取る。** 全体を眺めるときに読めてほしいのは有名な画家だけで、
   # 残りは「そこに誰かがいる」が分かれば足りる（読みたくなったら拡大する）。
@@ -447,26 +457,29 @@ defmodule Antenna.Relations.Graph do
   @doc """
   知名度を丸の大きさに変えます。**いちばん有名な人を基準にした比**で決めます。
 
+  **知名度は収集の中に入っています**（`extra.pageviews_month`）。集める回が
+  長期記憶から写してくるので、図を出すたびに外へ引きに行きません —— 引いていた頃は
+  画家の数だけ往復していました（初回で 9,000 回以上）。
+
   絶対値で決めると、題材が変わったときに全部が大きくなったり小さくなったりします。
   平方根を挟むのは、ページビューが桁で開くため —— そのまま面積に使うと、
   1 人だけが巨大になって他が点になります。
   """
-  def sized(nodes, fame) when is_map(fame) do
-    top = fame |> Map.values() |> Enum.max(fn -> 0 end)
+  def sized(nodes) do
+    top = nodes |> Enum.map(&views_of/1) |> Enum.max(fn -> 0 end)
 
     Enum.map(nodes, fn node ->
-      views = Map.get(fame, node.article, 0)
+      views = views_of(node)
 
       node
       |> Map.merge(scale(fame_ratio(views, top), cell_of(node), label_of(node), note?(node)))
       # **知られている度合いは残す。** 絞り込みで置き直すときに、もう一度
-      # 外へ引きに行かずに大きさを付け直せる
+      # 数え直さずに大きさを付け直せる
       |> Map.put(:views, views)
     end)
   end
 
-  def sized(nodes, _fame),
-    do: Enum.map(nodes, &Map.merge(&1, scale(0.0, cell_of(&1), label_of(&1), note?(&1))))
+  defp views_of(node), do: node[:views] || 0
 
   # その図の升目。置く前のノード（テストが直に渡す場合）は既定の大きさで扱う
   defp cell_of(node), do: Map.get(node, :cell) || @max_cell
@@ -605,6 +618,9 @@ defmodule Antenna.Relations.Graph do
           # **Chiezo に入っているタグをそのまま持つ。** どういう条件でこの人が
           # 名簿に入り、何が分かっているのかは、これを見せないと読み取れない
           tags: tags,
+          # **どれくらい知られているか。** 丸の大きさに使う。集める回が長期記憶の
+          # 月次ページビューを写してくるので、ここで外へ引きに行かない
+          views: views_in(doc),
           # **いつ動いたか。** Chiezo は 1 回の巡回で触れた文書に同じ刻みを打つので、
           # これが揃っているものが「その回で動いたぶん」になる
           changed_at: stamp_of(doc),
@@ -615,6 +631,33 @@ defmodule Antenna.Relations.Graph do
   end
 
   defp to_node(_doc), do: []
+
+  # 月次ページビュー（bot 除外）に、AI が付けた倍率を掛けたもの。
+  # **持っていない画家もいる**ので、無ければ 0 —— 図が出ないより、丸が小さいほうがまし
+  defp views_in(%{"extra" => extra}) when is_map(extra) do
+    case extra[@views_key] do
+      views when is_integer(views) and views > 0 -> round(views * scale_in(extra))
+      _other -> 0
+    end
+  end
+
+  defp views_in(_doc), do: 0
+
+  # 知名度の倍率。**書かれていなければ 1.0**（ほとんどの画家には要らない）。
+  # 読めない値も 1.0 —— 図が壊れるより、補正が効かないほうがまし
+  defp scale_in(extra) do
+    case extra[@fame_scale_key] do
+      value when is_number(value) and value > 0 ->
+        value |> max(@min_fame_scale) |> min(@max_fame_scale) |> :erlang.float()
+
+      _other ->
+        1.0
+    end
+  end
+
+  @doc "知名度に使う鍵（機械が写す事実と、AI が付ける倍率）。"
+  def views_key, do: @views_key
+  def fame_scale_key, do: @fame_scale_key
 
   defp stamp_of(doc) do
     case doc["updated_at"] do

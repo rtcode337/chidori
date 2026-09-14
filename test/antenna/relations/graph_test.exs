@@ -92,17 +92,88 @@ defmodule Antenna.Relations.GraphTest do
         %{
           "title" => "有名",
           "tags" => ["画家", "年代:1900"],
-          "extra" => %{"url" => "https://ja.wikipedia.org/wiki/有名"}
+          "extra" => %{
+            "url" => "https://ja.wikipedia.org/wiki/有名",
+            "pageviews_month" => 100_000
+          }
         },
         %{
           "title" => "無名",
           "tags" => ["画家", "年代:1910"],
-          "extra" => %{"url" => "https://ja.wikipedia.org/wiki/無名"}
+          "extra" => %{
+            "url" => "https://ja.wikipedia.org/wiki/無名",
+            "pageviews_month" => 100
+          }
         }
       ])
 
-    [famous, unknown] = Graph.sized(graph.nodes, %{"有名" => 100_000, "無名" => 100})
+    [famous, unknown] = Graph.sized(graph.nodes)
     assert famous.radius > unknown.radius
+  end
+
+  test "知名度は収集の中から読む" do
+    # **図を出すたびに外へ引きに行かない。** 引いていた頃は画家の数だけ往復していた
+    # （初回で 9,000 回以上）。集める回が長期記憶から写してくる
+    graph =
+      Graph.from_docs([
+        %{
+          "title" => "有名",
+          "tags" => ["画家", "年代:1900"],
+          "extra" => %{"pageviews_month" => 8869}
+        }
+      ])
+
+    assert [%{views: 8869}] = graph.nodes
+  end
+
+  test "実態とずれている画家は倍率で直せる" do
+    # **事実と判断を別の鍵に持つ。** 同じ鍵を書き換えさせると元の値が失われ、
+    # 取り込み直しても新しいページビューを反映できなくなる
+    graph =
+      Graph.from_docs([
+        %{
+          "title" => "海外で高名",
+          "tags" => ["画家", "年代:1900"],
+          "extra" => %{"pageviews_month" => 1000, "fame_scale" => 3.0}
+        }
+      ])
+
+    assert [%{views: 3000}] = graph.nodes
+  end
+
+  test "倍率は桁で狂わせない" do
+    # 1 人の書き間違いで図が壊れる
+    graph =
+      Graph.from_docs([
+        %{
+          "title" => "行き過ぎ",
+          "tags" => ["画家", "年代:1900"],
+          "extra" => %{"pageviews_month" => 1000, "fame_scale" => 1_000_000}
+        }
+      ])
+
+    assert [%{views: 10_000}] = graph.nodes
+  end
+
+  test "読めない倍率は効かせない" do
+    # 図が壊れるより、補正が効かないほうがまし
+    graph =
+      Graph.from_docs([
+        %{
+          "title" => "変な値",
+          "tags" => ["画家", "年代:1900"],
+          "extra" => %{"pageviews_month" => 1000, "fame_scale" => "たくさん"}
+        }
+      ])
+
+    assert [%{views: 1000}] = graph.nodes
+  end
+
+  test "知名度を持たない画家は 0 として扱う" do
+    # 図が出ないより、丸が小さいほうがまし
+    graph = Graph.from_docs([%{"title" => "無名", "tags" => ["画家", "年代:1900"]}])
+
+    assert [%{views: 0}] = graph.nodes
   end
 
   test "知名度で字の大きさも変える" do
@@ -112,16 +183,22 @@ defmodule Antenna.Relations.GraphTest do
         %{
           "title" => "有名",
           "tags" => ["画家", "年代:1900"],
-          "extra" => %{"url" => "https://ja.wikipedia.org/wiki/有名"}
+          "extra" => %{
+            "url" => "https://ja.wikipedia.org/wiki/有名",
+            "pageviews_month" => 100_000
+          }
         },
         %{
           "title" => "無名",
           "tags" => ["画家", "年代:1910"],
-          "extra" => %{"url" => "https://ja.wikipedia.org/wiki/無名"}
+          "extra" => %{
+            "url" => "https://ja.wikipedia.org/wiki/無名",
+            "pageviews_month" => 100
+          }
         }
       ])
 
-    [famous, unknown] = Graph.sized(graph.nodes, %{"有名" => 100_000, "無名" => 100})
+    [famous, unknown] = Graph.sized(graph.nodes)
 
     # **差は倍率で見る。** 字の大きさは升目に対する比なので、人数が変われば
     # 絶対値も変わる（固定の px で押さえると、図の大きさを変えるたびに落ちる）
@@ -305,7 +382,7 @@ defmodule Antenna.Relations.GraphTest do
               do: at("その他#{i}", ["年代:#{1800 + i}-1900", "地域:フランス"], "2026-09-01T00:00:00+00:00")
 
       graph = Graph.from_docs(docs)
-      graph = %{graph | nodes: Graph.sized(graph.nodes, %{})}
+      graph = %{graph | nodes: Graph.sized(graph.nodes)}
       only = Graph.only_changed(graph)
 
       assert Enum.map(only.nodes, & &1.name) == ["モネ"]
@@ -341,7 +418,7 @@ defmodule Antenna.Relations.GraphTest do
          painter("ルノワール", ["年代:1841-1919", "地域:フランス", "様式:印象派"])] ++
           for i <- 1..200, do: painter("その他#{i}", ["年代:#{1700 + i}-1900", "地域:フランス"])
 
-      graph = Graph.sized(Graph.from_docs(docs).nodes, %{}) |> then(&%{Graph.from_docs(docs) | nodes: &1})
+      graph = Graph.sized(Graph.from_docs(docs).nodes) |> then(&%{Graph.from_docs(docs) | nodes: &1})
       only = Graph.only(graph, "印象派")
 
       [before_node | _] = Enum.filter(graph.nodes, &("印象派" in &1.styles))
@@ -361,7 +438,7 @@ defmodule Antenna.Relations.GraphTest do
         end
 
       graph = Graph.from_docs(docs)
-      graph = %{graph | nodes: Graph.sized(graph.nodes, %{})}
+      graph = %{graph | nodes: Graph.sized(graph.nodes)}
       only = Graph.only(graph, "印象派")
       view = %{x: 0, y: 0, w: 1200, h: only.height, ppu: 1.0}
 
@@ -387,7 +464,7 @@ defmodule Antenna.Relations.GraphTest do
         painter("画家#{i}", ["年代:#{1800 + i}-1900" | styles])
       end
 
-    sized = Graph.sized(Graph.from_docs(docs).nodes, %{})
+    sized = Graph.sized(Graph.from_docs(docs).nodes)
     with_note = Enum.find(sized, &(&1.note != nil))
     without = Enum.find(sized, &(&1.note == nil))
 
@@ -401,7 +478,7 @@ defmodule Antenna.Relations.GraphTest do
 
   test "知名度が引けなくても図は出る" do
     graph = Graph.from_docs([painter("A", ["年代:1900"])])
-    assert [%{radius: r}] = Graph.sized(graph.nodes, %{})
+    assert [%{radius: r}] = Graph.sized(graph.nodes)
     assert is_integer(r) and r > 0
   end
 
@@ -454,7 +531,7 @@ defmodule Antenna.Relations.GraphTest do
         painter("同じ名前#{i}", ["年代:#{1800 + i}-1900" | works])
       end
 
-    sized = Graph.sized(Graph.from_docs(docs).nodes, %{})
+    sized = Graph.sized(Graph.from_docs(docs).nodes)
     with_work = Enum.find(sized, &(&1.works != []))
     without = Enum.find(sized, &(&1.works == []))
 

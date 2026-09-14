@@ -15,7 +15,6 @@ defmodule Antenna.Relations do
   require Logger
 
   alias Antenna.Chiezo
-  alias Antenna.Fame
   alias Antenna.Http
   alias Antenna.Relations.Graph
 
@@ -740,9 +739,10 @@ defmodule Antenna.Relations do
           {:error, {nothing_reason(collection), collection}}
         else
           # 丸の大きさは知名度で決める。**AI に有名かどうかを判断させない** ——
-          # jawiki の月次ページビューのほうが客観的で、実行のたびに揺れない
-          fame = Fame.for_articles(base_url, Enum.map(graph.nodes, & &1.article))
-          sized = Graph.sized(graph.nodes, fame)
+          # jawiki の月次ページビューのほうが客観的で、実行のたびに揺れない。
+          # **その値は収集の中に入っている**（集める回が長期記憶から写す）ので、
+          # ここで外へ引きに行かない
+          sized = Graph.sized(graph.nodes)
 
           {:ok,
            fallback
@@ -902,6 +902,14 @@ defmodule Antenna.Relations do
     構いません）。**1 つも思い当たらない画家は空のままで構いません** ——
     無理に埋めると、その画家の絵でないものが代表作として並びます。
 
+    **図の丸の大きさは、日本語版 Wikipedia の読まれ方で決まります。**
+    実態と大きく食い違う画家だけ、`extra` に "#{Graph.fame_scale_key()}" を書いて
+    直してください（倍率。書かなければ 1.0）。**ほとんどの人には要りません。**
+    - 海外では高名だが日本語版はあまり読まれない → 2.0 〜 5.0
+    - 最近の話題で一時的に読まれているだけ → 0.2 〜 0.5
+
+    "#{Graph.views_key()}" のほうは機械が入れた事実なので、書き換えないでください。
+
     **変えない人を返す必要はありません。** 触れなかった人はそのまま残ります。
     調べても影響関係が分からなかった人は、飛ばして構いません。
 
@@ -974,6 +982,14 @@ defmodule Antenna.Relations do
     理由が無いと消し間違いに気づけません。
     表記の揺れで同じ人が 2 つに分かれていたら、**残すほうに中身をまとめて返し、
     消すほうに墓標を付けて**ください。
+
+    **図の丸の大きさは、日本語版 Wikipedia の読まれ方で決まります。**
+    実態と大きく食い違う画家だけ、`extra` に "#{Graph.fame_scale_key()}" を書いて
+    直してください（倍率。書かなければ 1.0）。**ほとんどの人には要りません。**
+    - 海外では高名だが日本語版はあまり読まれない → 2.0 〜 5.0
+    - 最近の話題で一時的に読まれているだけ → 0.2 〜 0.5
+
+    "#{Graph.views_key()}" のほうは機械が入れた事実なので、書き換えないでください。
 
     **触った人だけ返してください。** 触れなかった人はそのまま残ります。
     **いま付いているタグは、直すもの以外そのまま残してください** ——
@@ -1061,7 +1077,11 @@ defmodule Antenna.Relations do
         %{from_tag: "{title}の作品", format: "#{Graph.work_tag()}:{1}", take: 3},
         # 相互リンクだけを線にする（片側だと有名どうしが軒並み繋がって毛玉になる）
         %{linked: "mutual", format: "#{Graph.related_tag()}:{1}"}
-      ]
+      ],
+      # **知名度は長期記憶から写す。** 月次ページビュー（bot 除外）は jawiki の記事に
+      # 入っているので、図を出すたびに 1 人ずつ引き直す理由が無い ——
+      # 引いていた頃は画家の数だけ往復していた（初回で 9,000 回以上）
+      extra: ["pageviews_month"]
     }
   end
 
