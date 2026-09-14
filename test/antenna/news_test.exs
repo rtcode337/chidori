@@ -419,9 +419,9 @@ defmodule Antenna.NewsTest do
       topic = defined_topic("antenna_tech")
       prompts = for s <- News.sweeps(topic), into: %{}, do: {s.name, Map.get(s, :prompt)}
 
-      assert prompts["情報更新"] =~ "削除"
-      refute prompts["漏れ探し"] =~ "削除"
-      refute prompts["要約"] =~ "削除"
+      assert prompts["情報更新"] =~ "chiezo_tombstone"
+      refute prompts["漏れ探し"] =~ "chiezo_tombstone"
+      refute prompts["要約"] =~ "chiezo_tombstone"
     end
 
     test "漏れ探しは、まとめより高い頻度で回る" do
