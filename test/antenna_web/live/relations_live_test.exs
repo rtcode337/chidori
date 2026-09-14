@@ -457,7 +457,7 @@ defmodule AntennaWeb.RelationsLiveTest do
       Antenna.HttpStub.stub(fn
         %{url: "http://chiezo.test:7010/v1/ai/backends"} ->
           Antenna.HttpStub.ok(
-            ~s({"backends":[{"id":"codex","label":"Codex","models":[],"efforts":["low","high"]},{"id":"claude","label":"Claude","models":[],"efforts":["low","medium","high"]}]})
+            ~s({"backends":[{"id":"codex","label":"Codex","models":["gpt-a","gpt-b"],"efforts":["low","high"]},{"id":"claude","label":"Claude","models":["opus"],"efforts":["low","medium","high"]}]})
           )
 
         %{url: "http://chiezo.test:7010/v1/ingest/status"} ->
@@ -550,6 +550,59 @@ defmodule AntennaWeb.RelationsLiveTest do
       assert html =~ "時計なし"
       assert html =~ "頼まれたとき"
       assert html =~ ~s(name="sweep|割り込み|backend")
+    end
+
+    test "モデルも巡回ごとに選べる", %{conn: conn} do
+      # **相手だけ選べても足りない。** 同じ相手でもモデルで結果も時間も変わるので、
+      # 巡回ごとに選べないと「じっくりだけ重いモデルで」が表せない
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      assert wait_until(fn -> render(live) =~ "調査" end)
+
+      live
+      |> element("form#collect-form")
+      |> render_change(%{"sweep|調査|backend" => "codex", "sweep|調査|model" => "gpt-b"})
+
+      # 候補は選び直した相手のもの（別の相手のモデルは並ばない）
+      html = live |> element(~s(select[name="sweep|調査|model"])) |> render()
+      assert html =~ "gpt-a"
+      assert html =~ "gpt-b"
+      refute html =~ "opus"
+
+      live |> element("form#collect-form") |> render_submit(%{})
+
+      assert_receive {:patched, body}, 5_000
+      sweep = Enum.find(Jason.decode!(body)["sweeps"], &(&1["name"] == "調査"))
+      assert sweep["model"] == "gpt-b"
+    end
+
+    test "選べるものが無い欄は出さない", %{conn: conn} do
+      # **「既定」しか入っていないセレクトは、押せるのに何も選べない。**
+      # 考える量を持たない相手と、モデルの名前に考える量が埋まっている相手
+      # （Antigravity）がここに当たる —— Chiezo 側が空の一覧で知らせてくる
+      Antenna.HttpStub.stub(fn
+        %{url: "http://chiezo.test:7010/v1/ai/backends"} ->
+          Antenna.HttpStub.ok(
+            ~s({"backends":[{"id":"antigravity","label":"Antigravity","models":["gemini-3.8-flash-high"],"efforts":[]}]})
+          )
+
+        %{url: url} ->
+          cond do
+            String.contains?(url, "/v1/collect/") -> Antenna.HttpStub.ok(elem(painters_collection_json(), 1))
+            String.contains?(url, "/v1/collect") -> Antenna.HttpStub.ok(elem(painters_collection_json(), 0))
+            true -> Antenna.HttpStub.ok(~s({"results":[],"total":0}))
+          end
+      end)
+
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      assert wait_until(fn -> render(live) =~ "ざっと" end)
+
+      live
+      |> element("form#collect-form")
+      |> render_change(%{"sweep|ざっと|backend" => "antigravity"})
+
+      html = live |> element("form#collect-form table") |> render()
+      assert html =~ ~s(name="sweep|ざっと|model")
+      refute html =~ ~s(name="sweep|ざっと|effort")
     end
 
     test "選び直した欄が、前に覚えた値に上書きされない", %{conn: conn} do

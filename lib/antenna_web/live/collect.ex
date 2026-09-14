@@ -64,6 +64,20 @@ defmodule AntennaWeb.Collect do
   end
 
   @doc """
+  その相手が持つモデル。**相手を選び直すまでは、いまの相手のぶん**。
+
+  考える量と同じ理由でまとめて並べません —— 相手ごとに別物なので、混ぜると
+  その相手に無いモデルを選べてしまいます。**一覧を持たない相手では空**で、
+  そのときは「相手の既定」だけが残ります。
+  """
+  def models_for(backends, backend) do
+    case Enum.find(backends || [], &(&1.id == backend)) do
+      nil -> []
+      found -> found.models
+    end
+  end
+
+  @doc """
   収集の状態。**関連図でも最新情報でも同じものを、同じ並びで出します** ——
   画面ごとに書いていた頃は、見出しも並びも食い違っていました。
 
