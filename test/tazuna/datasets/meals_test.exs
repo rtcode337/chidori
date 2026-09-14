@@ -40,15 +40,12 @@ defmodule Tazuna.Datasets.MealsTest do
       assert "lon" in by_source["jawiki"].extra
     end
 
-    test "地図辞典には件数を書かない", %{by_source: by_source} do
-      # **OSM は飲食店にどれも同じ点しか付けない**ので、件数を書くと並びが見出し順に
-      # なり、名前が先に来るものだけが残る（数字と英字が入って仮名の途中で切れる）
-      refute Map.has_key?(by_source["osm_japan"], :limit)
-    end
-
-    test "店舗辞典だけ件数を絞る", %{by_source: by_source} do
-      # 40 万件を超えるうえ、そちらは信頼度の順に並んでいる（切り口に意味がある）
-      assert by_source["overture_japan"].limit == 20_000
+    test "どの辞典にも件数を書かない", %{specs: specs} do
+      # **網羅の収集なので、機械で引けるものを取りこぼさない** —— 取りこぼすと、
+      # そのぶんを巡回が区画ごとに探し直すことになり、機械で済む仕事を AI に払わせる。
+      # 地図辞典では実害も出る：飲食店にどれも同じ点しか付かないので、件数を書くと
+      # 並びが見出し順になり、名前が先に来るものだけが残る
+      for spec <- specs, do: refute(Map.has_key?(spec, :limit))
     end
 
     test "チェーンは名簿ごと落とす", %{by_source: by_source} do
@@ -168,6 +165,21 @@ defmodule Tazuna.Datasets.MealsTest do
 
       assert survey.cover_days > 0
       assert survey.prompt == :survey
+    end
+
+    test "一周の日数は、届く数を書く", %{sweeps: sweeps} do
+      # Chiezo は 1 回に見る区画を 20 までに抑える（区画ごとに AI を 1 回、直列に
+      # 呼ぶため）。**届かない日数を書くと、その日数では回りきらないのに画面には
+      # 書いた日数が出る**
+      partitions = 2_600
+      per_run_cap = 20
+
+      for sweep <- sweeps, days = Map.get(sweep, :cover_days), days do
+        runs = days * 24 * 60 / sweep.interval_minutes
+
+        assert ceil(partitions / runs) <= per_run_cap,
+               "#{sweep.name} は #{days} 日では回りきりません"
+      end
     end
   end
 
