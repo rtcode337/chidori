@@ -53,6 +53,10 @@ defmodule Tazuna.News do
   @refine_minutes 360
   @digest_minutes 720
 
+  # 割り込みを頼む先。**専用の 1 本は置かない** —— 頼みごとは「落として」
+  # 「印を直して」がほとんどで、その力を持つのは情報更新の回だけ
+  @focus_sweep "情報更新"
+
   # まとめに付ける印。**同じ収集の中に、記事とまとめが混ざる**ので、
   # これが無いと画面でも通知でも見分けられない
   @digest_tag "まとめ"
@@ -162,13 +166,27 @@ defmodule Tazuna.News do
 
   **定時の巡回とは別の道**で、進み具合にも次の予定にも触りません。
   巡回の依頼文は書き換わりません（この回だけの文として渡ります）。
+
+  **走らせるのは情報更新の回です**（`focus_sweep/0`）。頼まれるのはたいてい
+  「これは宣伝だから落として」「この印が違う」で、**落とす力と印を付け直す力を
+  持つのはこの回だけ**だからです。
   """
   def ask_focus(collection, note) do
     case chiezo_base_url() do
       nil -> {:error, :chiezo_not_configured}
-      base -> Tazuna.Chiezo.focus(base, collection, note, [])
+      base -> Tazuna.Chiezo.focus(base, collection, note, [], focus_sweep())
     end
   end
+
+  @doc """
+  割り込みを走らせる巡回。
+
+  **専用の 1 本は置きません。** 置いていた頃は時計を持たないだけの空の巡回で、
+  依頼文を持たないので収集ぜんたいの文（集める回の文）で走っていました ——
+  頼みごとは「落として」「印を直して」がほとんどなのに、**その力を持つのは
+  情報更新の回だけ**なので、頼んだとおりには動きません。
+  """
+  def focus_sweep, do: @focus_sweep
 
   @doc """
   予定を待たずに1回集めさせます。止まっている収集は Chiezo が断ります。
@@ -540,7 +558,9 @@ defmodule Tazuna.News do
   - 情報更新 —— 前回から入ったものを読んで、重要度と分野のタグを付け直し、
     宣伝や的外れなものを落とす（**落とす力を持つのはこの回だけ**）
   - 要約 —— 前回から入ったものを 1 件にまとめて残す（通知と画面で読むもの）
-  - 割り込み —— 時計を持たない 1 本。頼まれたときだけ動く
+
+  **割り込みの専用の 1 本は置きません。** 頼みごとは情報更新の回で走ります
+  （`focus_sweep/0`）—— 落とす力と印を付け直す力を持つのはその回だけだからです。
   """
   def sweeps(topic) do
     [
@@ -551,7 +571,7 @@ defmodule Tazuna.News do
         only_new: true,
         prompt: find_missing_prompt(topic)
       },
-      %{name: "情報更新", interval_minutes: @refine_minutes, prompt: refine_prompt(topic)},
+      %{name: @focus_sweep, interval_minutes: @refine_minutes, prompt: refine_prompt(topic)},
       %{
         name: "要約",
         interval_minutes: @digest_minutes,
@@ -559,8 +579,7 @@ defmodule Tazuna.News do
         # 触れるのは自分が足す 1 件だけでよい
         only_new: true,
         prompt: digest_prompt(topic)
-      },
-      %{name: "割り込み", on_demand: true}
+      }
     ]
   end
 

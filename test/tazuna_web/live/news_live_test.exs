@@ -72,8 +72,7 @@ defmodule TazunaWeb.NewsLiveTest do
       "sweeps" => [
         %{"name" => "見出し", "interval_minutes" => 60, "use_feed" => true, "enabled" => true},
         %{"name" => "集める", "interval_minutes" => 360, "enabled" => true},
-        %{"name" => "要約", "interval_minutes" => 720, "enabled" => true},
-        %{"name" => "割り込み", "on_demand" => true, "enabled" => true}
+        %{"name" => "要約", "interval_minutes" => 720, "enabled" => true}
       ]
     }
 
@@ -108,6 +107,7 @@ defmodule TazunaWeb.NewsLiveTest do
     # 待たずに見ると、まだ読めていない画面を見ていることになる
     defp shown(conn) do
       Tazuna.News.subscribe("tazuna_news")
+
       # **話題は名指しで開く。** 既定の話題に寄りかかると、タブの並びを変えただけで
       # 落ちる —— ここで見たいのは収集の枠であって、どれが先頭かではない
       {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news")
@@ -122,8 +122,11 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "sweep-table"
       assert html =~ "収集の設定を更新"
       assert html =~ ~s(name="sweep|要約|backend")
-      # 定時の巡回とは別に頼める口
+      # 定時の巡回とは別に頼める口。**どの回として走るかを押す前に読める** ——
+      # 落とす力と印を付け直す力を持つのは情報更新の回だけなので、
+      # そこへ乗ることが分からないと「落として」を頼めるのかが読めない
       assert html =~ "いま頼む（割り込み）"
+      assert html =~ "走るのは「情報更新」の設定です"
     end
 
     test "機械で引く巡回には相手を選ばせない", %{conn: conn} do
@@ -142,6 +145,7 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "状態"
       assert html =~ "集め方"
       assert html =~ "溜まった数"
+
       # **言い方は収集の種類から出す。** 流れ（ニュース）と網羅（画家の名簿）は
       # そもそも別のことをしているので、同じ言い方になるほうがおかしい
       assert html =~ "流れを追う"

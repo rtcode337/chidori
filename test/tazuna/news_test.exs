@@ -223,14 +223,18 @@ defmodule Tazuna.NewsTest do
       # 実行のたびに進む印を使う（前回以降を集めるため）
       assert payload["prompt"] =~ "{cursor}"
       assert payload["prompt"] =~ "next_cursor"
+
       # **流れ。** 時とともに増えるものを追っていて、古いものは順に要らなくなる
       # （落とさないと、この収集は永久に増え続ける）
       assert payload["kind"] == "flow"
-      # 巡回は仕事ごとに分ける（集める・漏れを探す・読んで印を付ける・まとめる・割り込み）
+
+      # 巡回は仕事ごとに分ける（集める・漏れを探す・読んで印を付ける・まとめる）
       assert Enum.map(payload["sweeps"], & &1["name"]) ==
-               ["集める", "漏れ探し", "情報更新", "要約", "割り込み"]
-      # 割り込みは時計を持たない 1 本（頼まれたときだけ動く）
-      assert List.last(payload["sweeps"])["on_demand"] == true
+               ["集める", "漏れ探し", "情報更新", "要約"]
+
+      # **割り込みのための空の巡回は送らない。** 頼みごとは情報更新の回で走る
+      refute Enum.any?(payload["sweeps"], & &1["on_demand"])
+
       # 配信元を持たない話題なので、外の道具は付けない（集めるところから AI に頼む）
       refute payload["feed"]
 
@@ -358,6 +362,36 @@ defmodule Tazuna.NewsTest do
     end
   end
 
+  describe "割り込み" do
+    test "情報更新の回として走らせる" do
+      # **名指ししないと Chiezo は時計を持たない巡回へ倒す。** 専用の 1 本を
+      # 置かなくなった以上、名指ししなければ収集ぜんたいの文（集める回の文）で
+      # 走り、頼んだ「落として」が効かない
+      test_pid = self()
+
+      HttpStub.stub(fn
+        %{method: :post, url: url, body: body} ->
+          send(test_pid, {:asked, url, Jason.decode!(body)})
+          HttpStub.ok("{}")
+
+        %{method: :get} ->
+          HttpStub.ok(list_body([collection()]))
+      end)
+
+      assert News.ask_focus("tazuna_tech", "この記事は宣伝なので落として") == :ok
+      assert_receive {:asked, url, sent}, 2_000
+      assert url =~ "/v1/collect/tazuna_tech/focus"
+      assert sent["sweep"] == "情報更新"
+      assert sent["note"] =~ "宣伝"
+    end
+
+    test "Chiezo が未設定なら、頼む前に断る" do
+      System.delete_env("CHIEZO_BASE_URL")
+
+      assert News.ask_focus("tazuna_tech", "なにか") == {:error, :chiezo_not_configured}
+    end
+  end
+
   describe "Chiezo が未設定のとき" do
     test "頼む前に断る" do
       System.delete_env("CHIEZO_BASE_URL")
@@ -389,7 +423,24 @@ defmodule Tazuna.NewsTest do
     test "仕事ごとに別の時計で回す" do
       names = defined_topic("tazuna_news") |> News.sweeps() |> Enum.map(& &1.name)
 
-      assert names == ["集める", "漏れ探し", "情報更新", "要約", "割り込み"]
+      assert names == ["集める", "漏れ探し", "情報更新", "要約"]
+    end
+
+    test "割り込みは情報更新の回に乗せる" do
+      # 頼まれるのはたいてい「これは宣伝だから落として」「この印が違う」で、
+      # **その力を持つのは情報更新の回だけ**
+      names = defined_topic("tazuna_tech") |> News.sweeps() |> Enum.map(& &1.name)
+
+      assert News.focus_sweep() in names
+      assert News.focus_sweep() == "情報更新"
+    end
+
+    test "割り込みのための空の巡回は置かない" do
+      # 置いていた頃は時計を持たないだけの空の巡回で、依頼文を持たないので
+      # 収集ぜんたいの文（集める回の文）で走っていた —— 落とす力を持たない回
+      sweeps = defined_topic("tazuna_tech") |> News.sweeps()
+
+      refute Enum.any?(sweeps, &Map.get(&1, :on_demand))
     end
 
     test "配信元を持つ話題は、集めるところを機械にまかせる" do
@@ -397,6 +448,7 @@ defmodule Tazuna.NewsTest do
 
       assert intake.name == "見出し"
       assert intake.use_feed == true
+
       # **足すだけと組にする** —— 組にしないと、情報更新が付けたタグを
       # 配信の薄い内容で上書きする
       assert intake.only_new == true
@@ -432,6 +484,7 @@ defmodule Tazuna.NewsTest do
       sweeps = defined_topic("tazuna_tech") |> News.sweeps() |> Map.new(&{&1.name, &1})
 
       assert sweeps["漏れ探し"].interval_minutes < sweeps["要約"].interval_minutes
+
       # 印を付ける回も、まとめより先に回る（まとめる頃には印が付いている）
       assert sweeps["情報更新"].interval_minutes < sweeps["要約"].interval_minutes
     end
