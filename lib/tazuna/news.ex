@@ -22,6 +22,7 @@ defmodule Tazuna.News do
 
   require Logger
 
+  alias Tazuna.Chiezo
   alias Tazuna.Http
 
   @user_agent "tazuna/0.1 (+https://github.com/rtcode337/tazuna)"
@@ -57,10 +58,6 @@ defmodule Tazuna.News do
   @digest_tag "まとめ"
   # 重要度の印。AI が付け直す（tazuna 側の語の一致より、読んだうえでの判断が先）
   @importance_tag "重要度"
-  # 墓標。**これを付けて返した1件は消えた扱いになる**（Chiezo が消えた印を付けて残し、
-  # 以後どの読み口からも返らない。足す回も連れ戻さない）。
-  # 溜めるほうを機械にまかせた以上、選り分ける口がどこかに要る
-  @tombstone_tag "chiezo_tombstone"
 
   # 話題に関心が書かれていないときの言い方
   @default_interest "暮らし・社会・経済への影響が大きいこと"
@@ -845,10 +842,10 @@ defmodule Tazuna.News do
     {recent}
 
     見出しは配信元から機械的に取り込んでいるので、**関係のないものも混ざります**。
-    次のものは **tags に "#{@tombstone_tag}" だけを入れて返してください**（墓標。
+    次のものは **tags に "#{Chiezo.tombstone_tag()}" だけを入れて返してください**（墓標。
     その1件は消えた扱いになり、以後どの画面にも出ません）。
     **そのとき body に、なぜ消すのかを1行で書いてください** —— 消したものは
-    Chiezo の墓場に一覧で残るだけなので、理由が無いと消し間違いに気づけません。
+    Chiezo の一覧に見出しと理由が並ぶだけなので、理由が無いと消し間違いに気づけません。
     - 上の関心とまったく関係のないもの
     - 中身が宣伝・求人・販促だけのもの
     - 同じ出来事を指す1件が既にあるもの（**残すほうは1つだけ**。先に入っているほうを残す）

@@ -26,6 +26,17 @@ defmodule Tazuna.Chiezo do
     end
   end
 
+  @doc """
+  墓標のタグ。**これを付けて返した 1 件は、消えた扱いになります**。
+
+  Chiezo が決めている名前なので、**tazuna 側では 1 か所だけで持ちます** ——
+  依頼文はニュースにも関連図にもあり、どちらにも書き写すと、片方だけ直したときに
+  そちらの回だけ黙って消せなくなります（返した墓標がただのタグとして溜まる）。
+
+  頭の `_` は「機械が意味を持たせる印」の目印で、Chiezo 側が付けています。
+  """
+  def tombstone_tag, do: "_chiezo_tombstone"
+
   @doc "Chiezo の画面へのリンク。相対パスをルートURLに繋ぐだけです。"
   def url(path) when is_binary(path) do
     case base_url() do

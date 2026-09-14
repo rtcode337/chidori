@@ -419,9 +419,11 @@ defmodule Tazuna.NewsTest do
       topic = defined_topic("tazuna_tech")
       prompts = for s <- News.sweeps(topic), into: %{}, do: {s.name, Map.get(s, :prompt)}
 
-      assert prompts["情報更新"] =~ "chiezo_tombstone"
-      refute prompts["漏れ探し"] =~ "chiezo_tombstone"
-      refute prompts["要約"] =~ "chiezo_tombstone"
+      # **名前は Chiezo が決めている**ので、ここでも書き写さずに引く
+      tombstone = Tazuna.Chiezo.tombstone_tag()
+      assert prompts["情報更新"] =~ tombstone
+      refute prompts["漏れ探し"] =~ tombstone
+      refute prompts["要約"] =~ tombstone
     end
 
     test "漏れ探しは、まとめより高い頻度で回る" do
