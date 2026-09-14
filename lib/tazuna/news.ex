@@ -1,0 +1,974 @@
+defmodule Tazuna.News do
+  @moduledoc """
+  ニュースの収集状態を持つ入れ物です。
+
+  集めるのは tazuna ではなく Chiezo の「集める」層です。tazuna は収集を
+  依頼して、溜まったものを読むだけにしてあります —— 定期実行の時計も、AI の
+  呼び出しも、集めたものの置き場も、すでに Chiezo が持っているためです。
+
+  依頼して作られる収集は必ず止まった状態で、動き出すのは Chiezo の管理画面で
+  有効にしたときだけです。だからこの画面から AI が勝手に動くことはありません。
+
+  Chiezo への問い合わせは `Task.Supervisor` の下で動かし、この GenServer では
+  待ちません。結果は `subscribe/1` した先へ届きます。
+
+  **話題ごとに 1 つ立ちます。** 「ニュース」と「技術」では集める相手も溜まるものも
+  別なので、1 つの入れ物に混ぜると、片方を読み直したときにもう片方の状態まで
+  入れ替わります。立てるのは開かれたときで、話題（`Tazuna.Topics`）が増えても
+  誰も開いていないものまで常駐しないようにしてあります。
+  """
+
+  use GenServer
+
+  require Logger
+
+  alias Tazuna.Http
+
+  @user_agent "tazuna/0.1 (+https://github.com/rtcode337/tazuna)"
+
+  # Chiezo は LAN 内なので短くてよい。ただし「いま集めさせる」は AI が動くので長い
+  @request_timeout 15_000
+  @run_timeout 600_000
+  @connect_timeout 5_000
+
+  # AI を動かす操作だけ間隔を空ける。読み直しは相手が手元にいるので絞らない
+  @min_run_interval_ms 30_000
+
+  # 画面に出す件数。Chiezo 側の上限は 50
+  @samples 20
+
+  # 収集の既定。名前は Chiezo のソース名になるので英小文字・数字・_ だけ
+  @default_collection "tazuna_news"
+
+  # 巡回の時計。**引き方で変える** —— 機械で引く回は AI の枠を使わないので短くてよく、
+  # 判断の要る回は長い（頻繁に読み直しても、中身はそれほど変わらない）
+  @feed_minutes 60
+  @collect_minutes 360
+  # **漏れ探しは、まとめより高い頻度にする。** まとめの窓（12 時間）に漏れ探しが
+  # 1 回しか入らないと、直前に世の中で起きたことが最大 12 時間ぶん抜けたまま
+  # まとめられる —— ニュースは新しさが落ちると意味が薄い。
+  # 4 時間なら、どのまとめの窓にも 3 回入る
+  @missing_minutes 240
+  @refine_minutes 360
+  @digest_minutes 720
+
+  # まとめに付ける印。**同じ収集の中に、記事とまとめが混ざる**ので、
+  # これが無いと画面でも通知でも見分けられない
+  @digest_tag "まとめ"
+  # 重要度の印。AI が付け直す（tazuna 側の語の一致より、読んだうえでの判断が先）
+  @importance_tag "重要度"
+  # 墓標。**これを付けて返した1件は消えた扱いになる**（Chiezo が消えた印を付けて残し、
+  # 以後どの読み口からも返らない。足す回も連れ戻さない）。
+  # 溜めるほうを機械にまかせた以上、選り分ける口がどこかに要る
+  @tombstone_tag "chiezo_tombstone"
+
+  # 話題に関心が書かれていないときの言い方
+  @default_interest "暮らし・社会・経済への影響が大きいこと"
+
+  defstruct collection_name: nil,
+            status: :idle,
+            collection: nil,
+            articles: [],
+            # まとめ（`@digest_tag` の付いた1件）。**記事と別に持つ** ——
+            # 一覧に混ぜると、まとめが記事のふりをして並ぶ
+            digests: [],
+            checked_at: nil,
+            reason: nil,
+            task: nil,
+            last_run_at: nil
+
+  @doc """
+  話題 1 つぶんの入れ物を立てます。
+
+  名前を渡せるようにしてあるのは、テストが本番と同じ入れ物を共有すると、
+  片方のテストの収集状態がもう片方へ漏れるためです。
+  """
+  def start_link(options) do
+    collection = Keyword.get(options, :collection) || collection_name()
+    name = Keyword.get(options, :name, via(collection))
+    GenServer.start_link(__MODULE__, collection, name: name)
+  end
+
+  @doc """
+  その話題の入れ物。**まだ無ければ立てます** ——
+  開かれた話題のぶんだけ立てるので、起動時にはまだ無い。
+  """
+  def server(collection) when is_binary(collection) do
+    case DynamicSupervisor.start_child(
+           Tazuna.News.Supervisor,
+           {__MODULE__, collection: collection}
+         ) do
+      {:ok, _pid} -> via(collection)
+      {:error, {:already_started, _pid}} -> via(collection)
+      # 立てられなくても画面は出す（状態が読めないだけ）
+      {:error, _reason} -> via(collection)
+    end
+  end
+
+  defp via(collection), do: {:via, Registry, {Tazuna.News.Registry, collection}}
+
+  @doc """
+  いまの収集状態。画面はこれだけを見ます。
+
+  **話題が読めないときも形の揃った空を返します** —— 画面はこれだけを見るので、
+  落ちると開けなくなる。
+  """
+  def current(server) do
+    GenServer.call(server, :current)
+  catch
+    :exit, _reason -> empty()
+  end
+
+  @doc """
+  Chiezo に溜まっているものを読み直します。AI は動きません。
+  """
+  def refresh(server) do
+    GenServer.cast(server, {:command, :refresh})
+  end
+
+  @doc """
+  収集そのものを Chiezo へ依頼します。作られるのは止まった状態です。
+
+  **話題は呼ぶ側が渡します。** 依頼の本文も相手も話題の設定から作りますが、
+  それを取りに行くのはここではありません —— DB を読むのは画面のある側の仕事で、
+  ここから読むと、問い合わせを動かしている Task から読むことになります
+  （テストの sandbox では持ち主のいないプロセスになり、読めません）。
+  """
+  def request_collection(server, topic \\ nil) do
+    GenServer.cast(server, {:command, {:request, topic}})
+  end
+
+  @doc """
+  画面で選んだ設定（巡回ごとの相手）を送り直します。**走らせはしません** ——
+  走らせると、定時の巡回がその回ぶん先送りになります。
+
+  **依頼のときと同じものを送ります。** 作るときの `POST` は「もうある」で断られるので、
+  これが無いと、tazuna 側で依頼文や巡回を直しても永遠に届きません。
+  """
+  def push_settings(server, topic, choices \\ %{}) do
+    GenServer.cast(server, {:command, {:push, topic, choices}})
+  end
+
+  @doc """
+  収集を用意します —— **無ければ作り、あれば設定を送り直します**。
+
+  画面の押す口が 1 つなので、こちらで場合分けします。作るときの `POST` は
+  「もうある」で断られるだけなので、続けて送り直せば、どちらの状態から押しても同じ
+  ところへ着きます。**走らせはしません**（走らせると、定時の巡回がその回ぶん先送りになる）。
+  """
+  def setup(server, topic, choices \\ %{}) do
+    GenServer.cast(server, {:command, {:setup, topic, choices}})
+  end
+
+  @doc """
+  その場で 1 回だけ、頼みたいことを Chiezo へ割り込ませます。
+
+  **定時の巡回とは別の道**で、進み具合にも次の予定にも触りません。
+  巡回の依頼文は書き換わりません（この回だけの文として渡ります）。
+  """
+  def ask_focus(collection, note) do
+    case chiezo_base_url() do
+      nil -> {:error, :chiezo_not_configured}
+      base -> Tazuna.Chiezo.focus(base, collection, note, [])
+    end
+  end
+
+  @doc """
+  予定を待たずに1回集めさせます。止まっている収集は Chiezo が断ります。
+  """
+  def run_now(server) do
+    GenServer.cast(server, {:command, :run})
+  end
+
+  @doc """
+  収集状態の変化を受け取ります。LiveView が接続時に呼びます。
+
+  **話題ごとに分けて配ります** —— 1 本にまとめると、見ていない話題が集め終わった
+  拍子に、いま開いている画面まで書き換わります。
+  """
+  def subscribe(collection \\ nil) do
+    Phoenix.PubSub.subscribe(Tazuna.PubSub, topic(collection || collection_name()))
+  end
+
+  @doc "受け取るのをやめます。話題を切り替えたときに呼びます。"
+  def unsubscribe(collection) when is_binary(collection) do
+    Phoenix.PubSub.unsubscribe(Tazuna.PubSub, topic(collection))
+  end
+
+  @doc """
+  話題を開いていないときに画面へ渡す空の状態。
+  """
+  def empty do
+    %{
+      name: nil,
+      status: :idle,
+      collection: nil,
+      articles: [],
+      digests: [],
+      checked_at: nil,
+      reason: nil,
+      configured: chiezo_base_url() != nil
+    }
+  end
+
+  defp topic(collection), do: "news:" <> collection
+
+  @doc """
+  Chiezo に置く収集の名前。`TAZUNA_NEWS_COLLECTION` で変えられます。
+  """
+  def collection_name do
+    case System.get_env("TAZUNA_NEWS_COLLECTION", "") |> String.trim() do
+      "" -> @default_collection
+      name -> name
+    end
+  end
+
+  @doc """
+  誰に頼むか。`TAZUNA_NEWS_BACKEND` / `_MODEL` / `_EFFORT` で指定します。
+
+  **これは収集ぜんたいの下敷き**で、巡回ごとの相手は画面の表から選びます
+  （巡回に書いてあればそちらが勝ちます）。
+
+  **未指定なら Chiezo の既定にまかせます**（有効にしてある相手の先頭）。
+  どの相手に頼むかは本来 Chiezo 側の判断なので、tazuna から名指しするのは
+  「この収集だけは別の相手に」と決めたときだけです。依頼した後は Chiezo の
+  管理画面からも変えられます。
+  """
+  def backend_settings do
+    %{
+      backend: env("TAZUNA_NEWS_BACKEND"),
+      model: env("TAZUNA_NEWS_MODEL"),
+      effort: env("TAZUNA_NEWS_EFFORT")
+    }
+  end
+
+  defp env(name) do
+    case System.get_env(name, "") |> String.trim() do
+      "" -> nil
+      value -> value
+    end
+  end
+
+  @doc """
+  Chiezo のルートURL。未設定ならこの機能は使えません。
+  """
+  def chiezo_base_url do
+    case System.get_env("CHIEZO_BASE_URL") do
+      nil -> nil
+      "" -> nil
+      value -> value |> String.trim() |> String.trim_trailing("/")
+    end
+  end
+
+  @doc """
+  Chiezo の画面へ渡すリンク。相対パスをルートURLに繋ぐだけです。
+  """
+  def chiezo_url(path) when is_binary(path) do
+    case chiezo_base_url() do
+      nil -> nil
+      base -> base <> path
+    end
+  end
+
+  def chiezo_url(_path), do: nil
+
+  @impl true
+  def init(collection) do
+    {:ok, %__MODULE__{collection_name: collection}}
+  end
+
+  @impl true
+  def handle_call(:current, _from, state) do
+    {:reply, public(state), state}
+  end
+
+  @impl true
+  def handle_cast({:command, _command}, %__MODULE__{status: :loading} = state) do
+    {:noreply, state}
+  end
+
+  def handle_cast({:command, command}, state) do
+    cond do
+      chiezo_base_url() == nil ->
+        {:noreply, broadcast(%{state | status: :unavailable, reason: :chiezo_not_configured})}
+
+      command == :run and throttled?(state) ->
+        {:noreply, broadcast(%{state | reason: :too_soon})}
+
+      true ->
+        name = state.collection_name
+        base = chiezo_base_url()
+
+        task =
+          Task.Supervisor.async_nolink(Tazuna.TaskSupervisor, fn ->
+            perform(command, base, name)
+          end)
+
+        state = %{state | status: :loading, reason: nil, task: task}
+        state = if command == :run, do: %{state | last_run_at: now_ms()}, else: state
+
+        {:noreply, broadcast(state)}
+    end
+  end
+
+  @impl true
+  def handle_info({ref, result}, %__MODULE__{task: %Task{ref: ref}} = state) do
+    Process.demonitor(ref, [:flush])
+    {:noreply, broadcast(apply_result(state, result))}
+  end
+
+  # タスクが落ちたときも必ず状態を戻す。戻さないと :loading のまま固まり、
+  # 二度と押せなくなる
+  def handle_info(
+        {:DOWN, ref, :process, _pid, reason},
+        %__MODULE__{task: %Task{ref: ref}} = state
+      ) do
+    Logger.error("ニュースの収集タスクが落ちた: #{inspect(reason)}")
+    {:noreply, broadcast(apply_result(state, {:error, :collection_crashed}))}
+  end
+
+  def handle_info(_message, state), do: {:noreply, state}
+
+  defp apply_result(state, {:ok, %{collection: collection, articles: articles} = read}) do
+    %{
+      state
+      | status: :ready,
+        collection: collection,
+        articles: articles,
+        digests: Map.get(read, :digests, []),
+        checked_at: DateTime.utc_now(),
+        reason: nil,
+        task: nil
+    }
+  end
+
+  defp apply_result(state, {:error, reason}) do
+    # 一度でも読めていれば、前に読めたものを消さずに残す
+    status = if state.checked_at, do: :stale, else: :unavailable
+    %{state | status: status, reason: reason, task: nil}
+  end
+
+  defp throttled?(%__MODULE__{last_run_at: nil}), do: false
+  defp throttled?(%__MODULE__{last_run_at: at}), do: now_ms() - at < @min_run_interval_ms
+
+  defp now_ms, do: System.monotonic_time(:millisecond)
+
+  defp broadcast(state) do
+    Phoenix.PubSub.broadcast(
+      Tazuna.PubSub,
+      topic(state.collection_name),
+      {:news_updated, public(state)}
+    )
+
+    state
+  end
+
+  # 画面へ渡す形。内部で持っているタスクや計測用の時刻は出さない
+  defp public(state) do
+    %{
+      # どの話題のものか。**画面が取り違えないための印** —— 話題を切り替えた直後に
+      # 前の話題の結果が届くことがある
+      name: state.collection_name,
+      status: state.status,
+      collection: state.collection,
+      articles: state.articles,
+      digests: state.digests,
+      checked_at: state.checked_at,
+      reason: state.reason,
+      configured: chiezo_base_url() != nil
+    }
+  end
+
+  # ---- Chiezo とのやり取り ------------------------------------------------
+
+  defp perform(:refresh, base, name), do: read(base, name)
+
+  defp perform({:request, topic}, base, name) do
+    with :ok <- create_collection(base, name, topic) do
+      read(base, name)
+    end
+  end
+
+  defp perform({:setup, topic, choices}, base, name) do
+    case create_collection(base, name, topic) do
+      :ok -> perform({:push, topic, choices}, base, name)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp perform({:push, topic, choices}, base, name) do
+    # **断られても読み直す。** 読み直しは成功するので、結果だけ見ていると
+    # 「押したのに何も変わらない」としか映らない（送れていないことに気づけない）
+    case {Tazuna.Chiezo.patch(base, name, attrs(name, topic, choices)), read(base, name)} do
+      {:ok, read} -> read
+      {{:error, reason}, _read} -> {:error, reason}
+    end
+  end
+
+  defp perform(:run, base, name) do
+    with :ok <- run_collection(base, name) do
+      read(base, name)
+    end
+  end
+
+  # 一覧を先に見るのは、404 の意味を切り分けるため —— 収集そのものが無い Chiezo と、
+  # まだ依頼していないだけの状態は、1件の口だけでは同じ 404 に見える
+  defp read(base, name) do
+    with {:ok, collections} <- list_collections(base) do
+      case Enum.find(collections, &(&1["name"] == name)) do
+        nil -> {:ok, %{collection: nil, articles: []}}
+        found -> detail(base, name, found)
+      end
+    end
+  end
+
+  # 溜まった件数は収集の定義には入っていない。集めたものは長期記憶へ焼かれるので、
+  # 数はソース表の側にある（まだ 1 度も焼いていなければソースごと無い）
+  defp docs_count(base, name) do
+    with {:ok, %{status: 200, body: body}} <- get(base <> "/v1/sources"),
+         {:ok, %{"sources" => sources}} <- Jason.decode(body),
+         %{"docs" => docs} <- Enum.find(sources, &(&1["name"] == name)) do
+      docs
+    else
+      _ -> 0
+    end
+  end
+
+  defp list_collections(base) do
+    case get(base <> "/v1/collect") do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"collections" => collections}} when is_list(collections) -> {:ok, collections}
+          _ -> {:error, :chiezo_unexpected_body}
+        end
+
+      # 収集の口そのものが無い Chiezo（層を足す前の版）
+      {:ok, %{status: 404}} ->
+        {:error, :collect_unsupported}
+
+      # 溜め先が設定されていない Chiezo
+      {:ok, %{status: 503}} ->
+        {:error, :collect_disabled}
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  defp detail(base, name, fallback) do
+    case get(base <> "/v1/collect/" <> name <> "?samples=#{@samples}") do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{} = detail} ->
+            collection =
+              detail
+              |> to_collection()
+              |> Map.put(:docs, docs_count(base, name))
+
+            {:ok,
+             %{
+               collection: collection,
+               articles: to_articles(detail["recent"]),
+               digests: to_digests(detail["recent"])
+             }}
+
+          _ ->
+            {:error, :chiezo_unexpected_body}
+        end
+
+      # 一覧には出ていたのに引けないときは、一覧のぶんだけで出す
+      {:ok, %{status: _status}} ->
+        {:ok, %{collection: to_collection(fallback), articles: []}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  defp create_collection(base, name, topic) do
+    payload = Jason.encode!(attrs(name, topic, %{}))
+
+    case post(base <> "/v1/collect", payload, @request_timeout) do
+      {:ok, %{status: status}} when status in 200..299 -> :ok
+      # 既にあるなら依頼は済んでいる。読み直せば状態が出る
+      {:ok, %{status: 409}} -> :ok
+      {:ok, %{status: 404}} -> {:error, :collect_unsupported}
+      {:ok, %{status: 503}} -> {:error, :collect_disabled}
+      {:ok, %{status: status}} -> {:error, {:chiezo_status, status}}
+      {:error, _reason} -> {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
+  Chiezo へ送る収集の設定ひとそろい。**依頼のときも、送り直すときも同じもの**を送ります
+  —— 別々に組み立てると、片方だけ直る。
+
+  `choices` は画面で選んだ巡回ごとの相手。
+  """
+  def attrs(name, topic, choices \\ %{}) do
+    Map.merge(
+      %{
+        name: name,
+        description: description(topic),
+        prompt: prompt(topic),
+        interval_minutes: @collect_minutes,
+        # **育てる側で置く。** 溜めるだけなら足すほうでよいが、この収集は
+        # 重要度やタグを後から付け直す（それができるのは育てる側だけ）
+        # **流れ。** 時とともに増えるものを追っていて、直近だけが対象 ——
+        # 古いものは順に要らなくなるので、Chiezo に期限で落としてもらう
+        # （落とさないと、この収集は永久に増え続ける）
+        kind: "flow",
+        feed: feed_spec(topic),
+        sweeps: with_choices(sweeps(topic), choices),
+        requested_by: "tazuna"
+      },
+      # 収集ぜんたいの相手。**巡回に書いてなければここへ落ちる**（Chiezo 側の決まり）。
+      # 名指ししないものは送らない —— null を送ると「指定しない」と同じだが、
+      # 依頼の本文に空の項目が並ぶと、何を決めて何を任せたのかが読めない
+      backend_settings() |> Enum.reject(&(elem(&1, 1) == nil)) |> Map.new()
+    )
+  end
+
+  @doc """
+  その話題の巡回。**引き方の違う仕事を、別の時計で回します**。
+
+  1 つの文で全部を頼むと、どの回も同じ薄さの仕事になります —— 集めるのと、
+  漏れを探すのと、読んで重要度を付けるのと、まとめるのは別の仕事です。
+
+  - 見出し / 集める —— 溜める回。配信元があれば機械で引き、無ければ AI に集めさせる
+  - 漏れ探し —— 配信元が拾わなかったものを AI が探す（足すだけ）
+  - 情報更新 —— 前回から入ったものを読んで、重要度と分野のタグを付け直し、
+    宣伝や的外れなものを落とす（**落とす力を持つのはこの回だけ**）
+  - 要約 —— 前回から入ったものを 1 件にまとめて残す（通知と画面で読むもの）
+  - 割り込み —— 時計を持たない 1 本。頼まれたときだけ動く
+  """
+  def sweeps(topic) do
+    [
+      intake(topic),
+      %{
+        name: "漏れ探し",
+        interval_minutes: @missing_minutes,
+        only_new: true,
+        prompt: find_missing_prompt(topic)
+      },
+      %{name: "情報更新", interval_minutes: @refine_minutes, prompt: refine_prompt(topic)},
+      %{
+        name: "要約",
+        interval_minutes: @digest_minutes,
+        # **まとめる回に消す力を持たせない。** 読んで書くだけの回なので、
+        # 触れるのは自分が足す 1 件だけでよい
+        only_new: true,
+        prompt: digest_prompt(topic)
+      },
+      %{name: "割り込み", on_demand: true}
+    ]
+  end
+
+  # 溜める回。**配信元があれば機械で引く** —— 見出し・要約・URL・配信日は機械が
+  # 正確に取れるので、AI の枠は「何が重要か」「どうまとめるか」へ回す。
+  # **足すだけと組にする** —— 組にしないと、情報更新が付けたタグを配信の薄い内容で上書きする
+  defp intake(%{feeds: [_ | _]}),
+    do: %{name: "見出し", interval_minutes: @feed_minutes, use_feed: true, only_new: true}
+
+  defp intake(topic),
+    do: %{
+      name: "集める",
+      interval_minutes: @collect_minutes,
+      only_new: true,
+      prompt: prompt(topic)
+    }
+
+  # 画面で選んだ相手を巡回に載せる。**tazuna は覚えない** —— 正は Chiezo が持っている
+  defp with_choices(sweeps, choices) do
+    for sweep <- sweeps do
+      case Map.get(choices, sweep.name) do
+        nil -> sweep
+        # 空文字は落とさない（「Chiezo の既定にまかせる」という意思表示）
+        picked -> Map.merge(sweep, Map.reject(picked, fn {_k, v} -> is_nil(v) end))
+      end
+    end
+  end
+
+  @doc """
+  機械で引く配信元の指定（無ければ nil）。
+
+  **前回より後、で絞りません。** 絞る基準は収集ぜんたいの前回の実行なので、
+  巡回を分けていると、別の巡回が走った拍子に見出しの回が取りこぼします
+  （重複は Chiezo が見出しで弾くので、毎回まるごと引いてよい）。
+  """
+  def feed_spec(%{feeds: [_ | _] = feeds}), do: %{urls: feeds}
+  def feed_spec(_topic), do: nil
+
+  defp run_collection(base, name) do
+    case post(base <> "/v1/collect/" <> name <> "/run", "", @run_timeout) do
+      {:ok, %{status: status}} when status in 200..299 -> :ok
+      # 止まっている収集は Chiezo が断る。有効にできるのは Chiezo の画面だけ
+      {:ok, %{status: 403}} -> {:error, :collection_disabled}
+      {:ok, %{status: 404}} -> {:error, :not_requested}
+      {:ok, %{status: 503}} -> {:error, :collect_disabled}
+      {:ok, %{status: status}} -> {:error, {:chiezo_status, status}}
+      {:error, _reason} -> {:error, :chiezo_unavailable}
+    end
+  end
+
+  defp get(url) do
+    Http.get(url,
+      headers: [{"user-agent", @user_agent}],
+      timeout: @request_timeout,
+      connect_timeout: @connect_timeout
+    )
+  end
+
+  defp post(url, body, timeout) do
+    Http.post(url, body,
+      headers: [{"user-agent", @user_agent}],
+      content_type: "application/json",
+      timeout: timeout,
+      connect_timeout: @connect_timeout
+    )
+  end
+
+  @doc false
+  # Chiezo の応答から画面に要るものだけ取り出す。
+  # ここだけを取り出してテストできるようにしてある
+  def to_collection(%{} = item) do
+    %{
+      name: item["name"],
+      description: item["description"] || "",
+      enabled: item["enabled"] == true,
+      interval_minutes: item["interval_minutes"],
+      next_run_at: item["next_run_at"],
+      last_run_at: item["last_run_at"],
+      last_status: item["last_status"],
+      last_error: item["last_error"],
+      last_added: item["last_added"] || 0,
+      kind: item["kind"] || "stock",
+      keep_days: item["keep_days"] || 0,
+      # 誰に頼んでいるか。**Chiezo が持っているものが正** —— 依頼した後は
+      # 向こうの画面から変えられるので、tazuna の設定を映しても嘘になりうる
+      backend: item["backend"],
+      model: item["model"],
+      effort: item["effort"],
+      # 巡回。**相手も進み具合も巡回ごとに違う**ので、収集に 1 つだけ持たせると、
+      # そこに出る値はどれか 1 本のものにしかならない
+      sweeps: Tazuna.Chiezo.sweeps_of(item),
+      partitions_total: item["partitions_total"] || 0,
+      # 進み具合（次の実行で {cursor} に入る値）。**画面の状態と並べて出す**
+      cursor: item["cursor"] || "",
+      # Chiezo が実際に持っている本文。**tazuna の雛形とは限らない** ——
+      # 依頼した後は Chiezo の画面から直せるので、いま何を頼んでいるかは向こうが正
+      prompt: item["prompt"] || "",
+      # 件数は定義には入っていない。読めたときに detail が上書きする
+      docs: 0,
+      requested_by: item["requested_by"] || "",
+      url: chiezo_url(item["url"])
+    }
+  end
+
+  def to_collection(_item), do: nil
+
+  @doc false
+  # 溜まっているものを画面の並びにする。新しい順は Chiezo が付けたまま保つ。
+  #
+  # **原文の URL は `extra` の中**（Chiezo が集めた1件の出典）。本文の要約は
+  # `opening`。どちらも無いことがあるので、無ければその欄を出さない
+  def to_articles(recent) when is_list(recent) do
+    recent |> to_entries() |> Enum.reject(&digest?/1)
+  end
+
+  def to_articles(_recent), do: []
+
+  @doc false
+  # まとめ（`@digest_tag` の付いたもの）。**記事と別に返す** ——
+  # 一覧に混ぜると、まとめが記事のふりをして並ぶ
+  def to_digests(recent) when is_list(recent) do
+    recent |> to_entries() |> Enum.filter(&digest?/1)
+  end
+
+  def to_digests(_recent), do: []
+
+  defp digest?(%{tags: tags}), do: @digest_tag in tags
+
+  defp to_entries(recent) do
+    Enum.flat_map(recent, fn
+      %{"title" => title} = item when is_binary(title) ->
+        title = String.trim(title)
+
+        if title == "" do
+          []
+        else
+          tags = tags_of(item)
+          {importance, reason} = importance(title, tags)
+          extra = if is_map(item["extra"]), do: item["extra"], else: %{}
+
+          [
+            %{
+              title: title,
+              tags: tags,
+              url: source_url(extra["url"]),
+              # **絵は Chiezo が持っている URL を指すだけ**（tazuna は画像を持たない）。
+              # 配信元が配っているものだけなので、無いことのほうが多い
+              image: source_url(extra["image"]),
+              summary: trimmed(item["opening"]),
+              # **配信日があればそちら** —— 集めた日だけだと、半年前の記事を
+              # 今日拾ったのか、今日出たものなのかが読めない
+              collected_at: extra["published_at"] || item["updated_at"] || extra["collected_at"],
+              importance: importance,
+              reason: reason
+            }
+          ]
+        end
+
+      _item ->
+        []
+    end)
+  end
+
+  defp tags_of(%{"tags" => tags}) when is_list(tags), do: Enum.map(tags, &to_string/1)
+  defp tags_of(_item), do: []
+
+  # 出典は AI が入れたものなので、そのまま信じてリンクにしない
+  defp source_url(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{scheme: scheme, host: host} when is_binary(host) and host != "" ->
+        if scheme in ["http", "https"], do: url, else: nil
+
+      _ ->
+        nil
+    end
+  end
+
+  defp source_url(_url), do: nil
+
+  defp trimmed(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      text -> text
+    end
+  end
+
+  defp trimmed(_value), do: nil
+
+  @doc """
+  Chiezo へ渡す収集の本文。
+
+  **何を集めるかは話題の「関心」から作ります** —— 話題ごとに本文を丸ごと持たせると、
+  話題を足すたびに同じ形の文をもう一度書くことになります。関心は話題の定義
+  （`Tazuna.Topics.defined/0`）にあります。
+
+  `{cursor}` は実行のたびに進む印で、AI が `next_cursor` で次を返します
+  （前回以降を集めるのに使う）。
+  """
+  def prompt(topic \\ nil) do
+    """
+    {cursor} 以降に日本語で報じられたもののうち、次に当てはまるものを10件集めてください。
+
+    #{interest_of(topic)}
+
+    {feed}
+
+    前回から新しく入ったものは次のとおりです。**同じ出来事には同じ title を使ってください**
+    （見出しが重複の鍵なので、言い回しを変えると同じ話が二重に溜まります）。
+    {recent}
+
+    title はそれを一意に指す短い見出しにします。
+    body には3行程度の要約を書き、記事本文はそのまま写さないでください。
+    url には出典の記事のURLを必ず入れます。
+    tags には次を入れてください。
+    - 種別（#{kinds()} のどれか 1 つ）
+    - 分野を1〜3個
+    next_cursor には、今回集めた中でいちばん新しい記事の日時をISO8601で入れてください。
+    """
+  end
+
+  @doc """
+  漏れを探す回の依頼文。**この回は足すだけ**です。
+
+  機械で引く配信元は決まった相手しか見ないので、そこに載らないものは永遠に入りません。
+  """
+  def find_missing_prompt(topic) do
+    """
+    {cursor} 以降に日本語で報じられたもののうち、**まだ入っていないもの**を
+    web で調べて足してください。この回は足すだけです。
+
+    集めているのは次のようなものです。
+    #{interest_of(topic)}
+
+    {feed}
+
+    前回から新しく入ったものは次のとおりです。
+    {recent}
+
+    決まった配信元だけを見ていると、そこに載らないものは永遠に入りません。
+    **上に並んでいない出どころ**を当たってください。たとえば次のようなところです。
+
+    - 公式の発表・一次情報（リリースノート、公式ブログ、脆弱性の告知）
+    - **企業のテックブログや個人のブログで、いま話題になっているもの**
+    - 海外で話題になっていて、日本語ではまだ広まっていないもの
+    - **話題になっている論文**（機械学習や分散システムなど、作る人の判断が変わるもの）
+
+    **ニュースだけではありません。** 種別（#{kinds()}）のどれでも構いません ——
+    配信元から機械的に入るのは決まった媒体のぶんだけなので、
+    記事も論文もここでしか入りません。
+
+    **もう入っているかどうかは気にしなくて構いません**（既にある見出しは Chiezo が
+    弾きます）。そのぶん、**確信が持てるものだけ**を挙げてください。
+
+    足す 1 件ごとに、次の形にしてください。
+    - title: それを一意に指す短い見出し
+    - body: 3行程度の要約（記事本文はそのまま写さない）
+    - url: 出典の記事の URL（必ず入れる）
+    - tags: 種別（#{kinds()} のどれか 1 つ）と、分野を1〜3個
+    """
+  end
+
+  @doc """
+  読んで印を付け直す回の依頼文。**この回は足しません。読んで、選り分けます**。
+
+  何が重要かは読んでみないと決まりません —— 語の一致で決めると、
+  同じ語を含むだけの1件が上に出ます。
+
+  **落とす力を持つのはこの回だけ**です。溜めるほうを機械にまかせた以上、
+  宣伝記事も的外れなものもそのまま入るので、人が読む前にここで落とします。
+  """
+  def refine_prompt(topic) do
+    """
+    前回から新しく入ったものを読んで、**印を付け直し、要らないものを落としてください**。
+    この回で新しいものを集める必要はありません。
+
+    何を大事とみなすかは次のとおりです。
+    #{interest_of(topic)}
+
+    {recent}
+
+    見出しは配信元から機械的に取り込んでいるので、**関係のないものも混ざります**。
+    次のものは **tags に "#{@tombstone_tag}" だけを入れて返してください**（墓標。
+    その1件は消えた扱いになり、以後どの画面にも出ません）。
+    **そのとき body に、なぜ消すのかを1行で書いてください** —— 消したものは
+    Chiezo の墓場に一覧で残るだけなので、理由が無いと消し間違いに気づけません。
+    - 上の関心とまったく関係のないもの
+    - 中身が宣伝・求人・販促だけのもの
+    - 同じ出来事を指す1件が既にあるもの（**残すほうは1つだけ**。先に入っているほうを残す）
+
+    **迷ったら落とさないでください。** 消したものは Chiezo が覚えていて、
+    次に同じ見出しが流れてきても戻りません。
+
+    残すものは、1 件ごとに次の形で返してください。
+    - title: **そのままにしてください**（見出しが重複の鍵です。変えると別の1件になります）
+    - body: 要約。読みにくければ書き直してよい（記事本文はそのまま写さない）
+    - url: いま入っているものをそのまま
+    - tags:
+      - "#{@importance_tag}:高" / "#{@importance_tag}:中" / "#{@importance_tag}:低" を
+        **必ず 1 つ**（上の関心に照らして、いま読む価値があるかで決める）
+      - 種別（#{kinds()} のどれか 1 つ。いま付いているものが正しければそのまま）
+      - 分野を1〜3個（配信元の名前はそのまま残してください）
+
+    **読んだものだけを返してください。** 上に出ていないものを返す必要はありません。
+    """
+  end
+
+  @doc """
+  まとめる回の依頼文。**通知と画面で読むもの**を1件作ります。
+
+  溜まったものをそのまま並べても読めません —— 何が起きたかを先に言うのが、
+  通知の1行と画面の先頭に要るものです。
+  """
+  def digest_prompt(topic) do
+    """
+    前回のまとめから今回までに入ったものを、**1 件のまとめ**にしてください。
+
+    読む人が知りたいのは次のようなことです。
+    #{interest_of(topic)}
+
+    {recent}
+
+    返すのは **items に 1 件だけ**です。
+
+    - title: "#{@digest_tag}: <その期間を一言で>（{now}）"
+      **{now} はそのまま写してください**（いまの日時に置き換わります）。
+      見出しは重複の鍵なので、**同じ見出しを返すとこの回のまとめが丸ごと捨てられます**
+      —— 日付だけだと、1 日に 2 回まとめたときの 2 回目が入りません
+    - body: **箇条書きではなく、読み物として書いてください。** 形は次のとおりです。
+
+      ```
+      <全体の導入。2 文ほどで、この期間に何が動いたのかを言う>
+
+      <小見出し>
+      <2〜3 文。何が起きたのかと、なぜ押さえるべきかまで書く>
+      出典: <その話の根拠にした記事の URL>
+
+      <小見出し>
+      ...
+      ```
+
+      - 小見出しは **3〜5 個**まで。材料が少なければ少なくて構いません
+      - **似た話はひとつにまとめて構いません**（同じ出来事の別の記事は 1 つに）
+      - 出典の URL は、**上に並んでいる記事のものをそのまま写してください**
+        —— **上に無い URL を作らないでください**（画面はこれをリンクにします）
+      - 上に書かれていないことを補わないでください
+      - **最初の段落だけで意味が通るように**書いてください
+        （通知にはそこしか出ません）
+      - 記号での飾り（`**` や `-` の行頭）は使わないでください
+    - url: いちばん大事な 1 件の出典（無ければ空でよい）
+    - tags: "#{@digest_tag}" を**必ず**付けてください（画面と通知はこれで見分けます）
+
+    まとめるものが無ければ、**1 件も返さないでください**（空のまとめは要りません）。
+    """
+  end
+
+  # 種別の言い方。**配信元の指定と揃える** —— 別々に書くと、機械が付ける種別と
+  # AI が付ける種別が食い違う
+  defp kinds, do: "ニュース / 記事 / 論文"
+
+  # 関心が空のままでも集めさせない文にはしない —— 指定なしで頼むと、
+  # 何を集めればよいか決まらないまま AI が埋めることになる
+  defp interest_of(%{interest: interest}) when is_binary(interest) do
+    case String.trim(interest) do
+      "" -> @default_interest
+      text -> text
+    end
+  end
+
+  defp interest_of(_topic), do: @default_interest
+
+  defp description(%{name: name} = topic) when is_binary(name),
+    do: "tazuna の「#{name}」。#{interest_of(topic)}"
+
+  defp description(_topic), do: "tazuna のニュース。#{@default_interest}"
+
+  @critical_keywords ~w(
+    地震 津波 避難 警報 台風 大雨 災害 感染症 選挙 首相 日銀 金利 戦争
+  )
+
+  @doc false
+  # 重要度の判定。**AI が付けた印が先** —— 語の一致で決めると、同じ語を含むだけの
+  # 1 件が上に出る（読んだうえでの判断には勝てない）。印が無いときだけ語で見る
+  def importance(title, tags \\ []) do
+    case marked_importance(tags) do
+      nil -> from_words(title)
+      marked -> marked
+    end
+  end
+
+  defp marked_importance(tags) do
+    Enum.find_value(tags, fn tag ->
+      case String.split(tag, ":", parts: 2) do
+        [@importance_tag, "高"] -> {2, "AI が、いま読む価値が高いと判断しました"}
+        [@importance_tag, "中"] -> {1, "AI が読んで、ふつうの重さと判断しました"}
+        [@importance_tag, "低"] -> {0, "AI が読んで、急がないと判断しました"}
+        _ -> nil
+      end
+    end)
+  end
+
+  defp from_words(title) do
+    if Enum.any?(@critical_keywords, &String.contains?(title, &1)) do
+      {2, "暮らしや社会への影響が大きい可能性があります"}
+    else
+      {1, "今日の主要な報道として集めました"}
+    end
+  end
+end

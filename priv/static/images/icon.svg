@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="antenna">
-  <!-- 画面のヘッダーに出しているマークと同じ。オレンジの角丸に白い a。
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="tazuna">
+  <!-- 画面のヘッダーに出しているマークと同じ。オレンジの角丸に白い t。
        文字ではなく図形で描いてある —— フォントに依らせると、環境ごとに形が変わる -->
   <rect width="256" height="256" rx="56" fill="#f97316"/>
-  <circle cx="120" cy="128" r="45" fill="none" stroke="#ffffff" stroke-width="30"/>
-  <rect x="165" y="68" width="30" height="120" rx="15" fill="#ffffff"/>
+  <rect x="66" y="82" width="98" height="30" rx="15" fill="#ffffff"/>
+  <rect x="100" y="38" width="30" height="174" rx="15" fill="#ffffff"/>
+  <rect x="118" y="182" width="60" height="30" rx="15" fill="#ffffff"/>
 </svg>

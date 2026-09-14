@@ -1,7 +1,7 @@
 # 本番の形。イメージは GHCR から pull する（手元のソースからは docker-compose.build.yml を重ねる）。
 services:
-  antenna:
-    image: ghcr.io/rtcode337/antenna:latest
+  tazuna:
+    image: ghcr.io/rtcode337/tazuna:latest
     restart: unless-stopped
     depends_on:
       db:
@@ -9,7 +9,7 @@ services:
     environment:
       # 生成: mix phx.gen.secret（64バイト以上。短いと起動時に断る）
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:?SECRET_KEY_BASE を .env に書いてください}
-      DATABASE_URL: ecto://${POSTGRES_USER:-antenna}:${POSTGRES_PASSWORD:-antenna}@db:5432/${POSTGRES_DB:-antenna}
+      DATABASE_URL: ecto://${POSTGRES_USER:-tazuna}:${POSTGRES_PASSWORD:-tazuna}@db:5432/${POSTGRES_DB:-tazuna}
       # 手元以外から開くなら、その宛先を .env に書く（既定のままだと、
       # リンクの組み立てが localhost を指す）
       PHX_HOST: ${PHX_HOST:-localhost}
@@ -28,11 +28,11 @@ services:
     image: postgres:18-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-antenna}
+      POSTGRES_USER: ${POSTGRES_USER:-tazuna}
       # .env で変えるなら初回起動の前に（data/postgres を作るときにしか効かず、
       # 後から変えても DB 側は変わらないまま接続文字列だけがずれる）
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-antenna}
-      POSTGRES_DB: ${POSTGRES_DB:-antenna}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tazuna}
+      POSTGRES_DB: ${POSTGRES_DB:-tazuna}
       TZ: ${TZ:-Asia/Tokyo}
       # **バインドするのは data/ 1本**なので、PGDATA を data/ の下へ移す。
       # postgres:18 は /var/lib/postgresql/data を直に使わせない（pg_upgrade の
@@ -50,7 +50,7 @@ services:
       - /var/lib/postgresql
     healthcheck:
       # 立ち上がる前にアプリが繋ぎに行くと、移行が失敗して起動ごと落ちる
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-antenna} -d ${POSTGRES_DB:-antenna}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tazuna} -d ${POSTGRES_DB:-tazuna}"]
       interval: 5s
       timeout: 5s
       retries: 20

@@ -7,19 +7,19 @@
 # General application configuration
 import Config
 
-config :antenna,
-  ecto_repos: [Antenna.Repo],
+config :tazuna,
+  ecto_repos: [Tazuna.Repo],
   generators: [timestamp_type: :utc_datetime]
 
 # Configure the endpoint
-config :antenna, AntennaWeb.Endpoint,
+config :tazuna, TazunaWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
-    formats: [html: AntennaWeb.ErrorHTML, json: AntennaWeb.ErrorJSON],
+    formats: [html: TazunaWeb.ErrorHTML, json: TazunaWeb.ErrorJSON],
     layout: false
   ],
-  pubsub_server: Antenna.PubSub,
+  pubsub_server: Tazuna.PubSub,
   live_view: [signing_salt: "WR5N6hZj"]
 
 # Configure LiveView
@@ -30,7 +30,7 @@ config :phoenix_live_view,
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.25.4",
-  antenna: [
+  tazuna: [
     args:
       ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
     cd: Path.expand("../assets", __DIR__),
@@ -40,7 +40,7 @@ config :esbuild,
 # Configure tailwind (the version is required)
 config :tailwind,
   version: "4.3.0",
-  antenna: [
+  tazuna: [
     args: ~w(
       --input=assets/css/app.css
       --output=priv/static/assets/css/app.css

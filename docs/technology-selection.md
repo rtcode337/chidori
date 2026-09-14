@@ -1,4 +1,4 @@
-# antenna 技術選定
+# tazuna 技術選定
 
 ## 採用構成
 
@@ -15,9 +15,9 @@
 
 ## 選定理由
 
-antenna の中核は、複数情報源の定期取得、AI 処理、通知再試行である。これらは API 要求とは切り離された、失敗を前提とする並行処理である。
+tazuna の中核は、複数情報源の定期取得、AI 処理、通知再試行である。これらは API 要求とは切り離された、失敗を前提とする並行処理である。
 
-Elixir は Erlang VM の耐障害性と並行処理を利用できるため、収集先や AI プロバイダごとに処理を分離しやすい。Phoenix LiveView を使うことで、フィードの既読状態やアンテナ設定の更新を、別途大規模な SPA を構築せずに実装できる。Oban は PostgreSQL にジョブを永続化するため、収集・要約・通知を同じデータベースを基盤として監視・再試行できる。
+Elixir は Erlang VM の耐障害性と並行処理を利用できるため、収集先や AI プロバイダごとに処理を分離しやすい。Phoenix LiveView を使うことで、フィードの既読状態や関心テーマ設定の更新を、別途大規模な SPA を構築せずに実装できる。Oban は PostgreSQL にジョブを永続化するため、収集・要約・通知を同じデータベースを基盤として監視・再試行できる。
 
 既存の C#、Go、Rust、Python、TypeScript、Vue、Kotlin を使ったリポジトリとは異なる、Elixir と HEEx を GitHub の言語統計へ表せる構成とする。
 
@@ -31,7 +31,7 @@ Elixir は Erlang VM の耐障害性と並行処理を利用できるため、�
 
 - 単一の Phoenix アプリケーションから開始する。マイクロサービス分割は、明確なスケール要件または独立したデプロイ要件が生じるまで行わない。
 - LiveView を基本 UI とし、外部クライアント連携が必要な箇所だけ JSON API を追加する。
-- `Accounts`、`Antennas`、`Content`、`Notifications`、`Ingestion` の境界で Phoenix Context を分ける。
+- `Accounts`、`Interests`、`Content`、`Notifications`、`Ingestion` の境界で Phoenix Context を分ける。
 - 外部 API・RSS の取得、AI 要約、通知配信はすべて Oban Worker とする。各 Worker は冪等にし、タイムアウト、指数バックオフ、ジョブごとの再試行回数を設定する。
 - PostgreSQL はアプリケーションと Oban が共有する唯一のトランザクションデータストアとする。検索専用ストアは、検索負荷が実測で問題になるまで追加しない。
 - 本番は Docker のマルチステージビルドで release を作成し、非 root ユーザーとして実行する。設定値と秘密情報は環境変数で注入する。

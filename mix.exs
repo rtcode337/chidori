@@ -1,9 +1,9 @@
-defmodule Antenna.MixProject do
+defmodule Tazuna.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :antenna,
+      app: :tazuna,
       version: "0.1.0",
       elixir: "~> 1.20",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -20,7 +20,7 @@ defmodule Antenna.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {Antenna.Application, []},
+      mod: {Tazuna.Application, []},
       # :inets と :ssl は外部への HTTP に使う。ここへ書かないとリリースへ入らず、
       # 開発サーバーでは動くのにコンテナでは :httpc が見つからずに落ちる。
       extra_applications: [:logger, :runtime_tools, :inets, :ssl]
@@ -76,10 +76,10 @@ defmodule Antenna.MixProject do
       # 単体では通るのに並べると落ちる、という追いにくい壊れ方をする
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
-      "assets.build": ["compile", "tailwind antenna", "esbuild antenna"],
+      "assets.build": ["compile", "tailwind tazuna", "esbuild tazuna"],
       "assets.deploy": [
-        "tailwind antenna --minify",
-        "esbuild antenna --minify",
+        "tailwind tazuna --minify",
+        "esbuild tazuna --minify",
         "phx.digest"
       ],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]

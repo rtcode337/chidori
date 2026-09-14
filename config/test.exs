@@ -4,16 +4,16 @@ import Config
 # そのテストが終わると消える(前のテストの行を引きずると、単体では通るのに
 # 並べると落ちる、という追いにくい壊れ方をする)。
 # `MIX_TEST_PARTITION` は複数プロセスで回すときに DB を分けるためのもの
-config :antenna, Antenna.Repo,
+config :tazuna, Tazuna.Repo,
   url:
     System.get_env("DATABASE_URL") ||
-      "ecto://antenna:antenna@localhost:7071/antenna_test#{System.get_env("MIX_TEST_PARTITION")}",
+      "ecto://tazuna:tazuna@localhost:7071/tazuna_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
-config :antenna, AntennaWeb.Endpoint,
+config :tazuna, TazunaWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   # 生成された実値ではなく、**明らかに偽物と分かるもの**を置く（長さだけ満たす）。
   # 本番は `SECRET_KEY_BASE` から取るので、ここが漏れて困ることは無いが、
@@ -23,7 +23,7 @@ config :antenna, AntennaWeb.Endpoint,
 
 # 外部への取得はスタブへ差し替える。テストが実際に相手を叩くと、
 # 相手の都合で落ちるうえに相手への負担にもなる
-config :antenna, :http_client, Antenna.HttpStub
+config :tazuna, :http_client, Tazuna.HttpStub
 
 # Print only warnings and errors during test
 config :logger, level: :warning

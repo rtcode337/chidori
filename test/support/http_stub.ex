@@ -1,4 +1,4 @@
-defmodule Antenna.HttpStub do
+defmodule Tazuna.HttpStub do
   @moduledoc """
   テスト用の HTTP。応答はテストが差し込みます。
 
@@ -6,17 +6,17 @@ defmodule Antenna.HttpStub do
   「たまたま通った」で済ませないため。
   """
 
-  @behaviour Antenna.Http
+  @behaviour Tazuna.Http
 
   @key :http_stub_responder
 
   @doc """
   応答を決める関数を差し込みます。`%{method:, url:, body:, opts:}` を受け取り、
-  `Antenna.Http` の戻り値を返してください。
+  `Tazuna.Http` の戻り値を返してください。
   """
   def stub(fun) when is_function(fun, 1) do
-    Application.put_env(:antenna, @key, fun)
-    ExUnit.Callbacks.on_exit(fn -> Application.delete_env(:antenna, @key) end)
+    Application.put_env(:tazuna, @key, fun)
+    ExUnit.Callbacks.on_exit(fn -> Application.delete_env(:tazuna, @key) end)
     :ok
   end
 
@@ -30,7 +30,7 @@ defmodule Antenna.HttpStub do
   def patch(url, body, opts), do: respond(%{method: :patch, url: url, body: body, opts: opts})
 
   defp respond(request) do
-    case Application.get_env(:antenna, @key) do
+    case Application.get_env(:tazuna, @key) do
       nil -> {:error, :no_stub_configured}
       fun -> fun.(request)
     end

@@ -6,9 +6,9 @@ services:
   db:
     image: postgres:18-alpine
     environment:
-      POSTGRES_USER: antenna
-      POSTGRES_PASSWORD: antenna
-      POSTGRES_DB: antenna_dev
+      POSTGRES_USER: tazuna
+      POSTGRES_PASSWORD: tazuna
+      POSTGRES_DB: tazuna_dev
       TZ: Asia/Tokyo
       PGDATA: /data/postgres/18/docker
     ports:

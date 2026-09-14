@@ -1,6 +1,6 @@
-defmodule Antenna.Repo.Migrations.CreateTopics do
+defmodule Tazuna.Repo.Migrations.CreateTopics do
   @moduledoc """
-  話題(アンテナ)ごとの設定。
+  話題(関心テーマ)ごとの設定。
 
   いまは「ニュース」1 つだが、他の話題を順次足していく前提なので最初から表にする
   —— 1 つぶんを設定ファイルや環境変数で持つと、2 つ目を足すときに置き場ごと作り直す

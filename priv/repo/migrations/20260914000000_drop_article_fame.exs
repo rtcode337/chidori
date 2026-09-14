@@ -1,11 +1,11 @@
-defmodule Antenna.Repo.Migrations.DropArticleFame do
+defmodule Tazuna.Repo.Migrations.DropArticleFame do
   @moduledoc """
   知名度の控えを落とす。
 
   この表が持っていたのは jawiki の月次ページビューの写しで、図を出すたびに
   画家 1 人ずつ Chiezo へ引きに行くのを避けるための控えだった。
   その値は収集の側が文書に載せるようになった(`extra.pageviews_month`)ので、
-  antenna は収集を読むだけで図を描ける —— 控える対象そのものが無くなった。
+  tazuna は収集を読むだけで図を描ける —— 控える対象そのものが無くなった。
   """
 
   use Ecto.Migration

@@ -1,10 +1,10 @@
 @import "tailwindcss" source(none);
-@import "phoenix-colocated/antenna/colocated.css";
+@import "phoenix-colocated/tazuna/colocated.css";
 
 @source "../css";
 @source "../js";
-@source "../../lib/antenna_web";
-@source "../../_build/*/phoenix-colocated/antenna/*/";
+@source "../../lib/tazuna_web";
+@source "../../_build/*/phoenix-colocated/tazuna/*/";
 
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
@@ -12,7 +12,7 @@
 
 [data-phx-session], [data-phx-teleported-src] { display: contents; }
 
-/* ここから下は antenna の画面のスタイル。Tailwind の入力に置いてあるので
+/* ここから下は tazuna の画面のスタイル。Tailwind の入力に置いてあるので
    `mix assets.build` の出力1本にまとまる。手元にだけあるファイルを配ると、
    クリーンなチェックアウトから作ったイメージが無装飾になる */
 
@@ -368,7 +368,7 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .digest-source { margin: -.3rem 0 1rem; font-size: .82rem; }
 .digest-source a { color: #4338a8; }
 
-/* 見に行った記録(展覧会で実物を見た、など)。antenna にだけ残る */
+/* 見に行った記録(展覧会で実物を見た、など)。tazuna にだけ残る */
 .seen-mark { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: 0.8rem; }
 .seen-mark summary { cursor: pointer; font-weight: 700; font-size: 0.9rem; }
 .seen-mark textarea { width: 100%; font: inherit; }

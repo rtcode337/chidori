@@ -2,8 +2,8 @@ import Config
 
 # 開発の接続先。**ホストで直接動かすことを前提にしない** —— compose で立てた
 # PostgreSQL を指す。ホストで動かすなら DATABASE_URL か、この値を上書きする
-config :antenna, Antenna.Repo,
-  url: System.get_env("DATABASE_URL") || "ecto://antenna:antenna@localhost:7071/antenna_dev",
+config :tazuna, Tazuna.Repo,
+  url: System.get_env("DATABASE_URL") || "ecto://tazuna:tazuna@localhost:7071/tazuna_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
@@ -14,7 +14,7 @@ config :antenna, Antenna.Repo,
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
-config :antenna, AntennaWeb.Endpoint,
+config :tazuna, TazunaWeb.Endpoint,
   # Bind to 0.0.0.0 to expose the server to the docker host machine.
   # This makes make the service accessible from any network interface.
   # Change to `ip: {127, 0, 0, 1}` to allow access only from the server machine.
@@ -49,7 +49,7 @@ config :antenna, AntennaWeb.Endpoint,
 # different ports.
 
 # Enable dev routes for dashboard and mailbox
-config :antenna, dev_routes: true
+config :tazuna, dev_routes: true
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"

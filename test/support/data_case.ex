@@ -1,4 +1,4 @@
-defmodule Antenna.DataCase do
+defmodule Tazuna.DataCase do
   @moduledoc """
   DB を触るテストの土台。
 
@@ -11,11 +11,11 @@ defmodule Antenna.DataCase do
 
   using do
     quote do
-      import Antenna.DataCase
+      import Tazuna.DataCase
       import Ecto.Changeset
       import Ecto.Query
 
-      alias Antenna.Repo
+      alias Tazuna.Repo
     end
   end
 
@@ -25,7 +25,7 @@ defmodule Antenna.DataCase do
   end
 
   def setup_sandbox(tags) do
-    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Antenna.Repo, shared: not tags[:async])
+    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Tazuna.Repo, shared: not tags[:async])
     on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
   end
 
