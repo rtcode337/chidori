@@ -28,11 +28,11 @@
     </section>
 
     <nav class="relation-tabs" aria-label="関連図の種類">
-      <.link patch={~p"/relations?view=people"} class={if @view == "people", do: "selected"}>
-        人物のつながり
-      </.link>
       <.link patch={~p"/relations?view=painters"} class={if @view == "painters", do: "selected"}>
         画家の影響と時代
+      </.link>
+      <.link patch={~p"/relations?view=people"} class={if @view == "people", do: "selected"}>
+        人物のつながり
       </.link>
     </nav>
 

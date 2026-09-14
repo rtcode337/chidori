@@ -13,10 +13,11 @@ defmodule TazunaWeb.NewsLiveTest do
     :ok
   end
 
-  test "ニュースのページを表示する", %{conn: conn} do
+  test "最新情報のページを表示する", %{conn: conn} do
+    # 最初に開くのは定義の先頭の話題（いまは技術ニュース）
     {:ok, _live, html} = live(conn, ~p"/news")
 
-    assert html =~ "今日、押さえておきたいニュース"
+    assert html =~ "今日、押さえておきたい技術ニュース"
     # 集めるのは Chiezo だと画面から読めること
     assert html =~ "集めるのは Chiezo です"
   end
@@ -107,7 +108,9 @@ defmodule TazunaWeb.NewsLiveTest do
     # 待たずに見ると、まだ読めていない画面を見ていることになる
     defp shown(conn) do
       Tazuna.News.subscribe("tazuna_news")
-      {:ok, live, _html} = live(conn, ~p"/news")
+      # **話題は名指しで開く。** 既定の話題に寄りかかると、タブの並びを変えただけで
+      # 落ちる —— ここで見たいのは収集の枠であって、どれが先頭かではない
+      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news")
       assert_receive {:news_updated, %{status: :ready}}, 2_000
       render(live)
     end
@@ -256,7 +259,7 @@ defmodule TazunaWeb.NewsLiveTest do
       # 消した話題のリンクを踏んだだけで、空白の画面を出す理由が無い
       {:ok, _live, html} = live(conn, ~p"/news?view=nosuch")
 
-      assert html =~ "今日、押さえておきたいニュース"
+      assert html =~ "今日、押さえておきたい技術ニュース"
     end
   end
 end

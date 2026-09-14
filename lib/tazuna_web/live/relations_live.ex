@@ -78,7 +78,9 @@ defmodule TazunaWeb.RelationsLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    view = Relations.valid_key(params["view"] || "people")
+    # **どれを最初に開くかは 1 か所で決める**（`Relations.valid_key/1`）——
+    # ここにも既定を書くと、片方だけ直したときに URL の有無で別の図が出る
+    view = Relations.valid_key(params["view"])
 
     # 種類を切り替えたら購読も付け替える。付け替えないと、見ていない側の
     # 収集結果でこの画面が書き換わる

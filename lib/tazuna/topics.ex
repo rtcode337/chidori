@@ -26,14 +26,6 @@ defmodule Tazuna.Topics do
   def defined do
     [
       %{
-        name: "ニュース",
-        collection: Tazuna.News.collection_name(),
-        interest: "暮らし・社会・経済への影響が大きいこと",
-        # 一般の報道は、機械で引ける配信元が話題の広さに追いつかない。
-        # ここは AI に集めさせる（外の道具を付けるなら、下と同じ形で書ける）
-        feeds: []
-      },
-      %{
         name: "技術ニュース",
         collection: "tazuna_tech",
         interest:
@@ -53,6 +45,14 @@ defmodule Tazuna.Topics do
           %{url: "https://qiita.com/popular-items/feed", tags: ["記事"]},
           %{url: "https://b.hatena.ne.jp/hotentry/it.rss", tags: ["記事"]}
         ]
+      },
+      %{
+        name: "ニュース",
+        collection: Tazuna.News.collection_name(),
+        interest: "暮らし・社会・経済への影響が大きいこと",
+        # 一般の報道は、機械で引ける配信元が話題の広さに追いつかない。
+        # ここは AI に集めさせる（外の道具を付けるなら、上と同じ形で書ける）
+        feeds: []
       }
     ]
   end

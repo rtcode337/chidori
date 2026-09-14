@@ -5,8 +5,16 @@ defmodule TazunaWeb.RelationsLiveTest do
 
   alias TazunaWeb.RelationsLive
 
-  test "人物の関連図を表示する", %{conn: conn} do
+  test "最初に開くのは画家の図", %{conn: conn} do
+    # Chiezo に溜めて育てているのはこちら。人物の図はまだその場で AI に聞く形なので、
+    # 先に見せるものではない
     {:ok, _live, html} = live(conn, ~p"/relations")
+
+    assert html =~ "画家の影響と時代"
+  end
+
+  test "人物の関連図を表示する", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/relations?view=people")
 
     assert html =~ "人物のつながり"
     # **表示例の図は描かない。** 本物と見分けが付かないので、読み込みが終わるまで
@@ -16,7 +24,7 @@ defmodule TazunaWeb.RelationsLiveTest do
   end
 
   test "画家の関連図へ切り替えられる", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/relations")
+    {:ok, live, _html} = live(conn, ~p"/relations?view=people")
 
     html = live |> element(~s|a[href="/relations?view=painters"]|) |> render_click()
 
@@ -27,10 +35,10 @@ defmodule TazunaWeb.RelationsLiveTest do
     assert html =~ "様式の色" or html =~ "この図の見方"
   end
 
-  test "知らない種類は人物の図に丸める", %{conn: conn} do
+  test "知らない種類は画家の図に丸める", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/relations?view=%2E%2E%2F")
 
-    assert html =~ "人物のつながり"
+    assert html =~ "画家の影響と時代"
   end
 
   test "開くたびに Chiezo へ聞きに行かない", %{conn: conn} do

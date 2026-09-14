@@ -353,9 +353,12 @@ defmodule Tazuna.Relations do
 
   @doc """
   設定に関係なく確かめられるよう、鍵の丸めは公開しておく。
+
+  **知らない鍵は画家に倒します**（最初に開く図でもあります）—— Chiezo に溜めて
+  育てているのはこちらで、人物の図はまだその場で AI に聞く形のためです。
   """
   def valid_key(key) when key in ["people", "painters"], do: key
-  def valid_key(_key), do: "people"
+  def valid_key(_key), do: "painters"
 
   @impl true
   def init(:ok) do
