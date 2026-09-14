@@ -127,10 +127,21 @@ defmodule Tazuna.Datasets.MealsTest do
       assert south < 24.0 and north > 45.0
     end
 
-    test "1 区画は、1 回に差し込める件数に収まる" do
+    test "1 区画は、1 回に差し込めるぶんに収まる" do
       # 超えると差し込みが切られ、「この範囲の全部が並んでいる」という
-      # 漏れ探しの前提が崩れる
-      assert Meals.partition().target <= 300
+      # 漏れ探しの前提が崩れる。**枠は 2 つあり、厳しいほうが効く**（Chiezo の
+      # MAX_MATERIAL_DOCS と MAX_MATERIAL_CHARS）
+      target = Meals.partition().target
+
+      assert target <= 300
+
+      # **育ったあとの姿で見る。** 機械で引いた直後は 1 行 83 文字だが、AI が説明を
+      # 書いたあとは 249 文字になる（本文 200 文字 + タグ 5 つ）——
+      # 「件数に収まっているから大丈夫」は、育つ前の姿しか見ていない
+      assert target * 249 <= 80_000
+
+      # 区画は割り直される前に少しあふれるので、件数の上限には寄せきらない
+      assert target < 300
     end
   end
 
@@ -171,7 +182,7 @@ defmodule Tazuna.Datasets.MealsTest do
       # Chiezo は 1 回に見る区画を 20 までに抑える（区画ごとに AI を 1 回、直列に
       # 呼ぶため）。**届かない日数を書くと、その日数では回りきらないのに画面には
       # 書いた日数が出る**
-      partitions = 2_600
+      partitions = 2_080
       per_run_cap = 20
 
       for sweep <- sweeps, days = Map.get(sweep, :cover_days), days do
