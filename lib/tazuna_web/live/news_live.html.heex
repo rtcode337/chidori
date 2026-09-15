@@ -46,6 +46,8 @@
            リンクにするので、見出しに差し替えると行き先が読めなくなる） --%>
       <%= for block <- digest_blocks(digest.summary, @news.articles) do %>
         <%= case block do %>
+          <% {:heading, line} -> %>
+            <h3>{line}</h3>
           <% {:text, line} -> %>
             <p>{line}</p>
           <% {:link, url, label} -> %>

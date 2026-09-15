@@ -95,7 +95,9 @@ defmodule TazunaWeb.NewsLiveTest do
             |> Map.put("recent", [
               %{
                 "title" => "まとめ: 今日の動き（2026-09-13）",
-                "opening" => "この期間は基盤の入れ替えが続きました。\n出典: https://example.com/1",
+                "opening" =>
+                  "この期間は基盤の入れ替えが続きました。\n\nReact の新版\n" <>
+                    "新しい版が出ました。\n出典: https://example.com/1",
                 "tags" => ["まとめ"]
               },
               %{
@@ -134,7 +136,7 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ ~s(name="sweep|要約|backend")
 
       # 定時の巡回とは別に頼める口。**どの回として走るかを押す前に読める** ——
-      # 落とす力と印を付け直す力を持つのは情報更新の回だけなので、
+      # 落とす力と印を付け直す力を持つのは整理の回だけなので、
       # そこへ乗ることが分からないと「落として」を頼めるのかが読めない
       assert html =~ "いま頼む（割り込み）"
       assert html =~ "走るのは「情報更新」の設定です"
@@ -164,7 +166,9 @@ defmodule TazunaWeb.NewsLiveTest do
     end
 
     test "まとめの出典は、記事の見出しでリンクになる" do
-      # 裸の URL のままだと、押す前にどこへ行くのか読めない
+      # 裸の URL のままだと、押す前にどこへ行くのか読めない。
+      # **小見出しは本文と分ける** —— 同じ段落にすると短い塊が並ぶだけになり、
+      # 読み物ではなく箇条書きに見える（実際にそう見えた）
       articles = [%{url: "https://example.com/1", title: "React 19.3 が出た"}]
 
       body = """
@@ -177,9 +181,16 @@ defmodule TazunaWeb.NewsLiveTest do
 
       assert TazunaWeb.NewsLive.digest_blocks(body, articles) == [
                {:text, "この期間は基盤の入れ替えが続きました。"},
-               {:text, "React の新版"},
+               {:heading, "React の新版"},
                {:text, "新しい版が出ました。移行の要点はここです。"},
                {:link, "https://example.com/1", "React 19.3 が出た"}
+             ]
+    end
+
+    test "1 行だけの塊は、小見出しにしない" do
+      # 導入は 1 行だけの塊。見出しにすると、書き出しが見出しとして出る
+      assert TazunaWeb.NewsLive.digest_blocks("この期間の動きです。", []) == [
+               {:text, "この期間の動きです。"}
              ]
     end
 
@@ -231,6 +242,8 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "digest-source"
       assert html =~ ~s|href="https://example.com/1"|
       assert html =~ "React 19.3 が出た"
+      # 小見出しは見出しとして出る（本文と同じ段落にしない）
+      assert html =~ "<h3>"
       # 本文の段落はそのまま出る（整形済みの塊で投げ出さない）
       assert html =~ "この期間は基盤の入れ替えが続きました。"
       refute html =~ "<pre>この期間は"
@@ -265,7 +278,7 @@ defmodule TazunaWeb.NewsLiveTest do
       }
 
     test "重要度の高い順に並べる" do
-      # 重要度を付けるのは情報更新の巡回で、読んだうえでの判断。新しい順のまま
+      # 重要度を付けるのは整理の巡回で、読んだうえでの判断。新しい順のまま
       # 出すと、その判断が一覧に現れない
       news = %{
         articles: [article("急がない", 0), article("注目", 1), article("優先", 2)]

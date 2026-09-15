@@ -180,7 +180,7 @@ defmodule TazunaWeb.NewsLive do
   重要度の高い順に並べる。**同じ重さのものは新しい順のまま**（並べ替えは安定なので、
   Chiezo が返した並びがそのまま残る）。
 
-  重要度を付けるのは情報更新の巡回で、読んだうえでの判断です。ここで並べ替えずに
+  重要度を付けるのは整理の巡回で、読んだうえでの判断です。ここで並べ替えずに
   出すと、その判断が画面に現れません —— 新しい順に並ぶだけなら、印を付けた意味が
   一覧から消えます。
 
@@ -297,7 +297,15 @@ defmodule TazunaWeb.NewsLive do
   end
 
   @doc """
-  まとめの本文を、段落と出典に読み分けます。
+  まとめの本文を、小見出し・段落・出典に読み分けます。
+
+  **小見出しを本文と同じ見た目で出さない。** 依頼文は「小見出し + 2〜3 文 + 出典」を
+  いくつか並べる形で頼んでいるので、全部を同じ段落にすると**短い塊が並ぶだけ**になり、
+  読み物ではなく箇条書きに見えます（実際にそう見えた）。
+
+  **見分けは空行で付けます。** 空行で区切られた塊のうち**2 行以上あるものの 1 行目**が
+  小見出しです —— 導入は 1 行だけの塊なので見出しになりません。`**` のような印を
+  AI に付けさせないのは、通知では記号がそのまま出るためです（同じ本文を両方で使います）。
 
   **出典の URL は、溜まっている記事に突き合わせて見出しでリンクにします** ——
   裸の URL のままだと、押す前にどこへ行くのか読めません。突き合わない URL は
@@ -307,18 +315,31 @@ defmodule TazunaWeb.NewsLive do
     known = Map.new(articles, &{&1.url, &1.title})
 
     body
-    |> String.split("\n")
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.map(fn line ->
-      case source_url_in(line) do
-        nil -> {:text, line}
-        url -> {:link, url, known[url] || url}
-      end
+    |> String.split(~r/\n\s*\n/)
+    |> Enum.flat_map(fn chunk ->
+      chunk
+      |> String.split("\n")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> to_blocks(known)
     end)
   end
 
   def digest_blocks(_body, _articles), do: []
+
+  # 2 行以上ある塊の 1 行目は小見出し。1 行だけの塊（導入）はそのまま本文
+  defp to_blocks([], _known), do: []
+  defp to_blocks([only], known), do: [line_block(only, known)]
+
+  defp to_blocks([head | rest], known),
+    do: [{:heading, head} | Enum.map(rest, &line_block(&1, known))]
+
+  defp line_block(line, known) do
+    case source_url_in(line) do
+      nil -> {:text, line}
+      url -> {:link, url, known[url] || url}
+    end
+  end
 
   # 「出典: <URL>」の行と、URL だけの行を拾う
   defp source_url_in(line) do
@@ -368,7 +389,7 @@ defmodule TazunaWeb.NewsLive do
   """
   def sweep_note(%{feeds: [_ | _] = feeds}) do
     "見出しは #{length(feeds)} 本の配信元から機械的に取り込みます（AI は呼びません）。" <>
-      "漏れ探し・情報更新・要約だけが AI の仕事です。"
+      "漏れ探し・整理・要約だけが AI の仕事です。"
   end
 
   def sweep_note(_topic),
