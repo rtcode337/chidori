@@ -17,6 +17,7 @@ defmodule TazunaWeb.RelationsLiveTest do
     {:ok, _live, html} = live(conn, ~p"/relations?view=people")
 
     assert html =~ "人物のつながり"
+
     # **表示例の図は描かない。** 本物と見分けが付かないので、読み込みが終わるまで
     # 手書きの関連図が出て「これは何」になる（実際にそう言われた）
     assert html =~ "まだ読み込んでいません"
@@ -29,6 +30,7 @@ defmodule TazunaWeb.RelationsLiveTest do
     html = live |> element(~s|a[href="/relations?view=painters"]|) |> render_click()
 
     assert html =~ "画家の影響と時代"
+
     # **誰が出るかは Chiezo 次第**なので、名前では見ない（前のテストが読み込んだ図が
     # 残っていると落ちる）。切り替わったことは、見出しと図の器で分かる
     assert html =~ "relation-canvas"
@@ -112,6 +114,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
 
       assert_receive {:asked, worker}, 2_000
+
       # 読み直しの最中でも、ボタンは押せるまま（ボタンそのものを見る —— ページ全体で
       # 探すと、関係ない要素の disabled まで拾う）
       button = live |> element("form[phx-submit=collect] button") |> render()
@@ -595,9 +598,14 @@ defmodule TazunaWeb.RelationsLiveTest do
 
         %{url: url} ->
           cond do
-            String.contains?(url, "/v1/collect/") -> Tazuna.HttpStub.ok(elem(painters_collection_json(), 1))
-            String.contains?(url, "/v1/collect") -> Tazuna.HttpStub.ok(elem(painters_collection_json(), 0))
-            true -> Tazuna.HttpStub.ok(~s({"results":[],"total":0}))
+            String.contains?(url, "/v1/collect/") ->
+              Tazuna.HttpStub.ok(elem(painters_collection_json(), 1))
+
+            String.contains?(url, "/v1/collect") ->
+              Tazuna.HttpStub.ok(elem(painters_collection_json(), 0))
+
+            true ->
+              Tazuna.HttpStub.ok(~s({"results":[],"total":0}))
           end
       end)
 
@@ -959,6 +967,30 @@ defmodule TazunaWeb.RelationsLiveTest do
       assert RelationsLive.mark_summary(%Mark{seen: true}) == "見た"
       assert RelationsLive.mark_summary(%Mark{note: "行きたい"}) == "メモあり"
       assert RelationsLive.mark_summary(%Mark{}) == nil
+    end
+  end
+
+  describe "取り直している最中" do
+    alias TazunaWeb.RelationsLive
+
+    test "ほかの操作を受け付けない" do
+      # 届いた図はいま見ているものを丸ごと入れ替えるので、途中で押されたことは
+      # 黙って上書きされる —— 押せたのに効かない、という形になる
+      assert RelationsLive.busy?(%{step: %{"painters" => "読んでいます"}})
+    end
+
+    test "読み終えていれば、ふつうに操作できる" do
+      refute RelationsLive.busy?(%{step: %{}})
+      refute RelationsLive.busy?(%{step: nil})
+      refute RelationsLive.busy?(%{})
+    end
+
+    test "覆いだけでなく、操作そのものを止める", %{conn: conn} do
+      # 見た目だけ止めても、タブ送りでは押せてしまう
+      {:ok, _live, html} = live(conn, ~p"/relations")
+
+      refute html =~ "is-busy"
+      refute html =~ "inert"
     end
   end
 end

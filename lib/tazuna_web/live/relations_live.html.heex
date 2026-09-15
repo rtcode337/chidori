@@ -1,6 +1,10 @@
 <Layouts.flash_group flash={@flash} />
 
-<main class="relations-page">
+<%!-- **取り直している最中は、ほかの操作を受け付けない。** 届いた図はいま見ている
+     ものを丸ごと入れ替えるので、途中で押されたことは黙って上書きされる ——
+     押せたのに効かない、という形になる。`inert` で操作ごと止め、覆いで
+     押せないことを見せる（見た目だけ止めても、タブ送りでは押せてしまう） --%>
+<main class={["relations-page", busy?(@relation) && "is-busy"]} inert={busy?(@relation) || nil}>
   <div>
     <header>
       <a href={~p"/"} class="brand" aria-label="tazuna トップページ"><span>t</span>tazuna</a>

@@ -90,6 +90,7 @@ defmodule TazunaWeb.RelationsLive do
       end
 
       Relations.subscribe(view)
+
       # **開くたびには取り直さない。** 8,000 人ぶんを読むので数秒かかるうえ、
       # Chiezo の側は数時間に 1 度しか動かない —— 開いた回数だけ待たされる意味が無い。
       # まだ 1 度も読めていないときだけ取りに行き、あとは「最新の情報を取得」で
@@ -210,6 +211,7 @@ defmodule TazunaWeb.RelationsLive do
   def handle_event("filter_style", %{"style" => style}, socket) do
     style = String.trim(style)
     next = if style == "" or socket.assigns.style_filter == style, do: nil, else: style
+
     # 絞り込みを変えたら見ている場所も倍率も意味を失うので、図を初めから見せ直す
     {:noreply, assign(socket, style_filter: next, changed_only: false, viewport: nil, focus: nil)}
   end
@@ -438,6 +440,16 @@ defmodule TazunaWeb.RelationsLive do
       _ -> nil
     end
   end
+
+  @doc """
+  取り直している最中か。**そのあいだは、ほかの操作を受け付けません**。
+
+  読むのに数秒かかり、届いた図は**いま見ているものを丸ごと入れ替えます** ——
+  途中で絞り込みや探索を押されると、押した結果が届いた図に上書きされ、
+  押した人には何が起きたのか読めません（押せたのに効かない、という形になります）。
+  """
+  def busy?(%{step: step}) when step not in [nil, %{}], do: true
+  def busy?(_relation), do: false
 
   @doc "割り込みが断られた理由の一文。"
   def focus_error(%{reason: reason}), do: relation_reason(reason)
