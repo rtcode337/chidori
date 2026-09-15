@@ -16,20 +16,18 @@ defmodule Tazuna.Repo.Migrations.CreateSentNotices do
   def change do
     create table(:sent_notices) do
       # どの収集のものか。話題ごとに通知先が違うので、鍵だけでは足りない
-      add(:collection, :string, null: false)
-
+      add :collection, :string, null: false
       # 知らせたものの見分け。まとめの見出しを使う —— **あれは重複の鍵**で、
       # 回ごとに変わることを Chiezo 側の依頼文で保証している
-      add(:key, :string, null: false)
-
+      add :key, :string, null: false
       # どこへ知らせたか。宛先を変えたときに、変えた先へは改めて届いてほしい
-      add(:topic, :string, null: false, default: "")
+      add :topic, :string, null: false, default: ""
 
       timestamps(type: :utc_datetime)
     end
 
     # 1 つのまとめにつき 1 回。**宛先も鍵に入れる** —— 宛先を変えたのに
     # 「もう知らせた」と黙られると、新しい宛先には何も来ないまま気づけない
-    create(unique_index(:sent_notices, [:collection, :key, :topic]))
+    create unique_index(:sent_notices, [:collection, :key, :topic])
   end
 end

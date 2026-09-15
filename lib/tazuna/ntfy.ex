@@ -2,7 +2,12 @@ defmodule Tazuna.Ntfy do
   @moduledoc """
   ntfy へ知らせる口。**話題ごとに宛先（トピック）を決めます**。
 
-  **未設定なら何もしません。** サーバーの場所か宛先のどちらかが空なら、その話題は
+  **設定は画面から直せます**（`Tazuna.Notify.Settings`）。宛先は運用しながら
+  決めるもの（試しに別のトピックへ流す、しばらく止める）なので、環境変数だけだと
+  変えるたびに立て直しが要ります。**置き場の既定は環境変数から取ります**
+  （`NTFY_BASE_URL`）—— あれは環境の事情なので、画面で毎回書かせるものではありません。
+
+  **未設定なら何もしません。** 置き場か宛先のどちらかが空なら、その話題は
   知らせない、という意味です —— 既定の宛先を勝手に決めると、**公開の ntfy では
   誰でも読めるところ**へ流れかねません（推測できる名前ほど危ない）。
 
@@ -11,15 +16,16 @@ defmodule Tazuna.Ntfy do
   """
 
   alias Tazuna.Http
+  alias Tazuna.Notify.Settings
 
   @user_agent "tazuna/0.1 (+https://github.com/rtcode337/tazuna)"
   @timeout 10_000
   @connect_timeout 5_000
 
   @doc """
-  ntfy のルートURL。**未設定ならこの機能は使えません**。
+  ntfy のルートURL の既定。`NTFY_BASE_URL` で決めます（画面から上書きできます）。
   """
-  def base_url do
+  def default_base_url do
     case System.get_env("NTFY_BASE_URL") do
       nil -> nil
       "" -> nil
@@ -28,13 +34,21 @@ defmodule Tazuna.Ntfy do
   end
 
   @doc """
-  その収集の宛先（ntfy のトピック）。
+  その収集の置き場。**画面で書いてあればそちらが勝ちます**。
+  """
+  def base_url(collection) do
+    case Settings.get(collection).ntfy_base_url do
+      "" -> default_base_url()
+      written -> written
+    end
+  end
 
-  **収集ごとに別に決められます**（`TAZUNA_<収集名>_NTFY_TOPIC`）。同じところへ
-  まとめて流すと、技術の話を追いたいだけの人に暮らしの話まで届きます。
+  @doc """
+  その収集の宛先（ntfy のトピック）。**収集ごとに別に決められます** ——
+  同じところへまとめて流すと、技術の話を追いたいだけの人に暮らしの話まで届きます。
   """
   def topic_for(collection) when is_binary(collection) do
-    case collection |> env_name() |> System.get_env("") |> String.trim() do
+    case Settings.get(collection).ntfy_topic do
       "" -> nil
       topic -> topic
     end
@@ -43,20 +57,13 @@ defmodule Tazuna.Ntfy do
   def topic_for(_collection), do: nil
 
   @doc """
-  その収集の宛先を決める環境変数の名前。**画面に出すので公開しています** ——
-  設定していないときに「どこへ書けばよいか」が読めないと、設定しようがありません。
-  """
-  def env_name(collection) when is_binary(collection),
-    do: String.upcase(collection) <> "_NTFY_TOPIC"
-
-  @doc """
   知らせられる状態か。**押す前に読めるようにするため**に、理由まで返します。
   """
   def ready(collection) do
     cond do
-      is_nil(base_url()) -> {:error, :ntfy_not_configured}
-      is_nil(topic_for(collection)) -> {:error, {:ntfy_topic_missing, env_name(collection)}}
-      true -> {:ok, {base_url(), topic_for(collection)}}
+      is_nil(base_url(collection)) -> {:error, :ntfy_base_url_missing}
+      is_nil(topic_for(collection)) -> {:error, :ntfy_topic_missing}
+      true -> {:ok, {base_url(collection), topic_for(collection)}}
     end
   end
 

@@ -19,7 +19,10 @@ defmodule TazunaWeb.NewsLive do
   import TazunaWeb.Collect
   import TazunaWeb.CollectPanel
 
+  alias Tazuna.Jst
   alias Tazuna.News
+  alias Tazuna.Notify
+  alias Tazuna.Notify.Settings
   alias Tazuna.Ntfy
   alias Tazuna.Topics
 
@@ -81,6 +84,33 @@ defmodule TazunaWeb.NewsLive do
     topic = socket.assigns.topic
     picks = merged_picks(socket.assigns.picks, params)
     with_server(socket, &News.setup(&1, topic, picks))
+  end
+
+  # 通知先を書き換える。**押したときだけ送る**ので、ここでは保存だけ
+  def handle_event("save_notify", %{"setting" => attrs}, socket) do
+    topic = socket.assigns.topic
+
+    case Settings.put(topic.collection, attrs) do
+      {:ok, _setting} ->
+        {:noreply, put_flash(socket, :info, "通知先を保存しました。")}
+
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, first_error(changeset))}
+    end
+  end
+
+  # **まとめを知らせる。** 自動では飛ばさない —— tazuna は定時に動く仕組みを
+  # 持っていないので、飛ぶのは押したときだけ
+  def handle_event("notify", _params, socket) do
+    topic = socket.assigns.topic
+    news = socket.assigns.news
+
+    {:noreply,
+     case Notify.deliver_latest(topic.collection, news, force: true) do
+       {:ok, :sent} -> put_flash(socket, :info, "まとめを知らせました。")
+       {:ok, :nothing_to_send} -> put_flash(socket, :error, "知らせるまとめがまだありません。")
+       {:error, reason} -> put_flash(socket, :error, notify_error(reason))
+     end}
   end
 
   # **この場で 1 回だけ頼む。** 定時の巡回は決まった仕事しかしないので、
@@ -212,6 +242,38 @@ defmodule TazunaWeb.NewsLive do
   def prompt_note(_news),
     do: "いま Chiezo が持っている内容です。直すのは Chiezo の管理画面の「集める」から。"
 
+  @doc "いまの通知先。フォームに載せます。"
+  def notify_setting(nil), do: Settings.changeset("")
+  def notify_setting(%{collection: collection}), do: Settings.changeset(collection)
+
+  @doc "知らせられる状態か。**押せない口は出さない**。"
+  def can_notify?(nil), do: false
+  def can_notify?(%{collection: collection}), do: match?({:ok, _ready}, Ntfy.ready(collection))
+
+  @doc "最後に知らせた時刻。押した結果がここに出ます。"
+  def last_sent_text(nil), do: nil
+
+  def last_sent_text(%{collection: collection}) do
+    case Notify.last_sent_at(collection) do
+      nil -> "まだ知らせていません。"
+      at -> "最後に知らせたのは #{Jst.format(at)}。"
+    end
+  end
+
+  @doc false
+  def notify_error(:ntfy_base_url_missing), do: "ntfy の場所が決まっていません。"
+  def notify_error(:ntfy_topic_missing), do: "この話題の通知先が決まっていません。"
+  def notify_error(:ntfy_unavailable), do: "ntfy に接続できませんでした。"
+  def notify_error({:ntfy_status, status}), do: "ntfy が #{status} を返しました。"
+  def notify_error(reason), do: "知らせられませんでした（#{inspect(reason)}）。"
+
+  defp first_error(changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {message, _opts} -> message end)
+    |> Enum.flat_map(fn {_field, messages} -> messages end)
+    |> List.first() || "書いた内容を保存できませんでした。"
+  end
+
   @doc """
   通知の設定の一言。**押す前に、届くのかどうかが読めるように**。
 
@@ -223,14 +285,14 @@ defmodule TazunaWeb.NewsLive do
 
   def notify_note(%{collection: collection}) do
     case Ntfy.ready(collection) do
-      {:ok, {_base, ntfy_topic}} ->
-        "まとめができたら ntfy の「#{ntfy_topic}」へ知らせます（同じまとめは二度送りません）。"
+      {:ok, {base, ntfy_topic}} ->
+        "「知らせる」を押すと、#{base} の「#{ntfy_topic}」へまとめを送ります。"
 
-      {:error, :ntfy_not_configured} ->
-        "NTFY_BASE_URL が設定されていないので、まとめは知らせません。"
+      {:error, :ntfy_base_url_missing} ->
+        "ntfy の場所が決まっていません（下の欄に書くか、NTFY_BASE_URL で既定を決めます）。"
 
-      {:error, {:ntfy_topic_missing, env}} ->
-        "この話題の通知先が決まっていません（#{env} に ntfy のトピック名を書くと知らせます）。"
+      {:error, :ntfy_topic_missing} ->
+        "この話題の通知先が決まっていません（下の欄にトピック名を書くと送れます）。"
     end
   end
 

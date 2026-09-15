@@ -9,7 +9,7 @@ defmodule Tazuna.NotifyTest do
   alias Tazuna.HttpStub
   alias Tazuna.News
   alias Tazuna.Notify
-  alias Tazuna.Ntfy
+  alias Tazuna.Notify.Settings
 
   @collection "tazuna_tech"
   @digest %{
@@ -25,13 +25,8 @@ defmodule Tazuna.NotifyTest do
 
   setup do
     System.put_env("NTFY_BASE_URL", "http://ntfy.test")
-    System.put_env(Ntfy.env_name(@collection), "tazuna-tech")
-
-    on_exit(fn ->
-      System.delete_env("NTFY_BASE_URL")
-      System.delete_env(Ntfy.env_name(@collection))
-    end)
-
+    on_exit(fn -> System.delete_env("NTFY_BASE_URL") end)
+    Settings.put(@collection, %{"ntfy_topic" => "tazuna-tech"})
     :ok
   end
 
@@ -90,7 +85,7 @@ defmodule Tazuna.NotifyTest do
     assert Notify.deliver(@collection, @digest) == {:ok, :sent}
     assert_receive {:notified, _url, _sent}, 2_000
 
-    System.put_env(Ntfy.env_name(@collection), "tazuna-tech-2")
+    Settings.put(@collection, %{"ntfy_topic" => "tazuna-tech-2"})
     assert Notify.deliver(@collection, @digest) == {:ok, :sent}
     assert_receive {:notified, _url, sent}, 2_000
     assert sent["topic"] == "tazuna-tech-2"
@@ -107,22 +102,47 @@ defmodule Tazuna.NotifyTest do
 
   test "宛先が未設定なら、その理由を返す" do
     # 無言で何もしないと、設定を間違えているのかまとめがまだ無いのかが分からない
-    System.delete_env(Ntfy.env_name(@collection))
+    Settings.put(@collection, %{"ntfy_topic" => ""})
 
-    assert Notify.deliver(@collection, @digest) ==
-             {:error, {:ntfy_topic_missing, "TAZUNA_TECH_NTFY_TOPIC"}}
+    assert Notify.deliver(@collection, @digest) == {:error, :ntfy_topic_missing}
   end
 
-  test "サーバーが未設定なら、そもそも送らない" do
+  test "場所が未設定なら、そもそも送らない" do
     # **既定の宛先を勝手に決めない** —— 公開の ntfy では誰でも読めるところへ流れる
     System.delete_env("NTFY_BASE_URL")
 
-    assert Notify.deliver(@collection, @digest) == {:error, :ntfy_not_configured}
+    assert Notify.deliver(@collection, @digest) == {:error, :ntfy_base_url_missing}
+  end
+
+  test "押されたときは、知らせ済みでも送る" do
+    # 押すのは意思表示。そこで黙られると「壊れているのか、もう送ったのか」が
+    # 分からない（送ったことは画面に出るので、二度目が要るかは押す人が決める）
+    stub_ok()
+    assert Notify.deliver(@collection, @digest) == {:ok, :sent}
+    assert_receive {:notified, _url, _sent}, 2_000
+
+    assert Notify.deliver(@collection, @digest, force: true) == {:ok, :sent}
+    assert_receive {:notified, _url, _sent}, 2_000
+  end
+
+  test "最後に知らせた時刻が残る" do
+    # 押した結果が画面に出ないと、届いたのかどうかを確かめようがない
+    stub_ok()
+    refute Notify.last_sent_at(@collection)
+
+    Notify.deliver(@collection, @digest)
+    assert_receive {:notified, _url, _sent}, 2_000
+    assert first = Notify.last_sent_at(@collection)
+
+    # **二度目も時刻が進む。** 行は増えないので、足した時刻で見ていると
+    # 押しても画面が動かない
+    Notify.deliver(@collection, @digest, force: true)
+    assert_receive {:notified, _url, _sent}, 2_000
+    assert DateTime.compare(Notify.last_sent_at(@collection), first) != :lt
   end
 
   test "まとめが無ければ何もしない" do
-    assert Notify.deliver_latest(%{collection: @collection}, %{digests: []}) ==
-             {:ok, :nothing_to_send}
+    assert Notify.deliver_latest(@collection, %{digests: []}) == {:ok, :nothing_to_send}
   end
 
   describe "通知に流す文" do

@@ -102,12 +102,6 @@
         <.sweep_table state={@news} picks={@picks} backends={@backends} />
 
         <p class="muted-note">{sweep_note(@topic)}</p>
-
-        <%!-- **届くのかどうかを、押す前に読めるようにする。** 黙って何もしないと、
-             設定を間違えているのか、まだまとめが無いだけなのかを区別できない。
-             **まとめの枠には置かない** —— あれはまとめができるまで出ないので、
-             設定を確かめたいときにいちばん見たい状態で消えている --%>
-        <p :if={notify_note(@topic)} class="muted-note">{notify_note(@topic)}</p>
         <button
           type="submit"
           phx-disable-with="送っています…"
@@ -116,6 +110,53 @@
           {collect_label(@news)}
         </button>
       </form>
+
+      <%!-- 通知先。**画面から直せるようにする** —— 宛先は運用しながら決めるもの
+           （試しに別のトピックへ流す、しばらく止める）なので、環境変数だけだと
+           変えるたびに立て直しが要る。**押したときだけ飛ぶ** —— tazuna は定時に
+           動く仕組みを持っていないので、自動では送らない --%>
+      <details class="notify-setting">
+        <summary>まとめを知らせる（ntfy）</summary>
+        <p :if={notify_note(@topic)} class="muted-note">{notify_note(@topic)}</p>
+
+        <.form
+          :let={f}
+          for={to_form(notify_setting(@topic), as: :setting)}
+          phx-submit="save_notify"
+        >
+          <p>
+            <label>
+              通知先（ntfy のトピック名）<br />
+              <input type="text" name={f[:ntfy_topic].name} value={f[:ntfy_topic].value} />
+            </label>
+          </p>
+          <p>
+            <label>
+              ntfy の場所（空なら NTFY_BASE_URL）<br />
+              <input
+                type="text"
+                name={f[:ntfy_base_url].name}
+                value={f[:ntfy_base_url].value}
+                placeholder="https://ntfy.example.com"
+              />
+            </label>
+          </p>
+          <p class="muted-note">
+            <strong>空にすると知らせなくなります。</strong> 既定の通知先は持ちません —— 公開の ntfy では、推測できる名前は誰でも読めます。
+          </p>
+          <button type="submit">通知先を保存</button>
+        </.form>
+
+        <p class="muted-note">{last_sent_text(@topic)}</p>
+        <button
+          :if={can_notify?(@topic)}
+          type="button"
+          phx-click="notify"
+          phx-disable-with="送っています…"
+        >
+          いまのまとめを知らせる
+        </button>
+      </details>
 
       <p :if={@news.collection && @news.collection.url} class="muted-note">
         <a href={@news.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>

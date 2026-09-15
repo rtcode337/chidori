@@ -25,11 +25,7 @@ defmodule Tazuna.Application do
       # 代表作の絵の覚え書き（置き場を持つだけ。引くのは押した人のプロセス）
       Tazuna.Artwork,
       # Start to serve requests, typically the last entry
-      TazunaWeb.Endpoint,
-      # まとめが出ていないかを時々見に行く。**Endpoint の後ろに置く** ——
-      # 知らせの「続きを読む」に自分の宛先を載せるので、先に立てておく必要がある。
-      # 宛先を設定した話題が 1 つも無ければ、見に行く先も無い（空回りするだけ）
-      Tazuna.Notify.Watcher
+      TazunaWeb.Endpoint
     ]
 
     # See https://elixir.hexdocs.pm/Supervisor.html
