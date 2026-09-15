@@ -93,7 +93,17 @@ defmodule TazunaWeb.NewsLiveTest do
           Tazuna.HttpStub.ok(
             @collection
             |> Map.put("recent", [
-              %{"title" => "まとめ: 今日の動き（2026-09-13）", "opening" => "1行目", "tags" => ["まとめ"]},
+              %{
+                "title" => "まとめ: 今日の動き（2026-09-13）",
+                "opening" => "この期間は基盤の入れ替えが続きました。\n出典: https://example.com/1",
+                "tags" => ["まとめ"]
+              },
+              %{
+                "title" => "React 19.3 が出た",
+                "opening" => "要約",
+                "tags" => ["ニュース"],
+                "extra" => %{"url" => "https://example.com/1"}
+              },
               %{"title" => "ふつうの記事", "opening" => "要約", "tags" => ["ニュース"]}
             ])
             |> Jason.encode!()
@@ -122,6 +132,7 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "sweep-table"
       assert html =~ "収集の設定を更新"
       assert html =~ ~s(name="sweep|要約|backend")
+
       # 定時の巡回とは別に頼める口。**どの回として走るかを押す前に読める** ——
       # 落とす力と印を付け直す力を持つのは情報更新の回だけなので、
       # そこへ乗ることが分からないと「落として」を頼めるのかが読めない
@@ -184,6 +195,19 @@ defmodule TazunaWeb.NewsLiveTest do
 
       assert html =~ "news-digest"
       assert html =~ "まとめ: 今日の動き（2026-09-13）"
+    end
+
+    test "まとめが、画面ではリンク入りで出る", %{conn: conn} do
+      # 裸の URL のままだと、押す前にどこへ行くのか読めない。
+      # **通知のほうは逆**（URL のまま出す。ntfy が自分でリンクにする）
+      html = shown(conn)
+
+      assert html =~ "digest-source"
+      assert html =~ ~s|href="https://example.com/1"|
+      assert html =~ "React 19.3 が出た"
+      # 本文の段落はそのまま出る（整形済みの塊で投げ出さない）
+      assert html =~ "この期間は基盤の入れ替えが続きました。"
+      refute html =~ "<pre>この期間は"
     end
   end
 
