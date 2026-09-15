@@ -102,6 +102,12 @@
         <.sweep_table state={@news} picks={@picks} backends={@backends} />
 
         <p class="muted-note">{sweep_note(@topic)}</p>
+
+        <%!-- **届くのかどうかを、押す前に読めるようにする。** 黙って何もしないと、
+             設定を間違えているのか、まだまとめが無いだけなのかを区別できない。
+             **まとめの枠には置かない** —— あれはまとめができるまで出ないので、
+             設定を確かめたいときにいちばん見たい状態で消えている --%>
+        <p :if={notify_note(@topic)} class="muted-note">{notify_note(@topic)}</p>
         <button
           type="submit"
           phx-disable-with="送っています…"

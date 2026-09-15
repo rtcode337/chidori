@@ -197,6 +197,30 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "まとめ: 今日の動き（2026-09-13）"
     end
 
+    test "通知先が決まっていなければ、どこへ書けばよいかを出す", %{conn: conn} do
+      # **まとめの枠には置かない** —— あれはまとめができるまで出ないので、
+      # 設定を確かめたいときにいちばん見たい状態で消えている
+      System.delete_env("NTFY_BASE_URL")
+      html = shown(conn)
+
+      assert html =~ "NTFY_BASE_URL"
+    end
+
+    test "通知先が決まっていれば、どこへ知らせるかを出す", %{conn: conn} do
+      System.put_env("NTFY_BASE_URL", "http://ntfy.test")
+      System.put_env("TAZUNA_NEWS_NTFY_TOPIC", "tazuna-news")
+
+      on_exit(fn ->
+        System.delete_env("NTFY_BASE_URL")
+        System.delete_env("TAZUNA_NEWS_NTFY_TOPIC")
+      end)
+
+      html = shown(conn)
+
+      assert html =~ "tazuna-news"
+      assert html =~ "二度送りません"
+    end
+
     test "まとめが、画面ではリンク入りで出る", %{conn: conn} do
       # 裸の URL のままだと、押す前にどこへ行くのか読めない。
       # **通知のほうは逆**（URL のまま出す。ntfy が自分でリンクにする）

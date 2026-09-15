@@ -20,6 +20,7 @@ defmodule TazunaWeb.NewsLive do
   import TazunaWeb.CollectPanel
 
   alias Tazuna.News
+  alias Tazuna.Ntfy
   alias Tazuna.Topics
 
   @impl true
@@ -98,7 +99,6 @@ defmodule TazunaWeb.NewsLive do
          |> start_async(:ask, fn -> News.ask_focus(topic.collection, written) end)}
     end
   end
-
 
   defp with_server(socket, fun) do
     if topic = socket.assigns.topic, do: fun.(News.server(topic.collection))
@@ -211,6 +211,28 @@ defmodule TazunaWeb.NewsLive do
 
   def prompt_note(_news),
     do: "いま Chiezo が持っている内容です。直すのは Chiezo の管理画面の「集める」から。"
+
+  @doc """
+  通知の設定の一言。**押す前に、届くのかどうかが読めるように**。
+
+  黙って何もしないと、設定を間違えているのか、まだまとめが無いだけなのかを
+  区別できません。**書き先まで出します** —— どこへ書けばよいか分からないと、
+  設定しようがありません。
+  """
+  def notify_note(nil), do: nil
+
+  def notify_note(%{collection: collection}) do
+    case Ntfy.ready(collection) do
+      {:ok, {_base, ntfy_topic}} ->
+        "まとめができたら ntfy の「#{ntfy_topic}」へ知らせます（同じまとめは二度送りません）。"
+
+      {:error, :ntfy_not_configured} ->
+        "NTFY_BASE_URL が設定されていないので、まとめは知らせません。"
+
+      {:error, {:ntfy_topic_missing, env}} ->
+        "この話題の通知先が決まっていません（#{env} に ntfy のトピック名を書くと知らせます）。"
+    end
+  end
 
   @doc """
   まとめの本文を、段落と出典に読み分けます。

@@ -887,6 +887,39 @@ defmodule Tazuna.News do
   end
 
   @doc """
+  まとめを、通知に流すプレーンテキストにします。
+
+  **出典の URL はそのまま残します。** 画面のほうは記事の見出しでリンクにしますが、
+  通知では逆です —— ntfy が URL を見つけて自分でリンクにするので、見出しに
+  差し替えると**行き先が読めないただの文字**になります。
+
+  **飾りも付けません。** Markdown として描かれない場所なので、`**` を置くと
+  記号がそのまま出て、読みたい文字の間に `*` が挟まるだけです。
+  """
+  def digest_text(%{title: title, summary: summary}) do
+    [title, trimmed(summary)]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join("\n\n")
+  end
+
+  def digest_text(_digest), do: ""
+
+  @doc """
+  通知に出す 1 行目。**まとめの最初の段落**です。
+
+  通知は畳まれて先頭しか見えないことがあるので、依頼文でも「最初の段落だけで
+  意味が通るように」と頼んであります。
+  """
+  def digest_lead(%{summary: summary}) when is_binary(summary) do
+    summary
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.find("", &(&1 != ""))
+  end
+
+  def digest_lead(_digest), do: ""
+
+  @doc """
   まとめる回の依頼文。**通知と画面で読むもの**を1件作ります。
 
   溜まったものをそのまま並べても読めません —— 何が起きたかを先に言うのが、
