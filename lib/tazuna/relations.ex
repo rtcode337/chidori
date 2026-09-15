@@ -22,6 +22,12 @@ defmodule Tazuna.Relations do
   @canvas_width 980
   @canvas_height 560
 
+  # 図の上下に空ける余白。**重なる UI のぶん** —— 探す欄と道具は図の上に、
+  # 操作の案内は下に重ねてある（`.relation-find` / `.relation-tools` /
+  # `.relation-hint`）。余白が無いと、いちばん上と下のノードがその下に隠れ、
+  # **引きずっても拡大しても出てこない**（重なっているものは一緒に動かない）
+  @canvas_margin 90
+
   @request_timeout 120_000
   # 溜まったものを読むだけなら Chiezo は手元にいるので短くてよい
   @read_timeout 15_000
@@ -107,7 +113,13 @@ defmodule Tazuna.Relations do
     # **名簿の取り込み。** AI を呼ばず、抽出の指定を走らせるだけの回。
     # **一度きり** —— 元の Wikipedia が変わらない限り何度やっても同じで、
     # その 1 回ぶんの取り込みが無駄になる。取り込み直したら押して走らせる
-    %{name: "名簿", interval_minutes: @roster_minutes, use_extract: true, only_new: true, once: true},
+    %{
+      name: "名簿",
+      interval_minutes: @roster_minutes,
+      use_extract: true,
+      only_new: true,
+      once: true
+    },
     # **区画の材料を埋める回。** 年代と地域が入っていないと区画が決まらないので、
     # そこが最優先。ついでに説明・代表作・様式も埋め、明らかに画家でない人は消す。
     # **一周したら止まる** —— 行き渡れば用が済む回で、止めないと 2 周目 3 周目が
@@ -447,7 +459,8 @@ defmodule Tazuna.Relations do
   def handle_cast({:focus_partition, key, partition, note}, state) do
     case chiezo_base_url() do
       nil ->
-        {:noreply, broadcast(focused(state, key, partition, {:error, :chiezo_not_configured}), key)}
+        {:noreply,
+         broadcast(focused(state, key, partition, {:error, :chiezo_not_configured}), key)}
 
       base_url ->
         me = self()
@@ -855,7 +868,6 @@ defmodule Tazuna.Relations do
         {:error, reason}
     end
   end
-
 
   # **図の構造は Chiezo に持ち込まない。** 1 画家 1 文書の普通の文書として書かせ、
   # 属性と関係はタグに載せる（読み方を与えるのは tazuna 側 = `Relations.Graph`）。
@@ -1425,8 +1437,11 @@ defmodule Tazuna.Relations do
   def canvas_width(_count, _key), do: @canvas_width
 
   @doc false
-  def canvas_height(_count, "painters"), do: @canvas_height
-  def canvas_height(count, _key), do: max(@canvas_height, 200 * rows(count))
+  def canvas_height(_count, "painters"), do: @canvas_height + 2 * @canvas_margin
+  def canvas_height(count, _key), do: max(@canvas_height, 200 * rows(count)) + 2 * @canvas_margin
+
+  @doc "図の上下に空ける余白。**重なる UI のぶん**。"
+  def canvas_margin, do: @canvas_margin
 
   defp columns(count), do: min(4, max(count, 1))
   defp rows(count), do: ceil(count / columns(count))
@@ -1441,7 +1456,8 @@ defmodule Tazuna.Relations do
     Enum.with_index(nodes, fn node, index ->
       Map.merge(node, %{
         x: cell * (index + 0.5),
-        y: if(rem(index, 2) == 0, do: 190, else: 350)
+        # 上下 2 段に振って重なりを避ける。**どちらの段も余白の内側**に置く
+        y: @canvas_margin + if(rem(index, 2) == 0, do: 190, else: 350)
       })
     end)
   end
@@ -1450,12 +1466,15 @@ defmodule Tazuna.Relations do
     count = length(nodes)
     columns = columns(count)
     cell_width = @canvas_width / columns
-    cell_height = canvas_height(count, "people") / rows(count)
+
+    # **余白の内側に段を割る。** 面ぜんたいで割ると、いちばん上と下の段が
+    # 重なっている UI の下へ入る
+    cell_height = (canvas_height(count, "people") - 2 * @canvas_margin) / rows(count)
 
     Enum.with_index(nodes, fn node, index ->
       Map.merge(node, %{
         x: cell_width * (rem(index, columns) + 0.5),
-        y: cell_height * (div(index, columns) + 0.5)
+        y: @canvas_margin + cell_height * (div(index, columns) + 0.5)
       })
     end)
   end

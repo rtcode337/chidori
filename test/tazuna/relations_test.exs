@@ -89,6 +89,7 @@ defmodule Tazuna.RelationsTest do
       # 漏れ探しは足すだけ、割り込みは時計を持たない
       # **仕事は 3 つ。** 名簿を作る → 区画の材料を埋める → 区画ごとに仕上げる
       assert [roster, rough, survey] = payload["sweeps"]
+
       # 名簿の回は、AI が肉付けしたぶんを薄い内容で上書きしないよう足すだけにする
       assert roster["use_extract"] == true
       assert roster["only_new"] == true
@@ -96,9 +97,11 @@ defmodule Tazuna.RelationsTest do
       assert roster["once"] == true
 
       assert rough["name"] == "ざっと"
+
       # 一周を数日で終える（区画の材料が埋まるまで、後の回は走れない）
       assert rough["cover_days"] == 3
       assert rough["after"] == "名簿"
+
       # **一周したら止まる。** 行き渡れば用が済む回で、止めないと 2 周目 3 周目が
       # 回り続け、同じことを何度も聞くために枠を使う
       assert rough["one_lap"] == true
@@ -106,10 +109,12 @@ defmodule Tazuna.RelationsTest do
       refute Map.has_key?(rough, "prompt")
 
       assert survey["name"] == "調査"
+
       # **一周の日数で決める。** 1 日 1 区画にしていた頃は、400 区画を一周するのに
       # 400 日かかっていた —— 手入れの回が一周しないなら、区画で割っている意味が無い
       assert survey["cover_days"] == 21
       assert survey["effort"] == "high"
+
       # **ざっとが一周するまで走らない。** 年代の分からない人が 3 割いる状態で
       # 漏れを探させても、その人たちは別の区画にいるだけ
       assert survey["after"] == "ざっと"
@@ -146,9 +151,7 @@ defmodule Tazuna.RelationsTest do
           HttpStub.ok("{}")
 
         %{method: :get, url: @base <> "/v1/collect"} ->
-          HttpStub.ok(
-            Jason.encode!(%{"collections" => [%{"name" => "tazuna_painters"}]})
-          )
+          HttpStub.ok(Jason.encode!(%{"collections" => [%{"name" => "tazuna_painters"}]}))
 
         %{method: :get, url: url} ->
           if String.contains?(url, "/filter?") do
@@ -170,8 +173,10 @@ defmodule Tazuna.RelationsTest do
       assert_received {:patched, url, patch}
       assert url =~ "/v1/collect/tazuna_painters"
       assert patch["prompt"] =~ "{partition}"
+
       assert patch["partition"] ==
                %{"by" => "band", "prefix" => "地域", "value" => "年代", "target" => 25}
+
       assert [
                %{"use_extract" => true, "once" => true},
                %{"name" => "ざっと", "after" => "名簿"},
@@ -324,6 +329,7 @@ defmodule Tazuna.RelationsTest do
     assert prompt =~ "漏れを足す"
     assert prompt =~ "内容を磨く"
     assert prompt =~ "要らないものを消す"
+
     # 挙げるものが無ければ挙げなくてよい（既にいる人を挙げ直させない）
     assert prompt =~ "足さなくて構いません"
   end
@@ -382,9 +388,11 @@ defmodule Tazuna.RelationsTest do
     # 必ず取りこぼす —— 実際に「アメリカ合衆国」が丸ごと落ち、ホッパーもポロックも
     # ホイッスラーも名簿に居なかった
     assert spec.tag_suffix =~ "の画家"
+
     # **呼び方は 1 つではない。** 「の画家」だけだと「〜の女性画家」が丸ごと落ちる
     # （44 カテゴリ・1,877 記事。草間彌生もそこにいた）
     assert spec.tag_suffix =~ "の女性画家"
+
     # 絵も描く別の職業の人は外す（カテゴリは持ち主の職業を選ばない）
     assert spec.not_tag =~ "俳優"
   end
@@ -477,4 +485,32 @@ defmodule Tazuna.RelationsTest do
     end
   end
 
+  describe "図の置き方" do
+    alias Tazuna.Relations
+
+    test "いちばん上と下のノードが、重なっている UI の下に入らない" do
+      # 探す欄と道具は図の上に、操作の案内は下に重ねてある。余白が無いと、
+      # **引きずっても拡大しても出てこない**（重なっているものは一緒に動かない）
+      margin = Relations.canvas_margin()
+
+      for {key, count} <- [{"painters", 8}, {"people", 10}] do
+        nodes = for n <- 1..count, do: %{id: "n#{n}", name: "n#{n}"}
+        laid_out = Relations.layout_nodes(nodes, key)
+        height = Relations.canvas_height(count, key)
+
+        for node <- laid_out do
+          assert node.y >= margin, "#{key}: 上の余白に食い込んでいます"
+          assert node.y <= height - margin, "#{key}: 下の余白に食い込んでいます"
+        end
+      end
+    end
+
+    test "余白のぶんだけ面を広げる" do
+      # 中身を縮めて余白を作ると、ノードどうしが近づいて札が重なる
+      margin = Relations.canvas_margin()
+
+      assert Relations.canvas_height(8, "painters") == 560 + 2 * margin
+      assert Relations.canvas_height(1, "people") == 560 + 2 * margin
+    end
+  end
 end
