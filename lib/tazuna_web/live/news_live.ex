@@ -389,7 +389,7 @@ defmodule TazunaWeb.NewsLive do
   """
   def sweep_note(%{feeds: [_ | _] = feeds}) do
     "見出しは #{length(feeds)} 本の配信元から機械的に取り込みます（AI は呼びません）。" <>
-      "漏れ探し・整理・要約だけが AI の仕事です。"
+      "整理と要約だけが AI の仕事です。"
   end
 
   def sweep_note(_topic),

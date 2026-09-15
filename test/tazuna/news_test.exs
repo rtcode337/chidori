@@ -230,9 +230,9 @@ defmodule Tazuna.NewsTest do
 
       # 巡回は仕事ごとに分ける（集める・漏れを探す・読んで印を付ける・まとめる）
       assert Enum.map(payload["sweeps"], & &1["name"]) ==
-               ["集める", "漏れ探し", "情報更新", "要約"]
+               ["集める", "整理", "要約"]
 
-      # **割り込みのための空の巡回は送らない。** 頼みごとは情報更新の回で走る
+      # **割り込みのための空の巡回は送らない。** 頼みごとは整理の回で走る
       refute Enum.any?(payload["sweeps"], & &1["on_demand"])
 
       # 配信元を持たない話題なので、外の道具は付けない（集めるところから AI に頼む）
@@ -363,7 +363,7 @@ defmodule Tazuna.NewsTest do
   end
 
   describe "割り込み" do
-    test "情報更新の回として走らせる" do
+    test "整理の回として走らせる" do
       # **名指ししないと Chiezo は時計を持たない巡回へ倒す。** 専用の 1 本を
       # 置かなくなった以上、名指ししなければ収集ぜんたいの文（集める回の文）で
       # 走り、頼んだ「落として」が効かない
@@ -381,7 +381,7 @@ defmodule Tazuna.NewsTest do
       assert News.ask_focus("tazuna_tech", "この記事は宣伝なので落として") == :ok
       assert_receive {:asked, url, sent}, 2_000
       assert url =~ "/v1/collect/tazuna_tech/focus"
-      assert sent["sweep"] == "情報更新"
+      assert sent["sweep"] == "整理"
       assert sent["note"] =~ "宣伝"
     end
 
@@ -423,16 +423,16 @@ defmodule Tazuna.NewsTest do
     test "仕事ごとに別の時計で回す" do
       names = defined_topic("tazuna_news") |> News.sweeps() |> Enum.map(& &1.name)
 
-      assert names == ["集める", "漏れ探し", "情報更新", "要約"]
+      assert names == ["集める", "整理", "要約"]
     end
 
-    test "割り込みは情報更新の回に乗せる" do
+    test "割り込みは整理の回に乗せる" do
       # 頼まれるのはたいてい「これは宣伝だから落として」「この印が違う」で、
-      # **その力を持つのは情報更新の回だけ**
+      # **その力を持つのは整理の回だけ**
       names = defined_topic("tazuna_tech") |> News.sweeps() |> Enum.map(& &1.name)
 
       assert News.focus_sweep() in names
-      assert News.focus_sweep() == "情報更新"
+      assert News.focus_sweep() == "整理"
     end
 
     test "割り込みのための空の巡回は置かない" do
@@ -449,7 +449,7 @@ defmodule Tazuna.NewsTest do
       assert intake.name == "見出し"
       assert intake.use_feed == true
 
-      # **足すだけと組にする** —— 組にしないと、情報更新が付けたタグを
+      # **足すだけと組にする** —— 組にしないと、整理が付けたタグを
       # 配信の薄い内容で上書きする
       assert intake.only_new == true
     end
@@ -465,7 +465,7 @@ defmodule Tazuna.NewsTest do
       assert defined_topic("tazuna_news") |> News.feed_spec() == nil
     end
 
-    test "落とす力を持つのは情報更新の回だけ" do
+    test "落とす力を持つのは整理の回だけ" do
       # 溜めるほうを機械にまかせた以上、選り分ける口がどこかに要る。
       # ただし足すだけの回に消す力を持たせない（足すはずの回が消し始める）
       topic = defined_topic("tazuna_tech")
@@ -473,20 +473,33 @@ defmodule Tazuna.NewsTest do
 
       # **名前は Chiezo が決めている**ので、ここでも書き写さずに引く
       tombstone = Tazuna.Chiezo.tombstone_tag()
-      assert prompts["情報更新"] =~ tombstone
-      refute prompts["漏れ探し"] =~ tombstone
+      assert prompts["整理"] =~ tombstone
       refute prompts["要約"] =~ tombstone
     end
 
-    test "漏れ探しは、まとめより高い頻度で回る" do
+    test "整理は、読み直すのと外を当たるのを 1 本で頼む" do
+      # 分けていた頃は、重なった時間ぶんを 2 度読ませていた（画家の収集が
+      # 同じ理由で 1 本にまとめてある）
+      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+
+      assert prompt =~ "印を付け直し"
+      assert prompt =~ "上に並んでいない出どころ"
+    end
+
+    test "外から見つけたものに、既にあるものを上書きさせない" do
+      # 見出しが同じものを薄い要約で返すと、付いている印ごと置き換わる
+      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+
+      assert prompt =~ "書き換えないでください"
+      assert prompt =~ "新しい見出しで"
+    end
+
+    test "整理は、まとめより高い頻度で回る" do
       # まとめの窓に 1 回しか入らないと、直前に起きたことが最大 12 時間ぶん
       # 抜けたまままとめられる —— ニュースは新しさが落ちると意味が薄い
       sweeps = defined_topic("tazuna_tech") |> News.sweeps() |> Map.new(&{&1.name, &1})
 
-      assert sweeps["漏れ探し"].interval_minutes < sweeps["要約"].interval_minutes
-
-      # 印を付ける回も、まとめより先に回る（まとめる頃には印が付いている）
-      assert sweeps["情報更新"].interval_minutes < sweeps["要約"].interval_minutes
+      assert sweeps["整理"].interval_minutes < sweeps["要約"].interval_minutes
     end
 
     test "まとめの見出しは回ごとに変わる" do
@@ -498,10 +511,10 @@ defmodule Tazuna.NewsTest do
       assert prompt =~ "丸ごと捨てられます"
     end
 
-    test "漏れ探しは、ニュース以外も探す" do
+    test "整理は、ニュース以外も探す" do
       # 配信元から機械的に入るのは決まった媒体のぶんだけ。
       # 記事も論文も、探しに行かなければ永遠に入らない
-      prompt = News.find_missing_prompt(defined_topic("tazuna_tech"))
+      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
 
       assert prompt =~ "話題になっている"
       assert prompt =~ "論文"

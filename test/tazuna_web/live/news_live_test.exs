@@ -56,7 +56,7 @@ defmodule TazunaWeb.NewsLiveTest do
     # 回ごとに頼むことが違うので、1 つの文だけを出すと実際と食い違う
     {:ok, _live, html} = live(conn, ~p"/news")
 
-    assert html =~ "漏れ探し"
+    assert html =~ "整理"
     assert html =~ "要約"
   end
 
@@ -139,7 +139,7 @@ defmodule TazunaWeb.NewsLiveTest do
       # 落とす力と印を付け直す力を持つのは整理の回だけなので、
       # そこへ乗ることが分からないと「落として」を頼めるのかが読めない
       assert html =~ "いま頼む（割り込み）"
-      assert html =~ "走るのは「情報更新」の設定です"
+      assert html =~ "走るのは「整理」の設定です"
     end
 
     test "機械で引く巡回には相手を選ばせない", %{conn: conn} do
