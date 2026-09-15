@@ -216,8 +216,11 @@ defmodule Tazuna.Relations.GraphTest do
     test "帯は人数の比で幅を取る" do
       # 等分すると、人数の多い帯だけが縦に伸びる
       docs =
-        for({r, n} <- [{"フランス", 60}, {"アメリカ合衆国", 10}], i <- 1..n,
-            do: regional(r, 1800 + i, "#{r}#{i}"))
+        for(
+          {r, n} <- [{"フランス", 60}, {"アメリカ合衆国", 10}],
+          i <- 1..n,
+          do: regional(r, 1800 + i, "#{r}#{i}")
+        )
 
       graph = Graph.from_docs(docs)
       [europe, americas] = graph.bands
@@ -229,8 +232,11 @@ defmodule Tazuna.Relations.GraphTest do
 
     test "帯は重ならず、左から順に並ぶ" do
       docs =
-        for({r, n} <- [{"フランス", 30}, {"アメリカ合衆国", 20}, {"日本", 25}], i <- 1..n,
-            do: regional(r, 1800 + i, "#{r}#{i}"))
+        for(
+          {r, n} <- [{"フランス", 30}, {"アメリカ合衆国", 20}, {"日本", 25}],
+          i <- 1..n,
+          do: regional(r, 1800 + i, "#{r}#{i}")
+        )
 
       graph = Graph.from_docs(docs)
       assert Enum.map(graph.bands, & &1.band) == ["ヨーロッパ", "南北アメリカ", "アジア・その他"]
@@ -242,8 +248,11 @@ defmodule Tazuna.Relations.GraphTest do
 
     test "画家は自分の帯の中に置かれる" do
       docs =
-        for({r, n} <- [{"フランス", 30}, {"日本", 30}], i <- 1..n,
-            do: regional(r, 1800 + i, "#{r}#{i}"))
+        for(
+          {r, n} <- [{"フランス", 30}, {"日本", 30}],
+          i <- 1..n,
+          do: regional(r, 1800 + i, "#{r}#{i}")
+        )
 
       graph = Graph.from_docs(docs)
       bands = Map.new(graph.bands, &{&1.band, &1})
@@ -258,8 +267,11 @@ defmodule Tazuna.Relations.GraphTest do
       # **ここが要。** 帯ごとに格子を持たせると、日本の画家は近代に偏っているので
       # 帯の先頭どうしが何百年もずれる
       docs =
-        for({r, years} <- [{"フランス", 1400..1460}, {"日本", 1400..1460}], y <- years,
-            do: regional(r, y, "#{r}#{y}"))
+        for(
+          {r, years} <- [{"フランス", 1400..1460}, {"日本", 1400..1460}],
+          y <- years,
+          do: regional(r, y, "#{r}#{y}")
+        )
 
       graph = Graph.from_docs(docs)
 
@@ -347,6 +359,7 @@ defmodule Tazuna.Relations.GraphTest do
 
       assert graph.changed == 2
       assert graph.changed_at == "2026-09-11T15:59:11+00:00"
+
       assert Enum.filter(graph.nodes, & &1[:changed?]) |> Enum.map(& &1.name) |> Enum.sort() ==
                ["モネ", "ルノワール"]
     end
@@ -398,9 +411,10 @@ defmodule Tazuna.Relations.GraphTest do
   describe "ひとつの様式だけを見る" do
     test "その様式の画家だけになり、線もその中だけになる" do
       docs =
-        [painter("モネ", ["年代:1840-1926", "地域:フランス", "様式:印象派"]),
-         painter("ルノワール", ["年代:1841-1919", "地域:フランス", "様式:印象派",
-                            "影響元:モネ:光"])] ++
+        [
+          painter("モネ", ["年代:1840-1926", "地域:フランス", "様式:印象派"]),
+          painter("ルノワール", ["年代:1841-1919", "地域:フランス", "様式:印象派", "影響元:モネ:光"])
+        ] ++
           for i <- 1..30, do: painter("その他#{i}", ["年代:#{1800 + i}-1900", "地域:フランス"])
 
       graph = Graph.from_docs(docs)
@@ -414,11 +428,15 @@ defmodule Tazuna.Relations.GraphTest do
       # **絞るだけでは足りない。** 位置がもとのままだと、数人が広い面に散らばって
       # 拡大しないと読めず、絞った意味が無い
       docs =
-        [painter("モネ", ["年代:1840-1926", "地域:フランス", "様式:印象派"]),
-         painter("ルノワール", ["年代:1841-1919", "地域:フランス", "様式:印象派"])] ++
+        [
+          painter("モネ", ["年代:1840-1926", "地域:フランス", "様式:印象派"]),
+          painter("ルノワール", ["年代:1841-1919", "地域:フランス", "様式:印象派"])
+        ] ++
           for i <- 1..200, do: painter("その他#{i}", ["年代:#{1700 + i}-1900", "地域:フランス"])
 
-      graph = Graph.sized(Graph.from_docs(docs).nodes) |> then(&%{Graph.from_docs(docs) | nodes: &1})
+      graph =
+        Graph.sized(Graph.from_docs(docs).nodes) |> then(&%{Graph.from_docs(docs) | nodes: &1})
+
       only = Graph.only(graph, "印象派")
 
       [before_node | _] = Enum.filter(graph.nodes, &("印象派" in &1.styles))
@@ -443,6 +461,7 @@ defmodule Tazuna.Relations.GraphTest do
       view = %{x: 0, y: 0, w: 1200, h: only.height, ppu: 1.0}
 
       assert length(TazunaWeb.RelationsLive.drawn_nodes(only, view)) == length(only.nodes)
+
       # 札が升目に収まっている（収まらないと重なりを避ける仕組みが間引く）
       assert Enum.all?(only.nodes, &(&1.label_width <= &1.cell_w))
     end
@@ -630,5 +649,42 @@ defmodule Tazuna.Relations.GraphTest do
   test "文書が無ければ帯も無い" do
     assert Graph.empty().bands == []
     assert Graph.empty().nodes == []
+  end
+
+  describe "上下の余白" do
+    test "いちばん上と下の行が、重なっている UI の下に入らない" do
+      # 探す欄と道具は図の上に、操作の案内は下に重ねてある。余白が無いと、
+      # **引きずっても拡大しても出てこない**（重なっているものは図と一緒に動かない）
+      docs =
+        for n <- 1..60 do
+          %{
+            "title" => "画家#{n}",
+            "opening" => "説明",
+            "tags" => ["地域:ヨーロッパ", "年代:#{1400 + n * 5}-#{1410 + n * 5}"]
+          }
+        end
+
+      graph = Graph.from_docs(docs)
+      margin = Graph.canvas_margin()
+
+      assert margin > 0
+
+      for node <- graph.nodes do
+        assert node.y >= margin, "#{node.name} が上の余白に食い込んでいます"
+        assert node.y <= graph.height - margin, "#{node.name} が下の余白に食い込んでいます"
+      end
+    end
+
+    test "余白のぶんだけ面を広げる" do
+      # 中身を縮めて余白を作ると、行どうしが近づいて札が重なる
+      docs = [%{"title" => "画家", "opening" => "説明", "tags" => ["地域:ヨーロッパ"]}]
+
+      assert Graph.from_docs(docs).height >= 560 + 2 * Graph.canvas_margin()
+    end
+
+    test "空の図も、中身のある図と同じ面を持つ" do
+      # 高さが跳ねると、読み込みの前後で図の器が伸び縮みする
+      assert Graph.empty().height == Graph.from_docs([]).height
+    end
   end
 end

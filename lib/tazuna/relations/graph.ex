@@ -37,6 +37,14 @@ defmodule Tazuna.Relations.Graph do
 
   @canvas_height 560
 
+  # 図の上下に空ける余白。**重なる UI のぶん** —— 探す欄と道具は図の上に、
+  # 操作の案内は下に重ねてある（`.relation-find` / `.relation-tools` /
+  # `.relation-hint`）。余白が無いと、いちばん上と下の行がその下に隠れ、
+  # **引きずっても拡大しても出てこない**（重なっているものは図と一緒に動かない）。
+  # **帯の名前が貼り付く高さ（`LABEL_TOP`）より大きく取る** —— あれも図の上に
+  # 重なるので、同じだけ空けないと行がその裏に入る
+  @canvas_margin 70
+
   # 1 人ぶんの升目の下限と上限。**下限**はこれ以上詰めると丸が団子になる境目で、
   # **上限**は人数が少ない図が間延びしないための蓋
   @min_cell 12
@@ -66,18 +74,15 @@ defmodule Tazuna.Relations.Graph do
   # 地域が横に並んでも、どこを見ればいいか分からない。順は西から東へ。
   # **どこにも当てはまらないものは「その他」に入れる**（落とすと図から消える）
   @region_bands [
-    {"ヨーロッパ",
-     ~w(フランス ドイツ イタリア イングランド オランダ スペイン ロシア フランドル
+    {"ヨーロッパ", ~w(フランス ドイツ イタリア イングランド オランダ スペイン ロシア フランドル
         ベルギー オーストリア スコットランド スイス ポーランド スウェーデン デンマーク
         ハンガリー チェコ ノルウェー アイルランド ポルトガル フィンランド イギリス
         ウクライナ ギリシャ ルーマニア セルビア ウェールズ スロベニア クロアチア
         カタルーニャ ソビエト連邦 リトアニア ラトビア エストニア ブルガリア
         スロバキア アイスランド マルタ ルクセンブルク)},
-    {"南北アメリカ",
-     ~w(アメリカ合衆国 カナダ メキシコ ブラジル アルゼンチン チリ ペルー キューバ
+    {"南北アメリカ", ~w(アメリカ合衆国 カナダ メキシコ ブラジル アルゼンチン チリ ペルー キューバ
         ウルグアイ コロンビア ベネズエラ ハイチ エクアドル)},
-    {"アジア・その他",
-     ~w(日本 中国 朝鮮 韓国 インド ベトナム フィリピン タイ インドネシア
+    {"アジア・その他", ~w(日本 中国 朝鮮 韓国 インド ベトナム フィリピン タイ インドネシア
         オーストラリア ニュージーランド トルコ イラン イスラエル エジプト
         南アフリカ共和国 モロッコ アルメニア ジョージア)}
   ]
@@ -168,7 +173,6 @@ defmodule Tazuna.Relations.Graph do
   # 半角文字 1 つを全角何文字ぶんとして数えるか（幅の見積もりに使う）
   @halfwidth_ratio 0.55
 
-
   # どの帯にも当てはまらない画家の行き先。**落とさない** —— 地域が取れていない人
   # （時代区分のカテゴリしか持たない人など）は必ずいるので、落とすと図から消える
   @other_band "その他"
@@ -184,6 +188,9 @@ defmodule Tazuna.Relations.Graph do
 
   @doc "地域を載せるタグの頭。"
   def region_tag, do: @region_prefix
+
+  @doc "図の上下に空ける余白。**重なる UI のぶん**。"
+  def canvas_margin, do: @canvas_margin
 
   @doc "年代を載せるタグの頭。縦軸（時代）はこれで決まる。"
   def years_tag, do: @years_prefix
@@ -347,7 +354,9 @@ defmodule Tazuna.Relations.Graph do
       changed_at: nil,
       changed: 0,
       width: @canvas_width,
-      height: @canvas_height
+      # 空でも余白のぶんは持つ。**中身のある図と同じ面**にしておかないと、
+      # 読み込みの前後で図の器の高さが跳ねる
+      height: @canvas_height + 2 * @canvas_margin
     }
 
   defp styles_of(node) do
@@ -514,7 +523,9 @@ defmodule Tazuna.Relations.Graph do
         cell
         |> min(@max_name_px / @max_name_ratio)
         |> Kernel.*(@min_name_ratio + (@max_name_ratio - @min_name_ratio) * ratio)
+
     sub = max(font * @sub_size_ratio, @min_sub_size)
+
     # **札の大きさは字だけで決める。** 丸はもう描いていないので、半径を下限に
     # 使うと札が中身と関係なく膨らむ —— 人数の少ない図では半径が 264 まで育ち、
     # 札が幅 528 になって隣と重なり、ほとんどの丸が間引かれた。
@@ -676,7 +687,8 @@ defmodule Tazuna.Relations.Graph do
   無いまま「全部が動いた」と出しても読む人には何も言えていません。
   """
   def mark_changed(nodes) do
-    stamps = nodes |> Enum.map(& &1[:changed_at]) |> Enum.reject(&(&1 in [nil, ""])) |> Enum.uniq()
+    stamps =
+      nodes |> Enum.map(& &1[:changed_at]) |> Enum.reject(&(&1 in [nil, ""])) |> Enum.uniq()
 
     case stamps do
       list when length(list) < 2 ->
@@ -808,7 +820,8 @@ defmodule Tazuna.Relations.Graph do
   # **帯の幅は人数の比で決める。** 等分すると、人数の多い帯だけが縦に伸びる。
   defp layout(nodes, edges, columns \\ nil)
 
-  defp layout([], _edges, _columns), do: %{nodes: [], height: @canvas_height, bands: []}
+  defp layout([], _edges, _columns),
+    do: %{nodes: [], height: @canvas_height + 2 * @canvas_margin, bands: []}
 
   defp layout(nodes, edges, wanted) do
     %{columns: from_aspect, cell: cell} = grid(length(nodes))
@@ -821,8 +834,12 @@ defmodule Tazuna.Relations.Graph do
     x_step = (@canvas_width - @gutter) / total_columns
 
     rows = buckets(nodes, caps)
-    height = max(@canvas_height, length(rows) * cell)
-    y_step = height / length(rows)
+
+    # **行を置く高さと、面の高さは別**。行を面いっぱいに割ると、いちばん上と下が
+    # 重なっている UI の裏へ入る
+    drawn_height = max(@canvas_height, length(rows) * cell)
+    height = drawn_height + 2 * @canvas_margin
+    y_step = drawn_height / length(rows)
 
     seats =
       for {row, index} <- Enum.with_index(rows),
@@ -838,6 +855,7 @@ defmodule Tazuna.Relations.Graph do
           do: {{index, band}, Enum.map(members, &{&1, 0})}
 
     initial = Map.new(seats, fn {id, {_row, column}} -> {id, column} end)
+
     # **まず繋がりで寄せ、そのうえで様式ごとにまとめ直す。** 色で様式を見せるので、
     # 同じ色が隣り合っていたほうが読める（席を予約すると図が 4 割伸びるので、
     # 並べ替えだけで寄せる）
@@ -853,7 +871,7 @@ defmodule Tazuna.Relations.Graph do
 
         Map.merge(node, %{
           x: @gutter + (seat + 0.5) * x_step,
-          y: (row + 0.5) * y_step,
+          y: @canvas_margin + (row + 0.5) * y_step,
           band: band_of(node),
           # 枠を作るのに要る升目の座標と大きさ（枠は升目の並びから作る）
           row: row,
@@ -913,7 +931,9 @@ defmodule Tazuna.Relations.Graph do
     [current | done]
     |> Enum.reject(&(&1 == %{}))
     |> Enum.reverse()
-    |> Enum.map(fn row -> Map.new(row, fn {band, members} -> {band, Enum.reverse(members)} end) end)
+    |> Enum.map(fn row ->
+      Map.new(row, fn {band, members} -> {band, Enum.reverse(members)} end)
+    end)
   end
 
   # 行 × 帯の中を、様式ごとにまとめ直す。**席の数は変えない**（並べ替えるだけ）。
