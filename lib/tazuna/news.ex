@@ -24,6 +24,8 @@ defmodule Tazuna.News do
 
   alias Tazuna.Chiezo
   alias Tazuna.Http
+  alias Tazuna.Jst
+  alias Tazuna.News.Report
 
   @user_agent "tazuna/0.1 (+https://github.com/rtcode337/tazuna)"
 
@@ -35,8 +37,17 @@ defmodule Tazuna.News do
   # AI を動かす操作だけ間隔を空ける。読み直しは相手が手元にいるので絞らない
   @min_run_interval_ms 30_000
 
-  # 画面に出す件数。Chiezo 側の上限は 50
+  # 画面に出す件数。Chiezo 側の上限は 50（超えて頼むと 0 件で返る）
   @samples 20
+
+  # まとめが引いた記事を引き直すときの同時本数と待ち時間。
+  # 相手は LAN の中なので短くてよく、遅れた 1 本で画面を止めない
+  @cited_concurrency 5
+  @cited_timeout 5_000
+
+  # 通知に添える出典の本数。全部は添えない —— 通知は畳まれて先頭しか
+  # 見えないことがあるので、URL が並ぶと要旨が押し出される
+  @notice_sources 3
 
   # 収集の既定。名前は Chiezo のソース名になるので英小文字・数字・_ だけ
   @default_collection "tazuna_news"
@@ -486,7 +497,7 @@ defmodule Tazuna.News do
              %{
                collection: collection,
                articles: to_articles(detail["recent"]),
-               digests: to_digests(detail["recent"])
+               digests: detail["recent"] |> to_digests() |> with_body(base, name)
              }}
 
           _ ->
@@ -682,6 +693,58 @@ defmodule Tazuna.News do
 
   def to_collection(_item), do: nil
 
+  # まとめは通しで読ませるもの。一覧に付いてくる要約は冒頭だけなので、
+  # 画面に出す 1 件だけ本文を取り直す。取れなければ冒頭のまま出す ——
+  # 切れた文が出るほうが、まとめの枠ごと消えるよりましなので
+  defp with_body([digest | rest], base, name) do
+    case Chiezo.doc(base, name, digest.title, "title,body") do
+      {:ok, %{"body" => body}} when is_binary(body) and body != "" ->
+        [%{digest | summary: body, cited: cited(body, base, name)} | rest]
+
+      _other ->
+        [digest | rest]
+    end
+  end
+
+  defp with_body(digests, _base, _name), do: digests
+
+  @doc false
+  # まとめが引いた記事を、見出しで 1 件ずつ引き直します（絵と配信元を添えるため）。
+  #
+  # 画面に出している直近のぶんと突き合わせる形にはしません —— まとめは前回から
+  # 今回までに入った全部から引くので、そこに収まる保証がありません（実測では、
+  # 直近 20 件との一致は 13 本中 0 本。50 件でも 7 本）。**見出しは Chiezo の中で
+  # 1 件を指す鍵**なので、引き直せば窓の大きさに関係なく当たります。
+  #
+  # 見出しの無い出典（見出しを書かせる前に溜まったまとめ）は引きません。
+  def cited(body, base, name) do
+    body
+    |> Report.document()
+    |> Report.sources()
+    |> Enum.filter(&(is_binary(&1.label) and &1.label != ""))
+    |> Task.async_stream(&article_of(&1, base, name),
+      max_concurrency: @cited_concurrency,
+      timeout: @cited_timeout,
+      on_timeout: :kill_task
+    )
+    |> Enum.flat_map(fn
+      {:ok, {url, article}} -> [{url, article}]
+      _other -> []
+    end)
+    |> Map.new()
+  end
+
+  # 引けた 1 件。**鍵は引用された URL のまま**にします —— 画面は出典の URL で
+  # 突き合わせるので、Chiezo が持っている URL に付け替えると当たらなくなる
+  defp article_of(%{url: url, label: label}, base, name) do
+    with {:ok, doc} <- Chiezo.doc(base, name, label, "title,extra"),
+         %{} = extra <- doc["extra"] do
+      {url, %{title: doc["title"], image: source_url(extra["image"]), url: url}}
+    else
+      _other -> nil
+    end
+  end
+
   @doc false
   # 溜まっているものを画面の並びにする。新しい順は Chiezo が付けたまま保つ。
   #
@@ -727,9 +790,13 @@ defmodule Tazuna.News do
               summary: trimmed(item["opening"]),
               # **配信日があればそちら** —— 集めた日だけだと、半年前の記事を
               # 今日拾ったのか、今日出たものなのかが読めない
-              collected_at: extra["published_at"] || item["updated_at"] || extra["collected_at"],
+              # 人に見せる日時なので JST に直す（届くのは UTC の文字列）
+              collected_at:
+                Jst.format(extra["published_at"] || item["updated_at"] || extra["collected_at"]),
               importance: importance,
-              reason: reason
+              reason: reason,
+              # まとめが引いた記事（出典の URL → 見出しと絵）。記事の側では空のまま
+              cited: %{}
             }
           ]
         end
@@ -863,47 +930,54 @@ defmodule Tazuna.News do
   end
 
   @doc """
-  まとめを、通知に流すプレーンテキストにします。
+  まとめを、通知に流すプレーンテキストにします。**流すのは要旨だけです。**
 
-  **出典の URL はそのまま残します。** 画面のほうは記事の見出しでリンクにしますが、
+  レポート本文をそのまま送りません —— 通知は Markdown として描かれないので、
+  見出しも表も箇条書きも記号のまま並び、読みたい文字の間に `*` や `|` が挟まります。
+  要旨は依頼文で**通知に流す前提の 2〜3 文**として別に書かせてあるので、
+  ここではそれをそのまま使います（画面では、同じ文がレポートの導入として出ます）。
+
+  **出典の URL は添えます。** 画面のほうは記事の見出しでリンクにしますが、
   通知では逆です —— ntfy が URL を見つけて自分でリンクにするので、見出しに
   差し替えると**行き先が読めないただの文字**になります。
 
-  **飾りも付けません。** Markdown として描かれない場所なので、`**` を置くと
-  記号がそのまま出て、読みたい文字の間に `*` が挟まるだけです。
+  **見出しは写しません。** ntfy はタイトルを別に持つので、本文にも入れると
+  同じ文字が 2 度並びます。
   """
-  def digest_text(%{title: title, summary: summary}) do
-    [title, trimmed(summary)]
-    |> Enum.reject(&(&1 in [nil, ""]))
+  def digest_text(%{summary: summary}) when is_binary(summary) do
+    document = Report.document(summary)
+
+    urls = document |> Report.sources() |> Enum.take(@notice_sources)
+
+    [summary_text(document), Enum.map_join(urls, "\n", & &1.url)]
+    |> Enum.reject(&(&1 == ""))
     |> Enum.join("\n\n")
   end
 
   def digest_text(_digest), do: ""
 
-  @doc """
-  通知に出す 1 行目。**まとめの最初の段落**です。
-
-  通知は畳まれて先頭しか見えないことがあるので、依頼文でも「最初の段落だけで
-  意味が通るように」と頼んであります。
-  """
-  def digest_lead(%{summary: summary}) when is_binary(summary) do
-    summary
-    |> String.split("\n")
-    |> Enum.map(&String.trim/1)
-    |> Enum.find("", &(&1 != ""))
+  # 要旨が読めない本文（要旨を書かせる前に溜まったまとめ）は、章の本文で代える ——
+  # 通知が空で飛ぶより、飾りを落とした本文が流れるほうがまだ読める
+  defp summary_text(document) do
+    case Report.to_text(document.summary) do
+      "" -> document.sections |> Enum.flat_map(& &1.blocks) |> Report.to_text()
+      text -> text
+    end
   end
 
-  def digest_lead(_digest), do: ""
-
   @doc """
-  まとめる回の依頼文。**通知と画面で読むもの**を1件作ります。
+  まとめる回の依頼文。**画面で読むレポート**を1件作ります。
 
   溜まったものをそのまま並べても読めません —— 何が起きたかを先に言うのが、
-  通知の1行と画面の先頭に要るものです。
+  画面の先頭と通知に要るものです。
+
+  **要旨は本文と別に書かせます。** 通知へ流すのは要旨だけで（`digest_text/1`）、
+  レポートを潰して流すと記号の混じった塊になります。画面では、その要旨を
+  レポートの導入として出します —— **1 件のまとめを、出す場所に合わせて使い分けます**。
   """
   def digest_prompt(topic) do
     """
-    前回のまとめから今回までに入ったものを、**1 件のまとめ**にしてください。
+    前回のまとめから今回までに入ったものを、**1 件のレポート**にしてください。
 
     読む人が知りたいのは次のようなことです。
     #{interest_of(topic)}
@@ -916,29 +990,51 @@ defmodule Tazuna.News do
       **{now} はそのまま写してください**（いまの日時に置き換わります）。
       見出しは重複の鍵なので、**同じ見出しを返すとこの回のまとめが丸ごと捨てられます**
       —— 日付だけだと、1 日に 2 回まとめたときの 2 回目が入りません
-    - body: **箇条書きではなく、読み物として書いてください。** 形は次のとおりです。
-
-      ```
-      <全体の導入。2 文ほどで、この期間に何が動いたのかを言う>
-
-      <小見出し>
-      <2〜3 文。何が起きたのかと、なぜ押さえるべきかまで書く>
-      出典: <その話の根拠にした記事の URL>
-
-      <小見出し>
-      ...
-      ```
-
-      - 小見出しは **3〜5 個**まで。材料が少なければ少なくて構いません
-      - **似た話はひとつにまとめて構いません**（同じ出来事の別の記事は 1 つに）
-      - 出典の URL は、**上に並んでいる記事のものをそのまま写してください**
-        —— **上に無い URL を作らないでください**（画面はこれをリンクにします）
-      - 上に書かれていないことを補わないでください
-      - **最初の段落だけで意味が通るように**書いてください
-        （通知にはそこしか出ません）
-      - 記号での飾り（`**` や `-` の行頭）は使わないでください
+    - body: 下の書き方で、**読み物のレポート**として書いてください
     - url: いちばん大事な 1 件の出典（無ければ空でよい）
     - tags: "#{@digest_tag}" を**必ず**付けてください（画面と通知はこれで見分けます）
+
+    body の形です。**使ってよい記法はここにあるものだけ**で、HTML と画像は書かないでください。
+
+    ```
+    ## 要旨
+    <2〜3 文>
+
+    ## 要点
+    - <1 行>
+
+    ## <章の見出し>
+    <段落>
+    - <箇条書き>
+    | 比較軸 | A | B |
+    | --- | --- | --- |
+    | <値> | <値> | <値> |
+    > <注記>
+    出典: [記事の見出し](URL)
+    ```
+
+    **「## 要旨」は通知にそのまま流れます。**
+    - 2〜3 文で、**これだけ読んでも意味が通るように**書いてください
+    - 飾りの記号（`**` や行頭の `-`）と URL は入れないでください
+      —— 通知は Markdown として描かれないので、記号がそのまま出ます
+    - レポート本文の言い直しで構いません（画面では導入として出ます）
+
+    章の書き方です。
+    - 「## 要点」は 3〜5 行。その期間に何が動いたのかを 1 行ずつ
+    - 章（「## <見出し>」）は 3〜6 個。**似た話はひとつにまとめて構いません**
+      （同じ出来事の別の記事は 1 つに）
+    - 1 つの章は 3〜6 文。**何が起きたのか**と、**なぜ押さえるべきか**
+      （読む人の判断がどう変わるか）まで書いてください
+    - 比べるもの（版・道具・手法・料金）が並ぶときは表にしてください
+      —— 並べて初めて分かることは、文章にすると読み返さないと分かりません
+    - 身構える点（未確定・注意・期限）があれば `> ` の行で章に 1 つだけ添えられます
+    - 章の終わりに `出典: [記事の見出し](URL)` を 1〜3 行。**見出しも URL も、上に
+      並んでいるものをそのまま写してください** —— **上に無い URL を作らないでください**。
+      見出しを書くのは、裸の URL では押す前にどこへ行くのか読めないからです
+    - 強調（`**…**`）は 1 つの段落に 1 か所までにしてください。
+      全部が強調だと、どれが強調なのか読み取れません
+    - 上に書かれていないことを補わないでください
+    - 最後に「## 次に見るもの」を置いても構いません（続報を待つもの、確かめるもの）
 
     まとめるものが無ければ、**1 件も返さないでください**（空のまとめは要りません）。
     """

@@ -14,7 +14,14 @@ defmodule Tazuna.NotifyTest do
   @collection "tazuna_tech"
   @digest %{
     title: "まとめ: 基盤の入れ替えが続いた（2026-09-15 01:00）",
-    summary: "この期間は基盤の入れ替えが続きました。\n\n新しい版が出ました。\n出典: https://example.com/1",
+    summary: """
+    ## 要旨
+    この期間は基盤の入れ替えが続きました。
+
+    ## 新しい版
+    新しい版が出ました。**移行の要点**はここです。
+    出典: https://example.com/1
+    """,
     tags: ["まとめ"],
     url: nil,
     image: nil,
@@ -146,18 +153,31 @@ defmodule Tazuna.NotifyTest do
   end
 
   describe "通知に流す文" do
-    test "見出しと本文を、飾りなしで並べる" do
-      # Markdown として描かれない場所なので、`**` を置くと記号がそのまま出る
+    test "流すのは要旨と出典だけ" do
+      # レポート本文をそのまま送ると、見出しも表も箇条書きも記号のまま並ぶ。
+      # 要旨は通知に流す前提で別に書かせてあるので、そこだけを送る
       text = News.digest_text(@digest)
 
-      assert text =~ @digest.title
-      assert text =~ "https://example.com/1"
+      assert text =~ "この期間は基盤の入れ替えが続きました。"
+      refute text =~ "移行の要点"
       refute text =~ "**"
+
+      # 出典は添える（ntfy が URL を見つけて自分でリンクにする）
+      assert text =~ "https://example.com/1"
+
+      # 見出しは写さない（ntfy はタイトルを別に持つので、二度並ぶ）
+      refute text =~ @digest.title
     end
 
-    test "1 行目は、まとめの最初の段落" do
-      # 通知は畳まれて先頭しか見えないことがある
-      assert News.digest_lead(@digest) == "この期間は基盤の入れ替えが続きました。"
+    test "要旨の無い古いまとめも、飾りを落として流す" do
+      # 溜まったまとめは書き換わらない。要旨を書かせる前のものが空で飛ぶより、
+      # 本文を飾りなしで流すほうがまだ読める
+      old = %{@digest | summary: "React の新版\n新しい版が出ました。\n出典: https://example.com/1"}
+
+      text = News.digest_text(old)
+
+      assert text =~ "新しい版が出ました。"
+      assert text =~ "https://example.com/1"
     end
   end
 end

@@ -63,6 +63,37 @@ defmodule Tazuna.Chiezo do
   end
 
   @doc """
+  溜まった 1 件。**見出しで引きます**（Chiezo の中で 1 件を指す鍵は見出しです）。
+
+  `fields` で欲しい欄を頼みます —— `"title,body"` なら本文、`"title,extra"` なら
+  原文の URL や絵。**一覧に付いてくる要約は冒頭だけ**（実測で 240 文字）なので、
+  通しで読ませるものはここから取り直します。
+
+  無い見出しは 404 です（誤りではなく「持っていない」）。
+  """
+  def doc(base, source, title, fields \\ "title,body")
+      when is_binary(source) and is_binary(title) do
+    query = URI.encode_query(%{"fields" => fields, "title" => title})
+
+    case get(base <> "/v1/" <> source <> "/doc?" <> query) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"title" => _title} = doc} -> {:ok, doc}
+          _other -> {:error, :chiezo_unexpected_body}
+        end
+
+      {:ok, %{status: 404}} ->
+        {:error, :not_found}
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
   収集を依頼します。**作られるのは止まった状態**なので、これで AI が動き出すことは
   ありません。すでにあれば何もしません（409 は成功として扱う）。
   """

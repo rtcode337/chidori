@@ -68,7 +68,8 @@ defmodule Tazuna.NewsTest do
       # 出典は Chiezo の中の入口ではなく、集めた1件の原文
       assert article.url == "https://example.com/1"
       assert article.summary == "静かな話題の要約。"
-      assert article.collected_at == "2026-09-07T03:00:00+00:00"
+      # 人に見せる日時は JST（届くのは UTC の文字列）
+      assert article.collected_at == "2026-09-07 12:00 JST"
     end
 
     test "出典が http でなければリンクにしない" do
@@ -543,5 +544,102 @@ defmodule Tazuna.NewsTest do
       assert Enum.map(News.to_articles(recent), & &1.title) == ["ふつうの記事"]
       assert Enum.map(News.to_digests(recent), & &1.title) == ["まとめ: 今日の動き（2026-09-13）"]
     end
+
+    test "本文は、一覧の要約ではなく取り直したものを出す" do
+      # 一覧に付いてくる要約は冒頭だけ（実測で 240 文字）。1 件ずつの索引には
+      # それで足りるが、通しで読ませるまとめは途中で切れる
+      stub_digest(fn _title ->
+        HttpStub.ok(Jason.encode!(%{"title" => "まとめ", "body" => "## 要旨\n最後まで読める本文。"}))
+      end)
+
+      assert %{summary: summary} = read_digest()
+      assert summary =~ "最後まで読める本文。"
+    end
+
+    test "本文を取り直せなければ、冒頭のまま出す" do
+      # 切れた文が出るほうが、まとめの枠ごと消えるよりまし
+      stub_digest(fn _title -> {:ok, %{status: 404, body: ""}} end)
+
+      assert %{summary: summary} = read_digest()
+      assert summary == "まとめ: 今日の動き（2026-09-13）の要約。"
+    end
+
+    test "引いた記事は、見出しで引き直す" do
+      # 画面に並んでいる直近のぶんと突き合わせる形にはしない —— まとめは前回から
+      # 今回までに入った全部から引くので、そこに収まる保証がない。
+      # 見出しは Chiezo の中で 1 件を指す鍵なので、引き直せば窓の大きさに関係なく当たる
+      body = "## 章\n動きました。\n出典: [遠い記事](https://example.com/9)"
+
+      stub_digest(fn
+        "まとめ: 今日の動き（2026-09-13）" ->
+          HttpStub.ok(Jason.encode!(%{"title" => "まとめ", "body" => body}))
+
+        "遠い記事" ->
+          HttpStub.ok(
+            Jason.encode!(%{
+              "title" => "遠い記事",
+              "extra" => %{
+                "url" => "https://example.com/9",
+                "image" => "https://example.com/9.png"
+              }
+            })
+          )
+      end)
+
+      assert %{cited: cited} = read_digest()
+
+      assert cited == %{
+               "https://example.com/9" => %{
+                 title: "遠い記事",
+                 image: "https://example.com/9.png",
+                 url: "https://example.com/9"
+               }
+             }
+    end
+
+    test "引き直せなかった記事は、黙って落とす" do
+      # 消えた記事を引いていることはある（整理の回が落とした後など）。
+      # そこで画面ごと止めない
+      body = "## 章\n動きました。\n出典: [もう無い記事](https://example.com/9)"
+
+      stub_digest(fn
+        "まとめ: 今日の動き（2026-09-13）" ->
+          HttpStub.ok(Jason.encode!(%{"title" => "まとめ", "body" => body}))
+
+        _title ->
+          {:ok, %{status: 404, body: ""}}
+      end)
+
+      assert %{cited: cited, summary: summary} = read_digest()
+      assert cited == %{}
+      assert summary =~ "動きました。"
+    end
+  end
+
+  defp stub_digest(doc) do
+    digest = Map.put(recent("まとめ: 今日の動き（2026-09-13）"), "tags", ["まとめ"])
+
+    HttpStub.stub(fn
+      %{url: "http://chiezo.test:7010/v1/collect"} ->
+        HttpStub.ok(list_body([collection()]))
+
+      %{url: "http://chiezo.test:7010/v1/sources"} ->
+        HttpStub.ok(sources_body(42))
+
+      %{url: "http://chiezo.test:7010/v1/tazuna_news/doc?" <> query} ->
+        doc.(query |> URI.decode_query() |> Map.get("title"))
+
+      %{url: _detail} ->
+        HttpStub.ok(detail_body([digest]))
+    end)
+  end
+
+  defp read_digest do
+    name = start_news()
+    News.subscribe()
+    News.refresh(name)
+
+    assert_receive {:news_updated, %{status: :ready, digests: [digest]}}, 2_000
+    digest
   end
 end

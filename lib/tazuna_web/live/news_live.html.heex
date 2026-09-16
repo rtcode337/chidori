@@ -36,26 +36,17 @@
     </nav>
 
     <%!-- まとめ。**記事の一覧より先に出す** —— 溜まったものをそのまま並べても
-         読めないので、何が起きたかを先に言う（通知に出すのもここの1行目） --%>
+         読めないので、何が起きたかを先に言う（通知へ流れるのは、この中の要旨） --%>
     <section :if={@news.digests != []} class="news-digest" aria-label="まとめ">
       <% digest = List.first(@news.digests) %>
-      <p class="news-source">{digest.collected_at}</p>
-      <h2>{digest.title}</h2>
-      <%!-- **出典は記事の見出しでリンクにする。** 裸の URL のままだと、押す前に
-           どこへ行くのか読めない（通知のほうは URL のまま出す —— ntfy が自分で
-           リンクにするので、見出しに差し替えると行き先が読めなくなる） --%>
-      <%= for block <- digest_blocks(digest.summary, @news.articles) do %>
-        <%= case block do %>
-          <% {:heading, line} -> %>
-            <h3>{line}</h3>
-          <% {:text, line} -> %>
-            <p>{line}</p>
-          <% {:link, url, label} -> %>
-            <p class="digest-source">
-              出典: <a href={url} target="_blank" rel="noreferrer">{label}</a>
-            </p>
-        <% end %>
-      <% end %>
+      <.report
+        title={digest.title}
+        at={digest.collected_at}
+        body={digest.summary}
+        label={@topic && @topic.name}
+        articles={@news.articles}
+        cited={digest.cited}
+      />
     </section>
 
     <section class="news-list" aria-live="polite">
