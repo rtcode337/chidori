@@ -75,6 +75,26 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relation-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; }
 /* Chiezo の状態・巡回の設定・押すボタンを 1 つの枠に。**離れていると、何がどこへ
    効くのか読めない**（状態を見て、直して、押す、が 1 か所で終わる） */
+/* 設定の枠。**集めたものの表示から離す** —— 続けて置くと、記事の続きに見える。
+   中は仕事ごとの節に分け、節の頭に線を引く(集める設定と知らせる設定は別のもの) */
+.settings-panel { margin: 2.5rem 0 1.25rem; padding: 1.2rem 1.3rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; }
+.settings-panel > h2 { margin: 0 0 .9rem; font-size: 1.05rem; color: #2a2463; }
+.settings-panel > h3 { margin: 0 0 .5rem; font-size: .95rem; color: #332c75; }
+.settings-block { margin-top: 1.2rem; border-top: 1px solid #dedcf5; padding-top: 1rem; }
+/* 最初の節は線を引かない(枠の縁とすぐ重なる) */
+.settings-block:first-of-type { margin-top: .8rem; border-top: 0; padding-top: 0; }
+.settings-block > h3 { margin: 0 0 .5rem; font-size: .95rem; color: #332c75; }
+.settings-panel > p, .settings-block > p { margin: .25rem 0; color: #616a82; font-size: .85rem; line-height: 1.7; }
+.settings-panel button { border: 0; background: #554bc0; color: #fff; }
+.settings-panel button:disabled { cursor: wait; opacity: .65; }
+/* 書き込む欄。**白地で、十分な幅を取る** —— 地の色に沈んだ細い欄は、
+   書ける場所だと分からないし、書いたものも読めない */
+.settings-block label { display: block; color: #4b5468; font-size: .85rem; line-height: 1.9; }
+.settings-block input[type="text"], .settings-block textarea { width: 100%; max-width: 34rem; margin-top: .15rem; padding: .55rem .7rem; border: 1px solid #cdd2e4; border-radius: .5rem; background: #fff; color: #16203a; font: inherit; font-size: .92rem; }
+.settings-block input[type="text"]:focus, .settings-block textarea:focus { outline: 2px solid #b9b3ea; outline-offset: 1px; }
+.settings-block form p { margin: .7rem 0; }
+.settings-block .collect-facts { margin-bottom: .8rem; }
+
 .collect-panel { margin-bottom: 1.25rem; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; }
 .collect-panel h2 { margin-bottom: .4rem; font-size: .95rem; color: #332c75; }
 .collect-panel > p { margin: .25rem 0; color: #616a82; font-size: .85rem; }
@@ -486,6 +506,7 @@ article p:last-child { color: #475569; line-height: 1.7; }
 
 /* モーダルから「この画家を詳しく調べて」を頼む */
 .ask-more { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: 0.8rem; }
+.settings-panel .ask-more { border-top-color: #dedcf5; margin-top: 1.2rem; padding-top: 1rem; }
 .ask-more summary { cursor: pointer; font-weight: 700; font-size: 0.9rem; }
 .ask-more textarea { width: 100%; font: inherit; }
 .ask-more button { margin-top: 0.3rem; }

@@ -96,8 +96,10 @@
       </article>
     </section>
 
-    <section class="collect-panel" aria-label="トピックの収集">
-      <h2>Chiezo の収集</h2>
+    <%!-- 設定はページの名前を冠した 1 つの枠にまとめる（他の画面と同じ形）--%>
+    <section class="settings-panel" aria-label="トピックの設定">
+      <h2>{if @topic, do: "#{@topic.name}のトピックの設定", else: "トピックの設定"}</h2>
+      <h3>Chiezo の収集</h3>
       <p aria-live="polite">{note(@state)}</p>
 
       <dl :if={@state.collection} class="collect-facts">

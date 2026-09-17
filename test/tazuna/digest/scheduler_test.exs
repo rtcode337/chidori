@@ -57,17 +57,21 @@ defmodule Tazuna.Digest.SchedulerTest do
   end
 
   describe "時刻の書き方" do
-    test "書き方は揃えて持つ" do
-      # "7:0" と "07:00" が別の時刻に見えると、次にいつ走るのかが読めない
-      {:ok, setting} = Settings.put(@collection, %{"digest_at" => " 7:00 , 21:00"})
-
-      assert setting.digest_at == "07:00,21:00"
+    test "書き方は緩く受けて、持ち方は揃える" do
+      # 厳しくすると、時刻を書き間違えただけでフォームごと保存されない
+      # —— 通知先まで一緒に消える（実際にそうなった）
+      for written <- [" 7:00 , 21:00", "0700、2100", "700 2100", "7 21"] do
+        {:ok, setting} = Settings.put(@collection, %{"digest_at" => written})
+        assert setting.digest_at == "07:00,21:00", written
+      end
     end
 
-    test "24 時間制でなければ断る" do
+    test "読めない時刻は断る" do
       # 黙って落とすと、書いたのに回らない理由が画面から読めない
-      assert {:error, changeset} = Settings.put(@collection, %{"digest_at" => "25:00"})
-      assert %{digest_at: [_message]} = errors_on(changeset)
+      for written <- ["25:00", "12:99", "あした"] do
+        assert {:error, changeset} = Settings.put(@collection, %{"digest_at" => written})
+        assert %{digest_at: [_message]} = errors_on(changeset), written
+      end
     end
   end
 end

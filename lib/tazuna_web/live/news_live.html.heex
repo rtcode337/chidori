@@ -76,47 +76,59 @@
       <% end %>
     </section>
 
-    <%!-- Chiezo の状態と、そこへ送る設定を **1 つの枠にまとめる**（関連図と同じ形）。
-         状態を見る場所と、直す場所と、押す場所が離れていると、何がどこへ効くのか
-         読めない --%>
-    <section class="collect-panel" aria-label="最新情報の収集">
-      <h2>Chiezo の収集</h2>
-      <p aria-live="polite">{status_message(@news) || collection_note(@news)}</p>
+    <%!-- 設定は 1 つの枠にまとめる（関連図と同じ形）。状態を見る場所と、直す場所と、
+         押す場所が離れていると、何がどこへ効くのか読めない。
+         **中は仕事ごとに分ける** —— 集める設定と、知らせる設定は別のもの --%>
+    <section class="settings-panel" aria-label={settings_title(@topic)}>
+      <h2>{settings_title(@topic)}</h2>
 
-      <dl :if={@news.collection} class="collect-facts">
-        <div :for={{label, value} <- collection_facts(@news)}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
-        </div>
-      </dl>
+      <section class="settings-block">
+        <h3>Chiezo の収集</h3>
+        <p aria-live="polite">{status_message(@news) || collection_note(@news)}</p>
 
-      <%!-- **選んだところはサーバーが覚える**（`phx-change`）。覚えないと、収集の
-           状態が届いた拍子にフォームが描き直され、選んだ相手が元の値に戻る --%>
-      <form id="collect-form" phx-submit="collect" phx-change="pick_sweep">
-        <.sweep_table state={@news} picks={@picks} backends={@backends} />
+        <dl :if={@news.collection} class="collect-facts">
+          <div :for={{label, value} <- collection_facts(@news)}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        </dl>
 
-        <p class="muted-note">{sweep_note(@topic)}</p>
-        <button
-          type="submit"
-          phx-disable-with="送っています…"
-          disabled={@news.status == :loading or not @news.configured}
-        >
-          {collect_label(@news)}
-        </button>
-      </form>
+        <%!-- **選んだところはサーバーが覚える**（`phx-change`）。覚えないと、収集の
+             状態が届いた拍子にフォームが描き直され、選んだ相手が元の値に戻る --%>
+        <form id="collect-form" phx-submit="collect" phx-change="pick_sweep">
+          <.sweep_table state={@news} picks={@picks} backends={@backends} />
+
+          <p class="muted-note">{sweep_note(@topic)}</p>
+          <button
+            type="submit"
+            phx-disable-with="送っています…"
+            disabled={@news.status == :loading or not @news.configured}
+          >
+            {collect_label(@news)}
+          </button>
+        </form>
+
+        <p :if={@news.collection && @news.collection.url} class="muted-note">
+          <a href={@news.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
+        </p>
+      </section>
 
       <%!-- 通知先。**画面から直せるようにする** —— 宛先は運用しながら決めるもの
            （試しに別のトピックへ流す、しばらく止める）なので、環境変数だけだと
-           変えるたびに立て直しが要る。**押したときだけ飛ぶ** —— tazuna は定時に
-           動く仕組みを持っていないので、自動では送らない --%>
-      <details class="notify-setting">
-        <summary>まとめを知らせる（ntfy）</summary>
+           変えるたびに立て直しが要る。**畳まない** —— 時刻も宛先も、いまどうなって
+           いるかを開かずに読めることのほうが大事 --%>
+      <section class="settings-block">
+        <h3>通知の設定</h3>
         <p :if={notify_note(@topic)} class="muted-note">{notify_note(@topic)}</p>
 
+        <%!-- 書いたそばから覚える（`phx-change`）。覚えないと、収集の状態が届いた
+             拍子にフォームが描き直され、書きかけの通知先が消える --%>
         <.form
           :let={f}
-          for={to_form(notify_setting(@topic), as: :setting)}
+          id="notify-form"
+          for={@notify_form}
           phx-submit="save_notify"
+          phx-change="edit_notify"
         >
           <p>
             <label>
@@ -137,7 +149,7 @@
           </p>
           <p>
             <label>
-              知らせる時刻（JST・空なら回しません）<br />
+              知らせる時刻（JST・空なら回しません。例: 08:00,21:00）<br />
               <input
                 type="text"
                 name={f[:digest_at].name}
@@ -175,11 +187,7 @@
         >
           いまのまとめを知らせる
         </button>
-      </details>
-
-      <p :if={@news.collection && @news.collection.url} class="muted-note">
-        <a href={@news.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
-      </p>
+      </section>
 
       <%!-- **この場で 1 回だけ頼める。** 定時の巡回は決まった仕事しかしないので、
            「この話の続きを追って」のような頼みごとの行き先がここにしかない。

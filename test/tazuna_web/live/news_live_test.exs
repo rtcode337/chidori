@@ -198,6 +198,20 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "いまのまとめを知らせる"
     end
 
+    test "設定は、ページの名前を冠した枠にまとめる", %{conn: conn} do
+      # 「設定」とだけ書くと、何の設定なのかがタブを切り替えた後に読めない。
+      # 集める設定と知らせる設定は別のものなので、節に分けて見出しを立てる
+      html = shown(conn)
+
+      assert html =~ "ニュースの設定"
+      assert html =~ "settings-panel"
+      assert html =~ "Chiezo の収集"
+      assert html =~ "通知の設定"
+
+      # 通知の設定は畳まない（時刻も宛先も、開かずに読めるほうが大事）
+      refute html =~ "まとめを知らせる（ntfy）"
+    end
+
     test "知らせる時刻を書けて、その場で作らせる口もある", %{conn: conn} do
       # 時計を持つのは tazuna の側。Chiezo には「いま回してください」としか言わない
       System.put_env("NTFY_BASE_URL", "http://ntfy.test")
@@ -210,6 +224,43 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "いま作って知らせる"
       # 作り直さずに送るだけの口も残す
       assert html =~ "いまのまとめを知らせる"
+    end
+
+    test "時刻の書き方を間違えても、書いたものは消さない", %{conn: conn} do
+      # 時刻だけ直せばよいのに通知先まで書き直させられると、直すたびに全部を
+      # 入れ直すことになる（実際、通知先ごと消えた）
+      System.put_env("NTFY_BASE_URL", "http://ntfy.test")
+      on_exit(fn -> System.delete_env("NTFY_BASE_URL") end)
+
+      Tazuna.News.subscribe("tazuna_news")
+      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news")
+      assert_receive {:news_updated, %{status: :ready}}, 2_000
+
+      html =
+        live
+        |> form("#notify-form", setting: %{ntfy_topic: "tazuna-news", digest_at: "25 時"})
+        |> render_submit()
+
+      assert html =~ "24 時間制で書いてください"
+      # 書いた通知先はそのまま残っている
+      assert html =~ ~s(value="tazuna-news")
+    end
+
+    test "書きかけは、収集の状態が届いても消えない", %{conn: conn} do
+      # 覚えないと、届いた拍子にフォームが描き直されて書きかけが消える
+      Tazuna.News.subscribe("tazuna_news")
+      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news")
+      assert_receive {:news_updated, %{status: :ready}}, 2_000
+
+      live
+      |> form("#notify-form", setting: %{ntfy_topic: "書きかけ", digest_at: "0800"})
+      |> render_change()
+
+      # 収集を読み直す（本物の画面では巡回のたびに届く）
+      Tazuna.News.refresh(Tazuna.News.server("tazuna_news"))
+      assert_receive {:news_updated, %{status: :ready}}, 2_000
+
+      assert render(live) =~ ~s(value="書きかけ")
     end
 
     test "まとめが、画面ではリンク入りで出る", %{conn: conn} do

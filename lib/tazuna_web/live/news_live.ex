@@ -39,7 +39,8 @@ defmodule TazunaWeb.NewsLive do
         backends: [],
         picks: %{},
         asking: false,
-        digest_message: nil
+        digest_message: nil,
+        notify_form: nil
       )
 
     socket =
@@ -74,7 +75,8 @@ defmodule TazunaWeb.NewsLive do
      assign(socket,
        topic: topic,
        page_title: if(topic, do: "最新情報 — #{topic.name}", else: "最新情報"),
-       news: if(topic, do: News.current(News.server(topic.collection)), else: News.empty())
+       news: if(topic, do: News.current(News.server(topic.collection)), else: News.empty()),
+       notify_form: notify_form(topic)
      )}
   end
 
@@ -97,15 +99,29 @@ defmodule TazunaWeb.NewsLive do
   end
 
   # 通知先を書き換える。**押したときだけ送る**ので、ここでは保存だけ
+  # **書いたそばから覚える。** 覚えないと、収集の状態が届いた拍子にフォームが
+  # 描き直され、**書きかけの通知先が消えます**（保存したつもりで消えたように見える）
+  def handle_event("edit_notify", %{"setting" => attrs}, socket) do
+    topic = socket.assigns.topic
+
+    {:noreply, assign(socket, notify_form: notify_form(topic, attrs))}
+  end
+
   def handle_event("save_notify", %{"setting" => attrs}, socket) do
     topic = socket.assigns.topic
 
     case Settings.put(topic.collection, attrs) do
       {:ok, _setting} ->
-        {:noreply, put_flash(socket, :info, "通知先を保存しました。")}
+        {:noreply,
+         socket |> assign(notify_form: notify_form(topic)) |> put_flash(:info, "通知先を保存しました。")}
 
       {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, first_error(changeset))}
+        # **書いたものは消さない。** 時刻の書き方を間違えただけで通知先まで
+        # 書き直させられると、直すたびに全部を入れ直すことになる
+        {:noreply,
+         socket
+         |> assign(notify_form: to_form(changeset, as: :setting))
+         |> put_flash(:error, first_error(changeset))}
     end
   end
 
@@ -327,6 +343,21 @@ defmodule TazunaWeb.NewsLive do
     end
   end
 
+  # 通知の設定のフォーム。**組むのはここだけ** —— 描くたびに DB から組み直すと、
+  # 書きかけが消える
+  defp notify_form(nil), do: nil
+
+  defp notify_form(%{collection: collection}, attrs \\ %{}) do
+    to_form(Settings.changeset(collection, attrs), as: :setting)
+  end
+
+  @doc """
+  設定の枠の見出し。**画面の名前に合わせます** —— 「設定」とだけ書くと、
+  何の設定なのかがタブを切り替えた後に読めません。
+  """
+  def settings_title(%{name: name}), do: "#{name}の設定"
+  def settings_title(_topic), do: "設定"
+
   @doc """
   知らせる時刻の一言。**次にいつ知らせるのかまで出します** ——
   時刻だけ書かれていても、それが今日のぶんとして残っているのかは読めません。
@@ -338,7 +369,8 @@ defmodule TazunaWeb.NewsLive do
 
     case Setting.digest_times(setting) do
       [] ->
-        "時刻を書くと、その時刻に整理→要約を起こして知らせます（空なら自分からは回りません）。"
+        "時刻を書くと、その時刻に整理→要約を起こして知らせます" <>
+          "（空なら自分からは回りません。08:00 でも 0800 でも 8 でも読めます）。"
 
       times ->
         "この時刻に、整理を 1 回起こしてからまとめを作らせて知らせます（JST）: " <>

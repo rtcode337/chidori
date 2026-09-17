@@ -23,8 +23,8 @@ defmodule Tazuna.Notify.Setting do
 
   @fields ~w(collection ntfy_topic ntfy_base_url digest_at last_digest_at)a
 
-  # 時刻 1 つぶんの書き方（JST の HH:MM）
-  @time ~r/\A([01]?\d|2[0-3]):([0-5]\d)\z/
+  # 時刻の区切り。**読点も空白も受けます** —— 書く人は「08:00、21:00」とも書きます
+  @separators ~r/[,、\s]+/
 
   def changeset(setting, attrs) do
     setting
@@ -51,11 +51,11 @@ defmodule Tazuna.Notify.Setting do
   """
   def digest_times(%__MODULE__{digest_at: text}) when is_binary(text) do
     text
-    |> String.split(",")
+    |> split()
     |> Enum.flat_map(fn part ->
-      case Regex.run(@time, String.trim(part)) do
-        [_all, hour, minute] -> [{String.to_integer(hour), String.to_integer(minute)}]
-        _other -> []
+      case parse(part) do
+        {:ok, time} -> [time]
+        :error -> []
       end
     end)
     |> Enum.uniq()
@@ -64,16 +64,57 @@ defmodule Tazuna.Notify.Setting do
 
   def digest_times(_setting), do: []
 
-  # 書き方は揃えて持つ（"7:0" と "07:00" が別の時刻に見えないように）
+  @doc """
+  書かれた時刻 1 つを読みます。**書き方は緩く受けます** —— `08:00` も `8:00` も
+  `0800` も `8` も同じ時刻です（全角のコロンも読みます）。
+
+  厳しくすると、**時刻の書き方を間違えただけでフォームごと保存されません** ——
+  通知先まで一緒に消えます（実際にそうなりました）。
+  """
+  def parse(text) when is_binary(text) do
+    text = text |> String.replace("：", ":") |> String.trim()
+
+    read =
+      cond do
+        Regex.match?(~r/\A\d{1,2}:\d{1,2}\z/, text) ->
+          [hour, minute] = String.split(text, ":")
+          {String.to_integer(hour), String.to_integer(minute)}
+
+        # 「0800」「800」—— 時計の読みをそのまま書く人がいる
+        Regex.match?(~r/\A\d{3,4}\z/, text) ->
+          {hour, minute} = String.split_at(text, String.length(text) - 2)
+          {String.to_integer(hour), String.to_integer(minute)}
+
+        Regex.match?(~r/\A\d{1,2}\z/, text) ->
+          {String.to_integer(text), 0}
+
+        true ->
+          :error
+      end
+
+    case read do
+      {hour, minute} when hour in 0..23 and minute in 0..59 -> {:ok, {hour, minute}}
+      _other -> :error
+    end
+  end
+
+  def parse(_text), do: :error
+
+  @doc "時刻 1 つの書き方。**画面に出すのも持つのもこの形**にします。"
+  def format({hour, minute}) do
+    String.pad_leading("#{hour}", 2, "0") <> ":" <> String.pad_leading("#{minute}", 2, "0")
+  end
+
+  defp split(text), do: text |> String.split(@separators) |> Enum.reject(&(&1 == ""))
+
+  # 書き方は揃えて持つ（"8" と "08:00" が別の時刻に見えないように）
   defp normalize_times(text) do
     text
-    |> String.split(",")
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
+    |> split()
     |> Enum.map_join(",", fn part ->
-      case Regex.run(@time, part) do
-        [_all, hour, minute] -> String.pad_leading(hour, 2, "0") <> ":" <> minute
-        _other -> part
+      case parse(part) do
+        {:ok, time} -> format(time)
+        :error -> part
       end
     end)
   end
@@ -81,14 +122,14 @@ defmodule Tazuna.Notify.Setting do
   defp valid_times(:digest_at, ""), do: []
 
   defp valid_times(:digest_at, text) do
-    bad =
-      text
-      |> String.split(",")
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&Regex.match?(@time, &1))
+    bad = text |> split() |> Enum.filter(&(parse(&1) == :error))
 
     if bad == [],
       do: [],
-      else: [digest_at: "24 時間制の HH:MM で書いてください（例: 07:00,21:00）"]
+      else: [
+        digest_at:
+          "知らせる時刻は 24 時間制で書いてください" <>
+            "（例: 08:00,21:00。0800 や 8:00 も読めます）"
+      ]
   end
 end
