@@ -123,6 +123,10 @@ defmodule Tazuna.NewsTest do
         %{method: :get, url: "http://chiezo.test:7010/v1/sources"} ->
           HttpStub.ok(sources_body(42))
 
+        # まとめはタグで引き直す（直近の窓から押し出されても出るように）
+        %{method: :get, url: "http://chiezo.test:7010/v1/tazuna_news/filter?" <> _query} ->
+          HttpStub.ok(Jason.encode!(%{"results" => []}))
+
         %{method: :get, url: url} ->
           assert url =~ "/v1/collect/tazuna_news"
           HttpStub.ok(detail_body([recent("地震の続報")]))
@@ -543,6 +547,14 @@ defmodule Tazuna.NewsTest do
       assert prompt =~ "丸ごと捨てられます"
     end
 
+    test "整理は、まとめに触らない" do
+      # 同じ出来事に触れているので重複に見えるが、落とすと画面と通知から
+      # まとめが消える（実際に消えた）
+      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+
+      assert prompt =~ "「まとめ」のタグが付いたものには触らないでください"
+    end
+
     test "整理は、ニュース以外も探す" do
       # 配信元から機械的に入るのは決まった媒体のぶんだけ。
       # 記事も論文も、探しに行かなければ永遠に入らない
@@ -574,6 +586,29 @@ defmodule Tazuna.NewsTest do
 
       assert Enum.map(News.to_articles(recent), & &1.title) == ["ふつうの記事"]
       assert Enum.map(News.to_digests(recent), & &1.title) == ["まとめ: 今日の動き（2026-09-13）"]
+    end
+
+    test "消えたものは出さない" do
+      # 消したものは印が付いて残る。落とさないと画面に並ぶうえ、本文はもう引けないので
+      # （doc は 404）一覧の冒頭だけが出て、途中で切れた文として見える（実際にそう出た）
+      recent = [
+        recent("ふつうの記事"),
+        Map.put(recent("消えた記事"), "tags", [Tazuna.Chiezo.removed_tag()]),
+        Map.put(recent("まとめ: 生きている"), "tags", ["まとめ"]),
+        Map.put(recent("まとめ: 消えた"), "tags", ["まとめ", Tazuna.Chiezo.removed_tag()])
+      ]
+
+      assert Enum.map(News.to_articles(recent), & &1.title) == ["ふつうの記事"]
+      assert Enum.map(News.to_digests(recent), & &1.title) == ["まとめ: 生きている"]
+    end
+
+    test "まとめは、直近の窓に無くてもタグで引き直す" do
+      # 見出しの回が 60 件足すと、まとめは直近の一覧から押し出される
+      # （まとめが出ない時間帯ができた）
+      stub_digest_by_tag()
+
+      assert %{title: title} = read_digest()
+      assert title == "まとめ: 新しい回（2026-09-18 07:00）"
     end
 
     test "本文は、一覧の要約ではなく取り直したものを出す" do
@@ -665,12 +700,45 @@ defmodule Tazuna.NewsTest do
     end)
   end
 
+  # まとめが直近の一覧に入っていない面（見出しの回が足した直後）
+  defp stub_digest_by_tag do
+    digest = Map.put(recent("まとめ: 新しい回（2026-09-18 07:00）"), "tags", ["まとめ"])
+    old = Map.put(recent("まとめ: 古い回（2026-09-17 07:00）"), "tags", ["まとめ"])
+
+    HttpStub.stub(fn
+      %{url: "http://chiezo.test:7010/v1/collect"} ->
+        HttpStub.ok(list_body([collection()]))
+
+      %{url: "http://chiezo.test:7010/v1/sources"} ->
+        HttpStub.ok(sources_body(42))
+
+      %{url: "http://chiezo.test:7010/v1/tazuna_news/filter?" <> _query} ->
+        # 点数の順で返る（新しい順ではない）ので、古いほうを先に置く
+        HttpStub.ok(
+          Jason.encode!(%{
+            "results" => [
+              Map.put(old, "updated_at", "2026-09-17T22:00:00+00:00"),
+              Map.put(digest, "updated_at", "2026-09-18T22:00:00+00:00")
+            ]
+          })
+        )
+
+      %{url: "http://chiezo.test:7010/v1/tazuna_news/doc?" <> _query} ->
+        HttpStub.ok(Jason.encode!(%{"title" => "まとめ", "body" => "## 要旨\n本文。"}))
+
+      %{url: _detail} ->
+        # 一覧には記事しか残っていない
+        HttpStub.ok(detail_body([recent("新しい記事")]))
+    end)
+  end
+
   defp read_digest do
     name = start_news()
     News.subscribe()
     News.refresh(name)
 
-    assert_receive {:news_updated, %{status: :ready, digests: [digest]}}, 2_000
+    # **先頭が画面に出るまとめ**（新しい順に並べてある）。本文を取り直すのもここだけ
+    assert_receive {:news_updated, %{status: :ready, digests: [digest | _rest]}}, 2_000
     digest
   end
 end

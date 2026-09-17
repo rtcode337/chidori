@@ -507,7 +507,7 @@ defmodule Tazuna.News do
              %{
                collection: collection,
                articles: to_articles(detail["recent"]),
-               digests: detail["recent"] |> to_digests() |> with_body(base, name)
+               digests: digests(base, name, detail["recent"])
              }}
 
           _ ->
@@ -745,6 +745,46 @@ defmodule Tazuna.News do
 
   def with_body(digests, _base, _name), do: digests
 
+  # 画面に出すまとめ。**直近の窓から拾わない** —— 一覧に付いてくるのは新しい順の
+  # 数十件で、見出しの回が 60 件足した後にはまとめがそこから押し出される
+  # （実際、まとめが出ない時間帯ができた）。タグで引けば、窓の大きさに関係なく出る。
+  #
+  # **引けなければ窓のぶんで出す**（Chiezo が古くて filter を持たない面でも、
+  # まとめが丸ごと消えるよりはまし）
+  defp digests(base, name, recent) do
+    case tagged_digests(base, name) do
+      [] -> recent |> to_digests() |> with_body(base, name)
+      found -> with_body(found, base, name)
+    end
+  end
+
+  defp tagged_digests(base, name) do
+    query =
+      URI.encode_query(%{
+        "tag" => @digest_tag,
+        "fields" => "title,tags,opening,updated_at,extra",
+        "limit" => 20
+      })
+
+    case get(base <> "/v1/" <> name <> "/filter?" <> query) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"results" => results}} when is_list(results) ->
+            # **並びは新しい順に直す。** filter が返すのは点数の順で、
+            # そのまま先頭を取ると古いまとめが画面に出る
+            results
+            |> to_digests()
+            |> Enum.sort_by(& &1.collected_at, :desc)
+
+          _other ->
+            []
+        end
+
+      _other ->
+        []
+    end
+  end
+
   @doc false
   # まとめが引いた記事を、見出しで 1 件ずつ引き直します（絵と配信元を添えるため）。
   #
@@ -809,10 +849,14 @@ defmodule Tazuna.News do
       %{"title" => title} = item when is_binary(title) ->
         title = String.trim(title)
 
-        if title == "" do
+        tags = tags_of(item)
+
+        # **消えたものは出さない。** 消したものは印が付いて残るので、落とさないと
+        # 画面に並ぶ —— しかも本文はもう引けないので（`doc` は 404）、一覧に付いて
+        # くる冒頭だけが出て、途中で切れた文として見える（実際にそう出た）
+        if title == "" or Chiezo.removed_tag() in tags do
           []
         else
-          tags = tags_of(item)
           {importance, reason} = importance(title, tags)
           extra = if is_map(item["extra"]), do: item["extra"], else: %{}
 
@@ -932,6 +976,10 @@ defmodule Tazuna.News do
 
     **迷ったら落とさないでください。** 消したものは Chiezo が覚えていて、
     次に同じ見出しが流れてきても戻りません。
+
+    **「#{@digest_tag}」のタグが付いたものには触らないでください**（消すのも書き換えるのも）。
+    あれは要約の回が書いた読み物で、記事ではありません —— 同じ出来事に触れているので
+    重複に見えますが、落とすと**画面と通知からまとめが消えます**（実際に消えました）。
 
     **2. 上に無いものを探して足す。**
     決まった配信元だけを見ていると、そこに載らないものは永遠に入りません。
