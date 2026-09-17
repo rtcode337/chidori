@@ -54,6 +54,7 @@ defmodule Tazuna.News do
 
   # 巡回の時計。**引き方で変える** —— 機械で引く回は AI の枠を使わないので短くてよく、
   # 判断の要る回は長い（頻繁に読み直しても、中身はそれほど変わらない）
+  # 巡回の間隔の既定（分）。**話題ごとに上書きできます**（`Tazuna.Topics` の `every`）
   @feed_minutes 60
   @collect_minutes 360
   # **整理は定時でも回す。** まとめの直前にもう 1 回起こすが、それだけにすると
@@ -589,7 +590,11 @@ defmodule Tazuna.News do
   def sweeps(topic) do
     [
       intake(topic),
-      %{name: @focus_sweep, interval_minutes: @refine_minutes, prompt: refine_prompt(topic)},
+      %{
+        name: @focus_sweep,
+        interval_minutes: every(topic, :refine, @refine_minutes),
+        prompt: refine_prompt(topic)
+      },
       %{
         name: "要約",
         # **時計を持たせない**（`on_demand`）。起こすのは tazuna の側で、
@@ -607,16 +612,33 @@ defmodule Tazuna.News do
   # 溜める回。**配信元があれば機械で引く** —— 見出し・要約・URL・配信日は機械が
   # 正確に取れるので、AI の枠は「何が重要か」「どうまとめるか」へ回す。
   # **足すだけと組にする** —— 組にしないと、整理が付けたタグを配信の薄い内容で上書きする
-  defp intake(%{feeds: [_ | _]}),
-    do: %{name: "見出し", interval_minutes: @feed_minutes, use_feed: true, only_new: true}
+  defp intake(%{feeds: [_ | _]} = topic),
+    do: %{
+      name: "見出し",
+      interval_minutes: every(topic, :feed, @feed_minutes),
+      use_feed: true,
+      only_new: true
+    }
 
   defp intake(topic),
     do: %{
       name: "集める",
-      interval_minutes: @collect_minutes,
+      interval_minutes: every(topic, :collect, @collect_minutes),
       only_new: true,
       prompt: prompt(topic)
     }
+
+  # 巡回の間隔。**話題が書いていればそちら** —— 世の中の動く速さは話題ごとに違い、
+  # 動きの遅い話題を短い間隔で回しても、同じものを読み直すだけで枠を食う
+  defp every(topic, which, fallback) when is_map(topic) do
+    case topic |> Map.get(:every, %{}) |> Map.get(which) do
+      minutes when is_integer(minutes) and minutes > 0 -> minutes
+      _other -> fallback
+    end
+  end
+
+  # 話題が分からないまま依頼されることがある（画面を通さない頼み方）
+  defp every(_topic, _which, fallback), do: fallback
 
   # 画面で選んだ相手を巡回に載せる。**tazuna は覚えない** —— 正は Chiezo が持っている
   defp with_choices(sweeps, choices) do
@@ -941,8 +963,21 @@ defmodule Tazuna.News do
       - 分野を1〜3個（配信元の名前はそのまま残してください）
 
     **触ったものと足すものだけ返してください。** 触れなかったものはそのまま残ります。
+    #{note_of(topic)}
     """
   end
+
+  # その話題ならではの頼みごと（`Tazuna.Topics` の `note`）。
+  # **関心とは別物** —— あちらは「何が読む価値があるか」、こちらは
+  # 「1 件ごとに何を書き足すか」。持たない話題では何も足さない
+  defp note_of(topic) when is_map(topic) do
+    case topic |> Map.get(:note) |> to_string() |> String.trim() do
+      "" -> ""
+      note -> "\n" <> note
+    end
+  end
+
+  defp note_of(_topic), do: ""
 
   @doc """
   まとめを、通知に流すプレーンテキストにします。**流すのは要旨だけです。**

@@ -510,6 +510,30 @@ defmodule Tazuna.NewsTest do
       assert sweeps["整理"].interval_minutes == 240
     end
 
+    test "動きの遅い話題は、間隔を長くできる" do
+      # 1 日で情勢がひっくり返らない話題を短い間隔で回しても、同じものを読み直す
+      # だけで枠を食う。**話題が書いていればそちらを使う**
+      movies = defined_topic("tazuna_movies") |> News.sweeps() |> Map.new(&{&1.name, &1})
+      tech = defined_topic("tazuna_tech") |> News.sweeps() |> Map.new(&{&1.name, &1})
+
+      assert movies["見出し"].interval_minutes > tech["見出し"].interval_minutes
+      assert movies["整理"].interval_minutes > tech["整理"].interval_minutes
+    end
+
+    test "その話題ならではの頼みごとは、整理の回に足す" do
+      # 評判も興行成績も配信元には載っていない。外を当たる力を持つ回でなければ足せない
+      prompt = News.refine_prompt(defined_topic("tazuna_movies"))
+
+      assert prompt =~ "興行成績"
+
+      # 口コミの本文は写させない（転載になるうえ、1 人の感想は作品の評判ではない）
+      assert prompt =~ "口コミの本文は写さないでください"
+      assert prompt =~ "結末や仕掛けは書かないでください"
+
+      # 持たない話題には足さない
+      refute News.refine_prompt(defined_topic("tazuna_tech")) =~ "口コミ"
+    end
+
     test "まとめの見出しは回ごとに変わる" do
       # 見出しは重複の鍵。日付だけだと、1 日に 2 回まとめたときの 2 回目が
       # 丸ごと捨てられる（要約は足すだけの回なので、既にある見出しは入らない）
