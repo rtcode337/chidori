@@ -45,4 +45,16 @@ defmodule Tazuna.Jst do
   def today(now \\ DateTime.utc_now()) do
     now |> DateTime.add(@offset_seconds, :second) |> DateTime.to_date()
   end
+
+  @doc """
+  日本時間の「その日の何時何分」を UTC で返します。
+
+  **予定の時刻は JST で決めて、比べるのは UTC** です —— 利用者が書くのは
+  「07:00 に知らせて」で、それを実行環境の時計と比べるには UTC に直すしかありません。
+  """
+  def utc_at(%Date{} = date, hour, minute) do
+    date
+    |> DateTime.new!(Time.new!(hour, minute, 0), "Etc/UTC")
+    |> DateTime.add(-@offset_seconds, :second)
+  end
 end

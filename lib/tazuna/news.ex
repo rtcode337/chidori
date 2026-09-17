@@ -56,12 +56,10 @@ defmodule Tazuna.News do
   # 判断の要る回は長い（頻繁に読み直しても、中身はそれほど変わらない）
   @feed_minutes 60
   @collect_minutes 360
-  # **整理は、まとめより高い頻度にする。** まとめの窓（12 時間）に整理が 1 回しか
-  # 入らないと、直前に世の中で起きたことが最大 12 時間ぶん抜けたまままとめられる
-  # —— ニュースは新しさが落ちると意味が薄い。4 時間なら、どのまとめの窓にも 3 回入る。
-  # **外を当たるのもこの回**なので、短いほうに寄せてある
+  # **整理は定時でも回す。** まとめの直前にもう 1 回起こすが、それだけにすると
+  # 落とす仕事も外を当たる仕事もまとめの回数ぶんしか走らない ——
+  # ニュースは新しさが落ちると意味が薄いので、間は空けすぎない
   @refine_minutes 240
-  @digest_minutes 720
 
   # 割り込みを頼む先。**専用の 1 本は置かない** —— 頼みごとは「落として」
   # 「印を直して」がほとんどで、その力を持つのは整理の回だけ
@@ -378,6 +376,17 @@ defmodule Tazuna.News do
 
   defp now_ms, do: System.monotonic_time(:millisecond)
 
+  @doc false
+  # まとめを作らせている最中の一言。**収集の状態とは別の知らせ**にする ——
+  # 状態に混ぜると、届くたびに画面ぜんたいが書き換わる
+  def broadcast_digest(collection, message) when is_binary(collection) do
+    Phoenix.PubSub.broadcast(
+      Tazuna.PubSub,
+      topic(collection),
+      {:digest_progress, collection, message}
+    )
+  end
+
   defp broadcast(state) do
     Phoenix.PubSub.broadcast(
       Tazuna.PubSub,
@@ -566,7 +575,9 @@ defmodule Tazuna.News do
   - 見出し / 集める —— 溜める回。配信元があれば機械で引き、無ければ AI に集めさせる
   - 整理 —— 前回から入ったものを読んで印を付け直し、要らないものを落とし、
     **そのうえで**配信元が拾わなかったものを外から探して足す
-  - 要約 —— 前回から入ったものを 1 件にまとめて残す（通知と画面で読むもの）
+  - 要約 —— 前回から入ったものを 1 件にまとめて残す（通知と画面で読むもの）。
+    **時計を持ちません** —— 起こすのは tazuna で、その直前に整理をもう 1 回回します
+    （整理されていないものでまとめさせない）
 
   **漏れを探す回と分けていません。** 分けていた頃は、重なった時間ぶんを 2 度読ませて
   いました（外を当たる回は直近 4 時間、印を付け直す回は直近 6 時間）—— 画家の収集が
@@ -581,7 +592,10 @@ defmodule Tazuna.News do
       %{name: @focus_sweep, interval_minutes: @refine_minutes, prompt: refine_prompt(topic)},
       %{
         name: "要約",
-        interval_minutes: @digest_minutes,
+        # **時計を持たせない**（`on_demand`）。起こすのは tazuna の側で、
+        # 何時に読みたいかは利用者の都合 —— Chiezo に持たせると、あちらが
+        # 都合を知る場所になる。頼まれたときだけ動くので、**いつ回ったかが分かる**
+        on_demand: true,
         # **まとめる回に消す力を持たせない。** 読んで書くだけの回なので、
         # 触れるのは自分が足す 1 件だけでよい
         only_new: true,
@@ -696,7 +710,8 @@ defmodule Tazuna.News do
   # まとめは通しで読ませるもの。一覧に付いてくる要約は冒頭だけなので、
   # 画面に出す 1 件だけ本文を取り直す。取れなければ冒頭のまま出す ——
   # 切れた文が出るほうが、まとめの枠ごと消えるよりましなので
-  defp with_body([digest | rest], base, name) do
+  @doc false
+  def with_body([digest | rest], base, name) do
     case Chiezo.doc(base, name, digest.title, "title,body") do
       {:ok, %{"body" => body}} when is_binary(body) and body != "" ->
         [%{digest | summary: body, cited: cited(body, base, name)} | rest]
@@ -706,7 +721,7 @@ defmodule Tazuna.News do
     end
   end
 
-  defp with_body(digests, _base, _name), do: digests
+  def with_body(digests, _base, _name), do: digests
 
   @doc false
   # まとめが引いた記事を、見出しで 1 件ずつ引き直します（絵と配信元を添えるため）。

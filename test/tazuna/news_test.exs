@@ -233,8 +233,11 @@ defmodule Tazuna.NewsTest do
       assert Enum.map(payload["sweeps"], & &1["name"]) ==
                ["集める", "整理", "要約"]
 
-      # **割り込みのための空の巡回は送らない。** 頼みごとは整理の回で走る
-      refute Enum.any?(payload["sweeps"], & &1["on_demand"])
+      # **時計を持たないのは要約だけ。** 起こすのは tazuna で、何時に知らせるかは
+      # 利用者の都合 —— Chiezo に持たせると、あちらが都合を知る場所になる。
+      # 割り込みのための空の巡回は置かない（頼みごとは整理の回で走る）
+      assert Enum.filter(payload["sweeps"], & &1["on_demand"]) |> Enum.map(& &1["name"]) ==
+               ["要約"]
 
       # 配信元を持たない話題なので、外の道具は付けない（集めるところから AI に頼む）
       refute payload["feed"]
@@ -438,10 +441,11 @@ defmodule Tazuna.NewsTest do
 
     test "割り込みのための空の巡回は置かない" do
       # 置いていた頃は時計を持たないだけの空の巡回で、依頼文を持たないので
-      # 収集ぜんたいの文（集める回の文）で走っていた —— 落とす力を持たない回
+      # 収集ぜんたいの文（集める回の文）で走っていた —— 落とす力を持たない回。
+      # 時計を持たないのは要約だけ（起こすのは tazuna で、依頼文は自分で持っている）
       sweeps = defined_topic("tazuna_tech") |> News.sweeps()
 
-      refute Enum.any?(sweeps, &Map.get(&1, :on_demand))
+      assert Enum.filter(sweeps, &Map.get(&1, :on_demand)) |> Enum.map(& &1.name) == ["要約"]
     end
 
     test "配信元を持つ話題は、集めるところを機械にまかせる" do
@@ -495,12 +499,15 @@ defmodule Tazuna.NewsTest do
       assert prompt =~ "新しい見出しで"
     end
 
-    test "整理は、まとめより高い頻度で回る" do
-      # まとめの窓に 1 回しか入らないと、直前に起きたことが最大 12 時間ぶん
-      # 抜けたまままとめられる —— ニュースは新しさが落ちると意味が薄い
+    test "要約は時計を持たず、整理は定時でも回る" do
+      # 要約を起こすのは tazuna（知らせる時刻はこちらが持つ）。整理はその直前にも
+      # 起こすが、定時の時計も残す —— 落とす仕事も外を当たる仕事も、
+      # まとめの回数ぶんしか走らないと間が空きすぎる
       sweeps = defined_topic("tazuna_tech") |> News.sweeps() |> Map.new(&{&1.name, &1})
 
-      assert sweeps["整理"].interval_minutes < sweeps["要約"].interval_minutes
+      assert Map.get(sweeps["要約"], :on_demand)
+      refute Map.get(sweeps["要約"], :interval_minutes)
+      assert sweeps["整理"].interval_minutes == 240
     end
 
     test "まとめの見出しは回ごとに変わる" do

@@ -20,9 +20,11 @@ defmodule TazunaWeb.NewsLive do
   import TazunaWeb.CollectPanel
   import TazunaWeb.Report
 
+  alias Tazuna.Digest
   alias Tazuna.Jst
   alias Tazuna.News
   alias Tazuna.Notify
+  alias Tazuna.Notify.Setting
   alias Tazuna.Notify.Settings
   alias Tazuna.Ntfy
   alias Tazuna.Topics
@@ -31,7 +33,14 @@ defmodule TazunaWeb.NewsLive do
   def mount(_params, _session, socket) do
     # 相手の一覧は**繋がってから、待たずに**引く。画面の中で同期に引くと、Chiezo が
     # 遅いあいだページが固まる（選択肢が無くても記事は読めるので、待つ価値が無い）
-    socket = assign(socket, topics: Topics.list(), backends: [], picks: %{}, asking: false)
+    socket =
+      assign(socket,
+        topics: Topics.list(),
+        backends: [],
+        picks: %{},
+        asking: false,
+        digest_message: nil
+      )
 
     socket =
       if connected?(socket) do
@@ -100,8 +109,17 @@ defmodule TazunaWeb.NewsLive do
     end
   end
 
-  # **まとめを知らせる。** 自動では飛ばさない —— tazuna は定時に動く仕組みを
-  # 持っていないので、飛ぶのは押したときだけ
+  # **まとめを作らせて知らせる。** 整理を 1 回起こしてから要約を起こす ——
+  # 整理されていないものでまとめさせると、宣伝も重複も読み物に入る。
+  # **数分かかる**ので、待つのは押した人ではなく Task の側
+  def handle_event("digest_now", _params, socket) do
+    topic = socket.assigns.topic
+    Digest.start(topic)
+
+    {:noreply, assign(socket, digest_message: "整理から始めています…（数分かかります）")}
+  end
+
+  # **いまあるまとめをもう一度知らせる。** 作り直さずに送るだけ
   def handle_event("notify", _params, socket) do
     topic = socket.assigns.topic
     news = socket.assigns.news
@@ -158,6 +176,18 @@ defmodule TazunaWeb.NewsLive do
   def handle_async(:backends, _result, socket), do: {:noreply, socket}
 
   @impl true
+  # まとめを作らせている最中の一言。**収集の状態とは別に受ける** ——
+  # 状態に混ぜると、届くたびに画面ぜんたいが書き換わる
+  def handle_info({:digest_progress, collection, message}, socket) do
+    topic = socket.assigns.topic
+
+    if topic && collection == topic.collection do
+      {:noreply, assign(socket, digest_message: message)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info({:news_updated, news}, socket) do
     topic = socket.assigns.topic
 
@@ -294,6 +324,38 @@ defmodule TazunaWeb.NewsLive do
 
       {:error, :ntfy_topic_missing} ->
         "この話題の通知先が決まっていません（下の欄にトピック名を書くと送れます）。"
+    end
+  end
+
+  @doc """
+  知らせる時刻の一言。**次にいつ知らせるのかまで出します** ——
+  時刻だけ書かれていても、それが今日のぶんとして残っているのかは読めません。
+  """
+  def digest_note(nil), do: nil
+
+  def digest_note(%{collection: collection}) do
+    setting = Settings.get(collection)
+
+    case Setting.digest_times(setting) do
+      [] ->
+        "時刻を書くと、その時刻に整理→要約を起こして知らせます（空なら自分からは回りません）。"
+
+      times ->
+        "この時刻に、整理を 1 回起こしてからまとめを作らせて知らせます（JST）: " <>
+          Enum.map_join(times, "、", fn {hour, minute} ->
+            String.pad_leading("#{hour}", 2, "0") <>
+              ":" <> String.pad_leading("#{minute}", 2, "0")
+          end)
+    end
+  end
+
+  @doc "最後にまとめを作らせた時刻。押した結果も定時のぶんもここに出ます。"
+  def last_digest_text(nil), do: nil
+
+  def last_digest_text(%{collection: collection}) do
+    case Settings.get(collection).last_digest_at do
+      nil -> "まだ作らせていません。"
+      at -> "最後に作らせたのは #{Jst.format(at)}。"
     end
   end
 

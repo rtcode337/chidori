@@ -198,6 +198,20 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "いまのまとめを知らせる"
     end
 
+    test "知らせる時刻を書けて、その場で作らせる口もある", %{conn: conn} do
+      # 時計を持つのは tazuna の側。Chiezo には「いま回してください」としか言わない
+      System.put_env("NTFY_BASE_URL", "http://ntfy.test")
+      on_exit(fn -> System.delete_env("NTFY_BASE_URL") end)
+      Tazuna.Notify.Settings.put("tazuna_news", %{"ntfy_topic" => "tazuna-news"})
+
+      html = shown(conn)
+
+      assert html =~ ~s(name="setting[digest_at]")
+      assert html =~ "いま作って知らせる"
+      # 作り直さずに送るだけの口も残す
+      assert html =~ "いまのまとめを知らせる"
+    end
+
     test "まとめが、画面ではリンク入りで出る", %{conn: conn} do
       # 裸の URL のままだと、押す前にどこへ行くのか読めない。
       # **通知のほうは逆**（URL のまま出す。ntfy が自分でリンクにする）

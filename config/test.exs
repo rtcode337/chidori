@@ -38,3 +38,10 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# 知らせる時刻の時計は立てない。1 分ごとに起きて Chiezo を叩きに行かれると、
+# 何を見ているのか分からないテストになる（段取りそのものは直に呼んで確かめる）
+config :tazuna, digest_scheduler: false
+
+# まとめの段取りの読み直しは短く（待つことそのものは確かめたいことではない）
+config :tazuna, digest_poll_ms: 10, digest_wait_ms: 200

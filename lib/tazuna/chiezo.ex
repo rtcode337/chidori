@@ -172,11 +172,17 @@ defmodule Tazuna.Chiezo do
   @doc """
   予定を待たずに1回走らせます。**止まっている収集は Chiezo が断ります**（403）。
   """
-  def run(base, name, timeout \\ 600_000) do
-    case post(base <> "/v1/collect/" <> name <> "/run", "", timeout) do
+  def run(base, name, opts \\ []) do
+    # **巡回を名指しできる。** 相手も 1 回に見る量も巡回ごとに違うので、
+    # 「この回だけ今すぐ」を頼めないと、分けてある意味が半分になる。
+    # **時計を持たない巡回は Chiezo が断る**（あれは割り込みからしか走らない）
+    query = if sweep = opts[:sweep], do: "?" <> URI.encode_query(%{"sweep" => sweep}), else: ""
+
+    case post(base <> "/v1/collect/" <> name <> "/run" <> query, "", opts[:timeout] || 600_000) do
       {:ok, %{status: status}} when status in 200..299 -> :ok
       {:ok, %{status: 403}} -> {:error, :collection_disabled}
       {:ok, %{status: 404}} -> {:error, :not_requested}
+      {:ok, %{status: 409}} -> {:error, :chiezo_busy}
       {:ok, %{status: 503}} -> {:error, :collect_disabled}
       {:ok, %{status: status}} -> {:error, {:chiezo_status, status}}
       {:error, _reason} -> {:error, :chiezo_unavailable}

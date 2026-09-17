@@ -30,6 +30,23 @@ defmodule Tazuna.Notify.Settings do
     |> Repo.insert_or_update()
   end
 
+  @doc """
+  まとめを作らせたことを控えます。**走らせる前に控えます** —— 走ってから控えると、
+  数分かかる段取りの最中にもう一度その回の時刻が来て、二重に起こします。
+
+  控えるのは「予定の時刻」で、走らせた時刻ではありません —— 遅れて走ったときに、
+  次の回まで進めてしまわないためです。
+  """
+  def mark_digest(collection, %DateTime{} = at) do
+    collection
+    |> get()
+    |> Setting.changeset(%{
+      "collection" => collection,
+      "last_digest_at" => DateTime.truncate(at, :second)
+    })
+    |> Repo.insert_or_update()
+  end
+
   @doc "フォームに載せる形。"
   def changeset(collection, attrs \\ %{}) do
     collection |> get() |> Setting.changeset(Map.put(attrs, "collection", collection))
