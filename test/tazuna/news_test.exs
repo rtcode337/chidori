@@ -495,6 +495,25 @@ defmodule Tazuna.NewsTest do
       assert prompt =~ "上に並んでいない出どころ"
     end
 
+    test "論文は名指しで念を押す" do
+      # 外を当たる先の 1 つとして箇条書きに並べていただけの頃は、実測で 269 件の
+      # うち論文が 2 件しか入らなかった —— 4 つ並んだうちの最後の 1 行では埋もれる。
+      # 配信元は論文を配らないので、この回が見に行かなければ永遠に入らない
+      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+
+      assert prompt =~ "この回が見に行かなければ 1 件も入りません"
+      assert prompt =~ "毎回かならず当たってください"
+    end
+
+    test "論文の件数は求めない" do
+      # 「必ず N 件」と書くと数合わせで薄いものが入り、重要度の印が意味を失う
+      # （読む人は印で絞って読むので、そこに当たりが混ざるほうが害が大きい）
+      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+
+      assert prompt =~ "0 件で構いません"
+      assert prompt =~ "探さずに 0 件にしないでください"
+    end
+
     test "外から見つけたものに、既にあるものを上書きさせない" do
       # 見出しが同じものを薄い要約で返すと、付いている印ごと置き換わる
       prompt = News.refine_prompt(defined_topic("tazuna_tech"))
