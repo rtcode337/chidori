@@ -455,6 +455,26 @@ article p:last-child { color: #475569; line-height: 1.7; }
   .report-table th, .report-table td { min-width: 6rem; }
 }
 
+/* トピックの網。丸の大きさはつながりの数（記事の件数はこの収集が持っていない）。
+   円環に並べるのは、開くたびに形が変わると「昨日と同じ図か」が読めなくなるため */
+.topic-map { margin-bottom: 2rem; border: 1px solid #e6e8ef; border-radius: 1rem; background: white; padding: 1rem 1rem .4rem; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+.topic-map svg { display: block; width: 100%; height: auto; }
+.topic-edges line { stroke: #d5d9e4; stroke-width: 1.5; }
+/* 上下のつながりは別の見え方にする（横のつながりと混ぜると、どちらも同じ網に見える） */
+.topic-edges line.is-parent { stroke: #f0b429; stroke-dasharray: 5 4; }
+.topic-edges text { fill: #9aa3b5; font-size: 11px; }
+.topic-nodes circle { fill: #eef2ff; stroke: #818cf8; stroke-width: 2; }
+.topic-nodes text { fill: #16203a; font-size: 13px; font-weight: 700; dominant-baseline: middle; }
+
+/* トピックの一覧。図に置ける数には限りがあるので、全部はこちらで読む */
+.theme-list { display: grid; gap: 1rem; margin-bottom: 2rem; }
+.theme-list article { padding: 1.3rem; }
+.theme-list h2 { display: flex; align-items: baseline; gap: .6rem; margin: 0 0 .5rem; font-size: 1.05rem; }
+.theme-count { flex: none; border-radius: 99px; background: #f1f5f9; padding: .15rem .55rem; color: #64748b; font-size: .75rem; font-weight: 700; }
+.theme-children { margin: .8rem 0 0; padding-left: 1.2rem; list-style: disc; display: grid; gap: .45rem; }
+.theme-children li { color: #334155; font-size: .9rem; line-height: 1.7; }
+.theme-children li::marker { color: #cbd5e1; }
+
 /* 見に行った記録(展覧会で実物を見た、など)。tazuna にだけ残る */
 .seen-mark { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: 0.8rem; }
 .seen-mark summary { cursor: pointer; font-weight: 700; font-size: 0.9rem; }
