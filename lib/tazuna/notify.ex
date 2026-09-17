@@ -109,8 +109,26 @@ defmodule Tazuna.Notify do
     )
   end
 
-  # 押したときに開く先。**通知の 1 行だけでは足りない**ので、続きを読む場所を添える
-  defp click_url(collection) do
-    TazunaWeb.Endpoint.url() <> "/news?view=" <> URI.encode_www_form(collection)
+  @doc false
+  # 押したときに開く先。**通知の 1 行だけでは足りない**ので、続きを読む場所を添える。
+  #
+  # **手元しか指せないときは添えません**（`PHX_HOST` が既定のまま）。通知を開くのは
+  # たいてい別の機械 —— 電話で押しても `localhost` は自分自身を指すので、開けない
+  # リンクが付くだけです。**添えなければ、その通知は本文をそのまま扱えます**
+  # （ntfy の画面で写す・共有する）。
+  def click_url(collection, url \\ TazunaWeb.Endpoint.url()) do
+    if local?(url),
+      do: nil,
+      else: url <> "/news?view=" <> URI.encode_www_form(collection)
+  end
+
+  defp local?(url) do
+    case URI.parse(url) do
+      %URI{host: host} when is_binary(host) ->
+        host in ["localhost", "127.0.0.1", "0.0.0.0", "::1"]
+
+      _uri ->
+        true
+    end
   end
 end

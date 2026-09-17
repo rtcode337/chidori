@@ -7,9 +7,12 @@ defmodule Tazuna.Ntfy do
   変えるたびに立て直しが要ります。**置き場の既定は環境変数から取ります**
   （`NTFY_BASE_URL`）—— あれは環境の事情なので、画面で毎回書かせるものではありません。
 
-  **未設定なら何もしません。** 置き場か宛先のどちらかが空なら、その話題は
-  知らせない、という意味です —— 既定の宛先を勝手に決めると、**公開の ntfy では
-  誰でも読めるところ**へ流れかねません（推測できる名前ほど危ない）。
+  **宛先が空なら何もしません。** そこが「知らせない」の意思表示です ——
+  **既定の宛先は持ちません**。勝手に決めると、**公開の ntfy では誰でも読めるところ**
+  へ流れかねません（推測できる名前ほど危ない）。
+
+  **場所のほうは書かなければ公式の公開サーバー**（`https://ntfy.sh`）へ倒します。
+  宛先だけ書いた人のところに何も飛ばず、その理由が画面の隅にしか出ないほうが困ります。
 
   **送るのはプレーンテキストです。** ntfy は本文の URL を自分でリンクにするので、
   見出しに差し替えず URL のまま渡します（画面のほうは逆で、記事の見出しにします）。
@@ -17,6 +20,12 @@ defmodule Tazuna.Ntfy do
 
   alias Tazuna.Http
   alias Tazuna.Notify.Settings
+
+  # **書かなければ公式の公開サーバーへ倒します。** 場所を書かせないと、宛先だけ
+  # 書いた人のところには何も飛ばず、しかもその理由は画面の隅にしか出ません
+  # （実際、宛先だけ入れて静かに送れずにいた）。**送るかどうかを決めるのは宛先**で、
+  # そこが空なら何も飛びません —— 場所の既定を持っても、その性質は変わりません
+  @public_base_url "https://ntfy.sh"
 
   @user_agent "tazuna/0.1 (+https://github.com/rtcode337/tazuna)"
   @timeout 10_000
@@ -27,11 +36,14 @@ defmodule Tazuna.Ntfy do
   """
   def default_base_url do
     case System.get_env("NTFY_BASE_URL") do
-      nil -> nil
-      "" -> nil
+      nil -> @public_base_url
+      "" -> @public_base_url
       value -> value |> String.trim() |> String.trim_trailing("/")
     end
   end
+
+  @doc "書かなかったときに倒れる先（公式の公開サーバー）。画面にも出します。"
+  def public_base_url, do: @public_base_url
 
   @doc """
   その収集の置き場。**画面で書いてあればそちらが勝ちます**。
@@ -60,10 +72,9 @@ defmodule Tazuna.Ntfy do
   知らせられる状態か。**押す前に読めるようにするため**に、理由まで返します。
   """
   def ready(collection) do
-    cond do
-      is_nil(base_url(collection)) -> {:error, :ntfy_base_url_missing}
-      is_nil(topic_for(collection)) -> {:error, :ntfy_topic_missing}
-      true -> {:ok, {base_url(collection), topic_for(collection)}}
+    case topic_for(collection) do
+      nil -> {:error, :ntfy_topic_missing}
+      topic -> {:ok, {base_url(collection), topic}}
     end
   end
 

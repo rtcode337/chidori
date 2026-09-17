@@ -178,8 +178,10 @@ defmodule TazunaWeb.NewsLiveTest do
       System.delete_env("NTFY_BASE_URL")
       html = shown(conn)
 
-      assert html =~ "ntfy の場所が決まっていません"
+      assert html =~ "この話題の通知先が決まっていません"
       assert html =~ ~s(name="setting[ntfy_topic]")
+      # 場所を書かなければどこへ送るのかも読める
+      assert html =~ Tazuna.Ntfy.public_base_url()
 
       # 送れない口は出さない（押せるのに何も起きないボタンを置かない）
       refute html =~ "いまのまとめを知らせる"

@@ -124,6 +124,10 @@ defmodule Tazuna.DigestTest do
     # 知らせるのは、冒頭だけの要約ではなく取り直した本文から作った文
     assert_received {:notify, _url, notice}
     assert Jason.decode!(notice)["message"] =~ "読める本文。"
+
+    # **どう終わったかを残す。** 誰も見ていない時刻に走る回なので、残さないと
+    # 知らせが来なかった理由がログにしか無い
+    assert Settings.get(@collection).last_digest_result =~ "知らせました"
   end
 
   test "整理が終わらなければ、要約は起こさない", %{topic: topic} do
@@ -168,5 +172,17 @@ defmodule Tazuna.DigestTest do
     end)
 
     assert Digest.run(topic) == {:error, :collection_disabled}
+
+    # 止まった理由も画面から読める（次に何をすればよいかまで）
+    assert Settings.get(@collection).last_digest_result =~ "Chiezo 側で止まっています"
+  end
+
+  test "知らせ先が決まっていなければ、その理由を残す", %{topic: topic} do
+    # 宛先が空のまま時刻だけ決めると、静かに送れずにいる（実際にそうなった）
+    Settings.put(@collection, %{"ntfy_topic" => ""})
+    stub_chiezo(%{})
+
+    assert Digest.run(topic) == {:error, :ntfy_topic_missing}
+    assert Settings.get(@collection).last_digest_result =~ "通知先が決まっていません"
   end
 end

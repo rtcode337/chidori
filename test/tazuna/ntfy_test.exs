@@ -38,8 +38,10 @@ defmodule Tazuna.NtfyTest do
   end
 
   test "押せない理由を、押す前に返す" do
+    # **決まっていないのは宛先だけ。** 場所は書かなければ公式の公開サーバーへ倒れる
     System.delete_env("NTFY_BASE_URL")
-    assert Ntfy.ready("tazuna_tech") == {:error, :ntfy_base_url_missing}
+    assert Ntfy.ready("tazuna_tech") == {:error, :ntfy_topic_missing}
+    assert Ntfy.base_url("tazuna_tech") == Ntfy.public_base_url()
 
     System.put_env("NTFY_BASE_URL", "http://ntfy.test")
     on_exit(fn -> System.delete_env("NTFY_BASE_URL") end)

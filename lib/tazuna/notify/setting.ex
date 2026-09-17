@@ -17,11 +17,12 @@ defmodule Tazuna.Notify.Setting do
     field(:ntfy_base_url, :string, default: "")
     field(:digest_at, :string, default: "")
     field(:last_digest_at, :utc_datetime)
+    field(:last_digest_result, :string, default: "")
 
     timestamps(type: :utc_datetime)
   end
 
-  @fields ~w(collection ntfy_topic ntfy_base_url digest_at last_digest_at)a
+  @fields ~w(collection ntfy_topic ntfy_base_url digest_at last_digest_at last_digest_result)a
 
   # 時刻の区切り。**読点も空白も受けます** —— 書く人は「08:00、21:00」とも書きます
   @separators ~r/[,、\s]+/

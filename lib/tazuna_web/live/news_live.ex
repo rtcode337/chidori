@@ -308,7 +308,6 @@ defmodule TazunaWeb.NewsLive do
   end
 
   @doc false
-  def notify_error(:ntfy_base_url_missing), do: "ntfy の場所が決まっていません。"
   def notify_error(:ntfy_topic_missing), do: "この話題の通知先が決まっていません。"
   def notify_error(:ntfy_unavailable), do: "ntfy に接続できませんでした。"
   def notify_error({:ntfy_status, status}), do: "ntfy が #{status} を返しました。"
@@ -334,9 +333,6 @@ defmodule TazunaWeb.NewsLive do
     case Ntfy.ready(collection) do
       {:ok, {base, ntfy_topic}} ->
         "「知らせる」を押すと、#{base} の「#{ntfy_topic}」へまとめを送ります。"
-
-      {:error, :ntfy_base_url_missing} ->
-        "ntfy の場所が決まっていません（下の欄に書くか、NTFY_BASE_URL で既定を決めます）。"
 
       {:error, :ntfy_topic_missing} ->
         "この話題の通知先が決まっていません（下の欄にトピック名を書くと送れます）。"
@@ -381,13 +377,20 @@ defmodule TazunaWeb.NewsLive do
     end
   end
 
-  @doc "最後にまとめを作らせた時刻。押した結果も定時のぶんもここに出ます。"
+  @doc """
+  定時の回がどうなったか。**結果まで出します** —— 誰も見ていない時刻に走る回なので、
+  「作らせた時刻」だけだと、知らせが来なかったのか、そもそも走っていないのかが
+  読めません（実際、ntfy の場所が空のまま走って、静かに送れずにいました）。
+  """
   def last_digest_text(nil), do: nil
 
   def last_digest_text(%{collection: collection}) do
-    case Settings.get(collection).last_digest_at do
-      nil -> "まだ作らせていません。"
-      at -> "最後に作らせたのは #{Jst.format(at)}。"
+    setting = Settings.get(collection)
+
+    case {setting.last_digest_at, setting.last_digest_result} do
+      {nil, _result} -> "まだ作らせていません。"
+      {_at, result} when is_binary(result) and result != "" -> result
+      {at, _result} -> "最後に作らせたのは #{Jst.format(at)}。"
     end
   end
 

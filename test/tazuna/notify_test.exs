@@ -68,11 +68,18 @@ defmodule Tazuna.NotifyTest do
 
   test "続きを読む先を添える" do
     # 通知の 1 行だけでは足りない
+    assert Notify.click_url(@collection, "https://tazuna.example.com") ==
+             "https://tazuna.example.com/news?view=tazuna_tech"
+  end
+
+  test "手元しか指せないときは、開く先を添えない" do
+    # 通知を開くのはたいてい別の機械。電話で押しても localhost は自分自身を指すので、
+    # 開けないリンクが付くだけになる（添えなければ、本文をそのまま扱える）
     stub_ok()
     Notify.deliver(@collection, @digest)
 
     assert_receive {:notified, _url, sent}, 2_000
-    assert sent["click"] =~ "/news?view=tazuna_tech"
+    refute Map.has_key?(sent, "click")
   end
 
   test "同じまとめは二度知らせない" do
@@ -114,11 +121,21 @@ defmodule Tazuna.NotifyTest do
     assert Notify.deliver(@collection, @digest) == {:error, :ntfy_topic_missing}
   end
 
-  test "場所が未設定なら、そもそも送らない" do
-    # **既定の宛先を勝手に決めない** —— 公開の ntfy では誰でも読めるところへ流れる
+  test "場所を書かなければ、公式の公開サーバーへ送る" do
+    # 宛先だけ書いた人のところに何も飛ばず、その理由が画面の隅にしか出ないほうが困る
     System.delete_env("NTFY_BASE_URL")
+    stub_ok()
 
-    assert Notify.deliver(@collection, @digest) == {:error, :ntfy_base_url_missing}
+    assert Notify.deliver(@collection, @digest) == {:ok, :sent}
+    assert_receive {:notified, url, _sent}, 2_000
+    assert url == Tazuna.Ntfy.public_base_url() <> "/"
+  end
+
+  test "宛先が空なら、そもそも送らない" do
+    # **既定の宛先は持たない** —— 公開の ntfy では誰でも読めるところへ流れる
+    Settings.put(@collection, %{"ntfy_topic" => ""})
+
+    assert Notify.deliver(@collection, @digest) == {:error, :ntfy_topic_missing}
   end
 
   test "押されたときは、知らせ済みでも送る" do

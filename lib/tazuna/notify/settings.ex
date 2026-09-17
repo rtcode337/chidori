@@ -47,6 +47,18 @@ defmodule Tazuna.Notify.Settings do
     |> Repo.insert_or_update()
   end
 
+  @doc """
+  定時の回がどう終わったかを控えます。**画面に出すために残します** ——
+  残さないと、知らせが来なかった理由はログにしか無く、誰も見ていない時刻に走る回
+  なので、気づくのは「来ていない」と思ったときになります。
+  """
+  def mark_digest_result(collection, text) when is_binary(text) do
+    collection
+    |> get()
+    |> Setting.changeset(%{"collection" => collection, "last_digest_result" => text})
+    |> Repo.insert_or_update()
+  end
+
   @doc "フォームに載せる形。"
   def changeset(collection, attrs \\ %{}) do
     collection |> get() |> Setting.changeset(Map.put(attrs, "collection", collection))

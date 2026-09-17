@@ -138,7 +138,7 @@
           </p>
           <p>
             <label>
-              ntfy の場所（空なら NTFY_BASE_URL）<br />
+              ntfy の場所（空なら {Tazuna.Ntfy.default_base_url()}）<br />
               <input
                 type="text"
                 name={f[:ntfy_base_url].name}
@@ -159,7 +159,8 @@
             </label>
           </p>
           <p class="muted-note">
-            <strong>空にすると知らせなくなります。</strong> 既定の通知先は持ちません —— 公開の ntfy では、推測できる名前は誰でも読めます。
+            <strong>通知先を空にすると知らせなくなります。</strong>
+            既定の通知先は持ちません —— 公開の ntfy では、推測できる名前は誰でも読めるので、<strong>推測されない名前</strong>にしてください。場所は書かなければ公式の公開サーバーへ送ります。
           </p>
           <button type="submit">通知先を保存</button>
         </.form>

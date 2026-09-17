@@ -538,6 +538,16 @@ defmodule Tazuna.NewsTest do
       refute News.refine_prompt(defined_topic("tazuna_tech")) =~ "口コミ"
     end
 
+    test "要旨は、1 行目と箇条書きに分けて書かせる" do
+      # 全部を 1 つの段落に詰めると、通知でも画面でも読めない。
+      # 通知は畳まれて先頭しか見えないことがあるので、1 行目だけで意味が通るように
+      prompt = News.digest_prompt(defined_topic("tazuna_tech"))
+
+      assert prompt =~ "1 行目だけで意味が通るように"
+      assert prompt =~ "・"
+      assert prompt =~ "1 行に 1 つのこと"
+    end
+
     test "まとめの見出しは回ごとに変わる" do
       # 見出しは重複の鍵。日付だけだと、1 日に 2 回まとめたときの 2 回目が
       # 丸ごと捨てられる（要約は足すだけの回なので、既にある見出しは入らない）

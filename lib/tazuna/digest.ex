@@ -25,8 +25,10 @@ defmodule Tazuna.Digest do
   require Logger
 
   alias Tazuna.Chiezo
+  alias Tazuna.Jst
   alias Tazuna.News
   alias Tazuna.Notify
+  alias Tazuna.Notify.Settings
 
   # 読み直す間隔と、各段で待つ上限。**待つのは分の単位** —— AI が読んで書くので、
   # 秒で返るものではない
@@ -67,6 +69,10 @@ defmodule Tazuna.Digest do
         # 画面はこの後の状態を見る（まとめが入れ替わっているので）
         News.refresh(News.server(collection))
         log(collection, result)
+
+        # **どう終わったかを残す。** 誰も見ていない時刻に走る回なので、残さないと
+        # 知らせが来なかった理由がログにしか無い
+        Settings.mark_digest_result(collection, result_text(result))
         result
     end
   end
@@ -164,6 +170,21 @@ defmodule Tazuna.Digest do
 
   defp log(_collection, _result), do: :ok
 
+  @doc false
+  # 画面に出す一言。**いつ・どうなったか**を 1 行で（次に何をすればよいかまで）
+  def result_text(result) do
+    Jst.format(DateTime.utc_now()) <> "の回: " <> outcome(result)
+  end
+
+  defp outcome({:ok, :sent}), do: "まとめを作って知らせました。"
+  defp outcome({:ok, :already_sent}), do: "まとめを作りましたが、同じものは知らせ済みでした。"
+
+  defp outcome({:ok, :nothing_to_send}),
+    do: "まとめを作りましたが、知らせるものがありませんでした。"
+
+  defp outcome({:error, reason}), do: "止まりました —— " <> error_text(reason)
+  defp outcome(_other), do: "終わりました。"
+
   @doc """
   止まった理由の言い方。**画面にも通知にも、次に何をすればよいかまで出します**。
   """
@@ -173,7 +194,6 @@ defmodule Tazuna.Digest do
   def error_text(:chiezo_busy), do: "Chiezo がいま別の依頼を抱えています。少し待ってください。"
   def error_text(:timed_out), do: "Chiezo の返事を待ちましたが、時間内に終わりませんでした。"
   def error_text(:ntfy_topic_missing), do: "この話題の通知先が決まっていません。"
-  def error_text(:ntfy_base_url_missing), do: "ntfy の場所が決まっていません。"
   def error_text({:chiezo_refused, _status, reason}) when is_binary(reason), do: reason
   def error_text(_reason), do: "まとめを作れませんでした。"
 end
