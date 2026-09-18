@@ -514,6 +514,18 @@ defmodule Tazuna.NewsTest do
       assert prompt =~ "探さずに 0 件にしないでください"
     end
 
+    test "足す前に、同じ記事が無いかを URL で確かめさせる" do
+      # 見出しでは確かめられない —— 同じ記事が配信元ごとに違う見出しで流れてくるし
+      # （「記事名 - サイト名」と「記事名」）、差し込まれるのは前回から後のぶんだけ。
+      # 実測で、生きている記事の 6% が同じ URL の複製だった
+      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+
+      assert prompt =~ "URL で確かめてください"
+      # 引く相手は、その話題の収集（道具に渡す名前）
+      assert prompt =~ ~s(query(source: "tazuna_tech")
+      assert prompt =~ "見出しの付け替えはできません"
+    end
+
     test "外から見つけたものに、既にあるものを上書きさせない" do
       # 見出しが同じものを薄い要約で返すと、付いている印ごと置き換わる
       prompt = News.refine_prompt(defined_topic("tazuna_tech"))
