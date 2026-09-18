@@ -579,6 +579,15 @@ defmodule Tazuna.NewsTest do
       assert prompt =~ "1 行に 1 つのこと"
     end
 
+    test "まとめは、記事の URL を名乗らない" do
+      # 同じ URL の 1 件は Chiezo が弾く。まとめが引いた記事の URL を名乗ると、
+      # その記事は既に入っているので、**まとめ自体が落ちる**（出典は本文に書く）
+      prompt = News.digest_prompt(defined_topic("tazuna_tech"))
+
+      assert prompt =~ "url: **空のままにしてください。**"
+      assert prompt =~ "出典は本文の「出典:」行に書きます"
+    end
+
     test "まとめの見出しは回ごとに変わる" do
       # 見出しは重複の鍵。日付だけだと、1 日に 2 回まとめたときの 2 回目が
       # 丸ごと捨てられる（要約は足すだけの回なので、既にある見出しは入らない）
