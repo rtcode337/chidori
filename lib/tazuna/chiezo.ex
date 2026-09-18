@@ -47,6 +47,29 @@ defmodule Tazuna.Chiezo do
   """
   def removed_tag, do: "_chiezo_removed"
 
+  @doc """
+  まだ AI が目を通していないものに付く印。**機械で入ったものに付きます** ——
+  配信元から機械で引く回は、宣伝も的外れなものもそのまま引き受けるので、
+  整理の回がその 1 件を読むまでは「選り分け前のもの」です。
+
+  Chiezo 側は、整理の回に差し込まれた時点でこの印を外します。
+  """
+  def unreviewed_tag, do: "_chiezo_unreviewed"
+
+  @doc """
+  読む側が落とす印。**1 つの並びに持ちます** —— 印ごとに「これも落とす」を
+  書き足す形にすると、読む場所が増えたときに片方だけ思い出します
+  （Chiezo 側も同じ理由で 1 つの並びにしてあります）。
+
+  **落とすのは、収集の口から読むときだけで足ります。** 検索や絞り込みの口は
+  Chiezo が既定で落として返しますが、収集の口（`/v1/collect/{name}` の見本）は
+  集める層のためのものなので、印の付いたものもそのまま返ります。
+  """
+  def hidden_tags, do: [removed_tag(), unreviewed_tag()]
+
+  @doc "読む側が落とすものか（`hidden_tags/0` のどれかが付いているか）。"
+  def hidden?(tags) when is_list(tags), do: Enum.any?(hidden_tags(), &(&1 in tags))
+
   @doc "Chiezo の画面へのリンク。相対パスをルートURLに繋ぐだけです。"
   def url(path) when is_binary(path) do
     case base_url() do

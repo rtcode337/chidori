@@ -631,6 +631,17 @@ defmodule Tazuna.NewsTest do
       assert Enum.map(News.to_digests(recent), & &1.title) == ["まとめ: 生きている"]
     end
 
+    test "まだ整理が読んでいないものは出さない" do
+      # 機械で引くぶんには宣伝も的外れなものも混ざる。選り分けの前に並べると、
+      # 落とされる予定のものを読ませることになる（Chiezo が印を付けて返す）
+      recent = [
+        recent("ふつうの記事"),
+        Map.put(recent("まだ読まれていない記事"), "tags", [Tazuna.Chiezo.unreviewed_tag()])
+      ]
+
+      assert Enum.map(News.to_articles(recent), & &1.title) == ["ふつうの記事"]
+    end
+
     test "まとめは、直近の窓に無くてもタグで引き直す" do
       # 見出しの回が 60 件足すと、まとめは直近の一覧から押し出される
       # （まとめが出ない時間帯ができた）
