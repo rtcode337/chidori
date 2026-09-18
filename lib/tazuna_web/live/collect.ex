@@ -24,7 +24,7 @@ defmodule TazunaWeb.Collect do
   end
 
   @doc """
-  `sweep|ざっと|backend` の形で届くものを、巡回ごとにまとめ直します。
+  `sweep|ざっと見る|backend` の形で届くものを、巡回ごとにまとめ直します。
   """
   def sweep_choices(params) do
     for {key, value} <- params, reduce: %{} do
@@ -207,7 +207,7 @@ defmodule TazunaWeb.Collect do
   先頭だけが見えるようにします。
 
   **見た印は巡回ごとに別**なので、どの巡回の目で見るかを渡します ——
-  ざっとが見終えた区画をじっくりはまだ見ていない、が普通に起きます。
+  ざっと見るが見終えた区画を整理はまだ見ていない、が普通に起きます。
   """
   def partition_rows(%{collection: %{partitions: list}}, sweep) when is_list(list) do
     list

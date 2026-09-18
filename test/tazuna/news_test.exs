@@ -455,7 +455,7 @@ defmodule Tazuna.NewsTest do
     test "配信元を持つ話題は、集めるところを機械にまかせる" do
       [intake | _rest] = defined_topic("tazuna_tech") |> News.sweeps()
 
-      assert intake.name == "見出し"
+      assert intake.name == "機械収集"
       assert intake.use_feed == true
 
       # **足すだけと組にする** —— 組にしないと、整理が付けたタグを
@@ -551,7 +551,7 @@ defmodule Tazuna.NewsTest do
       movies = defined_topic("tazuna_movies") |> News.sweeps() |> Map.new(&{&1.name, &1})
       tech = defined_topic("tazuna_tech") |> News.sweeps() |> Map.new(&{&1.name, &1})
 
-      assert movies["見出し"].interval_minutes > tech["見出し"].interval_minutes
+      assert movies["機械収集"].interval_minutes > tech["機械収集"].interval_minutes
       assert movies["整理"].interval_minutes > tech["整理"].interval_minutes
     end
 

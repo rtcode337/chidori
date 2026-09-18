@@ -88,7 +88,7 @@ defmodule Tazuna.Datasets do
 
   @doc """
   頼みごとを 1 回だけ走らせます（割り込み）。**専用の巡回は置きません** ——
-  頼むのは同じ仕事なので、設定も依頼文もじっくりの回のものでよいためです。
+  頼むのは同じ仕事なので、設定も依頼文も整理の回のものでよいためです。
   """
   def focus(%{collection: name, survey_sweep: sweep}, note) do
     with {:ok, base} <- base_url() do

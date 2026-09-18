@@ -70,7 +70,7 @@ defmodule TazunaWeb.NewsLiveTest do
       "keep_days" => 30,
       "prompt" => "{cursor} 以降のニュース。{recent}",
       "sweeps" => [
-        %{"name" => "見出し", "interval_minutes" => 60, "use_feed" => true, "enabled" => true},
+        %{"name" => "機械収集", "interval_minutes" => 60, "use_feed" => true, "enabled" => true},
         %{"name" => "集める", "interval_minutes" => 360, "enabled" => true},
         %{"name" => "要約", "interval_minutes" => 720, "enabled" => true}
       ]
@@ -147,7 +147,7 @@ defmodule TazunaWeb.NewsLiveTest do
       # 読まれない。**選べるのに効かない欄は「設定したつもり」を作る**
       html = shown(conn)
 
-      refute html =~ ~s(name="sweep|見出し|backend")
+      refute html =~ ~s(name="sweep|機械収集|backend")
       assert html =~ "AI を使いません"
     end
 

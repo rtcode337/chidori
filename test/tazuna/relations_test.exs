@@ -96,11 +96,11 @@ defmodule Tazuna.RelationsTest do
       # **一度きり。** 元の Wikipedia が変わらない限り何度やっても同じ
       assert roster["once"] == true
 
-      assert rough["name"] == "ざっと"
+      assert rough["name"] == "ざっと見る"
 
       # 一周を数日で終える（区画の材料が埋まるまで、後の回は走れない）
       assert rough["cover_days"] == 3
-      assert rough["after"] == "名簿"
+      assert rough["after"] == "機械収集"
 
       # **一周したら止まる。** 行き渡れば用が済む回で、止めないと 2 周目 3 周目が
       # 回り続け、同じことを何度も聞くために枠を使う
@@ -108,7 +108,7 @@ defmodule Tazuna.RelationsTest do
       # 埋める回は収集の依頼文のまま（巡回ごとには持たない）
       refute Map.has_key?(rough, "prompt")
 
-      assert survey["name"] == "調査"
+      assert survey["name"] == "整理"
 
       # **一周の日数で決める。** 1 日 1 区画にしていた頃は、400 区画を一周するのに
       # 400 日かかっていた —— 手入れの回が一周しないなら、区画で割っている意味が無い
@@ -117,7 +117,7 @@ defmodule Tazuna.RelationsTest do
 
       # **ざっとが一周するまで走らない。** 年代の分からない人が 3 割いる状態で
       # 漏れを探させても、その人たちは別の区画にいるだけ
-      assert survey["after"] == "ざっと"
+      assert survey["after"] == "ざっと見る"
       assert survey["prompt"] =~ "この区画ぶんだけ仕上げて"
 
       assert_received {:read, url}
@@ -179,8 +179,8 @@ defmodule Tazuna.RelationsTest do
 
       assert [
                %{"use_extract" => true, "once" => true},
-               %{"name" => "ざっと", "after" => "名簿"},
-               %{"name" => "調査", "after" => "ざっと"}
+               %{"name" => "ざっと見る", "after" => "機械収集"},
+               %{"name" => "整理", "after" => "ざっと見る"}
              ] = patch["sweeps"]
 
       # **走らせない**

@@ -300,6 +300,6 @@ defmodule TazunaWeb.DatasetsLive do
   defp collection_prompt(_assigns), do: ""
 
   defp default_prompts(%{dataset: dataset}) do
-    [{"ざっと", dataset.module.scan_prompt()}, {"じっくり", dataset.module.survey_prompt()}]
+    [{"ざっと見る", dataset.module.scan_prompt()}, {"整理", dataset.module.survey_prompt()}]
   end
 end

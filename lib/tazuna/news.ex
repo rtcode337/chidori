@@ -614,7 +614,7 @@ defmodule Tazuna.News do
   # **足すだけと組にする** —— 組にしないと、整理が付けたタグを配信の薄い内容で上書きする
   defp intake(%{feeds: [_ | _]} = topic),
     do: %{
-      name: "見出し",
+      name: "機械収集",
       interval_minutes: every(topic, :feed, @feed_minutes),
       use_feed: true,
       only_new: true

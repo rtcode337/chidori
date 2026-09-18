@@ -77,18 +77,23 @@ defmodule TazunaWeb.DatasetsLiveTest do
         %{
           "key" => "34.6,135.4/34.8,135.6",
           "count" => 150,
-          "visits" => %{"じっくり" => "2026-09-01T00:00:00Z"}
+          "visits" => %{"整理" => "2026-09-01T00:00:00Z"}
         },
         %{
           "key" => "43.0,141.3/43.1,141.4",
           "count" => 90,
-          "visits" => %{"じっくり" => "2026-08-01T00:00:00Z"}
+          "visits" => %{"整理" => "2026-08-01T00:00:00Z"}
         }
       ],
       "sweeps" => [
-        %{"name" => "名簿", "interval_minutes" => 10_080, "use_extract" => true, "enabled" => true},
-        %{"name" => "ざっと", "interval_minutes" => 60, "cover_days" => 3, "enabled" => true},
-        %{"name" => "じっくり", "interval_minutes" => 360, "cover_days" => 14, "enabled" => true}
+        %{
+          "name" => "機械収集",
+          "interval_minutes" => 10_080,
+          "use_extract" => true,
+          "enabled" => true
+        },
+        %{"name" => "ざっと見る", "interval_minutes" => 60, "cover_days" => 3, "enabled" => true},
+        %{"name" => "整理", "interval_minutes" => 360, "cover_days" => 14, "enabled" => true}
       ]
     }
 
@@ -133,7 +138,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
       {_live, html} = shown(conn)
 
       assert html =~ "sweep-table"
-      assert html =~ ~s(name="sweep|じっくり|backend")
+      assert html =~ ~s(name="sweep|整理|backend")
       assert html =~ "収集の設定を更新"
     end
 
@@ -141,7 +146,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
       # 選んでも何も起きない —— その回は AI を呼ばずに返す
       {_live, html} = shown(conn)
 
-      refute html =~ ~s(name="sweep|名簿|backend")
+      refute html =~ ~s(name="sweep|機械収集|backend")
       assert html =~ "AI を使いません"
     end
 
@@ -196,7 +201,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert sent["note"] =~ "35.6,139.7/35.7,139.8"
       assert sent["partition"] == "35.6,139.7/35.7,139.8"
       # 頼むのは同じ仕事なので、設定も依頼文もじっくりのものでよい
-      assert sent["sweep"] == "じっくり"
+      assert sent["sweep"] == "整理"
     end
 
     test "定時の巡回とは別に、1 回だけ頼める", %{conn: conn} do

@@ -153,14 +153,14 @@ defmodule Tazuna.Datasets.MealsTest do
     test "名簿 → ざっと → じっくりの順に待つ", %{sweeps: sweeps} do
       # 座標の直っていない状態で「この区画に足りないもの」を問うても、
       # その店は別の区画に居るだけなので、既にあるものを挙げて終わる
-      assert Enum.map(sweeps, & &1.name) == ["名簿", "ざっと", "じっくり"]
-      assert Enum.find(sweeps, &(&1.name == "ざっと")).after == "名簿"
-      assert Enum.find(sweeps, &(&1.name == "じっくり")).after == "ざっと"
+      assert Enum.map(sweeps, & &1.name) == ["機械収集", "ざっと見る", "整理"]
+      assert Enum.find(sweeps, &(&1.name == "ざっと見る")).after == "機械収集"
+      assert Enum.find(sweeps, &(&1.name == "整理")).after == "ざっと見る"
     end
 
     test "名簿の回は機械で引き、足すだけ", %{sweeps: sweeps} do
       # 足すだけにしないと、AI が肉付けしたぶんを、名前と住所しか持たない名簿で上書きする
-      roster = Enum.find(sweeps, &(&1.name == "名簿"))
+      roster = Enum.find(sweeps, &(&1.name == "機械収集"))
 
       assert roster.use_extract
       assert roster.only_new
@@ -169,12 +169,12 @@ defmodule Tazuna.Datasets.MealsTest do
 
     test "ざっとは一周したら止まる", %{sweeps: sweeps} do
       # 座標と閉店を一度ずつ見れば用が済む回。止めないと 2 周目が同じことを聞く
-      assert Enum.find(sweeps, &(&1.name == "ざっと")).one_lap
+      assert Enum.find(sweeps, &(&1.name == "ざっと見る")).one_lap
     end
 
     test "じっくりは一周の日数で決める", %{sweeps: sweeps} do
       # 区画が増えても 1 回あたりを Chiezo が計算し直す（区画数を手で追わなくてよい）
-      survey = Enum.find(sweeps, &(&1.name == "じっくり"))
+      survey = Enum.find(sweeps, &(&1.name == "整理"))
 
       assert survey.cover_days > 0
       assert survey.prompt == :survey
@@ -214,15 +214,15 @@ defmodule Tazuna.Datasets.MealsTest do
     end
 
     test "巡回の依頼文は、送るときに実物へ入れ替わる" do
-      survey = Enum.find(Meals.attrs().sweeps, &(&1.name == "じっくり"))
+      survey = Enum.find(Meals.attrs().sweeps, &(&1.name == "整理"))
 
       assert is_binary(survey.prompt)
       assert survey.prompt =~ "足りない店"
     end
 
     test "画面で選んだ相手を巡回に載せる" do
-      attrs = Meals.attrs(%{"じっくり" => %{backend: "antigravity", model: nil}})
-      survey = Enum.find(attrs.sweeps, &(&1.name == "じっくり"))
+      attrs = Meals.attrs(%{"整理" => %{backend: "antigravity", model: nil}})
+      survey = Enum.find(attrs.sweeps, &(&1.name == "整理"))
 
       assert survey.backend == "antigravity"
       # 渡していない項目で、巡回が元から持っているものを潰さない
@@ -231,9 +231,9 @@ defmodule Tazuna.Datasets.MealsTest do
 
     test "「Chiezo の既定にまかせる」は落とさない" do
       # 空文字は意思表示で、落とすと一度決めた相手を外せなくなる
-      attrs = Meals.attrs(%{"ざっと" => %{backend: ""}})
+      attrs = Meals.attrs(%{"ざっと見る" => %{backend: ""}})
 
-      assert Enum.find(attrs.sweeps, &(&1.name == "ざっと")).backend == ""
+      assert Enum.find(attrs.sweeps, &(&1.name == "ざっと見る")).backend == ""
     end
   end
 

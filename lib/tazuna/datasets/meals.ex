@@ -112,7 +112,7 @@ defmodule Tazuna.Datasets.Meals do
 
   # 割り込みを頼む先。**専用の 1 本は置かない**（頼むのは同じ仕事なので、
   # 設定も依頼文もじっくりのものでよい）
-  @survey_sweep "じっくり"
+  @survey_sweep "整理"
 
   # 出典の目印。**travel-log と AI の両方が読む** —— 同じ店が 2 つに分かれているとき、
   # どちらの座標を残すかはここで決まる（1 軒に複数付くこともある）
@@ -384,17 +384,17 @@ defmodule Tazuna.Datasets.Meals do
       # **足すだけ**（`only_new`）にしないと、AI が肉付けしたぶんを
       # 名前と住所しか持たない名簿で上書きする
       %{
-        name: "名簿",
+        name: "機械収集",
         interval_minutes: @roster_minutes,
         use_extract: true,
         only_new: true,
         once: true
       },
       %{
-        name: "ざっと",
+        name: "ざっと見る",
         interval_minutes: @scan_minutes,
         cover_days: @scan_days,
-        after: "名簿",
+        after: "機械収集",
         one_lap: true
       },
       %{
@@ -402,7 +402,7 @@ defmodule Tazuna.Datasets.Meals do
         prompt: :survey,
         interval_minutes: @survey_minutes,
         cover_days: @survey_days,
-        after: "ざっと",
+        after: "ざっと見る",
         effort: "high"
       }
     ]

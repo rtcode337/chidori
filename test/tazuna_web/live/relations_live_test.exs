@@ -453,8 +453,13 @@ defmodule TazunaWeb.RelationsLiveTest do
         "cursor" => "",
         "extract" => %{"source" => "jawiki", "tag" => "画家"},
         "sweeps" => [
-          %{"name" => "ざっと", "interval_minutes" => 360, "enabled" => true, "backend" => "claude"},
-          %{"name" => "調査", "interval_minutes" => 1440, "enabled" => true},
+          %{
+            "name" => "ざっと見る",
+            "interval_minutes" => 360,
+            "enabled" => true,
+            "backend" => "claude"
+          },
+          %{"name" => "整理", "interval_minutes" => 1440, "enabled" => true},
           %{"name" => "割り込み", "on_demand" => true, "enabled" => true}
         ]
       }
@@ -505,7 +510,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       # **一覧に無いものは選ばせようがない。** Chiezo は相手とワーカーを同じ一覧で
       # 返すので、こちらは種類で見出しを分けて並べるだけ
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
-      assert wait_until(fn -> render(live) =~ "ざっと" end)
+      assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       html = live |> element("form#collect-form table") |> render()
 
@@ -517,21 +522,21 @@ defmodule TazunaWeb.RelationsLiveTest do
       # 渡す先はそのときの枠で決まるので、モデルを 1 つ選んでも
       # どの相手に対する指定なのかが決まらない
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
-      assert wait_until(fn -> render(live) =~ "ざっと" end)
+      assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       live
       |> element("form#collect-form")
-      |> render_change(%{"sweep|ざっと|backend" => "worker:精査"})
+      |> render_change(%{"sweep|ざっと見る|backend" => "worker:精査"})
 
       html = live |> element("form#collect-form table") |> render()
 
-      refute html =~ ~s(name="sweep|ざっと|model")
+      refute html =~ ~s(name="sweep|ざっと見る|model")
     end
 
     test "考える量の欄は持たない", %{conn: conn} do
       # モデルの名前に畳んであるので、残すと選べるのに効かない欄になる
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
-      assert wait_until(fn -> render(live) =~ "ざっと" end)
+      assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       html = live |> element("form#collect-form table") |> render()
 
@@ -544,11 +549,11 @@ defmodule TazunaWeb.RelationsLiveTest do
       # 選んだところが Chiezo に入っている値へ戻る（選んだつもりで押すと、
       # いま入っている値がそのまま送り返される）
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
-      assert wait_until(fn -> render(live) =~ "ざっと" end)
+      assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       live
       |> element("form#collect-form")
-      |> render_change(%{"sweep|ざっと|backend" => "codex", "sweep|ざっと|model" => "gpt-b"})
+      |> render_change(%{"sweep|ざっと見る|backend" => "codex", "sweep|ざっと見る|model" => "gpt-b"})
 
       # 図が届いたことにして描き直す（実際には読み直しが終わったとき）
       send(live.pid, {:relation_updated, Tazuna.Relations.current("painters")})
@@ -568,7 +573,7 @@ defmodule TazunaWeb.RelationsLiveTest do
             partitions_total: 10,
             sweeps: [
               %{
-                name: "調査",
+                name: "整理",
                 backend: nil,
                 model: nil,
                 effort: nil,
@@ -578,7 +583,7 @@ defmodule TazunaWeb.RelationsLiveTest do
                 use_extract: false,
                 use_feed: false,
                 enabled: true,
-                blocked: "「ざっと」の一周待ち",
+                blocked: "「ざっと見る」の一周待ち",
                 next_run_at: nil,
                 last_run_at: nil,
                 last_status: nil,
@@ -589,14 +594,14 @@ defmodule TazunaWeb.RelationsLiveTest do
           }
         })
 
-      assert [%{next: "「ざっと」の一周待ち"}] = rows
+      assert [%{next: "「ざっと見る」の一周待ち"}] = rows
     end
 
     test "時計を持たない巡回にも相手を選べる", %{conn: conn} do
       # 画家のモーダルから頼む「詳しく調べて」は割り込みとして走る。**人が待っている
       # 場面**なので、定時の巡回と同じ相手を使う理由が無い
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
-      assert wait_until(fn -> render(live) =~ "調査" end)
+      assert wait_until(fn -> render(live) =~ "整理" end)
 
       html = live |> element("form#collect-form table") |> render()
       assert html =~ "時計なし"
@@ -608,14 +613,14 @@ defmodule TazunaWeb.RelationsLiveTest do
       # **相手だけ選べても足りない。** 同じ相手でもモデルで結果も時間も変わるので、
       # 巡回ごとに選べないと「じっくりだけ重いモデルで」が表せない
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
-      assert wait_until(fn -> render(live) =~ "調査" end)
+      assert wait_until(fn -> render(live) =~ "整理" end)
 
       live
       |> element("form#collect-form")
-      |> render_change(%{"sweep|調査|backend" => "codex", "sweep|調査|model" => "gpt-b"})
+      |> render_change(%{"sweep|整理|backend" => "codex", "sweep|整理|model" => "gpt-b"})
 
       # 候補は選び直した相手のもの（別の相手のモデルは並ばない）
-      html = live |> element(~s(select[name="sweep|調査|model"])) |> render()
+      html = live |> element(~s(select[name="sweep|整理|model"])) |> render()
       assert html =~ "gpt-a"
       assert html =~ "gpt-b"
       refute html =~ "opus"
@@ -623,7 +628,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       live |> element("form#collect-form") |> render_submit(%{})
 
       assert_receive {:patched, body}, 5_000
-      sweep = Enum.find(Jason.decode!(body)["sweeps"], &(&1["name"] == "調査"))
+      sweep = Enum.find(Jason.decode!(body)["sweeps"], &(&1["name"] == "整理"))
       assert sweep["model"] == "gpt-b"
     end
 
@@ -651,15 +656,15 @@ defmodule TazunaWeb.RelationsLiveTest do
       end)
 
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
-      assert wait_until(fn -> render(live) =~ "ざっと" end)
+      assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       live
       |> element("form#collect-form")
-      |> render_change(%{"sweep|ざっと|backend" => "antigravity"})
+      |> render_change(%{"sweep|ざっと見る|backend" => "antigravity"})
 
       html = live |> element("form#collect-form table") |> render()
-      assert html =~ ~s(name="sweep|ざっと|model")
-      refute html =~ ~s(name="sweep|ざっと|effort")
+      assert html =~ ~s(name="sweep|ざっと見る|model")
+      refute html =~ ~s(name="sweep|ざっと見る|effort")
     end
 
     test "選び直した欄が、前に覚えた値に上書きされない", %{conn: conn} do
@@ -672,17 +677,17 @@ defmodule TazunaWeb.RelationsLiveTest do
       # まず相手を選ぶ（このとき考える量は空のまま送られてくる）
       live
       |> element("form#collect-form")
-      |> render_change(%{"sweep|調査|backend" => "codex", "sweep|調査|effort" => ""})
+      |> render_change(%{"sweep|整理|backend" => "codex", "sweep|整理|effort" => ""})
 
       # 次に考える量を選ぶ
       live
       |> element("form#collect-form")
-      |> render_change(%{"sweep|調査|backend" => "codex", "sweep|調査|effort" => "high"})
+      |> render_change(%{"sweep|整理|backend" => "codex", "sweep|整理|effort" => "high"})
 
       live |> element("form#collect-form") |> render_submit(%{})
 
       assert_receive {:patched, body}, 5_000
-      sweep = Enum.find(Jason.decode!(body)["sweeps"], &(&1["name"] == "調査"))
+      sweep = Enum.find(Jason.decode!(body)["sweeps"], &(&1["name"] == "整理"))
       assert sweep["effort"] == "high"
     end
 
@@ -691,7 +696,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       # ボタンは押せるのに何も起きない —— 画面には何も出ないので、設定が送られて
       # いないことに気づきようがなかった
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
-      assert wait_until(fn -> render(live) =~ "ざっと" end)
+      assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       # 溜まったものの読み出しだけを止めて、読み直しが終わらない状態を作る
       {collections, one} = painters_collection_json()
@@ -733,12 +738,12 @@ defmodule TazunaWeb.RelationsLiveTest do
 
       live
       |> element("form#collect-form")
-      |> render_change(%{"sweep|ざっと|backend" => "codex"})
+      |> render_change(%{"sweep|ざっと見る|backend" => "codex"})
 
       live |> element("form#collect-form") |> render_submit(%{})
 
       assert_receive {:patched, body}, 5_000
-      sweep = Enum.find(Jason.decode!(body)["sweeps"], &(&1["name"] == "ざっと"))
+      sweep = Enum.find(Jason.decode!(body)["sweeps"], &(&1["name"] == "ざっと見る"))
       assert sweep["backend"] == "codex"
 
       # 止めたままにすると、次のテストへ :loading のまま持ち越す
@@ -759,22 +764,22 @@ defmodule TazunaWeb.RelationsLiveTest do
       # **空文字も送る。** あれは「Chiezo の既定にまかせる」を選んだという意思表示で、
       # 落とすと一度決めた相手を画面から外せない
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
-      assert wait_until(fn -> render(live) =~ "ざっと" end)
+      assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       live
       |> element("form#collect-form")
       |> render_change(%{
-        "sweep|ざっと|backend" => "codex",
-        "sweep|ざっと|model" => "gpt-b",
-        "sweep|調査|backend" => ""
+        "sweep|ざっと見る|backend" => "codex",
+        "sweep|ざっと見る|model" => "gpt-b",
+        "sweep|整理|backend" => ""
       })
 
       live |> element("form#collect-form") |> render_submit(%{})
 
       assert_receive {:patched, body}, 5_000
       sweeps = Jason.decode!(body)["sweeps"]
-      rough = Enum.find(sweeps, &(&1["name"] == "ざっと"))
-      deep = Enum.find(sweeps, &(&1["name"] == "調査"))
+      rough = Enum.find(sweeps, &(&1["name"] == "ざっと見る"))
+      deep = Enum.find(sweeps, &(&1["name"] == "整理"))
 
       assert rough["backend"] == "codex"
       assert rough["model"] == "gpt-b"
@@ -926,19 +931,19 @@ defmodule TazunaWeb.RelationsLiveTest do
       relation = %{
         collection: %{
           partitions: [
-            %{key: "日本|1900-1910", count: 25, visits: %{"調査" => "2026-09-01T00:00:00Z"}},
+            %{key: "日本|1900-1910", count: 25, visits: %{"整理" => "2026-09-01T00:00:00Z"}},
             %{key: "フランス|1840-1869", count: 24, visits: %{}},
-            %{key: "イタリア|1500-1600", count: 20, visits: %{"調査" => "2026-08-01T00:00:00Z"}}
+            %{key: "イタリア|1500-1600", count: 20, visits: %{"整理" => "2026-08-01T00:00:00Z"}}
           ]
         }
       }
 
-      assert Enum.map(Collect.partition_rows(relation, "調査"), & &1.key) ==
+      assert Enum.map(Collect.partition_rows(relation, "整理"), & &1.key) ==
                ["フランス|1840-1869", "イタリア|1500-1600", "日本|1900-1910"]
     end
 
     test "区画を持たない図では空" do
-      assert Collect.partition_rows(%{collection: nil}, "調査") == []
+      assert Collect.partition_rows(%{collection: nil}, "整理") == []
     end
 
     test "頼みごとは必ず区画の名前で始まる" do

@@ -54,52 +54,52 @@
            名前を思い出せないときに使うのが後者なので、探す欄の中には入れられない --%>
       <% seen = seen_options(@relation, @marks) %>
       <div class="relation-find">
-      <form
-        id={"relation-search-#{@view}"}
-        class="relation-search"
-        phx-change="search"
-        phx-submit="search"
-        autocomplete="off"
-      >
-        <input
-          type="search"
-          name="q"
-          value={@query}
-          placeholder="画家を探す"
-          aria-label="画家を探す"
-        />
-        <button
-          :if={@query != ""}
-          type="button"
-          phx-click="clear_search"
-          aria-label="検索をやめる"
+        <form
+          id={"relation-search-#{@view}"}
+          class="relation-search"
+          phx-change="search"
+          phx-submit="search"
+          autocomplete="off"
         >
-          ×
-        </button>
-        <ul :if={@matches != []} class="relation-matches">
-          <li :for={match <- @matches}>
-            <button type="button" phx-click="focus" phx-value-name={match.name}>
-              {match.name}
-              <span :if={match.years} class="match-years">{match.years}</span>
-            </button>
-          </li>
-        </ul>
-      </form>
-      <form
-        :if={seen != []}
-        id={"relation-seen-#{@view}"}
-        class="relation-seen"
-        phx-change="focus_marked"
-      >
-        <select name="name" aria-label={"見た#{unit_of(@view)}を探す"}>
-          <%!-- 先頭は行き先ではなく口の名前。**選ばれている行き先が分かる**ように、
+          <input
+            type="search"
+            name="q"
+            value={@query}
+            placeholder="画家を探す"
+            aria-label="画家を探す"
+          />
+          <button
+            :if={@query != ""}
+            type="button"
+            phx-click="clear_search"
+            aria-label="検索をやめる"
+          >
+            ×
+          </button>
+          <ul :if={@matches != []} class="relation-matches">
+            <li :for={match <- @matches}>
+              <button type="button" phx-click="focus" phx-value-name={match.name}>
+                {match.name}
+                <span :if={match.years} class="match-years">{match.years}</span>
+              </button>
+            </li>
+          </ul>
+        </form>
+        <form
+          :if={seen != []}
+          id={"relation-seen-#{@view}"}
+          class="relation-seen"
+          phx-change="focus_marked"
+        >
+          <select name="name" aria-label={"見た#{unit_of(@view)}を探す"}>
+            <%!-- 先頭は行き先ではなく口の名前。**選ばれている行き先が分かる**ように、
                寄っているものはそのまま選ばれた状態で残す --%>
-          <option value="">見た{unit_of(@view)}（{length(seen)}）</option>
-          <option :for={{name, label} <- seen} value={name} selected={@query == name}>
-            {label}
-          </option>
-        </select>
-      </form>
+            <option value="">見た{unit_of(@view)}（{length(seen)}）</option>
+            <option :for={{name, label} <- seen} value={name} selected={@query == name}>
+              {label}
+            </option>
+          </select>
+        </form>
       </div>
       <div class="relation-tools">
         <button type="button" data-zoom="in" aria-label="拡大">＋</button>
@@ -253,7 +253,8 @@
               y={node[:name_dy] || 0}
               style={"font-size: #{name_size_of(node)}px"}
             >
-              {node.name}<tspan :if={works_of(node) != []} class="work-mark">
+              {node.name}
+              <tspan :if={works_of(node) != []} class="work-mark">
                 {Tazuna.Relations.Graph.work_mark()}
               </tspan>
             </text>
@@ -331,8 +332,7 @@
       <%= if @view == "painters" do %>
         <p>
           <strong>縦は時代</strong>です（上から下へ、並びは生年順）。左端の年代は図を
-          動かしても貼り付いたままになります。丸を等間隔に並べているので、
-          <strong>画家が多い時代ほど目盛りの間隔が広がります</strong>。
+          動かしても貼り付いたままになります。丸を等間隔に並べているので、 <strong>画家が多い時代ほど目盛りの間隔が広がります</strong>。
         </p>
         <p>
           <strong>横は地域</strong>です（ヨーロッパ／南北アメリカ／アジア・その他）。
@@ -340,37 +340,30 @@
           地域が取れていない画家は「その他」に入ります。
         </p>
         <p>
-          <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、
-          <strong>色は様式</strong>です。様式は札の中の 2 行目にも書いてあります。
-          <strong>複数の様式を持つ画家は、そのうち 1 つの色</strong>になります
+          <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、 <strong>色は様式</strong>です。様式は札の中の 2 行目にも書いてあります。 <strong>複数の様式を持つ画家は、そのうち 1 つの色</strong>になります
           （丸は 1 つしかないので、どれを選んでも同じくらい正しくない）。
           下の凡例を押すと<strong>その様式だけを大きく並べ直します</strong>。
         </p>
         <p>
-          <strong>直近の巡回で動いた画家は、緑の破線で囲みます</strong>
-          （Chiezo が足したか直したかしたもの）。図の下の「動いたものだけ」を押すと、
+          <strong>直近の巡回で動いた画家は、緑の破線で囲みます</strong> （Chiezo が足したか直したかしたもの）。図の下の「動いたものだけ」を押すと、
           その人たちだけを大きく並べ直します。<strong>最初の一括作成では出ません</strong> ——
           全部が同じ時刻になるので、比べる先がありません。
         </p>
         <p>
           <strong>どの名前も押せます。</strong> もとになった記事・Chiezo に入っているタグ・
-          代表作の絵（最大 3 枚）が出て、その場で
-          <strong>「この画家を詳しく調べて」を Chiezo に頼めます</strong>。
+          代表作の絵（最大 3 枚）が出て、その場で <strong>「この画家を詳しく調べて」を Chiezo に頼めます</strong>。
           名前のうしろの <strong>{Tazuna.Relations.Graph.work_mark()}</strong> は
           代表作が入っている印です。
         </p>
         <p>
-          <strong>線も押せます。</strong> 濃い矢印は AI が調べた影響関係で、
-          <strong>何をもってそう言えるのかは AI の判断そのもの</strong>です
+          <strong>線も押せます。</strong> 濃い矢印は AI が調べた影響関係で、 <strong>何をもってそう言えるのかは AI の判断そのもの</strong>です
           （影響関係は記事に書いていないので機械では引けません）。
-          薄い線は記事どうしが互いにリンクしているというだけの関係で、
-          <strong>Wikipedia から機械的に引いたもの</strong>です。
+          薄い線は記事どうしが互いにリンクしているというだけの関係で、 <strong>Wikipedia から機械的に引いたもの</strong>です。
           どちらを押しても、その線の根拠と両者の記事へのリンクが出ます。
         </p>
         <p>
           図は<strong>引きずって移動、Ctrl+ホイールで拡大縮小</strong>できます
-          （素のホイールはページのスクロールに使います）。
-          <strong>小さすぎる札と、見えていないところは描きません</strong> ——
+          （素のホイールはページのスクロールに使います）。 <strong>小さすぎる札と、見えていないところは描きません</strong> ——
           8,000 人を一度に並べると読めないので、拡大すると出てきます。
         </p>
       <% else %>
@@ -405,19 +398,22 @@
         <.sweep_table state={@relation} picks={@picks} backends={@backends} />
 
         <p class="muted-note">{source_note(@view)}</p>
-        <button type="submit" phx-disable-with="送っています…" disabled={collecting?(@relation)}>
+        <button
+          type="submit"
+          phx-disable-with="送っています…"
+          disabled={collecting?(@relation)}
+        >
           {collect_label(@relation)}
         </button>
       </form>
 
       <%!-- **区画の一覧。** どこがまだ見られていないかは、ここにしか無い ——
            「ここを先に見てほしい」を頼む口でもある。400 区画あるので畳んで置く --%>
-      <% rows = partition_rows(@relation, "調査") %>
+      <% rows = partition_rows(@relation, "整理") %>
       <details :if={rows != []} class="partition-list">
         <summary>区画（{length(rows)}）— まだ見ていないものが先</summary>
         <p class="muted-note">
-          区画は「地域 × 生年」で切ってあります。
-          <strong>押すと、その区画を先に調べてもらえます</strong>（印が付くので、
+          区画は「地域 × 生年」で切ってあります。 <strong>押すと、その区画を先に調べてもらえます</strong>（印が付くので、
           巡回が同じところをもう一度見ることはありません）。
         </p>
         <table class="partition-table">
@@ -496,13 +492,11 @@
         </div>
         <%= if @edge.kind == :influence do %>
           <p class="edge-reason">
-            {@edge.to.name}は{@edge.from.name}から
-            <strong>{@edge.label || "影響を受けた"}</strong>、と AI が書いています。
+            {@edge.to.name}は{@edge.from.name}から <strong>{@edge.label || "影響を受けた"}</strong>、と AI が書いています。
           </p>
           <p class="muted-note">
             <strong>これは AI の判断です。</strong>
-            名簿・年代・様式・相互リンクは Wikipedia から機械的に引いていますが、
-            <strong>誰が誰から何を受けたのかは記事に書いていない</strong>ので引けません。
+            名簿・年代・様式・相互リンクは Wikipedia から機械的に引いていますが、 <strong>誰が誰から何を受けたのかは記事に書いていない</strong>ので引けません。
             確かめるには、それぞれの記事を読んでください。
           </p>
         <% else %>
@@ -511,10 +505,10 @@
           </p>
           <p class="muted-note">
             これは Wikipedia から機械的に引いた線で、<strong>影響関係ではありません</strong>。
-            <strong>片側だけのリンクは採りません</strong> —— 有名な画家は多くの記事から
+            <strong>片側だけのリンクは採りません</strong>
+            —— 有名な画家は多くの記事から
             名前を出されるので、片側で繋ぐと有名どうしが軒並み繋がって図が読めなくなります。
-            互いに名前を出している組だけを残しています。
-            <strong>何の関係かまでは、リンクの有無からは分かりません</strong>。
+            互いに名前を出している組だけを残しています。 <strong>何の関係かまでは、リンクの有無からは分かりません</strong>。
           </p>
         <% end %>
         <ul class="edge-links">
@@ -599,8 +593,7 @@
         <% mark = mark_of(@marks, @detail.name) %>
         <details class="seen-mark" open={marked?(@marks, @detail.name)}>
           <summary>
-            見た記録
-            <span :if={mark_summary(mark)} class="seen-badge">{mark_summary(mark)}</span>
+            見た記録 <span :if={mark_summary(mark)} class="seen-badge">{mark_summary(mark)}</span>
           </summary>
           <form phx-submit="save_mark">
             <input type="hidden" name="name" value={@detail.name} />
@@ -609,8 +602,7 @@
                 <input type="checkbox" name="seen" checked={mark.seen} /> 見た
               </label>
               <label>
-                見た日
-                <input type="date" name="seen_on" value={seen_on_value(mark)} />
+                見た日 <input type="date" name="seen_on" value={seen_on_value(mark)} />
               </label>
             </p>
             <p>
@@ -624,8 +616,7 @@
               </label>
             </p>
             <p class="muted-note">
-              ここに書いたことは tazuna にだけ残ります（Chiezo へは送りません）。
-              <strong>印もメモも空にして保存すると、記録ごと消えます。</strong>
+              ここに書いたことは tazuna にだけ残ります（Chiezo へは送りません）。 <strong>印もメモも空にして保存すると、記録ごと消えます。</strong>
             </p>
             <button type="submit" phx-disable-with="保存しています…">記録を保存</button>
             <span :if={@mark_saved == @detail.name} class="muted-note">保存しました。</span>
