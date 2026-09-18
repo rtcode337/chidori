@@ -338,13 +338,29 @@ defmodule Tazuna.Chiezo do
   巡回の一覧。**Chiezo が持っているものが正**（依頼したあとは向こうの画面から
   変えられるので、tazuna が送った設定を映しても嘘になりえます）。
   """
+  def worker_prefix, do: "worker:"
+
+  @doc """
+  その巡回の「頼む相手」。**ワーカーを名指ししていればそちらを返します**
+  （`worker:<名前>`）。Chiezo の相手の一覧でも同じ値で並ぶので、セレクトは
+  1 つで足ります。
+  """
+  def backend_of(%{} = sweep) do
+    case sweep["worker"] do
+      name when is_binary(name) and name != "" -> worker_prefix() <> name
+      _ -> sweep["backend"]
+    end
+  end
+
   def sweeps_of(%{"sweeps" => list}) when is_list(list) do
     for s <- list, is_map(s) do
       %{
         name: s["name"] || "",
-        backend: s["backend"],
+        # **ワーカーに頼む回は、相手の欄がワーカーを指します。** Chiezo は
+        # 別の項目（`worker`）で返すので、こちらで相手の欄の値へ直します ——
+        # セレクトは 1 つしか無いので、どちらが入っているかを画面に持ち込まない
+        backend: backend_of(s),
         model: s["model"],
-        effort: s["effort"],
         interval_minutes: s["interval_minutes"],
         cover_days: s["cover_days"],
         partitions_per_run: s["partitions_per_run"],

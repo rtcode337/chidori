@@ -459,7 +459,12 @@ defmodule TazunaWeb.RelationsLiveTest do
             "enabled" => true,
             "backend" => "claude"
           },
-          %{"name" => "整理", "interval_minutes" => 1440, "enabled" => true},
+          %{
+            "name" => "整理",
+            "interval_minutes" => 1440,
+            "enabled" => true,
+            "worker" => "精査"
+          },
           %{"name" => "割り込み", "on_demand" => true, "enabled" => true}
         ]
       }
@@ -504,6 +509,35 @@ defmodule TazunaWeb.RelationsLiveTest do
       on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
       stub_chiezo(self())
       restart_relations()
+    end
+
+    test "ワーカーを選ぶと、その値のまま Chiezo へ送られる", %{conn: conn} do
+      # 相手の欄に入ったまま送れば、Chiezo が `worker` へ振り分ける ——
+      # こちら側が振り分けると、どこに入れるかを知っているのが 2 か所になる
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      assert wait_until(fn -> render(live) =~ "ざっと見る" end)
+
+      live
+      |> element("form#collect-form")
+      |> render_change(%{"sweep|ざっと見る|backend" => "worker:精査"})
+
+      live |> element("form#collect-form") |> render_submit(%{})
+
+      assert_receive {:patched, body}, 5_000
+      rough = Enum.find(Jason.decode!(body)["sweeps"], &(&1["name"] == "ざっと見る"))
+
+      assert rough["backend"] == "worker:精査"
+    end
+
+    test "ワーカーに頼む回は、そのワーカーが選ばれた状態で出る", %{conn: conn} do
+      # Chiezo は別の項目（`worker`）で返すので、相手の欄と比べても一致しない ——
+      # こちらで相手の欄の値へ直さないと、何も選ばれていないように見える
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      assert wait_until(fn -> render(live) =~ "ざっと見る" end)
+
+      html = live |> element("form#collect-form table") |> render()
+
+      assert html =~ ~s(<option value="worker:精査" selected=)
     end
 
     test "ワーカーも相手の選択肢に並ぶ", %{conn: conn} do
