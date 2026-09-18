@@ -37,35 +37,37 @@ defmodule TazunaWeb.CollectPanel do
         <tr :for={row <- @rows}>
           <% backend = pick_of(@picks, row.name, :backend, row.backend) %>
           <% model = pick_of(@picks, row.name, :model, row.model) %>
-          <% effort = pick_of(@picks, row.name, :effort, row.effort) %>
           <td>{row.name}</td>
           <td :if={row.mechanical} class="pick">
             <span class="muted-note">AI を使いません</span>
           </td>
-          <%!-- モデルも段階も相手ごとに別物なので、**選び直した相手のぶんを出す** ——
+          <%!-- モデルは相手ごとに別物なので、**選び直した相手のぶんを出す** ——
                前の相手のものを出すと、その相手が受け付けない値を送ることになる。
                **選べるものが無ければ欄ごと出さない** —— 「既定」しか入っていない
-               セレクトは、押せるのに何も選べない。考える量を持たない相手のほか、
-               モデルの名前に考える量が埋まっている相手（Antigravity）もここに当たる --%>
+               セレクトは、押せるのに何も選べない。ワーカーもここに当たる
+               （渡す先はそのときの枠で決まるので、モデルを 1 つ選んでも
+               どの相手に対する指定なのかが決まらない）。
+               **考える量の欄は持ちません** —— モデルの名前に畳んであります --%>
           <% models = models_for(@backends, backend) %>
-          <% efforts = efforts_for(@backends, backend) %>
+          <% {plain, hands} = by_kind(@backends) %>
           <td :if={!row.mechanical} class="pick">
             <select name={"sweep|#{row.name}|backend"}>
               <option value="">Chiezo の既定にまかせる</option>
-              <option :for={b <- @backends} value={b.id} selected={b.id == backend}>
+              <option :for={b <- plain} value={b.id} selected={b.id == backend}>
                 {b.label}
               </option>
+              <%!-- **ワーカーは別の見出しの下へ** —— 名前だけでは、1 つの相手なのか
+                   振り替える並びなのかが読めない --%>
+              <optgroup :if={hands != []} label="ワーカー（枠を見て振り替える）">
+                <option :for={b <- hands} value={b.id} selected={b.id == backend}>
+                  {b.label}
+                </option>
+              </optgroup>
             </select>
             <select :if={models != []} name={"sweep|#{row.name}|model"}>
               <option value="">モデルは相手の既定</option>
               <option :for={m <- models} value={m} selected={m == model}>
                 {m}
-              </option>
-            </select>
-            <select :if={efforts != []} name={"sweep|#{row.name}|effort"}>
-              <option value="">考える量は相手の既定</option>
-              <option :for={e <- efforts} value={e} selected={e == effort}>
-                {e}
               </option>
             </select>
           </td>

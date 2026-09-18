@@ -403,7 +403,9 @@ defmodule Tazuna.Chiezo do
                 id: b["id"],
                 label: b["label"] || b["id"],
                 models: b["models"] || [],
-                efforts: b["efforts"] || []
+                # 相手か、ワーカーか。**足されたのは後から**なので、
+                # 書いていない相手は相手として読む
+                kind: b["kind"] || "backend"
               }
             end
 

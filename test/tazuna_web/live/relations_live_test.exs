@@ -468,7 +468,11 @@ defmodule TazunaWeb.RelationsLiveTest do
       Tazuna.HttpStub.stub(fn
         %{url: "http://chiezo.test:7010/v1/ai/backends"} ->
           Tazuna.HttpStub.ok(
-            ~s({"backends":[{"id":"codex","label":"Codex","models":["gpt-a","gpt-b"],"efforts":["low","high"]},{"id":"claude","label":"Claude","models":["opus"],"efforts":["low","medium","high"]}]})
+            ~s({"backends":[) <>
+              ~s({"id":"codex","label":"Codex","kind":"backend","models":["gpt-a","gpt-b"]},) <>
+              ~s({"id":"claude","label":"Claude","kind":"backend","models":["opus"]},) <>
+              ~s({"id":"worker:精査","label":"精査","kind":"worker","models":[]}) <>
+              ~s(]})
           )
 
         %{url: "http://chiezo.test:7010/v1/ingest/status"} ->
@@ -497,6 +501,43 @@ defmodule TazunaWeb.RelationsLiveTest do
       restart_relations()
     end
 
+    test "ワーカーも相手の選択肢に並ぶ", %{conn: conn} do
+      # **一覧に無いものは選ばせようがない。** Chiezo は相手とワーカーを同じ一覧で
+      # 返すので、こちらは種類で見出しを分けて並べるだけ
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      assert wait_until(fn -> render(live) =~ "ざっと" end)
+
+      html = live |> element("form#collect-form table") |> render()
+
+      assert html =~ ~s(<optgroup)
+      assert html =~ ~s(<option value="worker:精査")
+    end
+
+    test "ワーカーを選ぶと、モデルの欄は出ない", %{conn: conn} do
+      # 渡す先はそのときの枠で決まるので、モデルを 1 つ選んでも
+      # どの相手に対する指定なのかが決まらない
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      assert wait_until(fn -> render(live) =~ "ざっと" end)
+
+      live
+      |> element("form#collect-form")
+      |> render_change(%{"sweep|ざっと|backend" => "worker:精査"})
+
+      html = live |> element("form#collect-form table") |> render()
+
+      refute html =~ ~s(name="sweep|ざっと|model")
+    end
+
+    test "考える量の欄は持たない", %{conn: conn} do
+      # モデルの名前に畳んであるので、残すと選べるのに効かない欄になる
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      assert wait_until(fn -> render(live) =~ "ざっと" end)
+
+      html = live |> element("form#collect-form table") |> render()
+
+      refute html =~ "effort"
+    end
+
     test "選んだ相手が、図が届いても元に戻らない", %{conn: conn} do
       # **これが「選んだのに反映されない」の正体だった。** フォームの中身を
       # サーバーが覚えていないと、図や状態が届いた拍子に描き直されて、
@@ -507,14 +548,14 @@ defmodule TazunaWeb.RelationsLiveTest do
 
       live
       |> element("form#collect-form")
-      |> render_change(%{"sweep|ざっと|backend" => "codex", "sweep|ざっと|effort" => "high"})
+      |> render_change(%{"sweep|ざっと|backend" => "codex", "sweep|ざっと|model" => "gpt-b"})
 
       # 図が届いたことにして描き直す（実際には読み直しが終わったとき）
       send(live.pid, {:relation_updated, Tazuna.Relations.current("painters")})
       html = live |> element("form#collect-form table") |> render()
 
       assert html =~ ~s(<option value="codex" selected=)
-      assert html =~ ~s(<option value="high" selected=)
+      assert html =~ ~s(<option value="gpt-b" selected=)
     end
 
     test "走らない理由は Chiezo が言う" do
@@ -724,7 +765,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       |> element("form#collect-form")
       |> render_change(%{
         "sweep|ざっと|backend" => "codex",
-        "sweep|ざっと|effort" => "high",
+        "sweep|ざっと|model" => "gpt-b",
         "sweep|調査|backend" => ""
       })
 
@@ -736,7 +777,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       deep = Enum.find(sweeps, &(&1["name"] == "調査"))
 
       assert rough["backend"] == "codex"
-      assert rough["effort"] == "high"
+      assert rough["model"] == "gpt-b"
       assert deep["backend"] == ""
     end
   end

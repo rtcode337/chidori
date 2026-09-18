@@ -30,7 +30,7 @@ defmodule TazunaWeb.Collect do
     for {key, value} <- params, reduce: %{} do
       acc ->
         case String.split(key, "|") do
-          ["sweep", name, field] when field in ~w(backend model effort) ->
+          ["sweep", name, field] when field in ~w(backend model) ->
             Map.update(acc, name, %{String.to_atom(field) => value}, fn picked ->
               Map.put(picked, String.to_atom(field), value)
             end)
@@ -51,19 +51,6 @@ defmodule TazunaWeb.Collect do
   end
 
   @doc """
-  その相手が受け付ける「考える量」。**相手を選び直すまでは、いまの相手のぶん**。
-
-  相手ごとに段階が違うので（claude は 5 段、antigravity は 3 段）、まとめて並べると
-  選べない値が出ます。
-  """
-  def efforts_for(backends, backend) do
-    case Enum.find(backends || [], &(&1.id == backend)) do
-      nil -> []
-      found -> found.efforts
-    end
-  end
-
-  @doc """
   その相手が持つモデル。**相手を選び直すまでは、いまの相手のぶん**。
 
   考える量と同じ理由でまとめて並べません —— 相手ごとに別物なので、混ぜると
@@ -75,6 +62,15 @@ defmodule TazunaWeb.Collect do
       nil -> []
       found -> found.models
     end
+  end
+
+  @doc """
+  頼める相手を、種類ごとに分けます。**ワーカーは相手と同じ欄に並びますが、
+  別の見出しの下に置きます** —— 名前だけでは、1 つの相手なのか振り替える並びなのかが
+  読めません（ワーカーは渡す先がそのときの枠で決まります）。
+  """
+  def by_kind(backends) do
+    Enum.split_with(backends || [], &(Map.get(&1, :kind, "backend") != "worker"))
   end
 
   @doc """
@@ -142,7 +138,6 @@ defmodule TazunaWeb.Collect do
           name: "既定",
           backend: c.backend,
           model: c.model,
-          effort: c.effort,
           interval_minutes: c.interval_minutes,
           cover_days: nil,
           on_demand: false,
@@ -169,7 +164,6 @@ defmodule TazunaWeb.Collect do
       name: sweep.name,
       backend: sweep.backend,
       model: sweep.model,
-      effort: sweep.effort,
       interval:
         cond do
           sweep[:on_demand] -> "時計なし"
