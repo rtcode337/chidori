@@ -629,29 +629,17 @@ defmodule Tazuna.NewsTest do
       assert Enum.map(News.to_digests(recent), & &1.title) == ["まとめ: 今日の動き（2026-09-13）"]
     end
 
-    test "消えたものは出さない" do
-      # 消したものは印が付いて残る。落とさないと画面に並ぶうえ、本文はもう引けないので
-      # （doc は 404）一覧の冒頭だけが出て、途中で切れた文として見える（実際にそう出た）
+    test "読者に出さないものの選り分けは Chiezo に任せる" do
+      # 消えたものも、まだ整理が読んでいないものも、Chiezo が既定で落として返す。
+      # こちらが落とす形にすると、**あちらの印が増えるたびにここも直して回る**
+      # ことになり、しかも漏れるのは読者の画面だけなので気づくのが遅い
       recent = [
         recent("ふつうの記事"),
-        Map.put(recent("消えた記事"), "tags", [Tazuna.Chiezo.removed_tag()]),
-        Map.put(recent("まとめ: 生きている"), "tags", ["まとめ"]),
-        Map.put(recent("まとめ: 消えた"), "tags", ["まとめ", Tazuna.Chiezo.removed_tag()])
+        Map.put(recent("まとめ: 生きている"), "tags", ["まとめ"])
       ]
 
       assert Enum.map(News.to_articles(recent), & &1.title) == ["ふつうの記事"]
       assert Enum.map(News.to_digests(recent), & &1.title) == ["まとめ: 生きている"]
-    end
-
-    test "まだ整理が読んでいないものは出さない" do
-      # 機械で引くぶんには宣伝も的外れなものも混ざる。選り分けの前に並べると、
-      # 落とされる予定のものを読ませることになる（Chiezo が印を付けて返す）
-      recent = [
-        recent("ふつうの記事"),
-        Map.put(recent("まだ読まれていない記事"), "tags", [Tazuna.Chiezo.unreviewed_tag()])
-      ]
-
-      assert Enum.map(News.to_articles(recent), & &1.title) == ["ふつうの記事"]
     end
 
     test "まとめは、直近の窓に無くてもタグで引き直す" do
