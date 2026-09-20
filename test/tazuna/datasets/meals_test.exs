@@ -127,6 +127,25 @@ defmodule Tazuna.Datasets.MealsTest do
       assert south < 24.0 and north > 45.0
     end
 
+    test "東京駅から広げる" do
+      # **書かないと南西の隅から北上する** —— 矩形の鍵は角から並ぶので、
+      # 日本の地図では八重山が最初になる。一周に何十日もかかる台帳では、
+      # 店の多いところに着くのが何か月も先になってしまう
+      [lat, lon] = Meals.partition().origin
+
+      assert_in_delta lat, 35.681, 0.01
+      assert_in_delta lon, 139.767, 0.01
+    end
+
+    test "始める点は、対象の矩形の中にある" do
+      # 外に置いても並ぶだけは並ぶが、「日本のどこから広げるか」を言えなくなる
+      [south, west, north, east] = Meals.partition().bbox
+      [lat, lon] = Meals.partition().origin
+
+      assert south < lat and lat < north
+      assert west < lon and lon < east
+    end
+
     test "1 区画は、AI が 1 回で返せるぶんに収まる" do
       # **入り口より出口が先に効く。** この回は残す店ぜんぶにタグと紹介文を
       # 付けさせるので、区画の件数がそのまま返る件数になる。
