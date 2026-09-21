@@ -171,9 +171,13 @@ defmodule Tazuna.Digest do
   defp log(_collection, _result), do: :ok
 
   @doc false
-  # 画面に出す一言。**いつ・どうなったか**を 1 行で（次に何をすればよいかまで）
+  # 画面に出す一言。**いつ・どうなったか**を 1 行で（次に何をすればよいかまで）。
+  #
+  # **これは記録で、いまの状態ではありません。** 画面側が「前回の定時の回」として
+  # 見出しを付けるので、ここは時刻と顛末だけを書きます —— 混ざると、ずっと前に
+  # 止まった回の理由が、いまの状態として読まれます（実際にそう読まれました）。
   def result_text(result) do
-    Jst.format(DateTime.utc_now()) <> "の回: " <> outcome(result)
+    Jst.format(DateTime.utc_now()) <> " — " <> outcome(result)
   end
 
   defp outcome({:ok, :sent}), do: "まとめを作って知らせました。"
@@ -182,7 +186,9 @@ defmodule Tazuna.Digest do
   defp outcome({:ok, :nothing_to_send}),
     do: "まとめを作りましたが、知らせるものがありませんでした。"
 
-  defp outcome({:error, reason}), do: "止まりました —— " <> error_text(reason)
+  # **理由は「そのときの」と断る。** 理由の文はいまの状態を指す言い回し
+  # （「止まっています」など）で、押した直後の画面にも同じものを出すため
+  defp outcome({:error, reason}), do: "止まりました。そのときの理由: " <> error_text(reason)
   defp outcome(_other), do: "終わりました。"
 
   @doc """

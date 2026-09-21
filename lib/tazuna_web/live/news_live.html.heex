@@ -168,6 +168,11 @@
         <%!-- 時計を持つのは tazuna の側。Chiezo には「いま回してください」としか
              言わない（何時に読みたいかは利用者の都合なので、あちらに持たせない） --%>
         <p class="muted-note">{digest_note(@topic)}</p>
+        <%!-- いまの状態と、前に走った回の記録は分けて出す。混ぜると、止まった回の
+             理由（現在形で書かれる）が、いまの状態として読まれる --%>
+        <p :if={digest_state_text(@news, @topic)} class="muted-note">
+          {digest_state_text(@news, @topic)}
+        </p>
         <p class="muted-note">{last_digest_text(@topic)}</p>
         <p class="muted-note">{last_sent_text(@topic)}</p>
         <p :if={@digest_message} aria-live="polite">{@digest_message}</p>

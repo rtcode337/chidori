@@ -21,6 +21,7 @@ defmodule TazunaWeb.NewsLive do
   import TazunaWeb.Report
 
   alias Tazuna.Digest
+  alias Tazuna.Digest.Scheduler
   alias Tazuna.Jst
   alias Tazuna.News
   alias Tazuna.Notify
@@ -381,6 +382,11 @@ defmodule TazunaWeb.NewsLive do
   定時の回がどうなったか。**結果まで出します** —— 誰も見ていない時刻に走る回なので、
   「作らせた時刻」だけだと、知らせが来なかったのか、そもそも走っていないのかが
   読めません（実際、ntfy の場所が空のまま走って、静かに送れずにいました）。
+
+  **「前回の」と断ります。** これは記録で、いまの状態ではありません ——
+  理由の文は現在形なので（「Chiezo 側で止まっています」）、断らないと、
+  ずっと前に止まった回の理由が**いまの状態として読まれます**（実際に読まれました。
+  そのときは収集も要約も動いていました）。いまの状態は `digest_state_text/2`。
   """
   def last_digest_text(nil), do: nil
 
@@ -389,10 +395,36 @@ defmodule TazunaWeb.NewsLive do
 
     case {setting.last_digest_at, setting.last_digest_result} do
       {nil, _result} -> "まだ作らせていません。"
-      {_at, result} when is_binary(result) and result != "" -> result
-      {at, _result} -> "最後に作らせたのは #{Jst.format(at)}。"
+      {_at, result} when is_binary(result) and result != "" -> "前回の定時の回: " <> result
+      {at, _result} -> "前回の定時の回: #{Jst.format(at)}。"
     end
   end
+
+  @doc """
+  定時の回の、いまの見通し。**記録とは別に出します**。
+
+  下に並ぶのは前に走った回の記録なので、それだけだと「いま動いているのか、
+  止まったままなのか」が読めません —— 止まった回の理由が現在形で残るぶん、
+  なおさら取り違えます。
+
+  **止まっているときは、次の回も止まると言い切ります**（動かせるのは Chiezo 側
+  だけなので、待っていても直りません）。
+  """
+  def digest_state_text(news, topic)
+
+  def digest_state_text(_news, nil), do: nil
+
+  def digest_state_text(%{collection: %{enabled: false}}, _topic),
+    do: "いまは Chiezo 側で止まっています。戻すまでは、次の定時の回もここで止まります。"
+
+  def digest_state_text(%{collection: %{}}, topic) do
+    case Scheduler.next(topic) do
+      nil -> nil
+      at -> "いまは動いています（次の定時の回は #{Jst.format(at)}）。"
+    end
+  end
+
+  def digest_state_text(_news, _topic), do: nil
 
   @doc """
   押す口の文字。**何を待っているのかまで出します** ——

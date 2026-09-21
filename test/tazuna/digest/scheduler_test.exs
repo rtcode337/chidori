@@ -56,6 +56,28 @@ defmodule Tazuna.Digest.SchedulerTest do
     assert at == ~U[2026-09-16 22:10:00Z]
   end
 
+  describe "次に回る予定" do
+    test "まだ来ていないいちばん早い時刻を返す" do
+      Settings.put(@collection, %{"digest_at" => "07:00,21:00"})
+
+      # UTC の 22:30 は JST の翌 07:30。次は同じ日の 21:00 JST（= 12:00 UTC）
+      assert Scheduler.next(topic(), ~U[2026-09-16 22:30:00Z]) == ~U[2026-09-17 12:00:00Z]
+    end
+
+    test "今日のぶんが終わっていたら、明日の最初の回を返す" do
+      # もう来ない時刻を「次」として出すと、待っても来ない
+      Settings.put(@collection, %{"digest_at" => "07:00"})
+
+      assert Scheduler.next(topic(), ~U[2026-09-16 22:30:00Z]) == ~U[2026-09-17 22:00:00Z]
+    end
+
+    test "時刻を書いていなければ予定は無い" do
+      Settings.put(@collection, %{"digest_at" => ""})
+
+      refute Scheduler.next(topic(), ~U[2026-09-16 22:30:00Z])
+    end
+  end
+
   describe "時刻の書き方" do
     test "書き方は緩く受けて、持ち方は揃える" do
       # 厳しくすると、時刻を書き間違えただけでフォームごと保存されない

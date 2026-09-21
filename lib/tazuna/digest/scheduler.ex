@@ -94,6 +94,28 @@ defmodule Tazuna.Digest.Scheduler do
     end)
   end
 
+  @doc """
+  次に回る予定（UTC）。予定を書いていない話題では `nil` です。
+
+  **画面に「次はいつか」を出すためのもの**です —— 下に並ぶのは前に走った回の記録
+  なので、それだけだと、いま動いているのかどうかが読めません。
+
+  **今日のうちに過ぎた時刻は明日のぶんとして返します。** もう来ない時刻を
+  「次」として出すと、待っても来ません。
+  """
+  def next(topic, now \\ DateTime.utc_now()) do
+    today = Jst.today(now)
+
+    topic.collection
+    |> Settings.get()
+    |> Setting.digest_times()
+    |> Enum.flat_map(fn {hour, minute} ->
+      [Jst.utc_at(today, hour, minute), Jst.utc_at(Date.add(today, 1), hour, minute)]
+    end)
+    |> Enum.filter(&(DateTime.compare(&1, now) == :gt))
+    |> Enum.min(DateTime, fn -> nil end)
+  end
+
   # 予定を過ぎたか。過ぎすぎたものは追いかけない
   defp passed?(at, now) do
     seconds = DateTime.diff(now, at)

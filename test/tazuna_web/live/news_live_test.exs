@@ -60,6 +60,14 @@ defmodule TazunaWeb.NewsLiveTest do
     assert html =~ "要約"
   end
 
+  test "止まっているときは、次の定時の回も止まると言い切る" do
+    # 動かせるのは Chiezo 側だけなので、待っていても直らない
+    topic = List.first(Tazuna.Topics.list())
+
+    assert TazunaWeb.NewsLive.digest_state_text(%{collection: %{enabled: false}}, topic) =~
+             "次の定時の回もここで止まります"
+  end
+
   describe "Chiezo の収集の枠" do
     @collection %{
       "name" => "tazuna_news",
@@ -226,6 +234,28 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "いま作って知らせる"
       # 作り直さずに送るだけの口も残す
       assert html =~ "いまのまとめを知らせる"
+    end
+
+    test "いまの状態と、前に走った回の記録を分けて出す", %{conn: conn} do
+      # 止まった回の理由は現在形で残る（「Chiezo 側で止まっています」）。
+      # 記録だと断らないと、ずっと前の回の理由がいまの状態として読まれる
+      # —— 実際に読まれた（そのときは収集も要約も動いていた）
+      Tazuna.Notify.Settings.put("tazuna_news", %{"digest_at" => "07:00"})
+
+      Tazuna.Notify.Settings.mark_digest("tazuna_news", ~U[2026-09-16 22:00:00Z])
+
+      Tazuna.Notify.Settings.mark_digest_result(
+        "tazuna_news",
+        "2026-09-17 07:00 JST — 止まりました。そのときの理由: この収集は Chiezo 側で止まっています。"
+      )
+
+      html = shown(conn)
+
+      assert html =~ "前回の定時の回:"
+
+      # 収集は動いているので、いまの状態はそう出る（次にいつ回るかまで）
+      assert html =~ "いまは動いています"
+      refute html =~ "いまは Chiezo 側で止まっています"
     end
 
     test "時刻の書き方を間違えても、書いたものは消さない", %{conn: conn} do
