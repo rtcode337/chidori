@@ -111,7 +111,7 @@ defmodule TazunaWeb.NewsLiveTest do
               %{
                 "title" => "React 19.3 が出た",
                 "opening" => "要約",
-                "tags" => ["ニュース"],
+                "tags" => ["ニュース", "話題度:高"],
                 "extra" => %{"url" => "https://example.com/1"}
               },
               %{"title" => "ふつうの記事", "opening" => "要約", "tags" => ["ニュース"]}
@@ -234,6 +234,15 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "いま作って知らせる"
       # 作り直さずに送るだけの口も残す
       assert html =~ "いまのまとめを知らせる"
+    end
+
+    test "どれだけ反応されているかを、重要度とは別に出す", %{conn: conn} do
+      # 重要度の印に混ぜると、沸いていないが効く 1 件と、効かないが沸いている
+      # 1 件が同じ印になる。印の無いものには何も書かない（判断に見えるため）
+      html = shown(conn)
+
+      assert html =~ "よく読まれています"
+      refute html =~ "まだ広がっていません"
     end
 
     test "いまの状態と、前に走った回の記録を分けて出す", %{conn: conn} do

@@ -526,6 +526,24 @@ defmodule Tazuna.NewsTest do
       assert prompt =~ "見出しの付け替えはできません"
     end
 
+    test "話題度を、重要度とは別の軸として付けさせる" do
+      # 同じ配信元から同じ材料を読んでいても、軸が「判断が変わるか」だけだと、
+      # 界隈が丸一日その話をしていてもまとめに出てこない（実際にそうなった）。
+      # かといって重要度に混ぜると、**沸いていないが効く 1 件**が沈む
+      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+
+      assert prompt =~ "話題度:高"
+      assert prompt =~ "重要度 とは別の軸です"
+
+      # 広がっていないことを「悪いこと」と読ませない（一次情報は早いだけ）
+      assert prompt =~ "広がっていないことは悪いことではありません"
+    end
+
+    test "関心には、話題になっていること自体も入れる" do
+      # 判断が変わるかどうかだけで選ぶと、界隈の話題がまるごと落ちる
+      assert News.refine_prompt(defined_topic("tazuna_tech")) =~ "界隈で話題になっているもの"
+    end
+
     test "外から見つけたものに、既にあるものを上書きさせない" do
       # 見出しが同じものを薄い要約で返すと、付いている印ごと置き換わる
       prompt = News.refine_prompt(defined_topic("tazuna_tech"))
@@ -649,6 +667,17 @@ defmodule Tazuna.NewsTest do
 
       assert Enum.map(News.to_articles(recent), & &1.title) == ["ふつうの記事"]
       assert Enum.map(News.to_digests(recent), & &1.title) == ["まとめ: 生きている"]
+    end
+
+    test "話題度の印を、記事ごとに持って出す" do
+      # 印が無いものに「低」を当てない —— まだ整理が読んでいないだけの 1 件が、
+      # 「話題になっていない」として並ぶ
+      recent = [
+        Map.put(recent("沸いている記事"), "tags", ["ニュース", "話題度:高"]),
+        recent("まだ読まれていない記事")
+      ]
+
+      assert [%{buzz: "高"}, %{buzz: nil}] = News.to_articles(recent)
     end
 
     test "まとめは、直近の窓に無くてもタグで引き直す" do

@@ -72,6 +72,15 @@ defmodule Tazuna.News do
   # 重要度の印。AI が付け直す（tazuna 側の語の一致より、読んだうえでの判断が先）
   @importance_tag "重要度"
 
+  # **どれだけ反応されているか**の印。重要度とは別の軸です —— あちらは
+  # 「いま読む価値があるか」で、こちらは「界隈がその話をしているか」。
+  # 混ぜると、**話題になっていないが効く 1 件**と**効かないが沸いている 1 件**が
+  # 同じ印になり、どちらの読み方もできなくなります。
+  #
+  # **数は持ちません。** 配信元は反応の数を配らないので、付けるのは読んだ AI の
+  # 判断です（同じ出来事が何本の媒体で報じられているか、人気枠から入っているか）。
+  @buzz_tag "話題度"
+
   # 話題に関心が書かれていないときの言い方
   @default_interest "暮らし・社会・経済への影響が大きいこと"
 
@@ -877,6 +886,8 @@ defmodule Tazuna.News do
                 Jst.format(extra["published_at"] || item["updated_at"] || extra["collected_at"]),
               importance: importance,
               reason: reason,
+              # **どれだけ反応されているか**（整理の回が付ける。無いこともある）
+              buzz: buzz(tags),
               # まとめが引いた記事（出典の URL → 見出しと絵）。記事の側では空のまま
               cited: %{}
             }
@@ -1032,6 +1043,17 @@ defmodule Tazuna.News do
     - tags:
       - "#{@importance_tag}:高" / "#{@importance_tag}:中" / "#{@importance_tag}:低" を
         **必ず 1 つ**（上の関心に照らして、いま読む価値があるかで決める）
+      - "#{@buzz_tag}:高" / "#{@buzz_tag}:中" / "#{@buzz_tag}:低" を**必ず 1 つ**。
+        **#{@importance_tag} とは別の軸です** —— あちらは「いま読む価値があるか」、
+        こちらは「界隈がその話をしているか」。**話題になっていないが効くもの**も、
+        **効かないが沸いているもの**もあるので、同じ印にしないでください。
+        目安は次のとおりです。
+        - 高: 同じ出来事を複数の媒体が報じている、人気枠（はてなブックマークの
+          人気エントリー、Qiita の人気、Zenn のトレンド）から入っていて
+          さらに他でも取り上げられている、反応が大きい
+        - 中: 人気枠には入っているが、広がりはその媒体の中まで
+        - 低: 公式の発表や論文など、まだ広がっていないもの
+          （**広がっていないことは悪いことではありません**。早いだけです）
       - 種別（#{kinds()} のどれか 1 つ。いま付いているものが正しければそのまま）
       - 分野を1〜3個（配信元の名前はそのまま残してください）
 
@@ -1216,6 +1238,20 @@ defmodule Tazuna.News do
       marked -> marked
     end
   end
+
+  @doc false
+  # 話題度。**付いていなければ nil**（印の無いものに「低」を当てない —— 整理が
+  # まだ読んでいないだけのものが、「話題になっていない」として並ぶ）
+  def buzz(tags) when is_list(tags) do
+    Enum.find_value(tags, fn tag ->
+      case String.split(tag, ":", parts: 2) do
+        [@buzz_tag, level] when level in ["高", "中", "低"] -> level
+        _ -> nil
+      end
+    end)
+  end
+
+  def buzz(_tags), do: nil
 
   defp marked_importance(tags) do
     Enum.find_value(tags, fn tag ->

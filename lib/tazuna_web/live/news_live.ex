@@ -248,6 +248,20 @@ defmodule TazunaWeb.NewsLive do
   def importance_label(_importance), do: "注目"
 
   @doc """
+  どれだけ反応されているか（整理の回が付けた `話題度` の印）。
+
+  **重要度とは別の軸**なので、別の場所に出します —— 話題になっていないが効くものも、
+  効かないが沸いているものもあり、同じ印にすると、どちらの読み方もできません。
+
+  **印が無ければ何も出しません。** まだ整理が読んでいないだけの 1 件に
+  「広がっていません」と書くと、読んだうえでの判断に見えます。
+  """
+  def buzz_text(%{buzz: "高"}), do: "よく読まれています"
+  def buzz_text(%{buzz: "中"}), do: "そこそこ読まれています"
+  def buzz_text(%{buzz: "低"}), do: "まだ広がっていません"
+  def buzz_text(_article), do: nil
+
+  @doc """
   いまの状態を1文で言う。押した人が次に何をすればよいか分かる言い方にする。
   """
   def status_message(%{configured: false}),

@@ -56,7 +56,10 @@
           <%!-- 配信元が配っている絵。**無いほうが多い**ので、あるときだけ出す --%>
           <img :if={article.image} class="news-thumb" src={article.image} alt="" loading="lazy" />
           <div>
-            <p class="news-source">{article.collected_at}</p>
+            <%!-- 反応の大きさは重要度と別の軸なので、印の隣ではなく日付の並びに置く --%>
+            <p class="news-source">
+              {article.collected_at}<span :if={buzz_text(article)}>・{buzz_text(article)}</span>
+            </p>
             <h2>
               <%!-- 出典があれば原文へ。無ければ見出しだけ出す（Chiezo 側にも入口はある） --%>
               <%= if article.url do %>
