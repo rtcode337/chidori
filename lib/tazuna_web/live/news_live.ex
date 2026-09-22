@@ -19,6 +19,7 @@ defmodule TazunaWeb.NewsLive do
   import TazunaWeb.Collect
   import TazunaWeb.CollectPanel
   import TazunaWeb.Report
+  import TazunaWeb.TopicMap
 
   alias Tazuna.Digest
   alias Tazuna.Digest.Scheduler
@@ -28,6 +29,7 @@ defmodule TazunaWeb.NewsLive do
   alias Tazuna.Notify.Setting
   alias Tazuna.Notify.Settings
   alias Tazuna.Ntfy
+  alias Tazuna.Themes
   alias Tazuna.Topics
 
   @impl true
@@ -39,6 +41,9 @@ defmodule TazunaWeb.NewsLive do
         topics: Topics.list(),
         backends: [],
         picks: %{},
+        # トピックの網（記事から育つ話題）。**持つ話題だけ**読みに行く
+        themes: empty_themes(),
+        theme_picks: %{},
         asking: false,
         digest_message: nil,
         notify_form: nil
@@ -72,14 +77,33 @@ defmodule TazunaWeb.NewsLive do
       end
     end
 
-    {:noreply,
-     assign(socket,
-       topic: topic,
-       page_title: if(topic, do: "最新情報 — #{topic.name}", else: "最新情報"),
-       news: if(topic, do: News.current(News.server(topic.collection)), else: News.empty()),
-       notify_form: notify_form(topic)
-     )}
+    socket =
+      assign(socket,
+        topic: topic,
+        page_title: if(topic, do: "最新情報 — #{topic.name}", else: "最新情報"),
+        news: if(topic, do: News.current(News.server(topic.collection)), else: News.empty()),
+        notify_form: notify_form(topic),
+        themes: empty_themes()
+      )
+
+    {:noreply, load_themes(socket)}
   end
+
+  # トピックの網は**記事とは別の収集**なので、別に読みに行く（読めなくても記事は出る）。
+  # **持つ話題だけ**（`Tazuna.Topics.themes?/1`）—— 押せる口だけあって中身が育たない
+  # のは設定し忘れに見える
+  defp load_themes(socket) do
+    topic = socket.assigns.topic
+    base = News.chiezo_base_url()
+
+    if connected?(socket) and topic != nil and Topics.themes?(topic) and base do
+      start_async(socket, :themes, fn -> Themes.read(base, topic) end)
+    else
+      socket
+    end
+  end
+
+  defp empty_themes, do: %{collection: nil, themes: [], checked_at: nil}
 
   @impl true
 
@@ -166,6 +190,46 @@ defmodule TazunaWeb.NewsLive do
     end
   end
 
+  # ---- トピックの網（記事とは別の収集）--------------------------------------
+
+  def handle_event("pick_theme_sweep", params, socket) do
+    {:noreply, assign(socket, theme_picks: sweep_choices(params))}
+  end
+
+  # **押す口は 1 つ。** 無ければ作り、あれば設定を送り直す（記事のほうと同じ形）
+  def handle_event("collect_themes", params, socket) do
+    topic = socket.assigns.topic
+    picks = merged_picks(socket.assigns.theme_picks, params)
+
+    case with_base(&Themes.setup(&1, topic, picks)) do
+      :ok ->
+        {:noreply, socket |> put_flash(:info, "Chiezo へ送りました。") |> load_themes()}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, ask_error(reason))}
+    end
+  end
+
+  # **予定を待たずに 1 回育てさせる。** 育てるのは Chiezo で、tazuna は起こすだけ
+  def handle_event("grow_themes", _params, socket) do
+    topic = socket.assigns.topic
+
+    case with_base(&Themes.grow_now(&1, topic)) do
+      :ok ->
+        {:noreply, put_flash(socket, :info, "育てるよう頼みました。終わったら読み直してください。")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, ask_error(reason))}
+    end
+  end
+
+  defp with_base(fun) do
+    case News.chiezo_base_url() do
+      nil -> {:error, :chiezo_not_configured}
+      base -> fun.(base)
+    end
+  end
+
   defp with_server(socket, fun) do
     if topic = socket.assigns.topic, do: fun.(News.server(topic.collection))
     {:noreply, socket}
@@ -185,6 +249,12 @@ defmodule TazunaWeb.NewsLive do
   # 起きなかったことは黙って捨てない。押した人には確かめようがない
   def handle_async(:ask, _result, socket),
     do: {:noreply, socket |> assign(asking: false) |> put_flash(:error, ask_error(:unknown))}
+
+  def handle_async(:themes, {:ok, state}, socket) when is_map(state),
+    do: {:noreply, assign(socket, themes: state)}
+
+  # 読めなくても記事は読める（何が読めていないかは収集の枠に出る）
+  def handle_async(:themes, _result, socket), do: {:noreply, socket}
 
   def handle_async(:backends, {:ok, list}, socket) when is_list(list),
     do: {:noreply, assign(socket, backends: list)}
@@ -461,6 +531,21 @@ defmodule TazunaWeb.NewsLive do
     do: "Chiezo 側で止まっています。動かすのは Chiezo の画面からです。"
 
   def collection_note(_news), do: "押すと、いまの設定を Chiezo へ送り直します（走らせはしません）。"
+
+  @doc """
+  トピックの収集の状態の一言。**押す前に、何が起きるのかが読めるように**。
+  """
+  def theme_note(%{collection: nil}),
+    do: "まだ Chiezo に収集がありません。押すと、止まった状態の収集が作られます。"
+
+  def theme_note(%{collection: %{enabled: false}}),
+    do: "Chiezo 側で止まっています。動かすのは Chiezo の画面からです。"
+
+  def theme_note(_state), do: "押すと、いまの設定を Chiezo へ送り直します（走らせはしません）。"
+
+  @doc "トピックの収集の、押す口の文字。何が起きるのかまで出します。"
+  def theme_collect_label(%{collection: nil}), do: "収集を依頼する"
+  def theme_collect_label(_state), do: "収集の設定を更新"
 
   @doc false
   # 断られた理由。**数字だけ出しても、押した人には次に何をすればよいか分からない**

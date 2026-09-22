@@ -479,6 +479,10 @@ article p:last-child { color: #475569; line-height: 1.7; }
    円環に並べるのは、開くたびに形が変わると「昨日と同じ図か」が読めなくなるため */
 .topic-map { margin-bottom: 2rem; border: 1px solid #e6e8ef; border-radius: 1rem; background: white; padding: 1rem 1rem .4rem; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
 .topic-map svg { display: block; width: 100%; height: auto; }
+/* まとめの直後に置くので、何の図かを名乗る（記事の一覧と地続きに見せない） */
+.topic-map > h2 { margin: 0 0 .6rem; font-size: 1.05rem; }
+.topic-map details { margin: .2rem 0 .8rem; }
+.topic-map summary { cursor: pointer; font-weight: 700; font-size: .9rem; color: #334155; }
 .topic-edges line { stroke: #d5d9e4; stroke-width: 1.5; }
 /* 上下のつながりは別の見え方にする（横のつながりと混ぜると、どちらも同じ網に見える） */
 .topic-edges line.is-parent { stroke: #f0b429; stroke-dasharray: 5 4; }
@@ -489,7 +493,8 @@ article p:last-child { color: #475569; line-height: 1.7; }
 /* トピックの一覧。図に置ける数には限りがあるので、全部はこちらで読む */
 .theme-list { display: grid; gap: 1rem; margin-bottom: 2rem; }
 .theme-list article { padding: 1.3rem; }
-.theme-list h2 { display: flex; align-items: baseline; gap: .6rem; margin: 0 0 .5rem; font-size: 1.05rem; }
+.theme-list h2, .theme-list h3 { display: flex; align-items: baseline; gap: .6rem; margin: 0 0 .5rem; font-size: 1.05rem; }
+.topic-map .theme-list { margin: .8rem 0 .4rem; }
 .theme-count { flex: none; border-radius: 99px; background: #f1f5f9; padding: .15rem .55rem; color: #64748b; font-size: .75rem; font-weight: 700; }
 .theme-children { margin: .8rem 0 0; padding-left: 1.2rem; list-style: disc; display: grid; gap: .45rem; }
 .theme-children li { color: #334155; font-size: .9rem; line-height: 1.7; }

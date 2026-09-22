@@ -8,7 +8,6 @@
       </a>
       <nav aria-label="主要メニュー">
         <a class="active" href={~p"/news"}>最新情報</a>
-        <a href={~p"/topics"}>トピック</a>
         <a href={~p"/relations"}>関連図</a>
         <a href={~p"/datasets"}>データ収集</a>
       </nav>
@@ -49,6 +48,11 @@
         cited={digest.cited}
       />
     </section>
+
+    <%!-- 記事から育った話題の網。**まとめのすぐ下** —— まとめが「この期間に何が
+         あったか」を文で言うのに対して、図は同じことを語のつながりで見せる。
+         育てるのは Chiezo で、tazuna は依頼文を渡して読むだけ --%>
+    <.topic_map state={@themes} />
 
     <section class="news-list" aria-live="polite">
       <%= for article <- sorted_articles(@news) do %>
@@ -196,6 +200,48 @@
         >
           いまのまとめを知らせる
         </button>
+      </section>
+
+      <%!-- トピックの収集。**記事とは別の収集**（記事は 30 日で落ちるが、
+           トピックは期限では落とさない）。持つ話題にだけ出す --%>
+      <section :if={Tazuna.Topics.themes?(@topic)} class="settings-block">
+        <h3>トピックの収集</h3>
+        <p aria-live="polite">{theme_note(@themes)}</p>
+
+        <dl :if={@themes.collection} class="collect-facts">
+          <div :for={{label, value} <- collection_facts(@themes)}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        </dl>
+
+        <form id="theme-collect-form" phx-submit="collect_themes" phx-change="pick_theme_sweep">
+          <.sweep_table state={@themes} picks={@theme_picks} backends={@backends} />
+          <p class="muted-note">
+            <strong>育てる回は記事を読み、整える回は手元にあるものだけを読みます。</strong>
+            1 本にまとめると、足すたびに全部を読み直すか、畳むために毎回記事を読むかに
+            なります。材料は<strong>この話題に溜まった記事</strong>です（配信元から引き直しません
+            —— 整理が落とした宣伝や重複、付け直した重要度が効かないまま材料になります）。
+          </p>
+          <button type="submit" phx-disable-with="送っています…">{theme_collect_label(@themes)}</button>
+        </form>
+
+        <%!-- **押す口は増やさない。** 読み直しの口は置かず、開き直したときと
+             設定を送り直したときに読む（記事のほうと同じ形） --%>
+        <p>
+          <button
+            :if={@themes.collection}
+            type="button"
+            phx-click="grow_themes"
+            phx-disable-with="頼んでいます…"
+          >
+            いま育てる
+          </button>
+        </p>
+
+        <p :if={@themes.collection && @themes.collection.url} class="muted-note">
+          <a href={@themes.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
+        </p>
       </section>
 
       <%!-- **この場で 1 回だけ頼める。** 定時の巡回は決まった仕事しかしないので、

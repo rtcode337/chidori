@@ -40,7 +40,10 @@ defmodule TazunaWeb.NewsLiveTest do
 
     refute html =~ "いま集めさせる"
     refute html =~ "AI に選ばせる"
-    refute html =~ "読み直す"
+
+    # 読み直しの口も置かない。**文ではなく押す口で見る** —— 説明文には
+    # 「読み直す」が出てくる（同じ語で書くのが自然な場面がある）
+    refute html =~ ~s(phx-click="refresh")
   end
 
   test "頼んでいる内容が画面から読める", %{conn: conn} do
@@ -397,6 +400,116 @@ defmodule TazunaWeb.NewsLiveTest do
       {:ok, _live, html} = live(conn, ~p"/news?view=nosuch")
 
       assert html =~ "今日、押さえておきたい技術ニュース"
+    end
+  end
+
+  describe "トピックの網" do
+    @news_collection %{
+      "name" => "tazuna_tech",
+      "enabled" => true,
+      "kind" => "flow",
+      "recent" => []
+    }
+    @topic_collection %{"name" => "tazuna_tech_topics", "enabled" => true, "kind" => "stock"}
+
+    setup do
+      System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+      :ok
+    end
+
+    defp stub_themes(collections, themes) do
+      Tazuna.HttpStub.stub(fn
+        %{url: "http://chiezo.test:7010/v1/ai/backends"} ->
+          Tazuna.HttpStub.ok(~s({"backends":[]}))
+
+        %{url: "http://chiezo.test:7010/v1/sources"} ->
+          Tazuna.HttpStub.ok(~s({"sources":[]}))
+
+        %{url: "http://chiezo.test:7010/v1/collect"} ->
+          Tazuna.HttpStub.ok(Jason.encode!(%{"collections" => collections}))
+
+        %{url: "http://chiezo.test:7010/v1/tazuna_tech_topics/filter?" <> _query} ->
+          Tazuna.HttpStub.ok(Jason.encode!(%{"results" => themes}))
+
+        %{url: "http://chiezo.test:7010/v1/collect/tazuna_tech_topics" <> _rest} ->
+          Tazuna.HttpStub.ok(Jason.encode!(@topic_collection))
+
+        %{url: "http://chiezo.test:7010/v1/collect/tazuna_tech" <> _rest} ->
+          Tazuna.HttpStub.ok(Jason.encode!(@news_collection))
+
+        %{url: _other} ->
+          Tazuna.HttpStub.ok(~s({"results":[]}))
+      end)
+    end
+
+    defp theme(title, tags, note \\ "説明。") do
+      %{"title" => title, "tags" => ["トピック" | tags], "opening" => note}
+    end
+
+    defp opened(conn) do
+      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_tech")
+      render_async(live, 2_000)
+    end
+
+    test "網の図は、まとめのすぐ下に出す", %{conn: conn} do
+      # まとめが「この期間に何があったか」を文で言うのに対して、図は同じことを
+      # 語のつながりで見せる。1 件ずつの一覧より先に置く
+      stub_themes(
+        [@news_collection, @topic_collection],
+        [
+          theme("AI", ["分野:AI"], "機械学習ぜんたい。"),
+          theme("AIエージェント", ["分野:AI", "親:AI", "関連:MCP:道具の口を決める規格"]),
+          theme("MCP", ["分野:AI"])
+        ]
+      )
+
+      html = opened(conn)
+
+      assert html =~ "topic-map"
+      assert html =~ "topic-nodes"
+      # つながりの説明は線の上に出る
+      assert html =~ "道具の口を決める規格"
+      # 上下のつながりは、横のつながりと見え方を分ける
+      assert html =~ "is-parent"
+
+      # 図に出ないものも読める（記事より前に居座らないよう畳んである）
+      assert html =~ "トピックの一覧"
+      assert html =~ "機械学習ぜんたい。"
+      # 図は一覧より前（まとめの直後）
+      assert :binary.match(html, "topic-map") < :binary.match(html, "news-list")
+    end
+
+    test "先の無いつながりは、線にしない", %{conn: conn} do
+      stub_themes([@news_collection, @topic_collection], [theme("AI", ["関連:まだ無い語:説明"])])
+
+      html = opened(conn)
+
+      assert html =~ "topic-map"
+      # 図には線を引かない（整える回が直すまで、図は黙って耐える）
+      refute html =~ "<line"
+      # 一覧には AI が書いたまま出す（黙って消さない）
+      assert html =~ "まだ無い語"
+    end
+
+    test "収集がまだ無ければ、依頼する口を出す", %{conn: conn} do
+      stub_themes([@news_collection], [])
+
+      html = opened(conn)
+
+      assert html =~ "トピックの収集"
+      assert html =~ "まだ Chiezo に収集がありません"
+      assert html =~ "収集を依頼する"
+    end
+
+    test "トピックを持たない話題には、枠ごと出さない", %{conn: conn} do
+      # 押せる口だけあって中身が育たないのは、設定し忘れに見える
+      stub_themes([@news_collection], [])
+
+      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news")
+      html = render_async(live, 2_000)
+
+      refute html =~ "トピックの収集"
     end
   end
 end
