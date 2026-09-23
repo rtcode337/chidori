@@ -71,7 +71,10 @@ defmodule Tazuna.ThemesTest do
       # 語はもう機械が拾ってある。ここでやるのは精査だけ
       prompt = Themes.tidy_prompt(topic())
 
-      assert prompt =~ "{current}"
+      # **見出しだけ**を差し込む。本文まで見せると、育つほど入り切らなくなり、
+      # しかも切れるのは新しいほう（＝まだ精査していないもの）になる
+      assert prompt =~ "{names}"
+      refute prompt =~ "{current}"
       refute prompt =~ "{material}"
       # 図の語彙をそのまま頼む（読む側と書かせる側が離れるとズレる）
       assert prompt =~ Themes.theme_tag()
@@ -93,6 +96,17 @@ defmodule Tazuna.ThemesTest do
 
       assert prompt =~ "迷ったら触らない"
       assert prompt =~ "外した語は二度と入りません"
+    end
+
+    test "まだ手を入れていないものから始めさせる" do
+      # 全部を毎回見直すのは、育つほど成り立たなくなる。1 回で終わらなくても、
+      # 次の回に続きから読める
+      prompt = Themes.tidy_prompt(topic())
+
+      assert prompt =~ "まだ手を入れていないものから始めてください"
+      # 未精査の見分け方（機械は目印しか付けない）と、その引き方
+      assert prompt =~ "目印は「#{Themes.field_tag()}」"
+      assert prompt =~ "tazuna_tech_topics"
     end
 
     test "新しい語をここで足させない" do

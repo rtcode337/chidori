@@ -52,7 +52,22 @@ defmodule TazunaWeb.TopicMap do
               r={node.r}
               style={node.hue && "fill: hsl(#{node.hue} 70% 92%); stroke: hsl(#{node.hue} 55% 55%)"}
             />
-            <text x={node.label_x} y={node.label_y} text-anchor={node.anchor}>{node.name}</text>
+            <%!-- 名前は丸の中。**行の高さぶん上へ寄せて**、中心で釣り合わせる --%>
+            <text
+              x={node.x}
+              y={node.y + node.label_y}
+              text-anchor="middle"
+              style={"font-size: #{node.font}px"}
+            >
+              <title>{node.name}</title>
+              <tspan
+                :for={{line, row} <- Enum.with_index(node.lines)}
+                x={node.x}
+                dy={if row == 0, do: 0, else: node.font * 1.2}
+              >
+                {line}
+              </tspan>
+            </text>
           </g>
         </g>
       </svg>

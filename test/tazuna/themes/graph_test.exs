@@ -116,6 +116,43 @@ defmodule Tazuna.Themes.GraphTest do
     assert map.hidden == 3
   end
 
+  describe "名前の入れ方" do
+    test "名前は丸の中に収める" do
+      # 外へ逃がしていた頃は、丸と名前を目で結び直すことになった（線の上の字とも紛れる）
+      [node] = Graph.build([theme("AI", recent: 3)]).nodes
+
+      assert node.lines == ["AI"]
+      assert node.font > 0
+    end
+
+    test "折ったほうが大きく書けるなら折る" do
+      {lines, font} = Graph.label("インフラ", 28)
+
+      assert lines == ["イン", "フラ"]
+      # 1 行に収めると、丸の幅で字を縮めることになる
+      {_one_line, small} = {["インフラ"], 28 * 2 * 0.7 / 4}
+      assert font > small
+    end
+
+    test "同じ大きさで書けるなら 1 行にする" do
+      assert {["AWS"], _font} = Graph.label("AWS", 28)
+    end
+
+    test "英数字は和字より狭く見積もる" do
+      # 同じ比で見ると、入るはずの名前が削られる
+      assert {["Kuber", "netes"], font} = Graph.label("Kubernetes", 30)
+      assert font > 10
+    end
+
+    test "どうしても入らない名前は、削って印を付ける" do
+      # 全部を出そうとして字を小さくすると、どれも読めなくなる
+      {[line], _font} = Graph.label("とても長い名前のトピック", 24)
+
+      assert String.ends_with?(line, "…")
+      assert String.length(line) < String.length("とても長い名前のトピック")
+    end
+  end
+
   test "1 件だけなら、真ん中に置く" do
     assert [node] = Graph.build([theme("AI")]).nodes
     assert node.x == 480

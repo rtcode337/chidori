@@ -21,15 +21,31 @@ defmodule Tazuna.Themes.Graph do
 
   @width 960
   @height 620
-  @radius 232
+  @radius 240
   @center %{x: 480, y: 300}
 
-  # 図に置ける上限。増やすと札が重なって読めなくなる
-  @max_nodes 24
+  # 図に置ける上限。**名前を丸の中に入れるので、置ける数は前より少ない** ——
+  # 円周を頭数で割った幅より丸が大きいと、隣と重なって名前が読めなくなる
+  @max_nodes 16
 
-  # 丸の大きさの幅。**下は 0 件のときの大きさ** —— 静かになった語も図に残す
-  @min_radius 12
-  @max_radius 36
+  # 丸の大きさの幅。**下は 0 件のときの大きさ** —— 静かになった語も図に残す。
+  # **下を上げてあるのは、名前を中に入れるから** —— 小さすぎる丸は、字を縮めても
+  # 数文字しか入らず、読めない名前が並ぶだけになる。
+  # **上は円周に並べられる幅で決まる**（半径 240 の円に 16 個なら 1 つあたり 94）
+  @min_radius 24
+  @max_radius 42
+
+  # 名前の字の大きさ。**上は読みやすさ、下はこれ以上小さくしても読めない線**
+  @max_font 14.0
+  @min_font 8.5
+
+  # 丸に内接する四角の一辺は、直径のおよそ 0.7 倍。**名前はそこへ収める**
+  @inner 0.7
+
+  # 文字の幅（字の大きさに対する比）。**和字と英数字で倍ちがう** —— 同じ比で見ると、
+  # 英数字の名前が実際より広く見積もられ、入るはずの「Kubernetes」が削られる
+  @wide_glyph 1.0
+  @narrow_glyph 0.56
 
   # 線の太さの幅。一緒に出てきた回数をそのまま太さにする
   @min_stroke 1.0
@@ -115,19 +131,108 @@ defmodule Tazuna.Themes.Graph do
       radius = if count == 1, do: 0, else: @radius
       degree = Map.get(degrees, node.name, 0)
 
+      r = size(node, busiest)
+      {lines, font} = label(node.name, r)
+
       Map.merge(node, %{
         x: @center.x + radius * :math.cos(angle),
         y: @center.y + radius * :math.sin(angle),
-        r: size(node, busiest),
+        r: r,
         degree: degree,
         hue: hue(node.field),
-        # 札は円の外側へ逃がす（丸の上に重ねると、名前も数字も読めない）
-        label_x: @center.x + (radius + 34) * :math.cos(angle),
-        label_y: @center.y + (radius + 34) * :math.sin(angle),
-        anchor: anchor(:math.cos(angle))
+        # **名前は丸の中**。外へ逃がしていた頃は、丸と名前を目で結び直すことになった
+        # （線の上の字とも紛れる）。入り切らない名前は折って、それでも入らなければ
+        # 端を落とす —— 全部を出そうとして字を小さくすると、どれも読めなくなる
+        lines: lines,
+        font: font,
+        # 行の高さぶん上へ寄せて、丸の中心で釣り合わせる
+        label_y: -(length(lines) - 1) * font * 0.6
       })
     end)
   end
+
+  @doc false
+  # 名前を丸の中に収める。返すのは**行の並びと字の大きさ**。
+  #
+  # **折るのは 2 行まで。** 3 行にすると、丸を大きくしても字が小さくなるだけで
+  # 読みやすさが戻らない（1 行と 2 行を両方あてて、大きく書けるほうを採ります）。
+  def label(name, r) do
+    room = 2 * r * @inner
+    name = String.trim(name)
+
+    # 1 行と 2 行を両方あてて、**大きく書けるほう**を採る
+    [{lines, font} | _rest] =
+      [[name], wrap(name)]
+      |> Enum.uniq()
+      |> Enum.map(&{&1, fits(&1, room)})
+      |> Enum.sort_by(fn {lines, font} -> {-font, length(lines)} end)
+
+    if font >= @min_font do
+      {lines, Float.round(font, 1)}
+    else
+      # これ以上小さくしても読めないので、**字の大きさを守って名前を削る**。
+      # 削るのは 1 行に畳んでから —— 2 行とも削ると、どちらも途中で切れた断片になる
+      {[clip(name, room)], @min_font}
+    end
+  end
+
+  # その行数で書けるいちばん大きい字。**幅と高さの厳しいほう**で決まる
+  defp fits(lines, room) do
+    widest = lines |> Enum.map(&width/1) |> Enum.max(fn -> 1.0 end)
+
+    Enum.min([room / widest, room / (length(lines) * 1.2), @max_font])
+  end
+
+  # その行の幅（字の大きさ 1 に対して）。和字は 1、英数字はおよそ半分
+  defp width(line) do
+    line
+    |> String.graphemes()
+    |> Enum.reduce(0.0, fn char, total ->
+      total + if char =~ ~r/^[\x20-\x7E]$/, do: @narrow_glyph, else: @wide_glyph
+    end)
+    |> max(1.0)
+  end
+
+  # 削る。**入る幅まで落としてから「…」を足す**
+  defp clip(name, room) do
+    room = room / @min_font
+
+    name
+    |> String.graphemes()
+    |> Enum.reduce_while({"", 0.0}, fn char, {kept, used} ->
+      step = if char =~ ~r/^[\x20-\x7E]$/, do: @narrow_glyph, else: @wide_glyph
+
+      if used + step + @wide_glyph > room,
+        do: {:halt, {kept, used}},
+        else: {:cont, {kept <> char, used + step}}
+    end)
+    |> then(fn {kept, _used} -> if kept == name, do: name, else: kept <> "…" end)
+  end
+
+  # 折り方。**3 文字までは折らない**（それ以上短くすると、折る意味が無い）。
+  # 折ったほうが大きく書けるかは `label/2` が両方あてて決めます —— 同じ大きさで
+  # 書けるなら 1 行を選ぶので、ここでは「折った形」を作るだけです
+  defp wrap(name) do
+    length = String.length(name)
+
+    if length <= 3 do
+      [name]
+    else
+      # 真ん中で折る。**区切りが近くにあればそこで**（語の途中で折らずに済む）
+      at = break_at(name, div(length + 1, 2))
+      [String.slice(name, 0, at), String.slice(name, at, length - at)]
+    end
+  end
+
+  # 折る位置。真ん中の前後 2 文字に区切りがあれば、そこで折る
+  defp break_at(name, middle) do
+    Enum.find(sorted_around(middle), middle, fn at ->
+      at > 0 and at < String.length(name) and String.at(name, at) in [" ", "-", "・", "/"]
+    end)
+  end
+
+  defp sorted_around(middle),
+    do: Enum.sort_by(max(middle - 2, 1)..(middle + 2), &abs(&1 - middle))
 
   # 丸の大きさ。**直近の件数を、いちばん動いている語との割合で**。
   # **0 件でも消さずに小さく描く** —— 静かになったことも、図から読めるほうがよい
@@ -136,10 +241,6 @@ defmodule Tazuna.Themes.Graph do
   defp size(node, busiest) do
     @min_radius + (@max_radius - @min_radius) * node.recent / busiest
   end
-
-  defp anchor(cos) when cos > 0.25, do: "start"
-  defp anchor(cos) when cos < -0.25, do: "end"
-  defp anchor(_cos), do: "middle"
 
   # 分野の色。**名前から決めます** —— 分野は増えるので、一覧を持つと足すたびに
   # 色の無い分野が出ます

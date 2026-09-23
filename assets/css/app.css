@@ -488,7 +488,8 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .topic-edges line.is-parent { stroke: #f0b429; stroke-dasharray: 5 4; }
 .topic-edges text { fill: #9aa3b5; font-size: 11px; }
 .topic-nodes circle { fill: #eef2ff; stroke: #818cf8; stroke-width: 2; }
-.topic-nodes text { fill: #16203a; font-size: 13px; font-weight: 700; dominant-baseline: middle; }
+/* 名前は丸の中。**大きさは図の側が 1 つずつ決める**（丸の大きさで入る字数が違う） */
+.topic-nodes text { fill: #16203a; font-weight: 700; dominant-baseline: middle; }
 
 /* トピックの一覧。図に置ける数には限りがあるので、全部はこちらで読む */
 .theme-list { display: grid; gap: 1rem; margin-bottom: 2rem; }
