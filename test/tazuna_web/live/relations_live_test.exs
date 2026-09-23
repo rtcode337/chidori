@@ -703,26 +703,26 @@ defmodule TazunaWeb.RelationsLiveTest do
 
     test "選び直した欄が、前に覚えた値に上書きされない", %{conn: conn} do
       # **一度覚えた欄を二度と変えられなくなっていた。** 相手を選んだ拍子に
-      # 「考える量: 空」まで覚え、そのあと考える量を選んでも空のまま送られる ——
+      # 「モデル: 空」まで覚え、そのあとモデルを選んでも空のまま送られる ——
       # 画面では選べているように見えるので、押すまで気づけない
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
       assert wait_until(fn -> render(live) =~ "割り込み" end)
 
-      # まず相手を選ぶ（このとき考える量は空のまま送られてくる）
+      # まず相手を選ぶ（このときモデルは空のまま送られてくる）
       live
       |> element("form#collect-form")
-      |> render_change(%{"sweep|整理|backend" => "codex", "sweep|整理|effort" => ""})
+      |> render_change(%{"sweep|整理|backend" => "codex", "sweep|整理|model" => ""})
 
-      # 次に考える量を選ぶ
+      # 次にモデルを選ぶ
       live
       |> element("form#collect-form")
-      |> render_change(%{"sweep|整理|backend" => "codex", "sweep|整理|effort" => "high"})
+      |> render_change(%{"sweep|整理|backend" => "codex", "sweep|整理|model" => "gpt-5.6-sol-high"})
 
       live |> element("form#collect-form") |> render_submit(%{})
 
       assert_receive {:patched, body}, 5_000
       sweep = Enum.find(Jason.decode!(body)["sweeps"], &(&1["name"] == "整理"))
-      assert sweep["effort"] == "high"
+      assert sweep["model"] == "gpt-5.6-sol-high"
     end
 
     test "読み直している最中に押しても、設定は送られる", %{conn: conn} do

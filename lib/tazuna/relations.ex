@@ -135,7 +135,6 @@ defmodule Tazuna.Relations do
       name: "整理",
       interval_minutes: @survey_minutes,
       cover_days: @survey_days,
-      effort: "high",
       prompt: :survey,
       after: "ざっと見る"
     }

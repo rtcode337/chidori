@@ -113,7 +113,11 @@ defmodule Tazuna.RelationsTest do
       # **一周の日数で決める。** 1 日 1 区画にしていた頃は、400 区画を一周するのに
       # 400 日かかっていた —— 手入れの回が一周しないなら、区画で割っている意味が無い
       assert survey["cover_days"] == 21
-      assert survey["effort"] == "high"
+
+      # **考える量は送りません。** Chiezo 側でモデルの名前に畳んであるので
+      # （`sonnet-high` の形）、こちらから別枠で送ると画面で選んだものが
+      # 設定を送り直すたびに上書きされる
+      refute Map.has_key?(survey, "effort")
 
       # **ざっとが一周するまで走らない。** 年代の分からない人が 3 割いる状態で
       # 漏れを探させても、その人たちは別の区画にいるだけ
