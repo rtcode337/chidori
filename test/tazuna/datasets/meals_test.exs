@@ -278,6 +278,14 @@ defmodule Tazuna.Datasets.MealsTest do
       assert Meals.survey_prompt() =~ "消さないでください"
     end
 
+    test "1 件に潰れた別々の店は、分けさせる" do
+      # 名簿は見出しで同じものかを決めているので、同名の別店が 1 件になる
+      # （実測で、百科事典の「東京の洋食店」（東京・上野）と地図辞典の熊本の同名店が
+      #  1 件に潰れ、本文は東京・座標は熊本になっていた）
+      assert Meals.survey_prompt() =~ "1 件に別々の店が混ざっていたら"
+      assert Meals.survey_prompt() =~ "見出しで"
+    end
+
     test "足すものには必ず座標を入れさせる" do
       # 座標の無いものはどの区画にも入らず、次に見たときには「まだ無い」と見える
       assert Meals.survey_prompt() =~ "座標"
