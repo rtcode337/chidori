@@ -379,6 +379,13 @@ defmodule Tazuna.Datasets.Meals do
   def source_tags, do: Keyword.values(@source_tags)
 
   @doc """
+  出典タグの前置き。書き出し（`Tazuna.Datasets.TravelLog`）が、どの辞典から来たかを
+  説明文に写すのに使います。**辞典ごとにライセンスが違う**ので、渡した先で
+  切り分けられるようにしておく必要があります。
+  """
+  def source_tag_prefix, do: "出典"
+
+  @doc """
   区画の割り方。**座標で、密なところは細かく、疎なところは粗く**（k-d 木と同じ割り方）。
 
   母集団を書かないのは、**自分自身を割っているときだけ Chiezo が割り直す**ためです。

@@ -14,6 +14,10 @@ defmodule Tazuna.Chiezo do
   @user_agent "tazuna/0.1 (+https://github.com/rtcode337/tazuna)"
   @timeout 15_000
   @connect_timeout 5_000
+  # 1 回に引ける上限（Chiezo 側の決まり。これより大きいと 422 で断られる）
+  @page_limit 500
+  # 座標で引くときの矩形。**世界全体**にしてあるので、日本以外を集める収集でも効く
+  @world_bbox "-90,-180,90,180"
 
   @doc """
   Chiezo のルートURL。未設定ならこの機能は使えません。
@@ -84,6 +88,47 @@ defmodule Tazuna.Chiezo do
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
+  溜まったもののうち、**座標を持つ 1 ページ**。書き出し（travel-log 用の ZIP）で使います。
+
+  **タグではなく座標の矩形で引きます。** 収集ごとのタグの付け方を知らずに全件を引けて、
+  **座標を持たない文書が最初から外れます**（スポットにできないものを運んでから
+  捨てるより速い）。矩形は世界全体なので、日本以外を集める収集でもそのまま使えます。
+
+  **返るのは AI が目を通したものだけ**です（Chiezo の読み口が、まだ目を通していない
+  ものと消したものを既定で外します）。機械で入れたばかりのものには宣伝も的外れも
+  混ざるので、地図に並べる前の関門がここになります。
+
+  1 回の上限は Chiezo 側で 500 件なので、呼ぶ側が `offset` を進めます。
+  """
+  def spot_docs(base, name, offset \\ 0, limit \\ @page_limit)
+      when is_binary(name) and is_integer(offset) do
+    query =
+      URI.encode_query(%{
+        "bbox" => @world_bbox,
+        "limit" => limit,
+        "offset" => offset,
+        "fields" => "doc_id,title,tags,extra,opening"
+      })
+
+    case get(base <> "/v1/" <> URI.encode(name) <> "/filter?" <> query) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"results" => results} = decoded} when is_list(results) ->
+            {:ok, %{total: decoded["total"] || length(results), docs: results}}
+
+          _other ->
+            {:error, :chiezo_unexpected_body}
+        end
 
       {:ok, %{status: status}} ->
         {:error, {:chiezo_status, status}}

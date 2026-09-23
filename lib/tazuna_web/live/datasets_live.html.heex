@@ -74,6 +74,17 @@
         <a href={@state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
       </p>
 
+      <%!-- **travel-log へはファイルで渡す。** ブラウザから直接 Chiezo を読ませるには
+           CORS を開けたうえで Chiezo 自身を https で出す必要があり、LAN の中だけで
+           使う機械にそこまでさせる理由がない。中身は travel-log-data と同じ形なので、
+           向こうはリポジトリから取り込むのと同じ画面で入れられる --%>
+      <p :if={Tazuna.Datasets.TravelLog.exportable?(@dataset)} class="muted-note">
+        <a href={~p"/datasets/#{@dataset.key}/travel-log.zip"} download>
+          travel-log 用の ZIP を書き出す
+        </a>
+        —— AI が目を通したものだけが入ります（settings.json と spots.csv）。
+      </p>
+
       <%!-- **区画の一覧。** どこがまだ見られていないかは、ここにしか無い ——
            「ここを先に見てほしい」を頼む口でもある。数百あるので畳んで置く --%>
       <% rows = partition_rows(@state, @dataset.partition_sweeps) %>
@@ -108,12 +119,15 @@
           <p>
             <label>
               頼みたいこと（書かなくてよい）<br />
-              <input type="text" name="note" placeholder="例: 閉店しているものを直して" />
+              <input
+                type="text"
+                name="note"
+                placeholder="例: 閉店しているものを直して"
+              />
             </label>
           </p>
           <p class="muted-note">
-            定時の巡回とは別に 1 回だけ走ります（進み具合にも次の予定にも触りません）。
-            <strong>頼んだ区画には印が付く</strong>ので、巡回が同じところをもう一度見ることはありません。
+            定時の巡回とは別に 1 回だけ走ります（進み具合にも次の予定にも触りません）。 <strong>頼んだ区画には印が付く</strong>ので、巡回が同じところをもう一度見ることはありません。
           </p>
           <button type="submit" disabled={@asking} phx-disable-with="頼んでいます…">
             この区画を先に調べてもらう
