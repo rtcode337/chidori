@@ -122,6 +122,10 @@ defmodule Tazuna.Datasets.Meals do
   # 設定も依頼文もじっくりのものでよい）
   @survey_sweep "整理"
 
+  # ざっとの名前。**区画を回るのはこの回が先** —— じっくりはざっとが一周するまで
+  # 走らないので、進み具合を「じっくりが見たか」で測ると、いつまでも 0 のままになる
+  @scan_sweep "ざっと見る"
+
   # 出典の目印。**travel-log と AI の両方が読む** —— 同じ店が 2 つに分かれているとき、
   # どちらの座標を残すかはここで決まる（1 軒に複数付くこともある）
   @source_tags [wikipedia: "出典:Wikipedia", osm: "出典:OSM", overture: "出典:Overture"]
@@ -216,7 +220,10 @@ defmodule Tazuna.Datasets.Meals do
         "travel-log の地図に並べる「食べに行く先」を集めます。" <>
           "名前と座標は地図辞典から機械で引き、食べに行く価値があるかどうかを AI が見ます。",
       collection: collection(),
-      survey_sweep: @survey_sweep
+      survey_sweep: @survey_sweep,
+      # **区画を回る巡回を、回る順に。** 進み具合はこの順で深くなる
+      # （ざっとが一周してから、じっくりが回り始める）
+      partition_sweeps: [@scan_sweep, @survey_sweep]
     }
   end
 
@@ -402,7 +409,7 @@ defmodule Tazuna.Datasets.Meals do
         once: true
       },
       %{
-        name: "ざっと見る",
+        name: @scan_sweep,
         interval_minutes: @scan_minutes,
         cover_days: @scan_days,
         after: "機械収集",
@@ -413,7 +420,7 @@ defmodule Tazuna.Datasets.Meals do
         prompt: :survey,
         interval_minutes: @survey_minutes,
         cover_days: @survey_days,
-        after: "ざっと見る",
+        after: @scan_sweep,
         effort: "high"
       }
     ]

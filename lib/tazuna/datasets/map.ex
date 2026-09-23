@@ -71,7 +71,7 @@ defmodule Tazuna.Datasets.Map do
           coast: coast(west, top, scale),
           width: @width,
           height: Float.round(height, 1),
-          visited: Enum.count(boxes, & &1.seen)
+          visited: Enum.count(boxes, &(stage(&1) > 0))
         }
     end
   end
@@ -175,7 +175,10 @@ defmodule Tazuna.Datasets.Map do
     %{
       key: box.key,
       count: box.count,
-      seen: box.seen,
+      # **どこまで見たか**（0 がまだ）。回る巡回が何本かあるので、
+      # 「見たか見ていないか」では進み具合が読めない
+      stage: stage(box),
+      by: Map.get(box, :by),
       x: left,
       y: upper,
       width: width,
@@ -192,6 +195,8 @@ defmodule Tazuna.Datasets.Map do
     radians = lat * :math.pi() / 180.0
     :math.log(:math.tan(:math.pi() / 4 + radians / 2)) * 180.0 / :math.pi()
   end
+
+  defp stage(box), do: Map.get(box, :stage) || 0
 
   defp place1(value), do: Float.round(value, @places)
 

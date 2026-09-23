@@ -9,7 +9,7 @@ defmodule Tazuna.Datasets.MapTest do
   alias Tazuna.Datasets.Map, as: PartitionMap
 
   defp row(key, opts \\ []) do
-    %{key: key, count: opts[:count] || 1, seen: opts[:seen]}
+    %{key: key, count: opts[:count] || 1, stage: opts[:stage] || 0, by: opts[:by]}
   end
 
   test "鍵から四角を作る" do
@@ -95,11 +95,27 @@ defmodule Tazuna.Datasets.MapTest do
   test "見終わった数を数える" do
     map =
       PartitionMap.build([
-        row("35.0,135.0/36.0,136.0", seen: "2026-09-23 10:00 JST"),
+        row("35.0,135.0/36.0,136.0", stage: 1, by: "ざっと見る"),
         row("36.0,136.0/37.0,137.0")
       ])
 
     assert map.visited == 1
+  end
+
+  test "どこまで見たかを持ち越す" do
+    # 区画を回る巡回は順に走るので、**どちらの目で見たか**で色が変わる
+    map =
+      PartitionMap.build([
+        row("35.0,135.0/36.0,136.0", stage: 2, by: "整理"),
+        row("36.0,136.0/37.0,137.0")
+      ])
+
+    [deep, untouched] = map.rects
+
+    assert deep.stage == 2
+    assert deep.by == "整理"
+    assert untouched.stage == 0
+    assert untouched.by == nil
   end
 
   test "座標で切っていない区画は地図にしない" do

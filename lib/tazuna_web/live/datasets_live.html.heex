@@ -76,13 +76,13 @@
 
       <%!-- **区画の一覧。** どこがまだ見られていないかは、ここにしか無い ——
            「ここを先に見てほしい」を頼む口でもある。数百あるので畳んで置く --%>
-      <% rows = partition_rows(@state, @dataset.survey_sweep) %>
+      <% rows = partition_rows(@state, @dataset.partition_sweeps) %>
 
       <%!-- **区画を地図にして出す。** 「8,185 区画のうち 2 つ見終わり」と数で言われても、
            それがどこなのかは読めない —— 押した四角から、その場で頼める --%>
       <.partition_map
         map={Tazuna.Datasets.Map.build(rows)}
-        sweep={@dataset.survey_sweep}
+        sweeps={@dataset.partition_sweeps}
         picked={@picked}
       />
 
@@ -99,8 +99,8 @@
             <dd>{picked.count} 件</dd>
           </div>
           <div>
-            <dt>「{@dataset.survey_sweep}」が見たのは</dt>
-            <dd>{picked.seen || "まだ"}</dd>
+            <dt>見終わった巡回</dt>
+            <dd>{if picked.by, do: "#{picked.by}（#{picked.seen}）", else: "まだ"}</dd>
           </div>
         </dl>
         <form phx-submit="focus_partition">
@@ -134,7 +134,7 @@
             <tr>
               <th>区画</th>
               <th>件数</th>
-              <th>{@dataset.survey_sweep}が見たのは</th>
+              <th>見終わった巡回</th>
               <th></th>
             </tr>
           </thead>
@@ -142,7 +142,7 @@
             <tr :for={row <- Enum.take(rows, shown_partitions())}>
               <td>{row.key}</td>
               <td>{row.count}</td>
-              <td>{row.seen || "まだ"}</td>
+              <td>{if row.by, do: "#{row.by}（#{row.seen}）", else: "まだ"}</td>
               <td>
                 <form phx-submit="focus_partition">
                   <input type="hidden" name="key" value={row.key} />

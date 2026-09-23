@@ -71,9 +71,14 @@ defmodule TazunaWeb.DatasetsLiveTest do
       "enabled" => true,
       "interval_minutes" => 60,
       "kind" => "stock",
-      "partitions_total" => 3,
+      "partitions_total" => 4,
       "partitions" => [
         %{"key" => "35.6,139.7/35.7,139.8", "count" => 180, "visits" => %{}},
+        %{
+          "key" => "35.0,135.7/35.1,135.8",
+          "count" => 120,
+          "visits" => %{"ざっと見る" => "2026-09-20T00:00:00Z"}
+        },
         %{
           "key" => "34.6,135.4/34.8,135.6",
           "count" => 150,
@@ -212,6 +217,17 @@ defmodule TazunaWeb.DatasetsLiveTest do
       # 見終わった区画は色を変える（進み具合は数では読めない）
       assert html =~ "is-seen"
       assert html =~ ~s(phx-value-key="35.6,139.7/35.7,139.8")
+    end
+
+    test "先に回る巡回が見終えた区画も色が変わる", %{conn: conn} do
+      # **後の回はしばらく走らない**（前の回が一周するまで待つ）ので、
+      # 後の回だけで進み具合を測ると、回っているのにどこも「まだ」のままになる
+      {_live, html} = shown(conn)
+
+      assert html =~ ~r|<rect[^>]*is-seen[^>]*phx-value-key="35.0,135.7/35.1,135.8"|
+      # じっくりまで済んだ区画は、もう一段濃くする
+      assert html =~ ~r|<rect[^>]*is-done[^>]*phx-value-key="34.6,135.4/34.8,135.6"|
+      assert html =~ "ざっと見る 済み"
     end
 
     test "地図で押した区画から、その場で頼める", %{conn: conn} do

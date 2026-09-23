@@ -12,7 +12,7 @@ defmodule TazunaWeb.PartitionMap do
   use Phoenix.Component
 
   attr :map, :map, required: true, doc: "`Tazuna.Datasets.Map.build/1` が返すもの"
-  attr :sweep, :string, default: "", doc: "見終わったかを見る巡回の名前"
+  attr :sweeps, :list, default: [], doc: "区画を回る巡回の名前（回る順）"
   attr :picked, :string, default: nil, doc: "いま選んでいる区画の鍵"
 
   def partition_map(assigns) do
@@ -22,7 +22,7 @@ defmodule TazunaWeb.PartitionMap do
         四角のひとつひとつが区画です。<strong>店の多いところほど細かく</strong>切られているので、
         細かい格子がそのまま「たくさん集まっているところ」になります。 <strong>押すと、その区画を先に調べてもらえます。</strong>
         濃いところほど詰まっています（区画は海の上まで覆うので、同じ濃さで塗ると島の形が沈みます）。 <strong>寄ると区画の境目が出ます。</strong>
-        色の付いているところは「{@sweep}」が見終わったぶんです（{@map.visited} / {length(@map.rects)}）。
+        <strong>緑は見終わった区画です</strong>（{seen_note(@sweeps)}）—— {@map.visited} / {length(@map.rects)}。
       </p>
       <%!-- **操作は関連図と同じ**（引きずって移動、Ctrl+ホイールで拡大縮小、
            指 2 本でつまむ）—— 図ごとに操作が違うと、画面を移るたびに覚え直すことになる --%>
@@ -52,14 +52,15 @@ defmodule TazunaWeb.PartitionMap do
             height={rect.height}
             class={[
               rect.tiny && "is-tiny",
-              rect.seen && "is-seen",
+              rect.stage > 0 && "is-seen",
+              rect.stage > 1 && "is-done",
               rect.key == @picked && "is-picked"
             ]}
             style={"opacity: #{rect.tone}"}
             phx-click="pick_partition"
             phx-value-key={rect.key}
           >
-            <title>{rect.key}（{rect.count} 件{if rect.seen, do: " ・見終わり", else: ""}）</title>
+            <title>{rect.key}（{rect.count} 件{if rect.by, do: "・#{rect.by} 済み", else: ""}）</title>
           </rect>
         </svg>
       </div>
@@ -70,4 +71,12 @@ defmodule TazunaWeb.PartitionMap do
     </section>
     """
   end
+
+  # 緑の読み方。**濃さで深さを表す** —— 回る巡回は順に走るので、
+  # 「どちらが先か」が分かれば、濃いほうが進んでいると読める
+  defp seen_note([first, second | _rest]),
+    do: "薄い緑が「#{first}」、濃い緑が「#{second}」まで"
+
+  defp seen_note([only]), do: "「#{only}」が見終わったぶん"
+  defp seen_note(_sweeps), do: "見終わったぶん"
 end

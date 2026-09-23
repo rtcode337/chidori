@@ -415,8 +415,11 @@ article p:last-child { color: #475569; line-height: 1.7; }
    （画面に出るのは数十区画だけなので、線で埋まることはない）*/
 .map-canvas.is-close rect { stroke: rgba(255, 255, 255, .55); stroke-width: .5; vector-effect: non-scaling-stroke; }
 .partition-map rect:hover { fill: #f59e0b; stroke: #f59e0b; opacity: 1 !important; }
-/* 見終わった区画。**数では進み具合が読めない**（どこを見たのかが分からない） */
-.partition-map rect.is-seen { fill: #16a34a; stroke: #16a34a; opacity: .85 !important; }
+/* 見終わった区画。**数では進み具合が読めない**（どこを見たのかが分からない）。
+   **濃さで深さを出す** —— 区画を回る巡回は順に走るので、ざっと見ただけのところと
+   じっくり見たところが同じ色だと、どこまで進んだのかが読めない */
+.partition-map rect.is-seen { fill: #4ade80; stroke: #4ade80; opacity: .9 !important; }
+.partition-map rect.is-done { fill: #15803d; stroke: #15803d; opacity: .9 !important; }
 .partition-map rect.is-picked { fill: #f97316; opacity: 1 !important; stroke: #7c2d12; stroke-width: 2; }
 
 /* 選んだ区画。押した先に何があるのかを読んでから頼めるように、選ぶのと頼むのを分ける */
