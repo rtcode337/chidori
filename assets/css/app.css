@@ -248,6 +248,9 @@ article p:last-child { color: #475569; line-height: 1.7; }
 
 /* この図がどこから来るかの断り。状態の下に小さく置く */
 .muted-note { margin: .35rem 0 0; color: #7c869b; font-size: .78rem; line-height: 1.6; }
+/* travel-log への書き出し。**リンクと分かる見た目のまま**、周りの注記より
+   一段強く出す（押すと降ってくるだけなので、ボタンには寄せない） */
+.download-link { display: inline-block; margin-top: .5rem; color: #554bc0; font-weight: 700; text-decoration: underline; text-underline-offset: .2em; }
 /* 断られたことの知らせ。**薄くしない** —— 押した人が読み飛ばすと、頼めたつもりのまま待つ */
 .warn-note { margin: .35rem 0 0; color: #b42318; font-size: .82rem; line-height: 1.6; }
 

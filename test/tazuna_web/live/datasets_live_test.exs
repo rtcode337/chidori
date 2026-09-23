@@ -18,6 +18,15 @@ defmodule TazunaWeb.DatasetsLiveTest do
     assert html =~ "Chiezo"
   end
 
+  test "travel-log 用の書き出しを、リンクと分かる形で出す", %{conn: conn} do
+    # ブラウザから Chiezo を直接読ませない代わりの道。押すと降ってくるだけなので、
+    # リンクと分かる見た目のまま、周りの注記より一段強く出す
+    {:ok, _live, html} = live(conn, ~p"/datasets")
+
+    assert html =~ ~p"/datasets/meals/travel-log.zip"
+    assert html =~ "download-link"
+  end
+
   test "関連図と最新情報から行き来できる", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/relations")
     assert html =~ ~p"/datasets"

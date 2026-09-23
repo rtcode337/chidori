@@ -78,12 +78,17 @@
            CORS を開けたうえで Chiezo 自身を https で出す必要があり、LAN の中だけで
            使う機械にそこまでさせる理由がない。中身は travel-log-data と同じ形なので、
            向こうはリポジトリから取り込むのと同じ画面で入れられる --%>
-      <p :if={Tazuna.Datasets.TravelLog.exportable?(@dataset)} class="muted-note">
-        <a href={~p"/datasets/#{@dataset.key}/travel-log.zip"} download>
-          travel-log 用の ZIP を書き出す
+      <div :if={Tazuna.Datasets.TravelLog.exportable?(@dataset)}>
+        <%!-- **リンクと分かる見た目にする。** 押すと降ってくるだけで、画面の状態は
+             何も変わらない —— ボタンに寄せると「送る」「走らせる」と同じ重さに見える --%>
+        <a class="download-link" href={~p"/datasets/#{@dataset.key}/travel-log.zip"} download>
+          ⬇ travel-log 用の ZIP を書き出す
         </a>
-        —— AI が目を通したものだけが入ります（settings.json と spots.csv）。
-      </p>
+        <p class="muted-note">
+          AI が目を通したものだけが入ります（settings.json と spots.csv）。
+          取り出しに数秒かかります。
+        </p>
+      </div>
 
       <%!-- **区画の一覧。** どこがまだ見られていないかは、ここにしか無い ——
            「ここを先に見てほしい」を頼む口でもある。数百あるので畳んで置く --%>
