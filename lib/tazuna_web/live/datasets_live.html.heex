@@ -77,6 +77,51 @@
       <%!-- **区画の一覧。** どこがまだ見られていないかは、ここにしか無い ——
            「ここを先に見てほしい」を頼む口でもある。数百あるので畳んで置く --%>
       <% rows = partition_rows(@state, @dataset.survey_sweep) %>
+
+      <%!-- **区画を地図にして出す。** 「8,185 区画のうち 2 つ見終わり」と数で言われても、
+           それがどこなのかは読めない —— 押した四角から、その場で頼める --%>
+      <.partition_map
+        map={Tazuna.Datasets.Map.build(rows)}
+        sweep={@dataset.survey_sweep}
+        picked={@picked}
+      />
+
+      <% picked = picked_row(rows, @picked) %>
+      <section :if={picked} class="partition-picked" aria-label="選んだ区画">
+        <h3>選んだ区画</h3>
+        <dl class="collect-facts">
+          <div>
+            <dt>範囲（南西 / 北東）</dt>
+            <dd>{picked.key}</dd>
+          </div>
+          <div>
+            <dt>この区画にあるもの</dt>
+            <dd>{picked.count} 件</dd>
+          </div>
+          <div>
+            <dt>「{@dataset.survey_sweep}」が見たのは</dt>
+            <dd>{picked.seen || "まだ"}</dd>
+          </div>
+        </dl>
+        <form phx-submit="focus_partition">
+          <input type="hidden" name="key" value={picked.key} />
+          <p>
+            <label>
+              頼みたいこと（書かなくてよい）<br />
+              <input type="text" name="note" placeholder="例: 閉店しているものを直して" />
+            </label>
+          </p>
+          <p class="muted-note">
+            定時の巡回とは別に 1 回だけ走ります（進み具合にも次の予定にも触りません）。
+            <strong>頼んだ区画には印が付く</strong>ので、巡回が同じところをもう一度見ることはありません。
+          </p>
+          <button type="submit" disabled={@asking} phx-disable-with="頼んでいます…">
+            この区画を先に調べてもらう
+          </button>
+          <button type="button" phx-click="unpick_partition">やめる</button>
+        </form>
+      </section>
+
       <details :if={rows != []} class="partition-list">
         <summary>区画（{length(rows)}）— まだ見ていないものが先</summary>
         <p class="muted-note">

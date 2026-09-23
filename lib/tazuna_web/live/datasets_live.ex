@@ -17,6 +17,7 @@ defmodule TazunaWeb.DatasetsLive do
 
   import TazunaWeb.Collect
   import TazunaWeb.CollectPanel
+  import TazunaWeb.PartitionMap
 
   alias Tazuna.Datasets
   alias Tazuna.Jst
@@ -37,7 +38,10 @@ defmodule TazunaWeb.DatasetsLive do
        # 拍子にフォームが描き直されて、選んだところが元の値に戻る
        picks: %{},
        asking: false,
-       asked: nil
+       asked: nil,
+       # 地図で選んでいる区画。**選ぶのと頼むのを分ける** —— 押した瞬間に走ると、
+       # どこを押したのか確かめる前に AI が動く
+       picked: nil
      )
      |> assign(state: empty_state())}
   end
@@ -49,7 +53,7 @@ defmodule TazunaWeb.DatasetsLive do
 
     socket =
       socket
-      |> assign(view: key, dataset: dataset, picks: %{}, asked: nil)
+      |> assign(view: key, dataset: dataset, picks: %{}, asked: nil, picked: nil)
       |> assign(state: empty_state())
 
     # **開いたら読みに行く。** 読むのは Chiezo に置いた収集の状態だけで、
@@ -93,6 +97,17 @@ defmodule TazunaWeb.DatasetsLive do
      |> assign(state: %{socket.assigns.state | status: :loading})
      |> start_async(:read, fn -> Datasets.read(dataset) end)}
   end
+
+  # **地図で区画を選ぶ。** ここでは頼みません —— 押した先に何があるのか
+  # （件数・見終わったか）を読んでから頼めるように、選ぶのと頼むのを分けてあります
+  def handle_event("pick_partition", %{"key" => key}, socket) do
+    picked = if socket.assigns.picked == key, do: nil, else: key
+
+    {:noreply, assign(socket, picked: picked, asked: nil)}
+  end
+
+  def handle_event("unpick_partition", _params, socket),
+    do: {:noreply, assign(socket, picked: nil)}
 
   # **この区画を先に調べて、を頼む。** 定時の巡回の進み具合にも次の予定にも触りません
   def handle_event("focus_partition", %{"key" => key} = params, socket) do
@@ -248,6 +263,15 @@ defmodule TazunaWeb.DatasetsLive do
 
   @doc "区画の一覧に出す数。"
   def shown_partitions, do: @shown_partitions
+
+  @doc """
+  選んでいる区画の 1 行ぶん。**選ばれていなければ nil**。
+
+  一覧から探し直さずに済むように、鍵で引いてそのまま返します ——
+  地図で押した区画の件数も「見終わったか」も、台帳にしかありません。
+  """
+  def picked_row(rows, key) when is_binary(key), do: Enum.find(rows, &(&1.key == key))
+  def picked_row(_rows, _key), do: nil
 
   @doc """
   抽出の指定（機械で引く条件）。**何で埋まったのかが読めないと、間違いを

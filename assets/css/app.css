@@ -118,7 +118,7 @@ article p:last-child { color: #475569; line-height: 1.7; }
    図の全画面（z-index 60）より上に置く */
 .relations-page.is-busy::after { content: ""; position: fixed; inset: 0; z-index: 70; background: rgba(248, 249, 254, .45); cursor: progress; }
 
-.relation-canvas { position: relative; overflow: hidden; margin-bottom: 1.5rem; height: min(88vh, 64rem); border: 1px solid #e4e7f0; border-radius: 1.5rem; background: radial-gradient(circle at 45% 25%, #ffffff 0, #fafafe 42%, #eef0f9 100%); box-shadow: 0 14px 32px rgba(31, 41, 55, .08); cursor: grab; touch-action: none; }
+.relation-canvas { position: relative; overflow: hidden; margin-bottom: 1.5rem; height: min(88vh, 64rem); border: 1px solid #e4e7f0; border-radius: 1.5rem; background: radial-gradient(circle at 45% 25%, #ffffff 0, #fafafe 42%, #eef0f9 100%); box-shadow: 0 14px 32px rgba(31, 41, 55, .08); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 /* **縦横比は保つ**（高さを器に合わせると、縦長の図が潰れて字が読めなくなる）。
    図は器より高いので、はみ出したぶんは引きずって見る */
 .relation-canvas svg { display: block; width: 100%; height: auto; }
@@ -381,6 +381,48 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .collect-page .collect-panel table { margin-bottom: 0; }
 
 /* 区画の一覧。**400 行あるので畳んで置く** —— 開いたときだけ場所を取る */
+/* 区画の地図。**地図の絵は敷かない** —— 区画そのものが日本の形になる
+   （集めるものが居るところにしか切られないので）。外を読みに行かずに済む */
+.partition-map { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: .8rem; }
+/* 器。**関連図と同じ操作**にするので、見え方（掴む指・全画面）も揃える */
+/* **字を選ばせない。** 引きずりはいつでも画面移動にしたいので、札の上から
+   始めたときに選択が走ると、図が動かずに字だけが青くなる */
+.map-canvas { position: relative; overflow: hidden; margin: .6rem 0; height: min(78vh, 52rem); border: 1px solid #e4e7f0; border-radius: .9rem; background: #f8fafc; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.map-canvas:active { cursor: grabbing; }
+/* **器いっぱいに置く** —— 拡大は viewBox を動かして行うので、要素の大きさは変えない */
+.map-canvas svg { display: block; width: 100%; height: 100%; }
+.map-canvas:fullscreen { height: 100vh; border: 0; border-radius: 0; }
+.map-canvas.faux-fullscreen { position: fixed; inset: 0; z-index: 60; width: 100vw; height: 100dvh; margin: 0; border: 0; border-radius: 0; }
+.map-tools { position: absolute; top: .6rem; right: .6rem; z-index: 2; display: flex; gap: .35rem; }
+.map-tools button { padding: .3rem .7rem; border: 1px solid #dcdff0; border-radius: .6rem; background: rgba(255, 255, 255, .92); color: #3b4463; font-size: .78rem; font-weight: 700; box-shadow: 0 2px 6px rgba(31, 41, 55, .08); }
+.map-tools button:hover { border-color: #a9a2e6; color: #4338a8; }
+.map-hint { margin-top: .2rem; }
+/* 白地図。**区画の下に敷く** —— 押す口は四角のままにしたいので、線だけにする */
+/* **線の太さは画面の px で見る**（`vector-effect`）—— viewBox で寄せるので、
+   そのままだと寄るほど海岸線が太る */
+.partition-map path.coast { fill: #fff; stroke: #cbd5e1; stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
+.partition-map rect { fill: #4f6bd8; stroke: none; cursor: pointer; }
+/* **細い区画だけ、面と同じ色の縁で補う**（太さは画面の 1px。`vector-effect`）。
+   区画は本当の大きさで描くので、都心の区画は全体表示では 0.2px しかなく、
+   面だけでは塗る量が足りずに日本の形が消える（実測で、どこも同じ薄さになった）。
+   縁なら、遠いときは見える太さに補い、寄ると相対的に細くなって本当の大きさが
+   出る —— 四角そのものを太らせると、どれだけ寄っても嘘のままになる。
+   **大きい区画には引かない** —— 外海を覆う区画の縁は、図を横切る長い線になる */
+.partition-map rect.is-tiny { stroke: #4f6bd8; stroke-width: 1; vector-effect: non-scaling-stroke; }
+/* **寄ったら、どの区画にも境目を出す。** 押す口は区画ひとつずつなので、
+   どこからどこまでが 1 区画なのかが見えないと、押す先を狙えない
+   （画面に出るのは数十区画だけなので、線で埋まることはない）*/
+.map-canvas.is-close rect { stroke: rgba(255, 255, 255, .55); stroke-width: .5; vector-effect: non-scaling-stroke; }
+.partition-map rect:hover { fill: #f59e0b; stroke: #f59e0b; opacity: 1 !important; }
+/* 見終わった区画。**数では進み具合が読めない**（どこを見たのかが分からない） */
+.partition-map rect.is-seen { fill: #16a34a; stroke: #16a34a; opacity: .85 !important; }
+.partition-map rect.is-picked { fill: #f97316; opacity: 1 !important; stroke: #7c2d12; stroke-width: 2; }
+
+/* 選んだ区画。押した先に何があるのかを読んでから頼めるように、選ぶのと頼むのを分ける */
+.partition-picked { margin-top: .8rem; border: 1px solid #dcdff0; border-radius: .8rem; padding: .9rem 1rem; background: #fff; }
+.partition-picked h3 { margin: 0 0 .5rem; font-size: .95rem; }
+.partition-picked input[type="text"] { width: 100%; max-width: 34rem; border: 1px solid #dcdff0; border-radius: .5rem; background: #fff; padding: .4rem .6rem; }
+
 .partition-list { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: .8rem; }
 .partition-list summary { cursor: pointer; font-weight: 700; font-size: .9rem; }
 .partition-table { width: 100%; border-collapse: collapse; margin-top: .6rem; font-size: .82rem; }

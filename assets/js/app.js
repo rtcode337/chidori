@@ -23,13 +23,17 @@ import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/tazuna"
+// 図を引きずって動かし、つまんで拡大するところ。**画面をまたいで同じ操作**にする
+// ため、テンプレートの中ではなくここに置く（中身は共通の ./pan_zoom で、
+// 倍率の幅といった図ごとの事情だけを足す）。関連図はまだ自前の写しを持っている
+import PartitionMap from "./partition_map"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks},
+  hooks: {...colocatedHooks, PartitionMap},
 })
 
 // Show progress bar on live navigation and form submits

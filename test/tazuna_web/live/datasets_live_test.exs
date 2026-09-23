@@ -204,6 +204,37 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert sent["sweep"] == "整理"
     end
 
+    test "区画は地図にもなる", %{conn: conn} do
+      # 「8,185 区画のうち 2 つ見終わり」と数で言われても、どこなのかは読めない
+      {_live, html} = shown(conn)
+
+      assert html =~ "partition-map"
+      # 見終わった区画は色を変える（進み具合は数では読めない）
+      assert html =~ "is-seen"
+      assert html =~ ~s(phx-value-key="35.6,139.7/35.7,139.8")
+    end
+
+    test "地図で押した区画から、その場で頼める", %{conn: conn} do
+      {live, _html} = shown(conn)
+
+      # **押しただけでは走らない** —— 何件あるのか、見終わっているのかを読んでから頼む
+      html =
+        live
+        |> element(~s|.partition-map rect[phx-value-key="43.0,141.3/43.1,141.4"]|)
+        |> render_click()
+
+      assert html =~ "選んだ区画"
+      assert html =~ "43.0,141.3/43.1,141.4"
+      assert html =~ "90 件"
+
+      live |> form(~s|.partition-picked form|, %{note: "閉店を見て"}) |> render_submit()
+
+      assert_receive {:posted, url, sent}, 2_000
+      assert url =~ "/focus"
+      assert sent["partition"] == "43.0,141.3/43.1,141.4"
+      assert sent["note"] =~ "閉店を見て"
+    end
+
     test "定時の巡回とは別に、1 回だけ頼める", %{conn: conn} do
       {live, _html} = shown(conn)
 
