@@ -495,6 +495,19 @@ defmodule Tazuna.NewsTest do
       assert prompt =~ "上に並んでいない出どころ"
     end
 
+    test "記事の主役の名前もタグにさせる" do
+      # 分野だけだと「AI」「セキュリティ」のような広い語ばかりになり、そこから作る
+      # 話題のつながりで、どの記事も同じ場所に集まってしまう
+      # （実測で、上位のタグに製品名がほとんど無かった）
+      for prompt <- [
+            News.prompt(defined_topic("tazuna_tech")),
+            News.refine_prompt(defined_topic("tazuna_tech"))
+          ] do
+        assert prompt =~ "固有名"
+        assert prompt =~ "製品・サービス・技術・組織"
+      end
+    end
+
     test "論文は名指しで念を押す" do
       # 外を当たる先の 1 つとして箇条書きに並べていただけの頃は、実測で 269 件の
       # うち論文が 2 件しか入らなかった —— 4 つ並んだうちの最後の 1 行では埋もれる。

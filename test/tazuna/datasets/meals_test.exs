@@ -269,6 +269,15 @@ defmodule Tazuna.Datasets.MealsTest do
       assert Meals.survey_prompt() =~ "確かめられなかったものは触らないでください"
     end
 
+    test "座標が違うのは、消す理由にしない" do
+      # 住所がこの範囲の外を指していても、消すと名簿から消えたままどの区画にも
+      # 戻ってこない。直せば次の回から本来の区画に並ぶ
+      # （実測で、座標と住所が食い違う店が墓標で消されていた）
+      assert Meals.scan_prompt() =~ "消す理由ではありません"
+      assert Meals.scan_prompt() =~ "正しい座標へ直して"
+      assert Meals.survey_prompt() =~ "消さないでください"
+    end
+
     test "足すものには必ず座標を入れさせる" do
       # 座標の無いものはどの区画にも入らず、次に見たときには「まだ無い」と見える
       assert Meals.survey_prompt() =~ "座標"
