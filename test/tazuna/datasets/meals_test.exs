@@ -285,6 +285,15 @@ defmodule Tazuna.Datasets.MealsTest do
       end
     end
 
+    test "地域の空いているものを、どちらの回でも必ず埋めさせる" do
+      # 名簿の元の店舗辞典は日本では都道府県がほとんど空で、そのままだと
+      # travel-log は地図に置けない（region が必須）
+      for prompt <- [Meals.scan_prompt(), Meals.survey_prompt()] do
+        assert prompt =~ "必ず埋めて"
+        assert prompt =~ "都道府県"
+      end
+    end
+
     test "いま付いているタグを消させない" do
       # 返した内容で丸ごと置き換わるので、書かなかったタグは消える
       assert Meals.scan_prompt() =~ "そのまま残してください"
