@@ -1,7 +1,7 @@
 defmodule Tazuna.ThemesTest do
   @moduledoc """
-  トピックの溜め方。見ているのは、**育てるのは Chiezo の側だということ**
-  （材料は tazuna が作らない）と、**図の語彙が依頼文と読み取りで揃っていること**です。
+  トピックの溜め方。見ているのは、**語を拾うのは機械だということ**（AI に思いつかせない）
+  と、**図の語彙が依頼文と読み取りで揃っていること**です。
   """
 
   use ExUnit.Case, async: true
@@ -19,81 +19,117 @@ defmodule Tazuna.ThemesTest do
       assert attrs.kind == "stock"
     end
 
-    test "材料は、溜まった記事のほう" do
-      # 配信元から引くと、整理の回が落とした宣伝や重複、付け直した重要度が
-      # 効かないまま材料になる。トピックは「読むに値すると判じたもの」から育てる
+    test "語は、記事のタグをそのまま拾う" do
+      # AI に語を思いつかせると、記事に出てこない語が混ざり、同じ話題が回ごとに
+      # 違う表記で増える —— 語そのものは手元の索引に入っている
       attrs = Themes.attrs(topic())
 
-      assert attrs.material.source == "tazuna_tech"
-      # 記事とまとめが混ざるので、種別のタグで絞る
-      assert attrs.material.tag == "ニュース,記事"
+      assert attrs.extract.source == "tazuna_tech"
+      assert attrs.extract.of == "tags"
+      # 図に出す目印は機械が付ける
+      assert attrs.extract.tags == [%{const: Themes.theme_tag()}]
     end
 
-    test "巡回は、育てる回と整える回に分ける" do
-      assert [grow, tidy] = Themes.sweeps(topic())
+    test "話題でない語のうち、tazuna が決めているものは先に外す" do
+      # 種別も重要度も話題度も、決めているのは tazuna。配信元の名前は書けない
+      # （配信元が名乗るタイトルなので tazuna は知らない）—— あれは AI が外す
+      skip = Themes.attrs(topic()).extract.skip
 
-      assert grow.name == "育てる"
+      assert "^_chiezo_" in skip
+      assert "^#{Tazuna.News.importance_tag()}:" in skip
+      assert Enum.any?(skip, &(&1 =~ "ニュース"))
+    end
+
+    test "時間軸は、直近の窓と一緒に出てくる語で持つ" do
+      # 件数だけだと、昔よく出てきた語がいつまでも大きいままになる
+      extract = Themes.attrs(topic()).extract
+
+      assert extract.recent_days > 0
+      assert extract.links > 0
+      # 1 件しか付いていない語は、まだ話題かどうかも分からない
+      assert extract.min_docs >= 2
+    end
+
+    test "巡回は、拾う回と整える回に分ける" do
+      assert [pick, tidy] = Themes.sweeps(topic())
+
+      # 拾う回は機械（AI を呼ばない）。足すだけと組にしないと、AI の説明を
+      # 機械の 1 行で上書きする
+      assert pick.name == "拾う"
+      assert pick.use_extract
+      assert pick.only_new
+      refute Map.has_key?(pick, :prompt)
+
       assert tidy.name == "整える"
-      # 育てるほうが高い頻度（整えるのは手元を読むだけの回）
-      assert grow.interval_minutes < tidy.interval_minutes
+      # 拾うほうが高い頻度（AI を呼ばないので短い間隔で回せる）
+      assert pick.interval_minutes < tidy.interval_minutes
     end
   end
 
   describe "依頼文" do
-    test "育てる回は、記事といま持っているものを両方読む" do
-      prompt = Themes.grow_prompt(topic())
-
-      assert prompt =~ "{material}"
-      assert prompt =~ "{current}"
-      # 図の語彙をそのまま頼む（読む側と書かせる側が離れるとズレる）
-      assert prompt =~ Themes.theme_tag()
-      assert prompt =~ Themes.parent_tag()
-      assert prompt =~ Themes.related_tag()
-      assert prompt =~ Themes.field_tag()
-
-      # 素材に無い話題を足させない（記事に出てこないトピックが図に増える）
-      assert prompt =~ "素材に出てこない話題を足さないでください"
-
-      # 手元の知識は自分で引ける（読むだけ。書き込みの道具は渡っていない）
-      assert prompt =~ "読むだけ"
-      # つながりは思いつきではなく、共起を数えて当たれる
-      assert prompt =~ "doc_tags"
-    end
-
-    test "整える回は、記事を読まない" do
-      # 畳むために毎回記事を読ませると、その回ぶんの枠が素材に消える
+    test "整える回は、4 つの分け方だけを頼む" do
+      # 語はもう機械が拾ってある。ここでやるのは精査だけ
       prompt = Themes.tidy_prompt(topic())
 
       assert prompt =~ "{current}"
       refute prompt =~ "{material}"
-      # 畳むには消す力が要る（墓標）
+      # 図の語彙をそのまま頼む（読む側と書かせる側が離れるとズレる）
+      assert prompt =~ Themes.theme_tag()
+      assert prompt =~ Themes.parent_tag()
+      assert prompt =~ Themes.field_tag()
+      assert prompt =~ Themes.synonym_tag()
+      # 畳むにも外すにも消す力が要る（墓標）
       assert prompt =~ Tazuna.Chiezo.tombstone_tag()
-      assert prompt =~ "新しい話題をここで足さないでください"
+    end
+
+    test "粒度が違うだけの語を、言い換えとして畳ませない" do
+      # 畳むと片方が消える。粒度の違いは親子で表す
+      assert Themes.tidy_prompt(topic()) =~ "粒度が違うだけの語は畳まないでください"
+    end
+
+    test "迷ったものは触らせずに、次の回へ送る" do
+      # 間違って外した語は二度と入らない（同じ語が記事に付いても拾われない）
+      prompt = Themes.tidy_prompt(topic())
+
+      assert prompt =~ "迷ったら触らない"
+      assert prompt =~ "外した語は二度と入りません"
+    end
+
+    test "新しい語をここで足させない" do
+      # 語を拾うのは機械の回の仕事
+      assert Themes.tidy_prompt(topic()) =~ "新しい語をここで足さないでください"
     end
   end
 
   describe "読み取り" do
-    test "上位・つながり・分野をタグから読む" do
+    test "親と分野はタグから、数は脇書きから読む" do
       one =
         Themes.to_theme(%{
           "title" => "AIエージェント",
           "opening" => "道具を使う AI。",
-          "tags" => [
-            "トピック",
-            "分野:AI",
-            "親:AI",
-            "関連:MCP:道具の口を決める規格",
-            "関連:LLM"
-          ]
+          "tags" => ["トピック", "分野:AI", "親:AI"],
+          "extra" => %{
+            "docs" => 31,
+            "docs_recent" => 12,
+            "last_seen" => "2026-09-22",
+            "links" => ["AI:18", "CodeZine:新着一覧:3"]
+          }
         })
 
       assert one.field == "AI"
       assert one.parent == "AI"
+      assert {one.docs, one.recent} == {31, 12}
+      assert one.last_seen == "2026-09-22"
 
-      assert one.related == [
-               %{to: "MCP", note: "道具の口を決める規格"},
-               %{to: "LLM", note: ""}
-             ]
+      # 語そのものに `:` が入りうるので、右端で割る
+      assert one.related == [%{to: "AI", n: 18}, %{to: "CodeZine:新着一覧", n: 3}]
+    end
+
+    test "数が無いうちは、静かなものとして読む" do
+      # 拾う回が 1 度も走っていない間は脇書きが空（読めないだけで、壊れではない）
+      one = Themes.to_theme(%{"title" => "AI", "opening" => "", "tags" => ["トピック"]})
+
+      assert {one.docs, one.recent, one.related} == {0, 0, []}
     end
   end
 end

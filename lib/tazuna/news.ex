@@ -1207,7 +1207,25 @@ defmodule Tazuna.News do
 
   # 種別の言い方。**配信元の指定と揃える** —— 別々に書くと、機械が付ける種別と
   # AI が付ける種別が食い違う
-  defp kinds, do: "ニュース / 記事 / 論文"
+  defp kinds, do: Enum.join(kind_tags(), " / ")
+
+  @doc """
+  種別のタグ。**1 件がどんなものかを表す語**で、話題の語ではありません。
+
+  トピックを拾う側が「これは話題ではない」と落とすのに要ります
+  （`Tazuna.Themes`）—— 語彙を 2 か所に書くと、片方だけ足したときに
+  種別がトピックとして図に並びます。
+  """
+  def kind_tags, do: ["ニュース", "記事", "論文"]
+
+  @doc "重要度のタグの頭。"
+  def importance_tag, do: @importance_tag
+
+  @doc "話題度のタグの頭。"
+  def buzz_tag, do: @buzz_tag
+
+  @doc "まとめに付くタグ。"
+  def digest_tag, do: @digest_tag
 
   # 関心が空のままでも集めさせない文にはしない —— 指定なしで頼むと、
   # 何を集めればよいか決まらないまま AI が埋めることになる

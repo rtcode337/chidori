@@ -14,12 +14,15 @@ defmodule Tazuna.Themes.GraphTest do
       note: "説明。",
       parent: opts[:parent],
       field: opts[:field],
+      docs: opts[:docs] || 1,
+      recent: opts[:recent] || 0,
+      last_seen: opts[:last_seen] || "",
       related: opts[:related] || [],
       tags: []
     }
   end
 
-  defp related(to, note \\ ""), do: %{to: to, note: note}
+  defp related(to, n \\ 1), do: %{to: to, n: n}
 
   test "先の無い線は引かない" do
     # AI が存在しないトピックを指すことはある。整える回が直すまで、図は黙って耐える
@@ -29,9 +32,10 @@ defmodule Tazuna.Themes.GraphTest do
   end
 
   test "両側から書かれたつながりは 1 本にする" do
+    # 一緒に出てくる語は、機械が両側の脇書きに入れる
     themes = [
-      theme("AI", related: [related("MCP", "道具の口")]),
-      theme("MCP", related: [related("AI")])
+      theme("AI", related: [related("MCP", 4)]),
+      theme("MCP", related: [related("AI", 4)])
     ]
 
     assert [edge] = Graph.build(themes).edges
@@ -46,18 +50,43 @@ defmodule Tazuna.Themes.GraphTest do
     assert edge.from == "AI"
   end
 
-  test "丸の大きさは、つながりの数で決まる" do
-    # 記事の件数はこの収集が持っていない。持っている事実で大きさを決める
+  test "丸の大きさは、直近の件数で決まる" do
+    # 図で真っ先に読みたいのは「いま何が太いか」。件数の合計で決めると、
+    # 昔よく出てきた語がいつまでも大きいままになる
     themes = [
-      theme("AI", related: [related("MCP"), related("LLM")]),
-      theme("MCP"),
-      theme("LLM")
+      theme("AI", docs: 20, recent: 12),
+      theme("LLM", docs: 40, recent: 4),
+      theme("MCP", docs: 30, recent: 0)
     ]
 
     nodes = Map.new(Graph.build(themes).nodes, &{&1.name, &1})
 
-    assert nodes["AI"].degree == 2
+    assert nodes["AI"].r > nodes["LLM"].r
+    assert nodes["LLM"].r > nodes["MCP"].r
+  end
+
+  test "静かになった語も、小さく描いて残す" do
+    # 消してしまうと「前は動いていた」が図から読めない
+    nodes =
+      Map.new(
+        Graph.build([theme("AI", recent: 9), theme("MCP", recent: 0)]).nodes,
+        &{&1.name, &1}
+      )
+
+    assert nodes["MCP"].r > 0
     assert nodes["AI"].r > nodes["MCP"].r
+  end
+
+  test "線の太さは、一緒に出てきた回数" do
+    themes = [
+      theme("AI", recent: 5, related: [related("LLM", 12), related("MCP", 1)]),
+      theme("LLM", recent: 4),
+      theme("MCP", recent: 3)
+    ]
+
+    edges = Map.new(Graph.build(themes).edges, &{&1.to, &1})
+
+    assert edges["LLM"].width > edges["MCP"].width
   end
 
   test "同じ材料なら、同じ図になる" do
@@ -75,15 +104,15 @@ defmodule Tazuna.Themes.GraphTest do
     assert Enum.map(first.nodes, & &1.x) == Enum.map(again.nodes, & &1.x)
   end
 
-  test "多すぎるときは、つながりの多いものから出す" do
+  test "多すぎるときは、いま動いているものから出す" do
     themes =
-      [theme("真ん中", related: Enum.map(1..5, &related("端#{&1}")))] ++
-        Enum.map(1..5, &theme("端#{&1}"))
+      [theme("いま太い", recent: 30)] ++
+        Enum.map(1..5, &theme("端#{&1}", recent: 6 - &1))
 
     map = Graph.build(themes, limit: 3)
 
     assert length(map.nodes) == 3
-    assert "真ん中" in Enum.map(map.nodes, & &1.name)
+    assert "いま太い" in Enum.map(map.nodes, & &1.name)
     assert map.hidden == 3
   end
 

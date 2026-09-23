@@ -39,11 +39,9 @@ defmodule TazunaWeb.TopicMap do
               y1={edge.y1}
               x2={edge.x2}
               y2={edge.y2}
+              style={"stroke-width: #{edge.width}"}
               class={if edge.kind == :parent, do: "is-parent"}
             />
-            <text :if={edge.note != ""} x={edge.label_x} y={edge.label_y} text-anchor="middle">
-              {edge.note}
-            </text>
           </g>
         </g>
         <g class="topic-nodes">
@@ -71,13 +69,18 @@ defmodule TazunaWeb.TopicMap do
             <h3>
               {theme.name}
               <span :if={theme.field} class="theme-count">{theme.field}</span>
+              <%!-- 丸の大きさの根拠。図では大きさでしか出ないので、一覧では数で出す --%>
+              <span class="theme-count">直近 {theme.recent} 件 / 計 {theme.docs} 件</span>
             </h3>
             <p :if={theme.note != ""} class="news-summary">{theme.note}</p>
             <p :if={theme.parent} class="muted-note">上位: {theme.parent}</p>
+            <p :if={theme.recent == 0 and theme.last_seen != ""} class="muted-note">
+              最後に出たのは {theme.last_seen}
+            </p>
             <ul :if={theme.related != []} class="theme-children">
               <li :for={related <- theme.related}>
                 <strong>{related.to}</strong>
-                <span :if={related.note != ""} class="muted-note">{related.note}</span>
+                <span class="muted-note">一緒に {related.n} 件</span>
               </li>
             </ul>
           </article>
@@ -87,17 +90,7 @@ defmodule TazunaWeb.TopicMap do
     """
   end
 
-  # 並びは、つながりの多い順。**同じ数なら名前の順**（開くたびに並びが変わらないように）
-  defp sorted(themes) do
-    linked =
-      Enum.reduce(themes, %{}, fn theme, counted ->
-        Enum.reduce(theme.related, counted, fn related, inner ->
-          inner
-          |> Map.update(theme.name, 1, &(&1 + 1))
-          |> Map.update(related.to, 1, &(&1 + 1))
-        end)
-      end)
-
-    Enum.sort_by(themes, &{-Map.get(linked, &1.name, 0), &1.name})
-  end
+  # 並びは、いま動いている順。**図と同じ並べ方**にします —— 図とは別の順で並べると、
+  # 「図で大きいもの」を一覧から探すことになります
+  defp sorted(themes), do: Enum.sort_by(themes, &{-&1.recent, -&1.docs, &1.name})
 end

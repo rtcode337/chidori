@@ -210,13 +210,13 @@ defmodule TazunaWeb.NewsLive do
     end
   end
 
-  # **予定を待たずに 1 回育てさせる。** 育てるのは Chiezo で、tazuna は起こすだけ
-  def handle_event("grow_themes", _params, socket) do
+  # **予定を待たずに 1 回、語を拾い直させる。** 拾うのは機械なので AI の枠を使わない
+  def handle_event("pick_themes", _params, socket) do
     topic = socket.assigns.topic
 
-    case with_base(&Themes.grow_now(&1, topic)) do
+    case with_base(&Themes.pick_now(&1, topic)) do
       :ok ->
-        {:noreply, put_flash(socket, :info, "育てるよう頼みました。終わったら読み直してください。")}
+        {:noreply, put_flash(socket, :info, "語を拾うよう頼みました。終わったら読み直してください。")}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, ask_error(reason))}

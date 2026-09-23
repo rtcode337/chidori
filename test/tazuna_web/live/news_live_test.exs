@@ -443,8 +443,14 @@ defmodule TazunaWeb.NewsLiveTest do
       end)
     end
 
-    defp theme(title, tags, note \\ "説明。") do
-      %{"title" => title, "tags" => ["トピック" | tags], "opening" => note}
+    defp theme(title, tags, extra \\ %{}) do
+      %{
+        "title" => title,
+        "tags" => ["トピック" | tags],
+        "opening" => "説明。",
+        # 数も一緒に出てくる語も機械が入れる（AI は書かない）
+        "extra" => Map.merge(%{"docs" => 3, "docs_recent" => 2}, extra)
+      }
     end
 
     defp opened(conn) do
@@ -458,8 +464,8 @@ defmodule TazunaWeb.NewsLiveTest do
       stub_themes(
         [@news_collection, @topic_collection],
         [
-          theme("AI", ["分野:AI"], "機械学習ぜんたい。"),
-          theme("AIエージェント", ["分野:AI", "親:AI", "関連:MCP:道具の口を決める規格"]),
+          theme("AI", ["分野:AI"], %{"docs_recent" => 9}),
+          theme("AIエージェント", ["分野:AI", "親:AI"], %{"links" => ["MCP:4"]}),
           theme("MCP", ["分野:AI"])
         ]
       )
@@ -468,27 +474,30 @@ defmodule TazunaWeb.NewsLiveTest do
 
       assert html =~ "topic-map"
       assert html =~ "topic-nodes"
-      # つながりの説明は線の上に出る
-      assert html =~ "道具の口を決める規格"
       # 上下のつながりは、横のつながりと見え方を分ける
       assert html =~ "is-parent"
 
       # 図に出ないものも読める（記事より前に居座らないよう畳んである）
       assert html =~ "トピックの一覧"
-      assert html =~ "機械学習ぜんたい。"
+      # 丸の大きさの根拠は、一覧では数で読める
+      assert html =~ "直近 9 件"
       # 図は一覧より前（まとめの直後）
       assert :binary.match(html, "topic-map") < :binary.match(html, "news-list")
     end
 
     test "先の無いつながりは、線にしない", %{conn: conn} do
-      stub_themes([@news_collection, @topic_collection], [theme("AI", ["関連:まだ無い語:説明"])])
+      # 一緒に出てきた相手が、外された語や図の外のこともある
+      stub_themes(
+        [@news_collection, @topic_collection],
+        [theme("AI", ["分野:AI"], %{"links" => ["まだ無い語:3"]})]
+      )
 
       html = opened(conn)
 
       assert html =~ "topic-map"
       # 図には線を引かない（整える回が直すまで、図は黙って耐える）
       refute html =~ "<line"
-      # 一覧には AI が書いたまま出す（黙って消さない）
+      # 一覧には数えたまま出す（黙って消さない）
       assert html =~ "まだ無い語"
     end
 

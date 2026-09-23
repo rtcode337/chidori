@@ -218,10 +218,10 @@
         <form id="theme-collect-form" phx-submit="collect_themes" phx-change="pick_theme_sweep">
           <.sweep_table state={@themes} picks={@theme_picks} backends={@backends} />
           <p class="muted-note">
-            <strong>育てる回は記事を読み、整える回は手元にあるものだけを読みます。</strong>
-            1 本にまとめると、足すたびに全部を読み直すか、畳むために毎回記事を読むかに
-            なります。材料は<strong>この話題に溜まった記事</strong>です（配信元から引き直しません
-            —— 整理が落とした宣伝や重複、付け直した重要度が効かないまま材料になります）。
+            <strong>語を拾うのは機械、精査するのが AI です。</strong>
+            記事に付いたタグがそのままトピックになり、件数と一緒に出てくる語も Chiezo が
+            数えます（拾う回は AI を呼びません）。AI の回は、言い換えを畳む・親子を決める・
+            話題でない語を外す・説明を書く、の 4 つだけです。
           </p>
           <button type="submit" phx-disable-with="送っています…">{theme_collect_label(@themes)}</button>
         </form>
@@ -232,10 +232,10 @@
           <button
             :if={@themes.collection}
             type="button"
-            phx-click="grow_themes"
+            phx-click="pick_themes"
             phx-disable-with="頼んでいます…"
           >
-            いま育てる
+            いま拾う
           </button>
         </p>
 

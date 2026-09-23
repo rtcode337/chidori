@@ -2,49 +2,68 @@ defmodule Tazuna.Themes do
   @moduledoc """
   トピック（話題の語と、そのつながり）を溜めるところ。
 
-  **育てるのは Chiezo です。** 材料は**Chiezo に溜まった記事そのもの**で、AI は
-  前回から入った記事（`{material}`）といま持っているトピック（`{current}`）を読んで、
-  網を少しずつ育てます —— tazuna は**指示文を渡して、できたものを読む**だけです。
-  数えたり、材料を作って渡したりはしません。
+  **語は機械が拾います。** 記事に付いたタグがそのままトピックになり（Chiezo の
+  `extract` の `of: "tags"`）、件数・直近の件数・一緒に出てくる語も機械が数えます ——
+  AI に語を思いつかせていた頃は、記事に出てこない語が混ざり、同じ話題が回ごとに
+  違う表記で増えました。
 
-  **材料は配信元（RSS）ではなく、溜まった収集のほうです。** 配信元から引くと、
-  整理の回が落とした宣伝や重複、付け直した重要度が効かないまま材料になります ——
-  トピックは「読むに値すると判じたもの」から育てたい。
+  **AI がやるのは精査だけです。** 言い換えを 1 つに畳む、親子を決める、技術の話で
+  ない語（媒体名・一般語）を外す、一言で説明する —— どれも数では決まらないことです。
+  tazuna は**指示文を渡して、できたものを読む**だけで、数えも材料作りもしません。
 
   **画面のタブ（話題）とは別のものです。** `Tazuna.Topics` は「技術ニュース」
-  「ニュース」のような画面のタブで、こちらは記事から育つ語（AIエージェント、
+  「ニュース」のような画面のタブで、こちらは記事から拾う語（AIエージェント、
   セキュリティ…）です。名前が紛らわしいので、コードの側では分けてあります。
 
   **溜め先は記事とは別の収集（網羅）にします。** 記事と同じ収集に置くと、流れの
-  期限（30 日）でトピックまで消えます —— トピックは、増減はしても古いものが
-  要らなくなるものではありません。
+  期限（30 日）でトピックまで消えます —— 記事が落ちてもトピックは残り、
+  **「最後に見たのはいつか」が読める**のはそのためです。
 
   **図の語彙はここが持ちます**（関連図の画家と同じ形）。図を読むのは tazuna なので、
   読む側と書かせる側が離れると静かにズレます。
 
-  - `#{"トピック"}` —— 図に出す目印
-  - `#{"親:"}<名前>` —— 上位のトピック（1 つ）
-  - `#{"関連:"}<名前>:<一言>` —— つながり。線と、線の上の説明になる
-  - `#{"分野:"}<名前>` —— 色分け
+  - `#{"トピック"}` —— 図に出す目印（機械が付ける）
+  - `#{"親:"}<名前>` —— 上位のトピック（1 つ。AI が決める）
+  - `#{"分野:"}<名前>` —— 色分け（AI が決める）
+  - `#{"同義:"}<語>` —— 畳んだ言い換え（AI が書く）
+
+  数のほうは脇書きに入ります（機械が毎回入れ替えます）。
+
+  - `docs` / `docs_recent` —— その語が付いた記事の件数と、直近の窓のぶん。
+    **丸の大きさは直近のほう** —— 件数だけだと、昔よく出てきた語がいつまでも大きい
+  - `last_seen` —— 最後にその語が付いた日。静かになった話題が読めます
+  - `links` —— 一緒に出てくる語（`語:回数`）。**そのまま線になります**
   """
 
   alias Tazuna.Chiezo
 
   @theme_tag "トピック"
   @parent_prefix "親:"
-  @related_prefix "関連:"
   @field_prefix "分野:"
+  @synonym_prefix "同義:"
 
   # 読み込む上限。図に出せる数はもっと少ないが、一覧と数えるぶんは全部読む
   @limit 200
 
-  # 育てる回と、整える回。**分けるのは仕事が違うから** —— 足すのは流れてきた記事を
-  # 読む回、畳むのは手元にあるものを読む回で、1 つの間隔では表せない
-  @grow_minutes 360
-  @tidy_minutes 1440
+  # 拾う回と、整える回。**分けるのは仕事が違うから** —— 拾うのは機械が数える回で、
+  # AI を呼ばないぶん短い間隔で回せる。整えるのは読んで判断する回
+  @pick_minutes 60
+  @tidy_minutes 360
 
-  # 1 回に読ませる記事の数。**多すぎると読み切れない**（そのぶん枠も食う）
-  @material_limit 60
+  # 語として拾う下限。**1 件しか付いていない語は、まだ話題かどうかも分からない**
+  # （次の回に増えていれば入る）
+  @min_docs 2
+
+  # 「いま動いているか」を見る窓（日）。**時間軸はここに入る** —— 件数だけだと、
+  # 昔よく出てきた語がいつまでも大きいままになる
+  @recent_days 7
+
+  # 1 語につき運ぶ「一緒に出てくる語」の数。多いと図が毛玉になる
+  @link_count 6
+
+  # 拾う語の上限。図に出せるのはこのうちの上位だけだが、一覧と親子の突き合わせには
+  # それより多く要る
+  @tag_limit 200
 
   @doc "その話題のトピックを溜める収集の名前。**話題ごとに分けます**。"
   def collection_name(%{collection: collection}), do: collection <> "_topics"
@@ -56,51 +75,69 @@ defmodule Tazuna.Themes do
   @doc "上位のトピックを載せるタグの頭。"
   def parent_tag, do: @parent_prefix
 
-  @doc "つながりを載せるタグの頭。線と、線の上の説明になります。"
-  def related_tag, do: @related_prefix
-
   @doc "分野を載せるタグの頭。色はこれで決まります。"
   def field_tag, do: @field_prefix
+
+  @doc "畳んだ言い換えを載せるタグの頭。**図には出しません**（探すときに効きます）。"
+  def synonym_tag, do: @synonym_prefix
 
   @doc """
   収集の依頼の中身。**網羅**で、期限では落としません。
 
-  材料は話題の収集（記事のほう）です —— **AI が自分で読んで育てる**ので、
-  tazuna が材料を作って渡す必要はありません。
+  **語を拾うのは機械です**（`extract` の `of: "tags"`）。記事に付いたタグが
+  そのままトピックになり、件数も一緒に出てくる語も Chiezo が数えます。
   """
   def attrs(topic, choices \\ %{}) do
     %{
       name: collection_name(topic),
-      description: "tazuna の「#{topic.name}」のトピック（記事から育つ話題の網）",
-      prompt: grow_prompt(topic),
-      interval_minutes: @grow_minutes,
+      description: "tazuna の「#{topic.name}」のトピック（記事のタグから作る話題の網）",
+      prompt: tidy_prompt(topic),
+      interval_minutes: @tidy_minutes,
       kind: "stock",
-      material: material_spec(topic),
+      extract: extract_spec(topic),
       sweeps: with_choices(sweeps(topic), choices),
       requested_by: "tazuna"
     }
   end
 
   @doc """
-  材料に読むソース。**記事とまとめが混ざるので、種別のタグで絞ります**
-  （まとめを材料にすると、AI がまとめの言い回しからトピックを作ります）。
+  語を拾ってくる指定。**記事の収集のタグを、そのまま名簿にします**。
+
+  **外す語はここで書きます** —— 機械が読む印（`_chiezo_…`）と、tazuna が決めている
+  語（種別・重要度・話題度）は話題ではありません。**配信元の名前は書けません**
+  （配信元が名乗るタイトルなので、tazuna は知りません）—— あれは整える回が
+  「技術の話ではない」として外します。
   """
-  def material_spec(topic) do
-    %{source: topic.collection, tag: "ニュース,記事", limit: @material_limit}
+  def extract_spec(topic) do
+    %{
+      source: topic.collection,
+      of: "tags",
+      skip: [
+        "^_chiezo_",
+        "^#{Tazuna.News.importance_tag()}:",
+        "^#{Tazuna.News.buzz_tag()}:",
+        "^(#{Enum.join(Tazuna.News.kind_tags(), "|")})$"
+      ],
+      min_docs: @min_docs,
+      recent_days: @recent_days,
+      links: @link_count,
+      limit: @tag_limit,
+      tags: [%{const: @theme_tag}]
+    }
   end
 
   @doc """
-  巡回。**育てる回と整える回に分けます**。
+  巡回。**拾う回と整える回に分けます**。
 
-  - 育てる —— 流れてきた記事を読んで、トピックを足す・いま何が動いているかを書き直す
-  - 整える —— 手元にあるものだけを読んで、重なりを畳み、親子と分野を揃える
+  - 拾う —— 記事のタグを名簿にし、件数と一緒に出てくる語を数え直す（**AI を呼びません**）
+  - 整える —— 手元にある語を読んで、言い換えを畳み、親子と分野を決め、話題でない語を外す
 
-  1 本にまとめると、どちらも薄い仕事になります（足すたびに全部を読み直すか、
-  畳むために毎回記事を読むかのどちらかになる）。
+  **拾う回は足すだけ**にします。組にしないと、AI が書いた説明を機械の 1 行で
+  上書きします（数のほうは足すだけの回でも入れ替わります）。
   """
   def sweeps(topic) do
     [
-      %{name: "育てる", interval_minutes: @grow_minutes, prompt: grow_prompt(topic)},
+      %{name: "拾う", interval_minutes: @pick_minutes, use_extract: true, only_new: true},
       %{name: "整える", interval_minutes: @tidy_minutes, prompt: tidy_prompt(topic)}
     ]
   end
@@ -115,95 +152,59 @@ defmodule Tazuna.Themes do
   end
 
   @doc """
-  育てる回の依頼文。**素材は Chiezo が差し込みます**（`{material}` と `{current}`）。
-  """
-  def grow_prompt(topic) do
-    """
-    {material}
+  整える回の依頼文。**語はもう拾ってあります**（機械が）。この回は**精査だけ**です。
 
-    上は、#{topic.name}の収集に前回から入った記事です。
-
-    {current}
-
-    上は、いま持っているトピックです。
-
-    素材を読んで、**#{topic.name}のトピックの網を育ててください**。トピックとは、
-    記事をまたいで何度も出てくる話題の語です（「AIエージェント」「耐量子暗号」
-    「観測可能性」のような、**読む人が追いかける単位**）。
-
-    この回ですることは 2 つです。
-
-    - **動き始めた話題を足す**（1 回に 5 件まで）
-    - **既にあるトピックを書き直す**（1 回に 10 件まで）。いま何が動いているかを
-      新しくし、つながりを足す
-
-    **触らないものは返さないでください。** 返さなかったものはそのまま残ります。
-
-    1 件ごとに次の形で返してください。
-
-    - title: トピックの名前。**短い語**にしてください（固有名詞はそのまま。
-      文や説明にしないでください —— これが図の丸に乗る文字です）
-    - body: 2〜4 文。**何を指す語か**と、**いま何が動いているか**、
-      **なぜ押さえるべきか**（読む人の判断がどう変わるか）
-    - url: いちばん代表的な記事（無ければ空）
-    - tags:
-      - "#{@theme_tag}" を**必ず** 1 つ
-      - "#{@field_prefix}<分野>" を 1 つ（例: #{@field_prefix}AI、#{@field_prefix}セキュリティ、
-        #{@field_prefix}インフラ。**分野は増やしすぎないでください** —— 色が分かれすぎると図が読めません）
-      - "#{@parent_prefix}<上位のトピック名>" を 1 つまで（**より広い語があるときだけ**）
-      - "#{@related_prefix}<相手のトピック名>:<つながりを一言で>" を 1〜4 個。
-        **相手は上に並んでいるか、この回で足すトピックの名前**にしてください ——
-        無い名前を指すと、図では線の先が空になります
-      - 言い換えがあれば "#{"同義:"}<語>"（図には出しませんが、同じ話題が
-        2 つの名前で増えるのを防ぎます）
-
-    **素材に出てこない話題を足さないでください。** 思いついた語を並べると、
-    記事に出てこないトピックが図に増えます。
-
-    **一般語を足さないでください**（「開発」「技術」「ニュース」のような、
-    何にでも当てはまる語）。配信元の名前もトピックではありません。
-
-    **道具が使えるなら、自分で引いて確かめて構いません**（Chiezo の search / doc /
-    filter / query。**読むだけで、書き込みはできません**）。使いどころは
-    「この語がこれまでどう出てきたか」「同じ話題が別の名前で入っていないか」の確認です
-    —— **材料に出てこない話題を足すためではありません**。
-
-    **つながりは数えられます。** `query` に SQL を渡すと、同じ記事に一緒に付いたタグを
-    数えられます（`doc_tags` を自分自身と結ぶ）—— 一緒に出ている回数が多い組は、
-    たいてい実際に関係のある話題です。思いつきで線を引くより、こちらを当たってください。
-    """
-  end
-
-  @doc """
-  整える回の依頼文。**手元にあるものだけを読みます**（記事は読みません）。
+  分類の 4 択にしてあるのは、**間違い方に差がある**からです —— 言い換えでないものを
+  畳むと片方が消え、外した語は二度と戻ってきません。迷ったものは触らせずに
+  次の回へ送ります。
   """
   def tidy_prompt(topic) do
     """
     {current}
 
     上は、いま持っている#{topic.name}のトピックです。**この回は記事を読みません** ——
-    手元にあるものを整えるだけの回です。
+    語はもう機械が拾ってあります（記事に付いたタグがそのまま 1 件になっています）。
+    本文の数もタグの「#{@theme_tag}」も機械が入れたもので、**あなたの仕事は精査**です。
 
-    次のものを直してください。
+    1 件ずつ、次のどれかにしてください。
 
-    - **同じ話題が 2 つの名前で入っているもの**は 1 つに畳んでください。残すほうの
-      title に "#{"同義:"}<消すほうの名前>" を足し、消すほうは tags に
-      "#{Chiezo.tombstone_tag()}" だけを入れて返してください（墓標。以後どの画面にも出ません）。
-      **body に、なぜ畳むのかを 1 行で書いてください**
-    - **つながりの先が無いもの**（"#{@related_prefix}" が、存在しないトピックを指している）は、
-      正しい名前に直すか、そのタグを外してください —— 図では線の先が空になります
-    - **上位と下位が入れ替わっているもの**（広い語に "#{@parent_prefix}狭い語" が付いている）を直す
-    - **説明が古くなったもの**を書き直す（いま何が動いているか）
-    - **一般語や配信元の名前**が混ざっていたら、墓標にしてください
+    **1. 言い換えを畳む。** 既にある別のトピックと**同じものを指す語**（表記違い・
+    略称・和英）は、1 つに畳んでください。残すほうに "#{@synonym_prefix}<畳んだ語>" を足し、
+    消すほうは tags に "#{Chiezo.tombstone_tag()}" だけを入れて返します（墓標。以後
+    どの画面にも出ません）。**body に、どちらへ畳んだのかを 1 行で書いてください**。
+    **粒度が違うだけの語は畳まないでください** —— それは次の親子です。
+
+    **2. 親子を決める。** より広い語が手元にあるなら "#{@parent_prefix}<広いほうの名前>" を
+    1 つだけ付けてください（例: 「AIエージェント」の親は「AI」）。**上に並んでいる
+    名前だけ**を指してください —— 無い名前を指すと、図では線の先が空になります。
+
+    **3. 話題でない語を外す。** 媒体や配信元の名前、種別、読む人の行動、
+    何にでも当てはまる一般語（「技術」「開発」「ニュース」など）は、tags に
+    "#{Chiezo.tombstone_tag()}" だけを入れて返してください。**外した語は二度と入りません**
+    （同じ語が記事に付いても、もう拾われません）。
+
+    **4. 迷ったら触らない。** 知らない語・新しすぎて判断できない語は**返さないで
+    ください**。次の回にもう一度見られます —— **間違って外すより、1 回見送るほうが
+    ずっと安いです**。
+
+    残すものには、次を書いてください。
+
+    - body: **2〜4 文**。**何を指す語か**と、**なぜ押さえるべきか**（読む人の判断が
+      どう変わるか）。機械が入れた「この語が付いているのは N 件」の 1 行は、
+      説明に書き換えてください（数は脇書きに残るので、本文で繰り返す必要はありません）
+    - tags:
+      - "#{@theme_tag}" は**そのまま残してください**（図に出す目印です）
+      - "#{@field_prefix}<分野>" を 1 つ（例: #{@field_prefix}AI、#{@field_prefix}セキュリティ、
+        #{@field_prefix}インフラ。**分野は増やしすぎないでください** —— 色が分かれすぎると
+        図が読めません）
+      - 親と言い換えは上のとおり
 
     **触らないものは返さないでください。** 返さなかったものはそのまま残ります。
-    **新しい話題をここで足さないでください**（足すのは記事を読む回の仕事です）。
+    **新しい語をここで足さないでください** —— 語を拾うのは機械の回の仕事です。
 
-    タグの書き方は育てる回と同じです（"#{@theme_tag}" / "#{@field_prefix}…" /
-    "#{@parent_prefix}…" / "#{@related_prefix}…:…"）。
-
-    **道具が使えるなら、引いて確かめて構いません**（Chiezo の search / doc / filter。
-    **読むだけ**）。畳むかどうかの判断は、その語が実際にどう使われているかで決まります。
+    **道具が使えるなら、引いて確かめて構いません**（Chiezo の search / doc / filter /
+    query。**読むだけ**）。畳むかどうかも外すかどうかも、その語が記事の中で実際に
+    どう使われているかで決まります。
     """
   end
 
@@ -216,7 +217,8 @@ defmodule Tazuna.Themes do
     query =
       URI.encode_query(%{
         "tag" => @theme_tag,
-        "fields" => "title,tags,opening",
+        # **脇書きまで取る** —— 件数も一緒に出てくる語もここに入っている
+        "fields" => "title,tags,opening,extra",
         "limit" => @limit
       })
 
@@ -245,27 +247,52 @@ defmodule Tazuna.Themes do
   @doc false
   def to_theme(%{"title" => title} = result) do
     tags = for tag <- result["tags"] || [], is_binary(tag), do: tag
+    extra = if is_map(result["extra"]), do: result["extra"], else: %{}
 
     %{
       name: title,
       note: result["opening"] || "",
       parent: first_after(tags, @parent_prefix),
       field: first_after(tags, @field_prefix),
-      related: related_of(tags),
+      # 数はすべて機械のもの（AI は書きません）
+      docs: counted(extra["docs"]),
+      recent: counted(extra["docs_recent"]),
+      last_seen: to_string(extra["last_seen"] || ""),
+      related: related_of(extra["links"]),
       tags: tags
     }
   end
 
-  # 「関連:<相手>:<一言>」。**一言は線の上に出す**ので、無くても線は引く
-  defp related_of(tags) do
-    for tag <- tags, String.starts_with?(tag, @related_prefix) do
-      case tag |> String.trim_leading(@related_prefix) |> String.split(":", parts: 2) do
-        [to, note] -> %{to: String.trim(to), note: String.trim(note)}
-        [to] -> %{to: String.trim(to), note: ""}
-      end
+  # 一緒に出てくる語（`語:回数`）。**語そのものに `:` が入りうる**ので、
+  # 右端で割ります（「CodeZine:新着一覧」のような配信元の名前がそれです）
+  defp related_of(links) when is_list(links) do
+    for link <- links, is_binary(link), reduce: [] do
+      acc ->
+        case String.split(link, ":") do
+          [_one] ->
+            acc
+
+          parts ->
+            {name, [count]} = Enum.split(parts, length(parts) - 1)
+            name = name |> Enum.join(":") |> String.trim()
+            if name == "", do: acc, else: acc ++ [%{to: name, n: counted(count)}]
+        end
     end
-    |> Enum.reject(&(&1.to == ""))
   end
+
+  defp related_of(_links), do: []
+
+  # 機械が入れた数。**読めなければ 0**（無い間は「静か」と同じ扱いでよい）
+  defp counted(value) when is_integer(value), do: value
+
+  defp counted(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {number, _rest} -> number
+      :error -> 0
+    end
+  end
+
+  defp counted(_value), do: 0
 
   @doc """
   画面が見るもの。**収集の状態とトピックを 1 回で揃えます**。
@@ -302,10 +329,12 @@ defmodule Tazuna.Themes do
   end
 
   @doc """
-  予定を待たずに 1 回育てさせます。**止まっている収集は Chiezo が断ります**。
+  予定を待たずに 1 回、語を拾い直させます。**AI は呼びません**（機械が数えるだけ）。
+
+  **止まっている収集は Chiezo が断ります。**
   """
-  def grow_now(base, topic) do
-    Chiezo.run(base, collection_name(topic), sweep: "育てる")
+  def pick_now(base, topic) do
+    Chiezo.run(base, collection_name(topic), sweep: "拾う")
   end
 
   defp first_after(tags, prefix) do
