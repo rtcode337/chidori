@@ -261,13 +261,13 @@ defmodule TazunaWeb.DatasetsLive do
   """
   def push_note(%{collection: nil}),
     do:
-      "押すと、この内容で Chiezo に収集を作ります。**作られるのは止まった状態**なので、" <>
+      "押すと、この内容で Chiezo に収集を作ります。作られるのは止まった状態なので、" <>
         "押しただけで AI が動くことはありません。"
 
   def push_note(_state),
     do:
       "押すと、tazuna が持っている抽出の指定・依頼文・区画の割り方・巡回を Chiezo へ" <>
-        "送り直します（**走らせはしません**。Chiezo の画面で手で直したものは上書きされます）。"
+        "送り直します（走らせはしません。Chiezo の画面で手で直したものは上書きされます）。"
 
   @doc "割り込みの届き具合。**断られたことも出します**。"
   def ask_message(:ok), do: "Chiezo に頼みました。定時の巡回とは別に 1 回だけ走ります。"

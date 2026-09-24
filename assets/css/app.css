@@ -65,13 +65,28 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relations-page header nav a.active { color: #4f46b9; }
 /* 図を主役にする。見出しに 4.5rem 取っていた頃は、図が画面の下半分にしか
    出ていなかった（読みに来る人が見たいのは図のほう） */
-.relations-intro { padding: 1.75rem 0 1rem; }
+.relations-intro { padding: 1.25rem 0 1rem; }
 .relations-intro > p:first-child { color: #6254d6; font-size: .75rem; font-weight: 800; letter-spacing: .1em; }
 .relations-intro h1 { margin-bottom: .5rem; font-size: clamp(1.5rem, 3vw, 2.1rem); }
 .relations-intro > p:last-child { max-width: 42rem; color: #52607a; font-size: .9rem; line-height: 1.7; }
-.relation-tabs { display: flex; gap: .6rem; margin-bottom: .75rem; }
-.relation-tabs a { border-radius: 99px; padding: .65rem 1rem; color: #52607a; font-size: .9rem; font-weight: 800; text-decoration: none; }
-.relation-tabs a.selected { background: #28235e; color: white; box-shadow: 0 6px 18px rgba(40, 35, 94, .22); }
+/* 図の種類のタブ。**選んでいるタブが下の面とつながって見える**形にする
+   （下線の上に乗せ、選んだものだけ枠と地の色を持たせる）。丸い押しボタンの
+   並びだと、「切り替える口」ではなく「何かを実行する口」に見える */
+.relation-tabs { display: flex; gap: .25rem; margin-top: 1.5rem; border-bottom: 1px solid #d9dcea; }
+.relation-tabs a { margin-bottom: -1px; padding: .6rem 1.1rem; border: 1px solid transparent; border-bottom: 0; border-radius: .7rem .7rem 0 0; color: #616a82; font-size: .9rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.relation-tabs a:hover { background: #eceef8; color: #28235e; }
+.relation-tabs a.selected { border-color: #d9dcea; background: #f6f7fb; color: #28235e; box-shadow: inset 0 3px 0 #6254d6; }
+/* 設定欄の開閉。**押せる見出し**として見せる */
+/* 設定欄の見出し。**見出しそのものが開閉の口**なので、見た目は見出しのまま、
+   押せることだけ分かるようにする（設定欄のボタンの塗りより強く当てる） */
+.settings-panel .settings-heading { margin: 0; }
+.settings-panel .settings-heading button { display: flex; align-items: center; gap: .45rem; width: 100%; padding: .2rem 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.settings-panel .settings-heading button:hover { color: #554bc0; }
+.settings-caret { display: inline-block; width: 1em; color: #6254d6; font-size: .85em; }
+#chiezo-settings { margin-top: .6rem; }
+/* 図の出どころの一文。下の状態の表と詰まらないよう少し空ける */
+.settings-panel .origin-note { margin-bottom: .8rem; }
+.partition-actions { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
 .relation-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; }
 /* Chiezo の状態・巡回の設定・押すボタンを 1 つの枠に。**離れていると、何がどこへ
    効くのか読めない**（状態を見て、直して、押す、が 1 か所で終わる） */

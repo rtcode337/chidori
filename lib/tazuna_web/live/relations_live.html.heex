@@ -15,6 +15,25 @@
       </nav>
     </header>
 
+    <%!-- **図の種類はタブで、見出しの上に置く。** 見出しと説明は選んだ図のものなので、
+         切り替える口がその下にあると、どこまでが切り替わるのかが読めない --%>
+    <nav class="relation-tabs" aria-label="関連図の種類">
+      <.link
+        patch={~p"/relations?view=painters"}
+        class={if @view == "painters", do: "selected"}
+        aria-current={if @view == "painters", do: "page"}
+      >
+        画家の影響と時代
+      </.link>
+      <.link
+        patch={~p"/relations?view=people"}
+        class={if @view == "people", do: "selected"}
+        aria-current={if @view == "people", do: "page"}
+      >
+        人物のつながり
+      </.link>
+    </nav>
+
     <section class="relations-intro">
       <p>{@relation.eyebrow}</p>
       <h1>{@relation.title}</h1>
@@ -30,15 +49,6 @@
         </button>
       </p>
     </section>
-
-    <nav class="relation-tabs" aria-label="関連図の種類">
-      <.link patch={~p"/relations?view=painters"} class={if @view == "painters", do: "selected"}>
-        画家の影響と時代
-      </.link>
-      <.link patch={~p"/relations?view=people"} class={if @view == "people", do: "selected"}>
-        人物のつながり
-      </.link>
-    </nav>
 
     <%!-- 図は地図と同じ操作にする（押し広げ・引きずり）。**全画面はブラウザの
          Fullscreen API に任せる** —— 自前で画面を覆うと、ブラウザの UI が残るぶん
@@ -410,142 +420,141 @@
          読めない --%>
     <%!-- 設定はページの名前を冠した 1 つの枠にまとめる（他の画面と同じ形）--%>
     <section class="settings-panel" aria-label={"#{@relation.title}の設定"}>
-      <h2>{@relation.title}の設定</h2>
-      <h3>Chiezo の収集</h3>
-      <p aria-live="polite">{step_text(@relation) || status_message(@relation)}</p>
-      <p :if={step_note(@relation)} class="muted-note">{step_note(@relation)}</p>
-      <p :if={busy_note(@relation)} class="muted-note">{busy_note(@relation)}</p>
-
-      <dl :if={collection_facts(@relation) != []} class="collect-facts">
-        <div :for={{label, value} <- collection_facts(@relation)}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
-        </div>
-      </dl>
-
-      <%!-- **選んだところはサーバーが覚える**（`phx-change`）。覚えないと、図や状態が
-           届いた拍子にフォームが描き直され、選んだ相手が元の値に戻る ——
-           選んだつもりで押すと、いま入っている値がそのまま送り返される --%>
-      <form id="collect-form" phx-submit="collect" phx-change="pick_sweep">
-        <%!-- 巡回ごとに 1 行。**相手も進み具合も巡回ごとに違う**ので、収集に 1 つだけ
-             出すと、そこに出る値はどちらか片方のものにしかならない --%>
-        <.sweep_table state={@relation} picks={@picks} backends={@backends} />
-
-        <p class="muted-note">{source_note(@view)}</p>
+      <%!-- **見出しそのものを開閉の口にする。** 設定は見たいときだけ見るもので、
+           開いたときに Chiezo から読む（図を開くたびに巡回・区画・依頼文まで
+           運んでいた頃は、見もしない設定のために待たされた）。
+           <details> にしないのは、開いたことをサーバーが知る必要があるため
+           （開閉はサーバーが持ち、描き直しで勝手に閉じないようにする） --%>
+      <h2 class="settings-heading">
         <button
-          type="submit"
-          phx-disable-with="送っています…"
-          disabled={collecting?(@relation)}
+          type="button"
+          id="settings-toggle"
+          phx-click="toggle_settings"
+          aria-expanded={to_string(@settings_open)}
+          aria-controls="chiezo-settings"
         >
-          {collect_label(@relation)}
+          <span class="settings-caret" aria-hidden="true">{if @settings_open, do: "▾", else: "▸"}</span>
+          {@relation.title}の設定
         </button>
-      </form>
+      </h2>
 
-      <%!-- **区画の一覧。** どこがまだ見られていないかは、ここにしか無い ——
-           「ここを先に見てほしい」を頼む口でもある。400 区画あるので畳んで置く --%>
-      <%!-- **未レビューが残る区画。** 多い順に並べ、先にざっと見てもらう口を置く ——
-           ざっと見るの一周を待たずに、見たいところから目を通してもらえる --%>
-      <% pending = unreviewed_partitions(@relation) %>
-      <details :if={@view == "painters" and pending != []} class="partition-list">
-        <summary>未レビューが残る区画（{length(pending)}）— 多い順</summary>
-        <p class="muted-note">
-          <strong>押すと、その区画を「ざっと見る」の回で先に見てもらえます</strong>
-          （AI が目を通すと未レビューの印が外れ、空いている年代・地域・説明・影響元が埋まります）。
-          区画に印が付くので、ざっと見るの巡回が同じところをもう一度見ることはありません。
+      <div :if={@settings_open} id="chiezo-settings">
+        <p :if={origin_note(@view)} class="muted-note origin-note">{origin_note(@view)}</p>
+        <p :if={trouble_message(@relation)} class="warn-note" aria-live="polite">
+          {trouble_message(@relation)}
         </p>
-        <table class="partition-table">
-          <thead>
-            <tr>
-              <th>区画</th>
-              <th>未レビュー</th>
-              <th>人数</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={{key, count, size} <- Enum.take(pending, 60)}>
-              <td>{key}</td>
-              <td>{count}</td>
-              <td>{size}</td>
-              <td>
-                <% asked = partition_state(@relation, key) %>
-                <span :if={asked && asked.state == :sent} class="muted-note">頼みました</span>
-                <span :if={asked && asked.state == :failed} class="warn-note">
-                  {focus_error(asked)}
-                </span>
-                <form :if={!asked or asked.state == :failed} phx-submit="focus_partition">
-                  <input type="hidden" name="key" value={key} />
-                  <input type="hidden" name="sweep" value={Tazuna.Relations.rough_sweep()} />
-                  <button type="submit" phx-disable-with="頼んでいます…">先にざっと見る</button>
-                </form>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <p :if={length(pending) > 60} class="muted-note">
-          先頭の 60 区画だけ出しています（残り {length(pending) - 60} 区画）。
-        </p>
-      </details>
+        <p :if={step_note(@relation)} class="muted-note">{step_note(@relation)}</p>
+        <p :if={busy_note(@relation)} class="muted-note">{busy_note(@relation)}</p>
 
-      <% rows = partition_rows(@relation, "整理") %>
-      <details :if={rows != []} class="partition-list">
-        <summary>区画（{length(rows)}）— まだ見ていないものが先</summary>
-        <p class="muted-note">
-          区画は「地域 × 生年」で切ってあります。 <strong>押すと、その区画を先に調べてもらえます</strong>（印が付くので、
-          巡回が同じところをもう一度見ることはありません）。
-        </p>
-        <table class="partition-table">
-          <thead>
-            <tr>
-              <th>区画</th>
-              <th>人数</th>
-              <th>未レビュー</th>
-              <th>調査が見たのは</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={row <- Enum.take(rows, 60)}>
-              <td>{row.key}</td>
-              <td>{row.count}</td>
-              <td>{unreviewed_in(@relation, row.key)}</td>
-              <td>{row.seen || "まだ"}</td>
-              <td>
-                <form phx-submit="focus_partition">
-                  <input type="hidden" name="key" value={row.key} />
-                  <button type="submit" phx-disable-with="頼んでいます…">先に調べる</button>
-                </form>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <p :if={length(rows) > 60} class="muted-note">
-          先頭の 60 区画だけ出しています（残り {length(rows) - 60} 区画）。
-          並びは「調査がいちばん長く見ていない順」なので、上から順に回ってきます。
-        </p>
-      </details>
+        <%!-- **読み終えるまでは何も出さない。** 途中のものを出すと、読めた欄と
+             まだの欄が混ざり、空いている欄が「設定が無い」のか「まだ読んでいない」のか
+             見分けられない --%>
+        <%= cond do %>
+          <% match?({:error, _reason}, @settings) -> %>
+            <p class="warn-note">
+              Chiezo から設定を読めませんでした: {relation_reason(elem(@settings, 1))}
+            </p>
+          <% !settings_ready?(@settings) -> %>
+            <p class="muted-note" aria-live="polite">Chiezo から情報を取得しています…</p>
+          <% true -> %>
+            <% cfg = with_settings(@relation, @settings) %>
+            <dl :if={collection_facts(cfg) != []} class="collect-facts">
+              <div :for={{label, value} <- collection_facts(cfg)}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            </dl>
 
-      <%!-- **どちらも Chiezo が持っているもの**なので、1 つにまとめる。
-           機械で引いたものと AI が書いたものの線引きが、この図でいちばん大事なところ --%>
-      <details :if={@view == "painters"} class="news-prompt">
-        <summary>Chiezo への依頼文</summary>
-        <p class="news-prompt-note">{prompt_note(@relation)}</p>
+            <%!-- **選んだところはサーバーが覚える**（`phx-change`）。覚えないと、図や状態が
+                 届いた拍子にフォームが描き直され、選んだ相手が元の値に戻る ——
+                 選んだつもりで押すと、いま入っている値がそのまま送り返される --%>
+            <form id="collect-form" phx-submit="collect" phx-change="pick_sweep">
+              <%!-- 巡回ごとに 1 行。**相手も進み具合も巡回ごとに違う**ので、収集に 1 つだけ
+                   出すと、そこに出る値はどちらか片方のものにしかならない --%>
+              <.sweep_table state={cfg} picks={@picks} backends={@settings.backends} />
 
-        <h3>抽出の指定（Wikipedia から機械的に引く条件）</h3>
-        <p class="news-prompt-note">
-          名簿・年代・様式・地域・代表作・相互リンクは、この指定で日本語版 Wikipedia から
-          引いています。<strong>AI は関わりません</strong>（決まった結果が出ます）。
-        </p>
-        <pre :if={extract_text(@relation)}>{extract_text(@relation)}</pre>
-        <p :if={!extract_text(@relation)} class="muted-note">まだ指定が入っていません。</p>
+              <p class="muted-note">{source_note(@view)}</p>
+              <button
+                type="submit"
+                phx-disable-with="送っています…"
+                disabled={collecting?(@relation)}
+              >
+                {collect_label(@relation)}
+              </button>
+            </form>
 
-        <h3>指示文（AI に頼んでいる内容）</h3>
-        <p class="news-prompt-note">
-          AI が書くのは<strong>影響関係と説明</strong>と、カテゴリに無い様式です。
-          誰を見るかは Chiezo が区画で渡すので、指示文には書いてありません。
-        </p>
-        <pre>{prompt_text(@relation)}</pre>
-      </details>
+            <%!-- **区画の一覧は全部出す。** どこがまだ見られていないかは、ここにしか
+                 無い —— 「ここを先に見てほしい」を頼む口でもある。
+                 未レビューの人が残る区画は、「ざっと見る」の回としても頼める --%>
+            <% rows = partition_rows(cfg, "整理") %>
+            <details :if={rows != []} class="partition-list">
+              <summary>区画（{length(rows)}）— まだ見ていないものが先</summary>
+              <p class="muted-note">
+                区画は「地域 × 生年」で切ってあります。 <strong>「先に調べる」</strong>
+                は整理の回（漏れ探しと磨き）、 <strong>「先にざっと見る」</strong>
+                はざっと見るの回（未レビューの人に目を通して空欄を埋める）として、
+                その区画を先に見てもらいます（印が付くので、巡回が同じところをもう一度見ることはありません）。
+              </p>
+              <table class="partition-table">
+                <thead>
+                  <tr>
+                    <th>区画</th>
+                    <th>人数</th>
+                    <th>未レビュー</th>
+                    <th>調査が見たのは</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr :for={row <- rows}>
+                    <% asked = partition_state(@relation, row.key) %>
+                    <td>{row.key}</td>
+                    <td>{row.count}</td>
+                    <td>{unreviewed_in(cfg, row.key)}</td>
+                    <td>{row.seen || "まだ"}</td>
+                    <td class="partition-actions">
+                      <span :if={asked && asked.state == :sent} class="muted-note">頼みました</span>
+                      <span :if={asked && asked.state == :failed} class="warn-note">
+                        {focus_error(asked)}
+                      </span>
+                      <form phx-submit="focus_partition">
+                        <input type="hidden" name="key" value={row.key} />
+                        <button type="submit" phx-disable-with="頼んでいます…">先に調べる</button>
+                      </form>
+                      <form :if={unreviewed_in(cfg, row.key) > 0} phx-submit="focus_partition">
+                        <input type="hidden" name="key" value={row.key} />
+                        <input type="hidden" name="sweep" value={Tazuna.Relations.rough_sweep()} />
+                        <button type="submit" phx-disable-with="頼んでいます…">先にざっと見る</button>
+                      </form>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </details>
+
+            <%!-- **どちらも Chiezo が持っているもの**なので、1 つにまとめる。
+                 機械で引いたものと AI が書いたものの線引きが、この図でいちばん大事なところ --%>
+            <details :if={@view == "painters"} class="news-prompt">
+              <summary>Chiezo への依頼文</summary>
+              <p class="news-prompt-note">{prompt_note(cfg)}</p>
+
+              <h3>抽出の指定（Wikipedia から機械的に引く条件）</h3>
+              <p class="news-prompt-note">
+                名簿・年代・様式・地域・代表作・相互リンクは、この指定で日本語版 Wikipedia から
+                引いています。<strong>AI は関わりません</strong>（決まった結果が出ます）。
+              </p>
+              <pre :if={extract_text(cfg)}>{extract_text(cfg)}</pre>
+              <p :if={!extract_text(cfg)} class="muted-note">まだ指定が入っていません。</p>
+
+              <h3>指示文（AI に頼んでいる内容）</h3>
+              <p class="news-prompt-note">
+                AI が書くのは<strong>影響関係と説明</strong>と、カテゴリに無い様式です。
+                誰を見るかは Chiezo が区画で渡すので、指示文には書いてありません。
+              </p>
+              <pre>{prompt_text(cfg)}</pre>
+            </details>
+        <% end %>
+      </div>
     </section>
 
     <%!-- 押した人のこと。**絵は持たず、Wikipedia のものを指すだけ**。
@@ -687,20 +696,22 @@
           <p class="muted-note">
             AI がまだ目を通していない画家です（機械で名簿に入っただけで、説明や影響元が空のことがあります）。
           </p>
-          <%= if @detail[:partition] do %>
-            <% asked = partition_state(@relation, @detail.partition) %>
-            <p :if={asked && asked.state == :sent} class="muted-note">
-              区画「{@detail.partition}」を先にざっと見るよう頼みました。
-            </p>
-            <p :if={asked && asked.state == :failed} class="warn-note">{focus_error(asked)}</p>
-            <form :if={!asked or asked.state == :failed} phx-submit="focus_partition">
-              <input type="hidden" name="key" value={@detail.partition} />
-              <input type="hidden" name="sweep" value={Tazuna.Relations.rough_sweep()} />
-              <button type="submit" phx-disable-with="頼んでいます…">
-                この画家の区画（{@detail.partition}・未レビュー {unreviewed_in(@relation, @detail.partition)} 人）を先にざっと見てもらう
-              </button>
-            </form>
-          <% end %>
+          <%!-- 区画は押したときに割り出す（区画の一覧は設定なので、開いただけでは読まない） --%>
+          <% asked = focus_state(@relation, Tazuna.Relations.partition_focus_id(@detail.name)) %>
+          <p :if={asked && asked.state == :sending} class="muted-note">区画を調べて頼んでいます…</p>
+          <p :if={asked && asked.state == :sent} class="muted-note">
+            区画「{asked[:partition]}」を先にざっと見るよう頼みました。
+          </p>
+          <p :if={asked && asked.state == :failed} class="warn-note">{focus_error(asked)}</p>
+          <button
+            :if={!asked or asked.state == :failed}
+            type="button"
+            phx-click="focus_painter_partition"
+            phx-value-name={@detail.name}
+            phx-disable-with="頼んでいます…"
+          >
+            この画家の区画を先にざっと見てもらう
+          </button>
         </div>
 
         <%!-- **その画家の姿。** 記事の先頭画像は、たいてい自画像か肖像写真。

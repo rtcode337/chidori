@@ -100,6 +100,10 @@ defmodule TazunaWeb.RelationsLiveTest do
         %{url: "http://chiezo.test:7010/v1/ai/backends"} ->
           Tazuna.HttpStub.ok(~s({"backends":[]}))
 
+        # 設定欄を開いたときに読む収集の設定も止めない（止めるのは図の読み直しだけ）
+        %{url: "http://chiezo.test:7010/v1/collect" <> _rest} ->
+          Tazuna.HttpStub.ok(~s({"collections":[]}))
+
         _request ->
           # 応答を止めたまま、止めている自分を教える（終わらせるのはテスト側）
           send(test_pid, {:asked, self()})
@@ -112,6 +116,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       end)
 
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
 
       assert_receive {:asked, worker}, 2_000
 
@@ -157,6 +162,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       end)
 
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
 
       assert wait_until(fn -> render(live) =~ "いま Chiezo が取り込み中です" end)
       refute live |> element("form[phx-submit=collect] button") |> render() =~ "disabled"
@@ -195,6 +201,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       end)
 
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
       assert wait_until(fn -> render(live) =~ "収集の設定を更新" end)
 
       # ボタンは「送る設定」と同じ枠に入っているので、フォームごと送る
@@ -219,9 +226,20 @@ defmodule TazunaWeb.RelationsLiveTest do
     test "押した合図はサーバーの応答を待たずに出す", %{conn: conn} do
       # 集まるものが無い日は往復が一瞬で終わる。状態の変化だけに任せると、
       # 押したのかどうかが画面に残らない
-      {:ok, _live, html} = live(conn, ~p"/relations?view=painters")
+      # 設定欄は Chiezo から読めたときに出るので、Chiezo を向けておく
+      System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
 
-      assert html =~ ~s(phx-disable-with="送っています…")
+      Tazuna.HttpStub.stub(fn %{url: url} ->
+        if String.contains?(url, "/v1/ai/backends"),
+          do: Tazuna.HttpStub.ok(~s({"backends":[]})),
+          else: Tazuna.HttpStub.ok(~s({"collections":[],"results":[],"total":0}))
+      end)
+
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
+
+      assert render(live) =~ ~s(phx-disable-with="送っています…")
     end
   end
 
@@ -411,6 +429,14 @@ defmodule TazunaWeb.RelationsLiveTest do
     :ok = Supervisor.terminate_child(Tazuna.Supervisor, Tazuna.Relations)
     {:ok, _pid} = Supervisor.restart_child(Tazuna.Supervisor, Tazuna.Relations)
     :ok
+  end
+
+  # 設定欄を開いて、Chiezo から読み終えるまで待つ。**設定は開いたときだけ読む**ので、
+  # 巡回の欄や「収集の設定を更新」を触るテストは、まずここを通る
+  defp open_settings(live) do
+    live |> element("#settings-toggle") |> render_click()
+    assert wait_until(fn -> has_element?(live, "form#collect-form") end)
+    live
   end
 
   # 読み直しが走っていないか（走っている間は画面が操作を止める）
@@ -635,6 +661,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       # 相手の欄に入ったまま送れば、Chiezo が `worker` へ振り分ける ——
       # こちら側が振り分けると、どこに入れるかを知っているのが 2 か所になる
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       live
@@ -653,6 +680,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       # Chiezo は別の項目（`worker`）で返すので、相手の欄と比べても一致しない ——
       # こちらで相手の欄の値へ直さないと、何も選ばれていないように見える
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       html = live |> element("form#collect-form table") |> render()
@@ -664,6 +692,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       # **一覧に無いものは選ばせようがない。** Chiezo は相手とワーカーを同じ一覧で
       # 返すので、こちらは種類で見出しを分けて並べるだけ
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       html = live |> element("form#collect-form table") |> render()
@@ -676,6 +705,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       # 渡す先はそのときの枠で決まるので、モデルを 1 つ選んでも
       # どの相手に対する指定なのかが決まらない
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       live
@@ -690,6 +720,7 @@ defmodule TazunaWeb.RelationsLiveTest do
     test "考える量の欄は持たない", %{conn: conn} do
       # モデルの名前に畳んであるので、残すと選べるのに効かない欄になる
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       html = live |> element("form#collect-form table") |> render()
@@ -703,6 +734,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       # 選んだところが Chiezo に入っている値へ戻る（選んだつもりで押すと、
       # いま入っている値がそのまま送り返される）
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       live
@@ -755,6 +787,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       # 画家のモーダルから頼む「詳しく調べて」は割り込みとして走る。**人が待っている
       # 場面**なので、定時の巡回と同じ相手を使う理由が無い
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
       assert wait_until(fn -> render(live) =~ "整理" end)
 
       html = live |> element("form#collect-form table") |> render()
@@ -767,6 +800,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       # **相手だけ選べても足りない。** 同じ相手でもモデルで結果も時間も変わるので、
       # 巡回ごとに選べないと「じっくりだけ重いモデルで」が表せない
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
       assert wait_until(fn -> render(live) =~ "整理" end)
 
       live
@@ -810,6 +844,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       end)
 
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       live
@@ -826,6 +861,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       # 「モデル: 空」まで覚え、そのあとモデルを選んでも空のまま送られる ——
       # 画面では選べているように見えるので、押すまで気づけない
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
       assert wait_until(fn -> render(live) =~ "割り込み" end)
 
       # まず相手を選ぶ（このときモデルは空のまま送られてくる）
@@ -850,6 +886,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       # ボタンは押せるのに何も起きない —— 画面には何も出ないので、設定が送られて
       # いないことに気づきようがなかった
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       # 溜まったものの読み出しだけを止めて、読み直しが終わらない状態を作る
@@ -918,6 +955,7 @@ defmodule TazunaWeb.RelationsLiveTest do
       # **空文字も送る。** あれは「Chiezo の既定にまかせる」を選んだという意思表示で、
       # 落とすと一度決めた相手を画面から外せない
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
       live
@@ -944,19 +982,52 @@ defmodule TazunaWeb.RelationsLiveTest do
   describe "未レビューの区画を先にざっと見てもらう" do
     alias TazunaWeb.RelationsLive
 
-    test "未レビューが残る区画を、多い順に並べる" do
-      relation = %{
-        partition_unreviewed: %{"フランス|1801-1850" => 3, "日本|-" => 12},
-        collection: %{
-          partitions: [%{key: "日本|-", count: 25}, %{key: "フランス|1801-1850", count: 20}]
-        }
+    test "区画ごとの未レビューの人数を、Chiezo と同じ規則で数える" do
+      collection = %{partitions: [%{key: "日本|-", count: 25}, %{key: "フランス|-", count: 20}]}
+
+      nodes = [
+        %{name: "あ", tags: ["地域:日本", "年代:1900-1950"], unreviewed?: true},
+        %{name: "い", tags: ["地域:日本", "年代:1910-1960"], unreviewed?: true},
+        %{name: "う", tags: ["地域:日本", "年代:1920-1970"], unreviewed?: false},
+        %{name: "え", tags: ["地域:フランス", "年代:1800-1850"], unreviewed?: true}
+      ]
+
+      counts = Tazuna.Relations.unreviewed_by_partition(collection, nodes)
+      assert counts == %{"日本|-" => 2, "フランス|-" => 1}
+
+      assert RelationsLive.unreviewed_in(%{partition_unreviewed: counts}, "日本|-") == 2
+      assert RelationsLive.unreviewed_in(%{partition_unreviewed: counts}, "無い区画") == 0
+    end
+
+    test "画家の区画は、押したときに割り出して頼む" do
+      test_pid = self()
+
+      collection = %{
+        "name" => "tazuna_painters",
+        "partitions" => [%{"key" => "日本|-", "count" => 3}]
       }
 
-      assert RelationsLive.unreviewed_partitions(relation) ==
-               [{"日本|-", 12, 25}, {"フランス|1801-1850", 3, 20}]
+      Tazuna.HttpStub.stub(fn
+        %{method: :post, url: url, body: body} ->
+          send(test_pid, {:focus, url, Jason.decode!(body)})
+          Tazuna.HttpStub.ok("{}")
 
-      assert RelationsLive.unreviewed_in(relation, "日本|-") == 12
-      assert RelationsLive.unreviewed_in(relation, "無い区画") == 0
+        %{url: url} ->
+          if String.ends_with?(url, "/v1/collect"),
+            do: Tazuna.HttpStub.ok(Jason.encode!(%{"collections" => [collection]})),
+            else: Tazuna.HttpStub.ok(Jason.encode!(collection))
+      end)
+
+      assert {:ok, "日本|-"} =
+               Tazuna.Relations.ask_painter_partition("http://chiezo.test", "誰か", [
+                 "地域:日本",
+                 "年代:1900-1950"
+               ])
+
+      assert_received {:focus, _url, body}
+      assert body["sweep"] == "ざっと見る"
+      assert body["partition"] == "日本|-"
+      assert body["note"] =~ ~r/^日本\|- の区画を先にざっと見て/
     end
 
     test "ざっと見るの指示文は、区画の名前で始める" do
@@ -977,6 +1048,86 @@ defmodule TazunaWeb.RelationsLiveTest do
       assert url =~ "/focus"
       assert body["sweep"] == "ざっと見る"
       assert body["partition"] == "日本|-"
+    end
+  end
+
+  describe "設定欄" do
+    setup do
+      System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+      :ok
+    end
+
+    test "開くまでは Chiezo から設定を読まず、読み終えるまでは設定を出さない", %{conn: conn} do
+      test_pid = self()
+
+      Tazuna.HttpStub.stub(fn %{url: url} ->
+        cond do
+          String.contains?(url, "/v1/collect") or String.contains?(url, "/v1/ai/backends") ->
+            # 読みに来たことを知らせて、テストが許すまで待つ
+            send(test_pid, {:settings_asked, self()})
+
+            receive do
+              :go -> Tazuna.HttpStub.ok(~s({"collections":[],"backends":[]}))
+            after
+              5_000 -> {:error, :timeout}
+            end
+
+          # **図は読めるようにしておく。** 空だと、理由を切り分けるために図の側が
+          # 収集の設定を読みに来る（それは設定欄とは別の、正しい動き）
+          true ->
+            Tazuna.HttpStub.ok(
+              Jason.encode!(%{
+                "results" => [%{"title" => "設定欄の画家", "tags" => ["画家"], "body" => "説明"}],
+                "total" => 1
+              })
+            )
+        end
+      end)
+
+      assert wait_until(fn -> Tazuna.Relations.current("painters").status != :loading end)
+      Tazuna.Relations.refresh("painters")
+
+      assert wait_until(fn ->
+               relation = Tazuna.Relations.current("painters")
+               settled?(relation) and Enum.any?(relation.nodes, &(&1.name == "設定欄の画家"))
+             end)
+
+      flush()
+      {:ok, live, html} = live(conn, ~p"/relations?view=painters")
+
+      # 開いただけでは読まない
+      refute html =~ "collect-form"
+      refute_receive {:settings_asked, _pid}, 300
+
+      html = live |> element("#settings-toggle") |> render_click()
+      assert html =~ "Chiezo から情報を取得しています"
+      refute html =~ "collect-form"
+
+      # 読み終えたら設定が出る（2 つの問い合わせの両方を通す）
+      for _ <- 1..2 do
+        assert_receive {:settings_asked, pid}, 2_000
+        send(pid, :go)
+      end
+
+      assert wait_until(fn -> has_element?(live, "form#collect-form") end)
+      refute render(live) =~ "Chiezo から情報を取得しています"
+    end
+  end
+
+  describe "設定欄の頭" do
+    alias TazunaWeb.RelationsLive
+
+    test "読めているときは状態の一文を出さず、読めなかったときだけ理由を出す" do
+      assert RelationsLive.trouble_message(%{status: :ready, reason: nil}) == nil
+
+      assert RelationsLive.trouble_message(%{status: :stale, reason: :chiezo_unavailable}) =~
+               "接続できません"
+    end
+
+    test "出どころは画家の図にだけ出す" do
+      assert RelationsLive.origin_note("painters") =~ "Chiezo に溜まった内容から作っています"
+      assert RelationsLive.origin_note("people") == nil
     end
   end
 

@@ -327,6 +327,19 @@ defmodule Tazuna.Relations do
     GenServer.cast(__MODULE__, {:focus_partition, valid_key(key), partition, note, sweep})
   end
 
+  @doc """
+  **この画家の区画を先にざっと見て**、を Chiezo へ割り込ませます。
+
+  区画は押したときに割り出します（区画の一覧は設定なので、図を開いただけでは
+  読んでいない）。届き具合は `partition_focus_id/1` の名前で追えます。
+  """
+  def focus_painter_partition(key, name, tags) when is_binary(key) and is_binary(name) do
+    GenServer.cast(__MODULE__, {:focus_painter_partition, valid_key(key), name, tags || []})
+  end
+
+  @doc "画家の区画への割り込みを、届き具合の上で見分ける名前。"
+  def partition_focus_id(name), do: "#{name} の区画"
+
   @doc "区画への割り込みで名指しできる巡回（整理・ざっと見る）。"
   def survey_sweep, do: @survey_sweep
   def rough_sweep, do: @rough_sweep
@@ -485,6 +498,24 @@ defmodule Tazuna.Relations do
     end
   end
 
+  def handle_cast({:focus_painter_partition, key, name, tags}, state) do
+    id = partition_focus_id(name)
+
+    case chiezo_base_url() do
+      nil ->
+        {:noreply, broadcast(focused(state, key, id, {:error, :chiezo_not_configured}), key)}
+
+      base_url ->
+        me = self()
+
+        Task.Supervisor.start_child(Tazuna.TaskSupervisor, fn ->
+          send(me, {:focus_done, key, id, ask_painter_partition(base_url, name, tags)})
+        end)
+
+        {:noreply, broadcast(put_in(state.focus[key], %{painter: id, state: :sending}), key)}
+    end
+  end
+
   def handle_cast({:collect, key, choices}, state) do
     cond do
       # **送っている最中だけ止める。** 読み直しの最中も止めていたが、あれのせいで
@@ -592,6 +623,10 @@ defmodule Tazuna.Relations do
   # 届かなかったときこそ知らせる必要がある
   defp focused(state, key, painter, :ok),
     do: put_in(state.focus[key], %{painter: painter, state: :sent})
+
+  # 区画を割り出してから頼んだもの。**どの区画に頼んだかも残す**（押した人が知りたい）
+  defp focused(state, key, painter, {:ok, partition}),
+    do: put_in(state.focus[key], %{painter: painter, state: :sent, partition: partition})
 
   defp focused(state, key, painter, {:error, reason}),
     do: put_in(state.focus[key], %{painter: painter, state: :failed, reason: reason})
@@ -742,18 +777,14 @@ defmodule Tazuna.Relations do
   ここで完結するので、状態を持つ入れ物を跨がずに確かめられます。
   """
   def fetch_painters(base_url, fallback) do
-    # 収集の状態も一緒に読む。**押した人が「動いているのか」を判断できる**必要が
-    # あるので、図だけ出しても足りない（ニュースと同じ扱い）
-    collection =
-      case Chiezo.collection(base_url, painters_collection()) do
-        {:ok, found} -> found
-        {:error, _reason} -> nil
-      end
-
+    # **収集の設定は読まない。** 図に要るのは溜まった文書だけで、設定（巡回・区画・
+    # 依頼文）は画面の設定欄を開いたときに読む（`settings/1`）。一緒に読んでいた頃は、
+    # 図を開くたびに 400 区画ぶんの台帳まで運んでいた。
+    # **読めなかったときだけ設定を見る** —— 「収集が無い」のか「まだ溜まっていない」
+    # のかで、押した人が次にすることが違う
     case collected_docs(base_url, painters_collection()) do
-      # まだ焼かれていなければソースごと無い。**溜まっていないのと同じ扱い**にする
-      # （繋がらないのとは別。状態を添えて返す）
       {:error, :nothing_collected} ->
+        collection = collection_or_nil(base_url)
         {:error, {nothing_reason(collection), collection}}
 
       {:error, reason} ->
@@ -763,42 +794,70 @@ defmodule Tazuna.Relations do
         graph = Graph.from_docs(docs)
 
         if graph.nodes == [] do
+          collection = collection_or_nil(base_url)
           {:error, {nothing_reason(collection), collection}}
         else
           # 丸の大きさは知名度で決める。**AI に有名かどうかを判断させない** ——
           # jawiki の月次ページビューのほうが客観的で、実行のたびに揺れない。
           # **その値は収集の中に入っている**（集める回が長期記憶から写す）ので、
           # ここで外へ引きに行かない
-          placed = graph.nodes |> Graph.sized() |> with_partitions(collection)
-
           {:ok,
            fallback
-           |> Map.merge(%{graph | nodes: placed})
-           |> Map.put(:partition_unreviewed, unreviewed_by_partition(placed))
-           |> Map.put(:collection, collection)
+           |> Map.merge(%{graph | nodes: Graph.sized(graph.nodes)})
+           |> Map.put(:collection, nil)
            |> Map.put(:sample?, false)}
         end
     end
   end
 
-  # 1 人ずつ、どの区画に入っているか。**区画の一覧が無ければ付けない**
-  # （区画を持つ前の収集や、読めなかったとき）
-  defp with_partitions(nodes, %{partitions: [_ | _] = partitions}) do
-    find = Partitions.locator(partitions, Graph.region_tag(), Graph.years_tag())
-    Enum.map(nodes, &Map.put(&1, :partition, find.(&1[:tags] || [], &1.name)))
+  defp collection_or_nil(base_url) do
+    case Chiezo.collection(base_url, painters_collection()) do
+      {:ok, found} -> found
+      {:error, _reason} -> nil
+    end
   end
 
-  defp with_partitions(nodes, _collection), do: nodes
+  @doc """
+  設定欄に出すもの（収集の設定と、頼める相手の一覧）を Chiezo から読みます。
+
+  **画面の設定欄を開いたときだけ呼びます。** 図を開くたびに読んでいた頃は、
+  見もしない設定のために待たされていました。`nodes` を渡すと、区画ごとの
+  未レビューの人数も数えます（区画の一覧と突き合わせるので、ここで一緒に）。
+  """
+  def settings(key, nodes \\ []) do
+    case chiezo_base_url() do
+      nil ->
+        {:error, :chiezo_not_configured}
+
+      base_url ->
+        # 2 つは別の問い合わせなので並べて待つ
+        backends = Task.async(fn -> Chiezo.backends(base_url) end)
+        collection = if key == "painters", do: collection_or_nil(base_url)
+
+        {:ok,
+         %{
+           collection: collection,
+           backends: Task.await(backends, 30_000),
+           partition_unreviewed: unreviewed_by_partition(collection, nodes)
+         }}
+    end
+  end
 
   @doc """
   区画ごとの、AI がまだ目を通していない人の数（`%{鍵 => 人数}`）。
-  **どこを先にざっと見てもらうか**を決める材料です。
+  区画の所属は Chiezo と同じ規則で割り出します（`Partitions`）。
   """
-  def unreviewed_by_partition(nodes) do
+  def unreviewed_by_partition(%{partitions: [_ | _] = partitions}, nodes) do
+    find = Partitions.locator(partitions, Graph.region_tag(), Graph.years_tag())
+
     nodes
-    |> Enum.filter(&(&1[:unreviewed?] and is_binary(&1[:partition])))
-    |> Enum.frequencies_by(& &1.partition)
+    |> Enum.filter(& &1[:unreviewed?])
+    |> Enum.map(&find.(&1[:tags] || [], &1.name))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.frequencies()
   end
+
+  def unreviewed_by_partition(_collection, _nodes), do: %{}
 
   @doc """
   Chiezo に収集を依頼して、そのまま読み直します。
@@ -859,6 +918,28 @@ defmodule Tazuna.Relations do
     # もう一度見ることはない —— 「ここを先に見てほしい」を頼む口
     Chiezo.focus(base_url, painters_collection(), note, [], sweep, key)
   end
+
+  @doc """
+  その画家の区画を割り出して、ざっと見るの回として割り込ませます。
+  成功すれば `{:ok, 区画の鍵}`。
+  """
+  def ask_painter_partition(base_url, name, tags) do
+    with %{partitions: [_ | _] = partitions} <- collection_or_nil(base_url) || :no_partitions,
+         find = Partitions.locator(partitions, Graph.region_tag(), Graph.years_tag()),
+         partition when is_binary(partition) <- find.(tags, name) || :no_partition,
+         :ok <- ask_partition(base_url, partition, rough_note(partition), @rough_sweep) do
+      {:ok, partition}
+    else
+      :no_partitions -> {:error, :no_partitions}
+      :no_partition -> {:error, :no_partition}
+      %{} -> {:error, :no_partitions}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "ざっと見るの割り込みの指示文。**必ず区画の名前で始めます**。"
+  def rough_note(partition),
+    do: "#{partition} の区画を先にざっと見てください。まだ目を通していない画家が残っています。"
 
   def ask_focus(base_url, name, note) do
     # **調査の回に頼む。** 割り込み専用の巡回は置いていない —— 同じ仕事

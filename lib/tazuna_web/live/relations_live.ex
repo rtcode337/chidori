@@ -63,7 +63,10 @@ defmodule TazunaWeb.RelationsLive do
        # **ほかの絞り込みとは排他**（重ねると、出ていない理由が読めない）
        review_filter: nil,
        focus_sent: nil,
-       backends: [],
+       # 設定欄。**開いたときだけ Chiezo から読む**（図を開くたびには読まない）。
+       # settings は nil（まだ）/ :loading / 読めたもの / {:error, 理由}
+       settings_open: false,
+       settings: nil,
        # 「見た」印。**ノード名で引く** —— 図は読み直すたびに id が振り直されるので、
        # id で持つと印が別人へ移る
        marks: %{},
@@ -108,16 +111,35 @@ defmodule TazunaWeb.RelationsLive do
         relation: Relations.current(view),
         # 印は図ごとに別。切り替えたら引き直す
         marks: Marks.for_view(view),
-        mark_saved: nil
+        mark_saved: nil,
+        # 図を切り替えたら設定は読み直す（別の収集のもの）
+        settings_open: false,
+        settings: nil
       )
 
-    # 相手の一覧は**繋がってから、待たずに**引く。画面の中で同期に引くと、Chiezo が
-    # 遅いあいだページが固まる（選択肢が無くても図は読めるので、待つ価値が無い）
-    {:noreply,
-     if(connected?(socket),
-       do: start_async(socket, :backends, &Relations.ai_backends/0),
-       else: socket
-     )}
+    {:noreply, socket}
+  end
+
+  # 設定欄を開く・閉じる。**開いたときに Chiezo から読む** —— 設定は見たいときだけ
+  # 見るもので、図を開くたびに 400 区画ぶんの台帳を運ぶ理由が無い。
+  # **開くたびに読み直す**（閉じているあいだに Chiezo の側が進んでいる）
+  def handle_event("toggle_settings", _params, socket) do
+    if socket.assigns.settings_open do
+      {:noreply, assign(socket, settings_open: false)}
+    else
+      {:noreply, socket |> assign(settings_open: true) |> load_settings()}
+    end
+  end
+
+  # 未レビューの画家の区画を、先にざっと見てもらう。**区画は押したときに割り出す**
+  # （区画の一覧は設定なので、図を開いただけでは読んでいない）
+  def handle_event("focus_painter_partition", %{"name" => name}, socket) do
+    case Enum.find(socket.assigns.relation.nodes, &(&1.name == name)) do
+      nil -> :ok
+      node -> Relations.focus_painter_partition(socket.assigns.view, name, node[:tags])
+    end
+
+    {:noreply, socket}
   end
 
   # **この区画を先に調べて、を頼む。** 区画を名指しするので、その区画には印が付く
@@ -382,12 +404,14 @@ defmodule TazunaWeb.RelationsLive do
   end
 
   @impl true
-  def handle_async(:backends, {:ok, list}, socket) when is_list(list) do
-    {:noreply, assign(socket, backends: list)}
-  end
+  def handle_async(:settings, {:ok, {:ok, loaded}}, socket),
+    do: {:noreply, assign(socket, settings: loaded)}
 
-  # 引けなくても図は出る。**選べないだけ**
-  def handle_async(:backends, _result, socket), do: {:noreply, socket}
+  def handle_async(:settings, {:ok, {:error, reason}}, socket),
+    do: {:noreply, assign(socket, settings: {:error, reason})}
+
+  def handle_async(:settings, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, settings: {:error, :chiezo_unavailable})}
 
   def handle_async(:artwork, {:ok, result}, socket) do
     {:noreply, assign(socket, artwork: result)}
@@ -453,8 +477,36 @@ defmodule TazunaWeb.RelationsLive do
 
   @impl true
   def handle_info({:relation_updated, relation}, socket) do
-    {:noreply, assign(socket, relation: relation)}
+    # **設定を送り終えたら、開いている設定欄を読み直す。** 送った中身は Chiezo の
+    # 側で書き換わっているので、前に読んだものを出し続けると、送れていないように見える
+    sent? = socket.assigns.relation[:pushing] == true and relation[:pushing] != true
+    socket = assign(socket, relation: relation)
+
+    {:noreply,
+     if(sent? and socket.assigns.settings_open, do: load_settings(socket), else: socket)}
   end
+
+  defp load_settings(socket) do
+    view = socket.assigns.view
+    nodes = socket.assigns.relation[:nodes] || []
+
+    socket
+    |> assign(settings: :loading)
+    |> start_async(:settings, fn -> Relations.settings(view, nodes) end)
+  end
+
+  @doc """
+  設定欄に渡す状態。**図の状態に、読んできた設定を重ねたもの**です
+  （設定欄の部品は、収集の設定を `collection` で受け取る）。
+  """
+  def with_settings(relation, %{collection: collection} = loaded) do
+    relation
+    |> Map.put(:collection, collection)
+    |> Map.put(:partition_unreviewed, loaded[:partition_unreviewed] || %{})
+  end
+
+  @doc "設定を読み終えたか。"
+  def settings_ready?(settings), do: is_map(settings)
 
   @doc """
   いつ読んだか。**開くたびに取り直さない**ので、いま見ているものの古さが読めないと困ります。
@@ -584,17 +636,6 @@ defmodule TazunaWeb.RelationsLive do
       {written, _rough} ->
         "#{key} の区画について。#{written}"
     end
-  end
-
-  @doc """
-  AI がまだ目を通していない人が残る区画。**多い順**に `{鍵, 未レビュー, 区画の人数}`。
-  """
-  def unreviewed_partitions(relation) do
-    sizes = Map.new(get_in(relation, [:collection, :partitions]) || [], &{&1.key, &1.count})
-
-    (relation[:partition_unreviewed] || %{})
-    |> Enum.map(fn {key, count} -> {key, count, Map.get(sizes, key, count)} end)
-    |> Enum.sort_by(fn {key, count, _size} -> {-count, key} end)
   end
 
   @doc "その画家の地域（タグのまま。複数あれば全部）。"
@@ -1035,13 +1076,31 @@ defmodule TazunaWeb.RelationsLive do
   集めて整理するのは Chiezo の役目で、tazuna は図の形に読み直して見せるだけです。
   人物のほうは、まだその場で AI に聞く形のままです。
   """
-  def source_note("painters") do
-    "この図は Chiezo に溜まった内容から作っています（収集「#{Tazuna.Relations.painters_collection()}」）。" <>
-      "**集めるのは Chiezo が決まった間隔で回します。** このボタンは、" <>
-      "tazuna が持っている依頼文と回り方を Chiezo へ送り直すだけで、集めさせはしません。"
-  end
+  def source_note("painters"),
+    do: "このボタンは、tazuna が持っている依頼文と回り方を Chiezo へ送り直すだけで、集めさせはしません。"
 
   def source_note(_view), do: "「関連図を収集」を押すと、その場で AI に調べさせて図を作り直します。"
+
+  @doc """
+  設定欄の頭に置く、この図の出どころ。**ボタンの説明とは分ける** ——
+  出どころは図そのものの話で、ボタンを押すかどうかに関わらず読むもの。
+  人物の図は溜め先を持たないので出さない。
+  """
+  def origin_note("painters"),
+    do:
+      "この図は Chiezo に溜まった内容から作っています（収集「#{Tazuna.Relations.painters_collection()}」）。" <>
+        "集めるのは Chiezo で、決まった間隔で回します。"
+
+  def origin_note(_view), do: nil
+
+  @doc """
+  図を読めなかったときの一文。**読めているときは何も出しません**
+  （「表示しています」と書くまでもない）。
+  """
+  def trouble_message(%{status: :ready, reason: nil}), do: nil
+  def trouble_message(%{status: :sample, reason: nil}), do: nil
+  def trouble_message(%{status: :loading}), do: nil
+  def trouble_message(relation), do: status_message(relation)
 
   # **この図でしか起きない理由だけを書く。** 残りは画面をまたいで同じことが
   # 起きるので、共有の `TazunaWeb.Collect.reason_text/1` が言う ——
@@ -1066,6 +1125,12 @@ defmodule TazunaWeb.RelationsLive do
 
   defp relation_reason(:invalid_ai_response),
     do: "AIの応答から関連図を作れませんでした。もう一度収集してください。"
+
+  defp relation_reason(:no_partitions),
+    do: "Chiezo の収集がまだ区画を持っていないので、区画を名指しできませんでした。"
+
+  defp relation_reason(:no_partition),
+    do: "この画家の入る区画が見つかりませんでした（区画を割り直したばかりのときに起きます）。"
 
   defp relation_reason(reason), do: reason_text(reason)
 end
