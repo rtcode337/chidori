@@ -1115,6 +1115,28 @@ defmodule TazunaWeb.RelationsLiveTest do
     end
   end
 
+  describe "画家の区画の一覧" do
+    test "ざっと見ると整理の印を巡回ごとに持つ" do
+      # 1 本の巡回の印だけを出すと、まだ回っていないほうの「まだ」が全区画に並ぶ
+      state = %{
+        collection: %{
+          partitions: [
+            %{key: "日本|-", count: 3, visits: %{"ざっと見る" => "2026-09-20T00:00:00+00:00"}},
+            %{key: "フランス|-", count: 2, visits: %{}}
+          ]
+        }
+      }
+
+      [first, second] = TazunaWeb.Collect.partition_rows(state, ["ざっと見る", "整理"])
+
+      # まだ見ていないものが先
+      assert first.key == "フランス|-"
+      assert first.seen_at == %{}
+      assert second.seen_at["ざっと見る"] =~ "2026-09-20"
+      refute Map.has_key?(second.seen_at, "整理")
+    end
+  end
+
   describe "設定欄の頭" do
     alias TazunaWeb.RelationsLive
 

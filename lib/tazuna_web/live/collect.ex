@@ -288,6 +288,8 @@ defmodule TazunaWeb.Collect do
       # **どの巡回が見たか**（地図の色分けに使う。何本かだけでは、どこまで進んだのか
       # 読めない —— 後の回だけが見た区画が普通にできる）
       seen_by: Enum.map(seen, &elem(&1, 0)),
+      # 巡回ごとの見た時刻（JST の文字列。まだなら無い）。**巡回ごとに列を出す**ため
+      seen_at: Map.new(seen, fn {sweep, at} -> {sweep, Jst.format(at)} end),
       by: by,
       at: at,
       seen: Jst.format(at)

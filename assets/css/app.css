@@ -92,7 +92,11 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .survey-row input { flex: 1 1 14rem; min-width: 0; }
 .place-candidates { display: flex; flex-wrap: wrap; gap: .35rem .9rem; margin: .5rem 0 0; padding: 0; list-style: none; }
 .place-candidates li { display: flex; align-items: baseline; gap: .35rem; }
-.partition-actions { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
+/* 区画の表。**数と時刻とボタンは折り返さない**（「ま/だ」と割れると読めない）。
+   幅は区画の名前の列が引き受ける */
+.partition-table th, .partition-table td { white-space: nowrap; }
+.partition-table td:first-child { white-space: normal; }
+.partition-actions { display: flex; flex-wrap: nowrap; gap: .3rem; align-items: center; }
 .relation-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; }
 /* Chiezo の状態・巡回の設定・押すボタンを 1 つの枠に。**離れていると、何がどこへ
    効くのか読めない**（状態を見て、直して、押す、が 1 か所で終わる） */

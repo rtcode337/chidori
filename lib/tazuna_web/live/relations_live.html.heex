@@ -486,14 +486,17 @@
             <%!-- **区画の一覧は全部出す。** どこがまだ見られていないかは、ここにしか
                  無い —— 「ここを先に見てほしい」を頼む口でもある。
                  未レビューの人が残る区画は、「ざっと見る」の回としても頼める --%>
-            <% rows = partition_rows(cfg, "整理") %>
+            <%!-- **巡回ごとに列を出す。** 1 本の巡回の印だけを出していた頃は、まだ回っていない
+                 巡回のほうの「まだ」が全区画に並び、ざっと見るがどこまで済んだのか読めなかった --%>
+            <% sweeps = [Tazuna.Relations.rough_sweep(), Tazuna.Relations.survey_sweep()] %>
+            <% rows = partition_rows(cfg, sweeps) %>
             <details :if={rows != []} class="partition-list">
               <summary>区画（{length(rows)}）— まだ見ていないものが先</summary>
               <p class="muted-note">
-                区画は「地域 × 生年」で切ってあります。 <strong>「先に調べる」</strong>
-                は整理の回（漏れ探しと磨き）、 <strong>「先にざっと見る」</strong>
-                はざっと見るの回（未レビューの人に目を通して空欄を埋める）として、
-                その区画を先に見てもらいます（印が付くので、巡回が同じところをもう一度見ることはありません）。
+                区画は「地域 × 生年」で切ってあります。 <strong>「ざっと見る」</strong>
+                は未レビューの人に目を通して空欄を埋める回、 <strong>「整理」</strong>
+                は漏れ探しと磨きの回として、その区画を先に見てもらいます（印が付くので、巡回が同じところをもう一度見ることはありません）。
+                見終わった区画も、もう一度頼めます。
               </p>
               <table class="partition-table">
                 <thead>
@@ -501,7 +504,7 @@
                     <th>区画</th>
                     <th>人数</th>
                     <th>未レビュー</th>
-                    <th>調査が見たのは</th>
+                    <th :for={sweep <- sweeps}>{sweep}</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -511,20 +514,18 @@
                     <td>{row.key}</td>
                     <td>{row.count}</td>
                     <td>{unreviewed_in(cfg, row.key)}</td>
-                    <td>{row.seen || "まだ"}</td>
+                    <td :for={sweep <- sweeps}>{row.seen_at[sweep] || "まだ"}</td>
                     <td class="partition-actions">
                       <span :if={asked && asked.state == :sent} class="muted-note">頼みました</span>
                       <span :if={asked && asked.state == :failed} class="warn-note">
                         {focus_error(asked)}
                       </span>
-                      <form phx-submit="focus_partition">
+                      <%!-- 並びは列と同じ（ざっと見る → 整理）。**どちらも常に出す** ——
+                           見終わった区画を見直したいこともある --%>
+                      <form :for={sweep <- sweeps} phx-submit="focus_partition">
                         <input type="hidden" name="key" value={row.key} />
-                        <button type="submit" phx-disable-with="頼んでいます…">先に調べる</button>
-                      </form>
-                      <form :if={unreviewed_in(cfg, row.key) > 0} phx-submit="focus_partition">
-                        <input type="hidden" name="key" value={row.key} />
-                        <input type="hidden" name="sweep" value={Tazuna.Relations.rough_sweep()} />
-                        <button type="submit" phx-disable-with="頼んでいます…">先にざっと見る</button>
+                        <input type="hidden" name="sweep" value={sweep} />
+                        <button type="submit" phx-disable-with="頼んでいます…">{sweep}</button>
                       </form>
                     </td>
                   </tr>
