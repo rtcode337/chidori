@@ -45,3 +45,6 @@ config :tazuna, digest_scheduler: false
 
 # まとめの段取りの読み直しは短く（待つことそのものは確かめたいことではない）
 config :tazuna, digest_poll_ms: 10, digest_wait_ms: 200
+
+# 取り込みが空くのを待つあいだの確かめ直しも短く
+config :tazuna, chiezo_busy_poll_ms: 10

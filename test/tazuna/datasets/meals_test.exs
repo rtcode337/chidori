@@ -180,27 +180,27 @@ defmodule Tazuna.Datasets.MealsTest do
 
     test "どちらの回も名簿を待つ", %{sweeps: sweeps} do
       # 名簿が無ければ区画に何も並ばず、空の一覧に「この範囲の全部です」と言う形になる。
-      # **じっくりはざっとの一周を待たない** —— 手で回す回は取り込みの番も
-      # こちらの AI の枠も使わないので、待たせる理由が無い
+      # **じっくりはざっとの一周を待たない** —— 起点のまわりから回すので、
+      # 全国のざっとが一周するのを待っていては、見たいところにいつまでも着かない
       assert Enum.map(sweeps, & &1.name) == ["機械収集", "ざっと見る", "整理"]
       assert Enum.find(sweeps, &(&1.name == "ざっと見る")).after == "機械収集"
       assert Enum.find(sweeps, &(&1.name == "整理")).after == "機械収集"
     end
 
-    test "じっくりは手で回す", %{sweeps: sweeps} do
-      # 「この範囲にあって並んでいない店」を探すのは web を何度も引く仕事で、
-      # CLI ブリッジ越しの相手では 1 区画 6〜14 分かかり、上限で切れることもあった。
-      # 画面から使う AI のほうが速く、こちらの枠も取り込みの番も使わない
+    test "じっくりは Chiezo の時計では走らず、tazuna が起こす", %{sweeps: sweeps} do
+      # 1 区画に 6〜14 分かかる仕事なので、全国を順に回すと一周に何か月もかかる。
+      # 起点と時刻は利用者が決め、tazuna が名指しで起こす
       survey = Enum.find(sweeps, &(&1.name == "整理"))
 
-      assert survey.by_hand
-      # 束に何区画入れるかは、今までどおり巡回の設定から決まる
+      assert survey.enabled == false
+      refute Map.get(survey, :by_hand)
+      assert Meals.definition().survey_plan_sweep == "整理"
+      # 1 回に何区画見るかは、今までどおり巡回の設定から決まる
       assert survey.cover_days > 0
     end
 
     test "割り込みはざっとが引き受ける" do
-      # じっくりは手で回す回になったので、その場で聞ける相手がいない ——
-      # 人が待っている場面で「答えを持ち帰ってください」とは言えない
+      # じっくりは tazuna が決めた時刻にしか走らないので、その場で頼む先はざっと
       assert Meals.definition().survey_sweep == "ざっと見る"
     end
 

@@ -18,6 +18,11 @@ defmodule Tazuna.Digest do
   返すので、終わったかどうかはこちらが読み直して確かめます —— 整理は収集の前回時刻が
   進んだか、まとめは見出しが変わったかで見ます。
 
+  **取り込みが混んでいても、その回を落としません。** Chiezo は取り込み中の依頼を
+  積まずに断る（409）ので、断られたら空くのを待って頼み直します
+  （`Chiezo.when_free/2`）。待つのは次の予定の時刻まで —— 定時の時計が渡します。
+  画面から押したときは 1 時間までです。
+
   **途中で止まっても黙りません。** どの段で止まったかは画面に出し、知らせ済みの
   まとめを二度知らせることはしません（`Tazuna.Notify` が覚えています）。
   """
@@ -39,6 +44,9 @@ defmodule Tazuna.Digest do
   # まとめを読むだけなので、1 件も取れれば足りる（画面の一覧はこちらでは使わない）
   @samples 5
 
+  # 画面から押したときに、取り込みが空くのを待つ上限
+  @manual_wait_ms 60 * 60 * 1000
+
   @refine_sweep "整理"
   @digest_sweep "要約"
 
@@ -57,15 +65,23 @@ defmodule Tazuna.Digest do
   end
 
   @doc """
+  取り込みが空くのを待つ上限（`System.monotonic_time(:millisecond)` の値）。
+  **画面から押したとき**のもの —— 定時の回は、時計が次の予定の時刻を渡します。
+  """
+  def manual_deadline, do: System.monotonic_time(:millisecond) + @manual_wait_ms
+
+  @doc """
   段取りを順に踏みます。**戻るのは最後まで行った結果**です。
   """
-  def run(%{collection: collection}) do
+  def run(topic, free_by \\ nil)
+
+  def run(%{collection: collection}, free_by) do
     case News.chiezo_base_url() do
       nil ->
         {:error, :chiezo_not_configured}
 
       base ->
-        result = walk(base, collection)
+        result = walk(base, collection, free_by || manual_deadline())
         # 画面はこの後の状態を見る（まとめが入れ替わっているので）
         News.refresh(News.server(collection))
         log(collection, result)
@@ -77,16 +93,30 @@ defmodule Tazuna.Digest do
     end
   end
 
-  def run(_topic), do: {:error, :no_topic}
+  def run(_topic, _free_by), do: {:error, :no_topic}
 
-  defp walk(base, collection) do
+  # `free_by` までは、取り込みが空くのを待って頼み直す（断られても、その回を落とさない）
+  defp walk(base, collection, free_by) do
     with {:ok, before} <- Chiezo.collection(base, collection, @samples),
          :ok <- enabled(before),
          :ok <- tell(collection, "整理を起こしています…"),
-         :ok <- Chiezo.run(base, collection, sweep: @refine_sweep),
+         :ok <-
+           Chiezo.when_free(
+             fn -> busy_told(collection, Chiezo.run(base, collection, sweep: @refine_sweep)) end,
+             free_by
+           ),
          :ok <- wait_for_run(base, collection, before[:last_run_at], deadline(@refine_wait_ms)),
          :ok <- tell(collection, "まとめを書かせています…"),
-         :ok <- Chiezo.focus(base, collection, @digest_note, [], @digest_sweep),
+         :ok <-
+           Chiezo.when_free(
+             fn ->
+               busy_told(
+                 collection,
+                 Chiezo.focus(base, collection, @digest_note, [], @digest_sweep)
+               )
+             end,
+             free_by
+           ),
          {:ok, digest} <-
            wait_for_digest(base, collection, digest_title(before), deadline(@digest_wait_ms)) do
       tell(collection, "知らせています…")
@@ -156,6 +186,14 @@ defmodule Tazuna.Digest do
     end
   end
 
+  # 断られたら、待っていることを画面へ（黙って待つと、止まったように見える）
+  defp busy_told(collection, {:error, :chiezo_busy} = busy) do
+    tell(collection, "Chiezo が取り込み中なので、空くのを待っています…")
+    busy
+  end
+
+  defp busy_told(_collection, result), do: result
+
   # 進み具合は画面へ。**数分かかる段取りなので、押した人が待てるようにする**
   defp tell(collection, message) do
     News.broadcast_digest(collection, message)
@@ -197,7 +235,10 @@ defmodule Tazuna.Digest do
   def error_text(:chiezo_not_configured), do: "Chiezo の場所が設定されていません。"
   def error_text(:collection_disabled), do: "この収集は Chiezo 側で止まっています。"
   def error_text(:not_requested), do: "まだ収集を依頼していません。"
-  def error_text(:chiezo_busy), do: "Chiezo がいま別の依頼を抱えています。少し待ってください。"
+
+  def error_text(:chiezo_busy),
+    do: "次の予定の時刻まで待ちましたが、Chiezo の取り込みが空きませんでした。"
+
   def error_text(:timed_out), do: "Chiezo の返事を待ちましたが、時間内に終わりませんでした。"
   def error_text(:ntfy_topic_missing), do: "この話題の通知先が決まっていません。"
   def error_text({:chiezo_refused, _status, reason}) when is_binary(reason), do: reason

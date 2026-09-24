@@ -86,6 +86,12 @@ article p:last-child { color: #475569; line-height: 1.7; }
 #chiezo-settings { margin-top: .6rem; }
 /* 図の出どころの一文。下の状態の表と詰まらないよう少し空ける */
 .settings-panel .origin-note { margin-bottom: .8rem; }
+/* 整理の起点と時刻 */
+.survey-plan { margin: 1rem 0 1.25rem; }
+.survey-row { display: flex; flex-wrap: wrap; gap: .4rem; margin: .6rem 0 0; }
+.survey-row input { flex: 1 1 14rem; min-width: 0; }
+.place-candidates { display: flex; flex-wrap: wrap; gap: .35rem .9rem; margin: .5rem 0 0; padding: 0; list-style: none; }
+.place-candidates li { display: flex; align-items: baseline; gap: .35rem; }
 .partition-actions { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
 .relation-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; }
 /* Chiezo の状態・巡回の設定・押すボタンを 1 つの枠に。**離れていると、何がどこへ

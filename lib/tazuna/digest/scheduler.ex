@@ -13,6 +13,9 @@ defmodule Tazuna.Digest.Scheduler do
   **走らせるのは 1 本ずつです。** Chiezo の取り込みは 1 本ずつしか走らないので、
   同時に頼んでも待たされるだけです（しかも断られます）。
 
+  **取り込みが混んでいても、その回を落としません。** 次の予定の時刻まで、空くのを
+  待って頼みます（`Tazuna.Digest.run/2`）。
+
   **走らせる前に控えます**（`last_digest_at`）。数分かかる段取りなので、走ってから
   控えると、その最中に同じ回の時刻がもう一度来て二重に起こします。
   """
@@ -67,7 +70,13 @@ defmodule Tazuna.Digest.Scheduler do
 
       {topic, at} ->
         Settings.mark_digest(topic.collection, at)
-        task = Task.Supervisor.async_nolink(Tazuna.TaskSupervisor, fn -> Digest.run(topic) end)
+
+        # **取り込みが混んでいたら、次の予定まで空くのを待つ**（その回を落とさない）
+        free_by = free_by(topic)
+
+        task =
+          Task.Supervisor.async_nolink(Tazuna.TaskSupervisor, fn -> Digest.run(topic, free_by) end)
+
         %{state | task: task}
     end
   end
@@ -114,6 +123,17 @@ defmodule Tazuna.Digest.Scheduler do
     end)
     |> Enum.filter(&(DateTime.compare(&1, now) == :gt))
     |> Enum.min(DateTime, fn -> nil end)
+  end
+
+  # 待つ上限は次の予定の時刻。**それを過ぎても待つと、次の回と重なる**
+  defp free_by(topic) do
+    wait =
+      case next(topic) do
+        nil -> 24 * 60 * 60 * 1000
+        at -> max(DateTime.diff(at, DateTime.utc_now(), :millisecond), 0)
+      end
+
+    System.monotonic_time(:millisecond) + wait
   end
 
   # 予定を過ぎたか。過ぎすぎたものは追いかけない

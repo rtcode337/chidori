@@ -69,7 +69,12 @@ defmodule Tazuna.DigestTest do
 
         Agent.update(seen, &MapSet.put(&1, which))
         send(test_pid, {which, url, request.body})
-        steps[which] || HttpStub.ok("{}")
+
+        case steps[which] do
+          nil -> HttpStub.ok("{}")
+          reply when is_function(reply, 0) -> reply.()
+          reply -> reply
+        end
 
       %{method: :get, url: "http://chiezo.test:7010/v1/collect"} ->
         HttpStub.ok(Jason.encode!(%{"collections" => [collection(%{})]}))
@@ -128,6 +133,30 @@ defmodule Tazuna.DigestTest do
     # **どう終わったかを残す。** 誰も見ていない時刻に走る回なので、残さないと
     # 知らせが来なかった理由がログにしか無い
     assert Settings.get(@collection).last_digest_result =~ "知らせました"
+  end
+
+  test "取り込み中なら、空くのを待ってから頼む", %{topic: topic} do
+    # **その回を落とさない。** Chiezo は取り込み中の依頼を積まずに断る（409）ので、
+    # 断られるたびに落としていると、混む時間帯に当たる回はいつまでも届かない
+    {:ok, refused} = Agent.start_link(fn -> 2 end)
+
+    stub_chiezo(%{
+      refine: fn ->
+        if Agent.get_and_update(refused, &{&1, &1 - 1}) > 0,
+          do: {:ok, %{status: 409, body: ~s({"error":"いま取り込みが走っています"})}},
+          else: HttpStub.ok("{}")
+      end
+    })
+
+    assert Digest.run(topic, System.monotonic_time(:millisecond) + 5_000) == {:ok, :sent}
+    assert Agent.get(refused, & &1) < 0
+  end
+
+  test "次の予定までに空かなければ、その回は諦める", %{topic: topic} do
+    stub_chiezo(%{refine: fn -> {:ok, %{status: 409, body: "{}"}} end})
+
+    assert Digest.run(topic, System.monotonic_time(:millisecond) + 50) == {:error, :chiezo_busy}
+    assert Settings.get(@collection).last_digest_result =~ "空きませんでした"
   end
 
   test "整理が終わらなければ、要約は起こさない", %{topic: topic} do

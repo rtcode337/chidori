@@ -19,7 +19,12 @@ defmodule TazunaWeb.DatasetsLive do
   import TazunaWeb.CollectPanel
   import TazunaWeb.PartitionMap
 
+  alias Tazuna.Chiezo
   alias Tazuna.Datasets
+  alias Tazuna.Datasets.Survey
+  alias Tazuna.Datasets.SurveyPlan
+  alias Tazuna.Datasets.SurveyPlans
+  alias Tazuna.Datasets.SurveyScheduler
   alias Tazuna.Jst
 
   # 区画の一覧に出す数。**数百あるので全部は並べない**（並びは次に回ってくる順なので、
@@ -47,7 +52,13 @@ defmodule TazunaWeb.DatasetsLive do
        # ところが元へ戻る（巡回の表と同じ理由）
        run_sweep: nil,
        run_backend: nil,
-       run_model: nil
+       run_model: nil,
+       # 整理の起点と時刻（tazuna が持つ）。起点の候補は探したときだけ引く
+       plan: nil,
+       plan_form: nil,
+       places: nil,
+       place_query: "",
+       surveying: false
      )
      |> assign(state: empty_state())}
   end
@@ -61,6 +72,8 @@ defmodule TazunaWeb.DatasetsLive do
       socket
       |> assign(view: key, dataset: dataset, picks: %{}, asked: nil, picked: nil)
       |> assign(state: empty_state())
+      |> assign_plan(dataset)
+      |> assign(places: nil, place_query: "")
 
     # **開いたら読みに行く。** 読むのは Chiezo に置いた収集の状態だけで、
     # 何も作りません —— 開いただけで向こうに収集ができるのは驚きが大きい
@@ -73,6 +86,63 @@ defmodule TazunaWeb.DatasetsLive do
      else
        socket
      end}
+  end
+
+  # ---- 整理の起点と時刻 ----------------------------------------------------
+
+  # 起点の候補を地図辞典から探す。**待たずに引く**（数百ミリ秒〜数秒かかる）
+  def handle_event("search_place", %{"q" => q}, socket) do
+    q = String.trim(q || "")
+
+    cond do
+      q == "" ->
+        {:noreply, assign(socket, places: nil, place_query: "")}
+
+      base = Chiezo.base_url() ->
+        {:noreply,
+         socket
+         |> assign(place_query: q, places: :loading)
+         |> start_async(:places, fn -> Chiezo.places(base, q) end)}
+
+      true ->
+        {:noreply, assign(socket, places: {:error, :chiezo_not_configured})}
+    end
+  end
+
+  # 候補から起点を決める。**決めた時刻も控える**（それより前に見た区画は、
+  # まだ見ていないものとして扱い、新しい起点から回り直す）
+  def handle_event("pick_place", %{"index" => index}, socket) do
+    with {:ok, places} when is_list(places) <- socket.assigns.places,
+         {i, ""} <- Integer.parse(index),
+         %{} = place <- Enum.at(places, i),
+         {:ok, _plan} <- SurveyPlans.put_place(socket.assigns.dataset.collection, place) do
+      {:noreply,
+       socket |> assign_plan(socket.assigns.dataset) |> assign(places: nil, place_query: "")}
+    else
+      _other -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("save_survey_times", %{"survey_plan" => %{"run_at" => run_at}}, socket) do
+    case SurveyPlans.put_times(socket.assigns.dataset.collection, run_at) do
+      {:ok, _plan} -> {:noreply, assign_plan(socket, socket.assigns.dataset)}
+      {:error, changeset} -> {:noreply, assign(socket, plan_form: to_form(changeset))}
+    end
+  end
+
+  # いま 1 回頼む（時刻を待たずに）。取り込み中なら空くのを 1 時間まで待つ
+  def handle_event("survey_now", _params, socket) do
+    dataset = socket.assigns.dataset
+    plan = socket.assigns.plan
+
+    {:noreply,
+     socket
+     |> assign(surveying: true)
+     |> start_async(:survey, fn ->
+       result = Survey.run(dataset, plan, System.monotonic_time(:millisecond) + 60 * 60 * 1000)
+       SurveyPlans.mark_result(dataset.collection, Survey.result_text(result))
+       result
+     end)}
   end
 
   @impl true
@@ -199,6 +269,16 @@ defmodule TazunaWeb.DatasetsLive do
   def handle_async(:ask, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, asking: false, asked: {:error, :collection_crashed})}
 
+  def handle_async(:places, {:ok, result}, socket), do: {:noreply, assign(socket, places: result)}
+
+  def handle_async(:places, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, places: {:error, :chiezo_unavailable})}
+
+  # 頼んだあとは収集の状態も読み直す（区画に「見た」印が付くのは走り終えてからだが、
+  # 頼めたかどうかは前回の記録に出る）
+  def handle_async(:survey, _result, socket),
+    do: {:noreply, socket |> assign(surveying: false) |> assign_plan(socket.assigns.dataset)}
+
   def handle_async(:backends, {:ok, backends}, socket),
     do: {:noreply, assign(socket, backends: backends)}
 
@@ -206,6 +286,24 @@ defmodule TazunaWeb.DatasetsLive do
 
   # **まだ何も読んでいない状態。** 「収集が無い」と区別する —— 読めていないのに
   # 「まだ作られていません」と出すと、押した人は作り直そうとする
+  # 整理の起点と時刻を読む（tazuna が持つものなので、DB から）
+  defp assign_plan(socket, %{survey_plan_sweep: sweep, collection: collection})
+       when is_binary(sweep) do
+    plan = SurveyPlans.get(collection)
+    assign(socket, plan: plan, plan_form: to_form(SurveyPlan.changeset(plan, %{})))
+  end
+
+  defp assign_plan(socket, _dataset), do: assign(socket, plan: nil, plan_form: nil)
+
+  @doc "次に頼む予定（JST の文字列）。時刻を書いていなければ nil。"
+  def next_survey(%SurveyPlan{} = plan), do: plan |> SurveyScheduler.next() |> Jst.format()
+  def next_survey(_plan), do: nil
+
+  @doc "起点の候補を見分ける一言（地域と種別）。"
+  def place_label(place) do
+    [place[:area], place[:feature]] |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join("・")
+  end
+
   defp empty_state,
     do: %{collection: nil, status: :idle, reason: nil, checked_at: nil, pushing: false}
 

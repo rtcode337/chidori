@@ -11,6 +11,22 @@
       </nav>
     </header>
 
+    <%!-- 集めるものごとのタブ。**収集も溜まる先も別**なので、1 つに混ぜると
+         どちらの状態を見ているのか読めなくなる。並ぶのは `Tazuna.Datasets` の
+         定義そのもの（定義はコードにある）。**見出しの上に置く**（関連図と同じ）——
+         見出しと説明は選んだものなので、切り替える口がその下にあると、
+         どこまでが切り替わるのかが読めない --%>
+    <nav class="relation-tabs" aria-label="集めるもの">
+      <.link
+        :for={dataset <- @datasets}
+        patch={~p"/datasets?view=#{dataset.key}"}
+        class={if @view == dataset.key, do: "selected"}
+        aria-current={if @view == dataset.key, do: "page"}
+      >
+        {dataset.name}
+      </.link>
+    </nav>
+
     <section class="relations-intro">
       <p>{@dataset.eyebrow}</p>
       <h1>{@dataset.title}</h1>
@@ -26,104 +42,14 @@
       </p>
     </section>
 
-    <%!-- 集めるものごとのタブ。**収集も溜まる先も別**なので、1 つに混ぜると
-         どちらの状態を見ているのか読めなくなる。並ぶのは `Tazuna.Datasets` の
-         定義そのもの（定義はコードにある） --%>
-    <nav class="relation-tabs" aria-label="集めるもの">
-      <.link
-        :for={dataset <- @datasets}
-        patch={~p"/datasets?view=#{dataset.key}"}
-        class={if @view == dataset.key, do: "selected"}
-      >
-        {dataset.name}
-      </.link>
-    </nav>
-
     <%!-- Chiezo の状態と、そこへ送る設定を **1 つの枠にまとめる**（関連図と同じ形）。
          状態を見る場所と、直す場所と、押す場所が離れていると、何がどこへ効くのか
          読めない --%>
     <%!-- 設定はページの名前を冠した 1 つの枠にまとめる（他の画面と同じ形）--%>
     <section class="settings-panel" aria-label={"#{@dataset.title}の設定"}>
       <h2>{@dataset.title}の設定</h2>
-      <h3>Chiezo の収集</h3>
-      <p aria-live="polite">{status_message(@state)}</p>
-      <p class="muted-note">{push_note(@state)}</p>
-
-      <dl :if={collection_facts(@state) != []} class="collect-facts">
-        <div :for={{label, value} <- collection_facts(@state)}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
-        </div>
-      </dl>
-
-      <%!-- **選んだところはサーバーが覚える**（`phx-change`）。覚えないと、状態が
-           届いた拍子にフォームが描き直され、選んだ相手が元の値に戻る --%>
-      <form id="collect-form" phx-submit="collect" phx-change="pick_sweep">
-        <.sweep_table state={@state} picks={@picks} backends={@backends} />
-
-        <p class="muted-note">
-          収集の名前は「{@dataset.collection}」です（Chiezo のソース名。<strong>後から変えません</strong>
-          —— 変えると、それまで溜めた先を見失います）。
-        </p>
-        <button type="submit" phx-disable-with="送っています…" disabled={@state.pushing}>
-          {collect_label(@state)}
-        </button>
-      </form>
-
-      <p :if={@state.collection && @state.collection.url} class="muted-note">
-        <a href={@state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
-      </p>
-
-      <%!-- **travel-log へはファイルで渡す。** ブラウザから直接 Chiezo を読ませるには
-           CORS を開けたうえで Chiezo 自身を https で出す必要があり、LAN の中だけで
-           使う機械にそこまでさせる理由がない。中身は travel-log-data と同じ形なので、
-           向こうはリポジトリから取り込むのと同じ画面で入れられる --%>
-      <div :if={Tazuna.Datasets.TravelLog.exportable?(@dataset)}>
-        <%!-- **リンクと分かる見た目にする。** 押すと降ってくるだけで、画面の状態は
-             何も変わらない —— ボタンに寄せると「送る」「走らせる」と同じ重さに見える --%>
-        <%!-- 組み立てに十数秒かかるので、**待っている間も押したと分かる**ように
-             JS で取りに行く（DownloadLink）。JS が無ければ素のリンクとして働く --%>
-        <a
-          id={"download-#{@dataset.key}"}
-          class="download-link"
-          href={~p"/datasets/#{@dataset.key}/travel-log.zip"}
-          download
-          phx-hook="DownloadLink"
-          data-status={"download-status-#{@dataset.key}"}
-        >
-          ⬇ travel-log 用の ZIP を書き出す
-        </a>
-        <span
-          id={"download-status-#{@dataset.key}"}
-          class="download-status"
-          role="status"
-          phx-update="ignore"
-        ></span>
-        <p class="muted-note">
-          AI が目を通したものだけが入ります（settings.json と spots.csv）。
-          取り出しに十数秒かかります。
-        </p>
-      </div>
-
-      <%!-- **この収集から作る収集**（本棚・話題の網）。**親の下に置く** ——
-           別のタブにすると、何から作られたものかが読めなくなる --%>
-      <section :if={@dataset[:derived]} class="collect-panel" aria-label="この収集から作るもの">
-        <h2>{@dataset.derived.name()}</h2>
-        <p>
-          上の収集に付いた<strong>タグから機械で作ります</strong>。
-          数えるのは Chiezo で、<strong>AI がやるのは整えるところだけ</strong>です
-          （言い換えを畳む・分野を付ける・技術書でない語を外す・一言で説明する）。
-        </p>
-        <p class="muted-note">
-          溜め先は別の収集です（<code>{@dataset.derived.collection()}</code>）。
-          <strong>止めた状態で作ります</strong> —— 動き出すのは Chiezo の管理画面で
-          有効にしたときだけです。
-        </p>
-        <button type="button" phx-click="collect_derived" disabled={@state.pushing}>
-          {@dataset.derived.name()}の収集を更新
-        </button>
-      </section>
-
+      <%!-- **区画の地図は見出しのすぐ下に置く。** どこまで見終わったかを最初に
+           見たいので、状態の数字や巡回の表より先に出す --%>
       <%!-- **区画の一覧。** どこがまだ見られていないかは、ここにしか無い ——
            「ここを先に見てほしい」を頼む口でもある。数百あるので畳んで置く --%>
       <% rows = partition_rows(@state, @dataset.partition_sweeps) %>
@@ -210,6 +136,172 @@
           </button>
           <button type="button" phx-click="unpick_partition">やめる</button>
         </form>
+      </section>
+
+      <%!-- **整理の起点と時刻。** 整理は 1 区画に何分もかかる仕事なので、全国を順に
+           回すと一周に何か月もかかる。見たいところを起点に決め、そこから放射状に、
+           決めた時刻に tazuna が頼む（Chiezo の時計では走らせない） --%>
+      <section :if={@plan} class="survey-plan" aria-label="整理の起点と時刻">
+        <h3>整理の起点と時刻</h3>
+        <p class="muted-note">
+          決めた起点から「ざっと見る」と同じ選び方（まだ見ていない区画が先、同じなら近い順）で、
+          決めた時刻に 1 回ぶんの区画を整理の回として頼みます。起点を変えると、変えた時刻より前に見た区画も
+          まだ見ていないものとして扱い、新しい起点のまわりから回り直します。
+          Chiezo が取り込み中なら、次の予定の時刻まで空くのを待って頼みます。
+        </p>
+
+        <dl class="collect-facts">
+          <div>
+            <dt>起点</dt>
+            <dd>
+              <%= if SurveyPlan.placed?(@plan) do %>
+                {@plan.place}（{Float.round(@plan.lat, 4)}, {Float.round(@plan.lon, 4)}。{Jst.format(
+                  @plan.place_set_at
+                )} から）
+              <% else %>
+                まだ決めていません
+              <% end %>
+            </dd>
+          </div>
+          <div>
+            <dt>次に頼む</dt>
+            <dd>{next_survey(@plan) || "時刻が決まっていません"}</dd>
+          </div>
+          <div :if={@plan.last_result not in [nil, ""]}>
+            <dt>前回</dt>
+            <dd>{@plan.last_result}</dd>
+          </div>
+        </dl>
+
+        <form id="place-search" phx-submit="search_place" class="survey-row">
+          <input
+            type="search"
+            name="q"
+            value={@place_query}
+            placeholder="起点の地名（例: 銀座、京都駅）"
+            aria-label="起点の地名"
+          />
+          <button type="submit">探す</button>
+        </form>
+        <%= cond do %>
+          <% @places == :loading -> %>
+            <p class="muted-note">探しています…</p>
+          <% match?({:error, _reason}, @places) -> %>
+            <p class="warn-note">探せませんでした: {reason_text(elem(@places, 1))}</p>
+          <% match?({:ok, []}, @places) -> %>
+            <p class="muted-note">見つかりませんでした。別の書き方で探してください。</p>
+          <% match?({:ok, _found}, @places) -> %>
+            <ul class="place-candidates">
+              <li :for={{place, index} <- Enum.with_index(elem(@places, 1))}>
+                <button type="button" phx-click="pick_place" phx-value-index={index}>
+                  {place.name}
+                </button>
+                <span class="muted-note">{place_label(place)}</span>
+              </li>
+            </ul>
+          <% true -> %>
+        <% end %>
+
+        <.form for={@plan_form} id="survey-times" phx-submit="save_survey_times" class="survey-row">
+          <input
+            type="text"
+            name={@plan_form[:run_at].name}
+            value={@plan_form[:run_at].value}
+            placeholder="頼む時刻（例: 03:00,15:00）"
+            aria-label="頼む時刻"
+          />
+          <button type="submit">時刻を保存</button>
+        </.form>
+        <p :for={{message, _opts} <- @plan_form[:run_at].errors} class="warn-note">{message}</p>
+
+        <button
+          :if={SurveyPlan.placed?(@plan)}
+          type="button"
+          phx-click="survey_now"
+          disabled={@surveying}
+          phx-disable-with="頼んでいます…"
+        >
+          {if @surveying, do: "頼んでいます…", else: "いま 1 回頼む"}
+        </button>
+      </section>
+
+      <h3>Chiezo の収集</h3>
+      <p aria-live="polite">{status_message(@state)}</p>
+      <p class="muted-note">{push_note(@state)}</p>
+
+      <dl :if={collection_facts(@state) != []} class="collect-facts">
+        <div :for={{label, value} <- collection_facts(@state)}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      </dl>
+
+      <%!-- **選んだところはサーバーが覚える**（`phx-change`）。覚えないと、状態が
+           届いた拍子にフォームが描き直され、選んだ相手が元の値に戻る --%>
+      <form id="collect-form" phx-submit="collect" phx-change="pick_sweep">
+        <.sweep_table state={@state} picks={@picks} backends={@backends} />
+
+        <p class="muted-note">
+          収集の名前は「{@dataset.collection}」です（Chiezo のソース名。<strong>後から変えません</strong>
+          —— 変えると、それまで溜めた先を見失います）。
+        </p>
+        <button type="submit" phx-disable-with="送っています…" disabled={@state.pushing}>
+          {collect_label(@state)}
+        </button>
+      </form>
+
+      <p :if={@state.collection && @state.collection.url} class="muted-note">
+        <a href={@state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
+      </p>
+
+      <%!-- **travel-log へはファイルで渡す。** ブラウザから直接 Chiezo を読ませるには
+           CORS を開けたうえで Chiezo 自身を https で出す必要があり、LAN の中だけで
+           使う機械にそこまでさせる理由がない。中身は travel-log-data と同じ形なので、
+           向こうはリポジトリから取り込むのと同じ画面で入れられる --%>
+      <div :if={Tazuna.Datasets.TravelLog.exportable?(@dataset)}>
+        <%!-- **リンクと分かる見た目にする。** 押すと降ってくるだけで、画面の状態は
+             何も変わらない —— ボタンに寄せると「送る」「走らせる」と同じ重さに見える --%>
+        <%!-- 組み立てに十数秒かかるので、**待っている間も押したと分かる**ように
+             JS で取りに行く（DownloadLink）。JS が無ければ素のリンクとして働く --%>
+        <a
+          id={"download-#{@dataset.key}"}
+          class="download-link"
+          href={~p"/datasets/#{@dataset.key}/travel-log.zip"}
+          download
+          phx-hook="DownloadLink"
+          data-status={"download-status-#{@dataset.key}"}
+        >
+          ⬇ travel-log 用の ZIP を書き出す
+        </a>
+        <span
+          id={"download-status-#{@dataset.key}"}
+          class="download-status"
+          role="status"
+          phx-update="ignore"
+        ></span>
+        <p class="muted-note">
+          AI が目を通したものだけが入ります（settings.json と spots.csv）。
+          取り出しに十数秒かかります。
+        </p>
+      </div>
+
+      <%!-- **この収集から作る収集**（本棚・話題の網）。**親の下に置く** ——
+           別のタブにすると、何から作られたものかが読めなくなる --%>
+      <section :if={@dataset[:derived]} class="collect-panel" aria-label="この収集から作るもの">
+        <h2>{@dataset.derived.name()}</h2>
+        <p>
+          上の収集に付いた<strong>タグから機械で作ります</strong>。
+          数えるのは Chiezo で、<strong>AI がやるのは整えるところだけ</strong>です
+          （言い換えを畳む・分野を付ける・技術書でない語を外す・一言で説明する）。
+        </p>
+        <p class="muted-note">
+          溜め先は別の収集です（<code>{@dataset.derived.collection()}</code>）。
+          <strong>止めた状態で作ります</strong> —— 動き出すのは Chiezo の管理画面で
+          有効にしたときだけです。
+        </p>
+        <button type="button" phx-click="collect_derived" disabled={@state.pushing}>
+          {@dataset.derived.name()}の収集を更新
+        </button>
       </section>
 
       <details :if={rows != []} class="partition-list">

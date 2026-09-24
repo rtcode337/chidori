@@ -341,4 +341,80 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert none =~ "まだ Chiezo にありません"
     end
   end
+
+  describe "整理の起点と時刻" do
+    setup do
+      System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+
+      Tazuna.HttpStub.stub(fn %{url: url} ->
+        cond do
+          String.contains?(url, "/v1/osm_japan/search?") ->
+            Tazuna.HttpStub.ok(
+              Jason.encode!(%{
+                "results" => [%{"title" => "銀座 (node:1)"}, %{"title" => "座標の無い銀座"}]
+              })
+            )
+
+          String.contains?(url, "/v1/osm_japan/doc?") and String.contains?(url, "node") ->
+            Tazuna.HttpStub.ok(
+              Jason.encode!(%{
+                "title" => "銀座 (node:1)",
+                "extra" => %{
+                  "lat" => 35.6728,
+                  "lon" => 139.7631,
+                  "area" => "東京都",
+                  "feature" => "railway=station"
+                }
+              })
+            )
+
+          String.contains?(url, "/v1/osm_japan/doc?") ->
+            Tazuna.HttpStub.ok(Jason.encode!(%{"title" => "座標の無い銀座", "extra" => %{}}))
+
+          true ->
+            Tazuna.HttpStub.ok(~s({"collections":[],"backends":[],"sources":[]}))
+        end
+      end)
+
+      :ok
+    end
+
+    test "地名で探して起点を決め、時刻を保存する", %{conn: conn} do
+      {:ok, live, html} = live(conn, ~p"/datasets")
+      assert html =~ "整理の起点と時刻"
+      assert html =~ "まだ決めていません"
+
+      live |> form("#place-search", %{"q" => "銀座"}) |> render_submit()
+      html = render_async(live)
+
+      # 座標の取れない候補は出さない。見出しの重複を避ける番号も見せない
+      assert html =~ ~s(phx-click="pick_place")
+      refute html =~ "座標の無い銀座"
+      refute html =~ "node:1"
+
+      html = live |> element(~s([phx-click="pick_place"])) |> render_click()
+      assert html =~ "銀座（35.6728, 139.7631"
+      assert Tazuna.Datasets.SurveyPlans.get("tazuna_meals").place_set_at
+
+      html =
+        live
+        |> form("#survey-times", %{"survey_plan" => %{"run_at" => "3:00"}})
+        |> render_submit()
+
+      assert Tazuna.Datasets.SurveyPlans.get("tazuna_meals").run_at == "03:00"
+      refute html =~ "時刻が決まっていません"
+    end
+
+    test "読めない時刻は保存せず、理由を出す", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/datasets")
+
+      html =
+        live
+        |> form("#survey-times", %{"survey_plan" => %{"run_at" => "朝"}})
+        |> render_submit()
+
+      assert html =~ "24 時間制で書いてください"
+    end
+  end
 end

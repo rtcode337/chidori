@@ -50,7 +50,16 @@ defmodule Tazuna.Notify.Setting do
   返すのは `{時, 分}` の並びで、**早い順に揃えます** —— 書いた順のまま持つと、
   「次はいつか」を数えるたびに並べ直すことになります。
   """
-  def digest_times(%__MODULE__{digest_at: text}) when is_binary(text) do
+  def digest_times(%__MODULE__{digest_at: text}) when is_binary(text), do: times_of(text)
+
+  def digest_times(_setting), do: []
+
+  @doc """
+  「07:00,21:00」のように書かれた時刻の並びを読みます（`{時, 分}` を早い順に）。
+  **読めないものは落とします**（保存するときに `bad_times/1` で弾いてあるので、
+  ここへ来るのは古い書き方くらい）。ほかの定時の設定もこの書き方を使います。
+  """
+  def times_of(text) when is_binary(text) do
     text
     |> split()
     |> Enum.flat_map(fn part ->
@@ -63,7 +72,13 @@ defmodule Tazuna.Notify.Setting do
     |> Enum.sort()
   end
 
-  def digest_times(_setting), do: []
+  def times_of(_text), do: []
+
+  @doc "書かれた時刻のうち、読めないもの（空なら全部読める）。"
+  def bad_times(text) when is_binary(text),
+    do: text |> split() |> Enum.filter(&(parse(&1) == :error))
+
+  def bad_times(_text), do: []
 
   @doc """
   書かれた時刻 1 つを読みます。**書き方は緩く受けます** —— `08:00` も `8:00` も
@@ -108,8 +123,8 @@ defmodule Tazuna.Notify.Setting do
 
   defp split(text), do: text |> String.split(@separators) |> Enum.reject(&(&1 == ""))
 
-  # 書き方は揃えて持つ（"8" と "08:00" が別の時刻に見えないように）
-  defp normalize_times(text) do
+  @doc "書き方を揃えます（\"8\" と \"08:00\" が別の時刻に見えないように）。"
+  def normalize_times(text) do
     text
     |> split()
     |> Enum.map_join(",", fn part ->
@@ -123,9 +138,7 @@ defmodule Tazuna.Notify.Setting do
   defp valid_times(:digest_at, ""), do: []
 
   defp valid_times(:digest_at, text) do
-    bad = text |> split() |> Enum.filter(&(parse(&1) == :error))
-
-    if bad == [],
+    if bad_times(text) == [],
       do: [],
       else: [
         digest_at:

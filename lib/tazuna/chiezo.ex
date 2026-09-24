@@ -16,6 +16,11 @@ defmodule Tazuna.Chiezo do
   @connect_timeout 5_000
   # 1 回に引ける上限（Chiezo 側の決まり。これより大きいと 422 で断られる）
   @page_limit 500
+  # 取り込みが空くのを待つあいだ、確かめ直す間隔
+  @busy_poll_ms 60_000
+  # 起点の地名を引く辞典と、候補の数
+  @place_source "osm_japan"
+  @place_limit 8
 
   @doc """
   Chiezo のルートURL。未設定ならこの機能は使えません。
@@ -275,6 +280,83 @@ defmodule Tazuna.Chiezo do
 
       _ ->
         false
+    end
+  end
+
+  @doc """
+  **取り込みが空くまで待ってから**頼みます。`ask` が `{:error, :chiezo_busy}` を
+  返すあいだは待って頼み直し、`deadline`（`System.monotonic_time(:millisecond)`
+  の値）を過ぎたらそこで諦めて `{:error, :chiezo_busy}` を返します。
+
+  **Chiezo は取り込み中の依頼を積まずに断ります**（409）。定時の回が取り込みと
+  重なるたびにその回を落としていると、混む時間帯に当たる回はいつまでも走らない ——
+  次の予定まで待てば、同じ回を二重に走らせることもありません。
+  """
+  def when_free(ask, deadline) when is_function(ask, 0) do
+    case ask.() do
+      {:error, :chiezo_busy} = busy ->
+        if System.monotonic_time(:millisecond) >= deadline do
+          busy
+        else
+          Process.sleep(Application.get_env(:tazuna, :chiezo_busy_poll_ms, @busy_poll_ms))
+          when_free(ask, deadline)
+        end
+
+      other ->
+        other
+    end
+  end
+
+  @doc """
+  地名の候補（`%{name, title, lat, lon, area, feature}` の並び）。**起点を決めるのに使います**。
+
+  地図辞典（`#{@place_source}`）で引き、見出しごとに座標を取り直します ——
+  検索の結果には座標が付いてこないためです。座標を持たないものは落とします。
+  """
+  def places(base, q) when is_binary(q) do
+    query = URI.encode_query(%{"q" => q, "limit" => @place_limit})
+
+    with {:ok, %{status: 200, body: body}} <-
+           get(base <> "/v1/" <> @place_source <> "/search?" <> query),
+         {:ok, %{"results" => results}} when is_list(results) <- Jason.decode(body) do
+      found =
+        results
+        |> Enum.map(& &1["title"])
+        |> Enum.filter(&is_binary/1)
+        |> Enum.uniq()
+        |> Task.async_stream(&place_of(base, &1), max_concurrency: 4, timeout: @timeout)
+        |> Enum.flat_map(fn
+          {:ok, {:ok, place}} -> [place]
+          _other -> []
+        end)
+        # **同じ名前・地域・種別は 1 つにまとめる。** 駅はホームや路線ごとに別の地物に
+        # なっていて、「銀座 東京都・駅」が 3 つ並んでも選び分けようがない
+        |> Enum.uniq_by(&{&1.name, &1.area, &1.feature})
+
+      {:ok, found}
+    else
+      {:ok, %{status: status}} -> {:error, {:chiezo_status, status}}
+      {:error, _reason} -> {:error, :chiezo_unavailable}
+      _other -> {:error, :chiezo_unexpected_body}
+    end
+  end
+
+  defp place_of(base, title) do
+    with {:ok, %{"extra" => %{"lat" => lat, "lon" => lon} = extra}} <-
+           doc(base, @place_source, title, "title,extra"),
+         true <- is_number(lat) and is_number(lon) do
+      {:ok,
+       %{
+         # 見出しの重複を避ける番号（`銀座 (node:6271990033)`）は見せない
+         name: String.replace(title, ~r/\s*\((?:node|way|relation):\d+\)$/u, ""),
+         title: title,
+         lat: lat,
+         lon: lon,
+         area: extra["area"],
+         feature: extra["feature"]
+       }}
+    else
+      _other -> :none
     end
   end
 
