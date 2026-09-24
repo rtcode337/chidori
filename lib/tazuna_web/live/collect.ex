@@ -143,6 +143,7 @@ defmodule TazunaWeb.Collect do
           on_demand: false,
           use_extract: false,
           use_feed: false,
+          by_hand: false,
           enabled: c.enabled,
           next_run_at: c.next_run_at,
           last_run_at: c.last_run_at,
@@ -166,6 +167,9 @@ defmodule TazunaWeb.Collect do
       model: sweep.model,
       interval:
         cond do
+          # **手で回す回は時計を持たない。** 走るのは、人が持ち帰った答えを
+          # 読み込んだとき —— 間隔を出すと、勝手に動くように読める
+          sweep[:by_hand] -> "手で回す"
           sweep[:on_demand] -> "時計なし"
           sweep.interval_minutes -> "#{sweep.interval_minutes} 分ごと"
           true -> "—"
@@ -174,7 +178,8 @@ defmodule TazunaWeb.Collect do
       # **機械で引く回は相手を選ばせない。** 選んでも何も起きない —— その回は AI を
       # 呼ばずに返すので、相手もモデルも読まれない。
       # **選べるのに効かない欄は「設定したつもり」を作る**
-      mechanical: sweep[:use_extract] == true or sweep[:use_feed] == true,
+      mechanical:
+        sweep[:use_extract] == true or sweep[:use_feed] == true or sweep[:by_hand] == true,
       # **走らない回に「いますぐ」と出さない。** 予定を持っていないだけの回と、
       # 先の回の一周を待っている回は、どちらも予定が空 —— 区別せずに出すと、
       # 3 日動かないものを「いますぐ」と読んで待ち続けることになる。
@@ -217,6 +222,28 @@ defmodule TazunaWeb.Collect do
   **深さでは数えません。** 巡回は並んで回るので、後ろに書いた回だけが見た区画が
   普通にできます —— 順番で数えると、その区画が「両方とも見終えた」に化けます。
   """
+  @doc """
+  区画を名指しして走らせられる巡回だけ。
+
+  **手で回す回はここに出しません** —— こちらから走らせる道が無く、選んでも
+  Chiezo に断られます（走らせる中身は、人が持ち帰って読み込んだときに揃う）。
+  機械で引く回も同じ理由で外します。
+
+  **判断は Chiezo が言うことに従います**（こちらで場合分けを書き写さない）。
+  巡回の一覧が読めないときは、渡された名前をそのまま返します —— 選べないより、
+  押して断られるほうがまだ読める。
+  """
+  def runnable_sweeps(state, names) do
+    rows = sweep_rows(state)
+
+    case Enum.reject(names, fn name ->
+           Enum.any?(rows, &(&1.name == name and &1.mechanical))
+         end) do
+      [] -> names
+      kept -> kept
+    end
+  end
+
   def partition_rows(state, sweep) when is_binary(sweep), do: partition_rows(state, [sweep])
 
   def partition_rows(%{collection: %{partitions: list}}, sweeps)

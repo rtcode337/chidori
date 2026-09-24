@@ -150,7 +150,12 @@
             <label>
               どの巡回として<br />
               <select name="sweep">
-                <option :for={name <- @dataset.partition_sweeps} value={name} selected={name == @run_sweep}>
+                <%!-- 手で回す回・機械で引く回は出さない（選んでも Chiezo が断る） --%>
+                <option
+                  :for={name <- runnable_sweeps(@state, @dataset.partition_sweeps)}
+                  value={name}
+                  selected={name == @run_sweep}
+                >
                   {name}
                 </option>
               </select>

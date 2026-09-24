@@ -110,7 +110,13 @@ defmodule TazunaWeb.DatasetsLiveTest do
           "enabled" => true
         },
         %{"name" => "ざっと見る", "interval_minutes" => 60, "cover_days" => 3, "enabled" => true},
-        %{"name" => "整理", "interval_minutes" => 360, "cover_days" => 14, "enabled" => true}
+        %{
+          "name" => "整理",
+          "interval_minutes" => 360,
+          "cover_days" => 14,
+          "by_hand" => true,
+          "enabled" => true
+        }
       ]
     }
 
@@ -155,7 +161,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
       {_live, html} = shown(conn)
 
       assert html =~ "sweep-table"
-      assert html =~ ~s(name="sweep|整理|backend")
+      assert html =~ ~s(name="sweep|ざっと見る|backend")
       assert html =~ "収集の設定を更新"
     end
 
@@ -165,6 +171,14 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
       refute html =~ ~s(name="sweep|機械収集|backend")
       assert html =~ "AI を使いません"
+    end
+
+    test "手で回す巡回にも相手を選ばせない", %{conn: conn} do
+      # 走らせるのは、人が持ち帰った答えを読み込んだとき —— Chiezo から相手へ
+      # 投げる道が無いので、ここで選んでも読まれない
+      {_live, html} = shown(conn)
+
+      refute html =~ ~s(name="sweep|整理|backend")
     end
 
     test "集め方は網羅だと出す", %{conn: conn} do
@@ -201,6 +215,27 @@ defmodule TazunaWeb.DatasetsLiveTest do
                ["jawiki", "osm_japan", "overture_japan"]
 
       assert length(sent["sweeps"]) == 3
+    end
+
+    test "手で回す回は「どの巡回として」に出さない", %{conn: conn} do
+      # 選んでも Chiezo が断る（走らせる中身は、人が持ち帰って読み込んだときに揃う）
+      # —— 選べるのに効かない欄は「設定したつもり」を作る
+      {live, _html} = shown(conn)
+
+      html =
+        live
+        |> element(~s|.partition-table tbody tr:first-child button|)
+        |> render_click()
+
+      assert html =~ ~s(<option value="ざっと見る")
+      refute html =~ ~s(<option value="整理")
+    end
+
+    test "手で回す回は、時計の代わりにそう出す", %{conn: conn} do
+      # 間隔を出すと、勝手に動くように読める
+      {_live, html} = shown(conn)
+
+      assert html =~ "手で回す"
     end
 
     test "一覧からも、その区画を選べる", %{conn: conn} do
@@ -256,12 +291,15 @@ defmodule TazunaWeb.DatasetsLiveTest do
       # **ふつうの回として走らせる。** 割り込みは進み具合にも印にも触らないので、
       # 押しても画面が変わらず「何が起きたのか分からない」になっていた
       live
-      |> form(~s|.partition-picked form|, %{"sweep" => "整理", "run|backend" => "antigravity"})
+      |> form(~s|.partition-picked form|, %{
+        "sweep" => "ざっと見る",
+        "run|backend" => "antigravity"
+      })
       |> render_submit()
 
       assert_receive {:posted, url, sent}, 2_000
       assert url =~ "/run"
-      assert url =~ "sweep=%E6%95%B4%E7%90%86"
+      assert url =~ "sweep=%E3%81%96%E3%81%A3%E3%81%A8%E8%A6%8B%E3%82%8B"
       assert sent["partitions"] == ["43.0,141.3/43.1,141.4"]
       assert sent["backend"] == "antigravity"
     end

@@ -432,6 +432,10 @@ defmodule Tazuna.Chiezo do
         # **機械で引く回。** AI を呼ばないので、相手を選ばせても何も起きない
         use_extract: s["use_extract"] == true,
         use_feed: s["use_feed"] == true,
+        # **手で回す回。** Chiezo が依頼文をファイルに書き出し、人が web の画面から
+        # 使う AI に渡して、答えのファイルを読み込ませる —— こちらから走らせる道は
+        # 無いので、相手も選ばせないし「この区画で 1 回」の相手にもしない
+        by_hand: s["by_hand"] == true,
         enabled: s["enabled"] != false,
         next_run_at: s["next_run_at"],
         last_run_at: s["last_run_at"],
