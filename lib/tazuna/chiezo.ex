@@ -16,8 +16,6 @@ defmodule Tazuna.Chiezo do
   @connect_timeout 5_000
   # 1 回に引ける上限（Chiezo 側の決まり。これより大きいと 422 で断られる）
   @page_limit 500
-  # 座標で引くときの矩形。**世界全体**にしてあるので、日本以外を集める収集でも効く
-  @world_bbox "-90,-180,90,180"
 
   @doc """
   Chiezo のルートURL。未設定ならこの機能は使えません。
@@ -98,11 +96,12 @@ defmodule Tazuna.Chiezo do
   end
 
   @doc """
-  溜まったもののうち、**座標を持つ 1 ページ**。書き出し（travel-log 用の ZIP）で使います。
+  溜まったもののうち、**目印のタグを持つ 1 ページ**。書き出し（travel-log 用の ZIP）で使います。
 
-  **タグではなく座標の矩形で引きます。** 収集ごとのタグの付け方を知らずに全件を引けて、
-  **座標を持たない文書が最初から外れます**（スポットにできないものを運んでから
-  捨てるより速い）。矩形は世界全体なので、日本以外を集める収集でもそのまま使えます。
+  **座標の矩形（世界全体）では引きません。** 矩形は収集の全文書（数十万件）を座標の表から
+  拾い直すので、1 ページごとに 4 秒ほどかかっていた（6,000 件で 13 ページ = 1 分近く）。
+  目印のタグなら索引の中で済み、同じ件数で 1 ページ 1 秒ほどになる。
+  座標を持たないものは呼ぶ側で落とします。
 
   **返るのは AI が目を通したものだけ**です（Chiezo の読み口が、まだ目を通していない
   ものと消したものを既定で外します）。機械で入れたばかりのものには宣伝も的外れも
@@ -110,11 +109,11 @@ defmodule Tazuna.Chiezo do
 
   1 回の上限は Chiezo 側で 500 件なので、呼ぶ側が `offset` を進めます。
   """
-  def spot_docs(base, name, offset \\ 0, limit \\ @page_limit)
-      when is_binary(name) and is_integer(offset) do
+  def spot_docs(base, name, tag, offset \\ 0, limit \\ @page_limit)
+      when is_binary(name) and is_binary(tag) and is_integer(offset) do
     query =
       URI.encode_query(%{
-        "bbox" => @world_bbox,
+        "tag" => tag,
         "limit" => limit,
         "offset" => offset,
         "fields" => "doc_id,title,tags,extra,opening"

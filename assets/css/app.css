@@ -251,6 +251,12 @@ article p:last-child { color: #475569; line-height: 1.7; }
 /* travel-log への書き出し。**リンクと分かる見た目のまま**、周りの注記より
    一段強く出す（押すと降ってくるだけなので、ボタンには寄せない） */
 .download-link { display: inline-block; margin-top: .5rem; color: #554bc0; font-weight: 700; text-decoration: underline; text-underline-offset: .2em; }
+.download-link[aria-busy] { color: #8a90a6; cursor: progress; }
+.download-status { margin-left: .6rem; font-size: .78rem; color: #554bc0; }
+.download-status[data-state="busy"]::before { content: ""; display: inline-block; width: .8em; height: .8em; margin-right: .35em; vertical-align: -.1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: download-spin .8s linear infinite; }
+.download-status[data-state="error"] { color: #c0392b; }
+@keyframes download-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .download-status[data-state="busy"]::before { animation: none; } }
 /* 断られたことの知らせ。**薄くしない** —— 押した人が読み飛ばすと、頼めたつもりのまま待つ */
 .warn-note { margin: .35rem 0 0; color: #b42318; font-size: .82rem; line-height: 1.6; }
 

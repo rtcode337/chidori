@@ -42,8 +42,11 @@ defmodule Tazuna.Datasets.TravelLog do
   書き出せる対象か。**スポットにできる収集だけ**（タグの取り決めを持つもの）。
 
   技術ニュースのように地図に載らない収集もあるので、画面はこれで出し分けます。
+  目印のタグ（`kind_tag`）も要ります —— 書き出すものはそれで引くためです。
   """
-  def exportable?(%{module: module}), do: function_exported?(module, :area_tag, 0)
+  def exportable?(%{module: module}),
+    do: function_exported?(module, :area_tag, 0) and function_exported?(module, :kind_tag, 0)
+
   def exportable?(_dataset), do: false
 
   @doc """
@@ -51,10 +54,10 @@ defmodule Tazuna.Datasets.TravelLog do
 
   内訳は `%{rows: 書き出した件数, skipped: 落とした件数}`。
   """
-  def bundle(%{key: key, name: name, collection: collection} = dataset) do
+  def bundle(%{key: key, name: name, collection: collection, module: module} = dataset) do
     with true <- exportable?(dataset) || {:error, :not_exportable},
          {:ok, base} <- Datasets.base_url(),
-         {:ok, docs} <- fetch_all(base, collection) do
+         {:ok, docs} <- fetch_all(base, collection, module.kind_tag()) do
       rows = docs |> Enum.map(&row(&1, dataset)) |> Enum.reject(&is_nil/1)
 
       files = [
@@ -76,8 +79,8 @@ defmodule Tazuna.Datasets.TravelLog do
   end
 
   # 全ページ。**件数は 1 ページ目が教えてくれる**ので、何周するかはそこで決まる
-  defp fetch_all(base, collection, offset \\ 0, acc \\ []) do
-    case Chiezo.spot_docs(base, collection, offset) do
+  defp fetch_all(base, collection, tag, offset \\ 0, acc \\ []) do
+    case Chiezo.spot_docs(base, collection, tag, offset) do
       {:ok, %{docs: []}} ->
         {:ok, acc}
 
@@ -86,7 +89,7 @@ defmodule Tazuna.Datasets.TravelLog do
 
         if length(got) >= total,
           do: {:ok, got},
-          else: fetch_all(base, collection, length(got), got)
+          else: fetch_all(base, collection, tag, length(got), got)
 
       {:error, reason} ->
         {:error, reason}

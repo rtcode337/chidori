@@ -81,12 +81,27 @@
       <div :if={Tazuna.Datasets.TravelLog.exportable?(@dataset)}>
         <%!-- **リンクと分かる見た目にする。** 押すと降ってくるだけで、画面の状態は
              何も変わらない —— ボタンに寄せると「送る」「走らせる」と同じ重さに見える --%>
-        <a class="download-link" href={~p"/datasets/#{@dataset.key}/travel-log.zip"} download>
+        <%!-- 組み立てに十数秒かかるので、**待っている間も押したと分かる**ように
+             JS で取りに行く（DownloadLink）。JS が無ければ素のリンクとして働く --%>
+        <a
+          id={"download-#{@dataset.key}"}
+          class="download-link"
+          href={~p"/datasets/#{@dataset.key}/travel-log.zip"}
+          download
+          phx-hook="DownloadLink"
+          data-status={"download-status-#{@dataset.key}"}
+        >
           ⬇ travel-log 用の ZIP を書き出す
         </a>
+        <span
+          id={"download-status-#{@dataset.key}"}
+          class="download-status"
+          role="status"
+          phx-update="ignore"
+        ></span>
         <p class="muted-note">
           AI が目を通したものだけが入ります（settings.json と spots.csv）。
-          取り出しに数秒かかります。
+          取り出しに十数秒かかります。
         </p>
       </div>
 

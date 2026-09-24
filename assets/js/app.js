@@ -28,13 +28,14 @@ import {hooks as colocatedHooks} from "phoenix-colocated/tazuna"
 // 倍率の幅や札の留め方といった図ごとの事情だけをそれぞれが足す）
 import PartitionMap from "./partition_map"
 import RelationMap from "./relation_map"
+import DownloadLink from "./download_link"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, PartitionMap, RelationMap},
+  hooks: {...colocatedHooks, PartitionMap, RelationMap, DownloadLink},
 })
 
 // Show progress bar on live navigation and form submits
