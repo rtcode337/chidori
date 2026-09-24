@@ -43,11 +43,20 @@
     <%!-- 図は地図と同じ操作にする（押し広げ・引きずり）。**全画面はブラウザの
          Fullscreen API に任せる** —— 自前で画面を覆うと、ブラウザの UI が残るぶん
          縦が削られ、Esc で閉じる作法も自分で書くことになる --%>
+    <%!-- 絞り込みが掛かっていれば、その人たちだけで置き直した図を描く。
+         **絞るだけでは足りない** —— 位置がもとのままだと、39 人が高さ 2,500 の面に
+         散らばって拡大しないと読めず、絞った意味が無い --%>
+    <% shown = shown(@relation, assigns) %>
+    <%!-- **器の縦横比は図に合わせる。** 画家の図は縦に長い（幅 1,200 に対して高さ
+         2,000 超）ので、画面の高さで切った器では拡大しないと下が見えず、全体を
+         入れようと縮めると札が小さすぎて 1 枚も描けない。図と同じ比にすれば、
+         拡大していない状態で全体が入り、はみ出すぶんはページのスクロールで見られる --%>
     <section
       class="relation-canvas"
       aria-label={@relation.title}
       id={"relation-canvas-#{@view}"}
       phx-hook="RelationMap"
+      style={canvas_style(@relation, shown)}
     >
       <%!-- 行き先を選ぶ口。**名前で探す**のと、**前に見た印から選ぶ**のを並べて置く ——
            名前を思い出せないときに使うのが後者なので、探す欄の中には入れられない --%>
@@ -117,10 +126,6 @@
         <p>{sample_message(@relation)}</p>
       </div>
 
-      <%!-- 絞り込みが掛かっていれば、その人たちだけで置き直した図を描く。
-           **絞るだけでは足りない** —— 位置がもとのままだと、39 人が高さ 2,500 の面に
-           散らばって拡大しないと読めず、絞った意味が無い --%>
-      <% shown = shown(@relation, assigns) %>
       <svg
         :if={!@relation[:sample?]}
         viewBox={"0 0 #{shown.width} #{shown.height}"}
@@ -197,7 +202,11 @@
             phx-value-to={edge.to}
             phx-value-kind={edge.kind}
           />
-          <text x={edge.mid_x} y={edge.mid_y} class="edge-label">{edge.label}</text>
+          <%!-- **画家の図では線の上に文字を置かない。** どの線の説明か読めないうえ、
+               札に重なって名前を隠していた。何を受けたかは、線を押すと出る --%>
+          <text :if={@view != "painters"} x={edge.mid_x} y={edge.mid_y} class="edge-label">
+            {edge.label}
+          </text>
         <% end %>
         <%= for node <- drawn do %>
           <%!-- **どの丸も押せる。** 押すと、もとになった記事・Chiezo に入っている
@@ -210,6 +219,7 @@
               to_string(node.kind),
               works_of(node) != [] && "has-work",
               node[:changed?] && "changed",
+              node[:unreviewed?] && "unreviewed",
               marked?(@marks, node.name) && "marked",
               node.id == @focus && "focused"
             ]}
@@ -283,6 +293,31 @@
           </g>
         <% end %>
       </svg>
+    </section>
+
+    <%!-- AI が目を通したかどうか。**薄い札が未レビュー**（機械で名簿に入っただけで、
+         説明も影響元もまだ無いことが多い）。押すとその人たちだけになる --%>
+    <section
+      :if={@view == "painters" and is_integer(@relation[:unreviewed]) and @relation.unreviewed > 0}
+      class="changed-note review-note"
+    >
+      <p>
+        <span class="review-swatch reviewed" aria-hidden="true"></span>
+        レビュー済み {length(@relation.nodes) - @relation.unreviewed} 人
+        <span class="review-swatch unreviewed" aria-hidden="true"></span>
+        未レビュー {@relation.unreviewed} 人（薄い札。AI がまだ目を通していません）
+      </p>
+      <%!-- 2 つは排他。**押しているほうをもう一度押すと全員に戻る**（凡例と同じ押し方） --%>
+      <button
+        :for={{only, label} <- [{"reviewed", "レビュー済みだけ"}, {"unreviewed", "未レビューだけ"}]}
+        type="button"
+        class={@review_filter == only && "on"}
+        phx-click="filter_review"
+        phx-value-only={only}
+        aria-pressed={to_string(@review_filter == only)}
+      >
+        {label}
+      </button>
     </section>
 
     <%!-- 直近の巡回で何が動いたか。**図の下、凡例のすぐ上に置く** —— 押すと
@@ -408,6 +443,50 @@
 
       <%!-- **区画の一覧。** どこがまだ見られていないかは、ここにしか無い ——
            「ここを先に見てほしい」を頼む口でもある。400 区画あるので畳んで置く --%>
+      <%!-- **未レビューが残る区画。** 多い順に並べ、先にざっと見てもらう口を置く ——
+           ざっと見るの一周を待たずに、見たいところから目を通してもらえる --%>
+      <% pending = unreviewed_partitions(@relation) %>
+      <details :if={@view == "painters" and pending != []} class="partition-list">
+        <summary>未レビューが残る区画（{length(pending)}）— 多い順</summary>
+        <p class="muted-note">
+          <strong>押すと、その区画を「ざっと見る」の回で先に見てもらえます</strong>
+          （AI が目を通すと未レビューの印が外れ、空いている年代・地域・説明・影響元が埋まります）。
+          区画に印が付くので、ざっと見るの巡回が同じところをもう一度見ることはありません。
+        </p>
+        <table class="partition-table">
+          <thead>
+            <tr>
+              <th>区画</th>
+              <th>未レビュー</th>
+              <th>人数</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={{key, count, size} <- Enum.take(pending, 60)}>
+              <td>{key}</td>
+              <td>{count}</td>
+              <td>{size}</td>
+              <td>
+                <% asked = partition_state(@relation, key) %>
+                <span :if={asked && asked.state == :sent} class="muted-note">頼みました</span>
+                <span :if={asked && asked.state == :failed} class="warn-note">
+                  {focus_error(asked)}
+                </span>
+                <form :if={!asked or asked.state == :failed} phx-submit="focus_partition">
+                  <input type="hidden" name="key" value={key} />
+                  <input type="hidden" name="sweep" value={Tazuna.Relations.rough_sweep()} />
+                  <button type="submit" phx-disable-with="頼んでいます…">先にざっと見る</button>
+                </form>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p :if={length(pending) > 60} class="muted-note">
+          先頭の 60 区画だけ出しています（残り {length(pending) - 60} 区画）。
+        </p>
+      </details>
+
       <% rows = partition_rows(@relation, "整理") %>
       <details :if={rows != []} class="partition-list">
         <summary>区画（{length(rows)}）— まだ見ていないものが先</summary>
@@ -420,6 +499,7 @@
             <tr>
               <th>区画</th>
               <th>人数</th>
+              <th>未レビュー</th>
               <th>調査が見たのは</th>
               <th></th>
             </tr>
@@ -428,6 +508,7 @@
             <tr :for={row <- Enum.take(rows, 60)}>
               <td>{row.key}</td>
               <td>{row.count}</td>
+              <td>{unreviewed_in(@relation, row.key)}</td>
               <td>{row.seen || "まだ"}</td>
               <td>
                 <form phx-submit="focus_partition">
@@ -491,17 +572,73 @@
         </div>
         <%= if @edge.kind == :influence do %>
           <p class="edge-reason">
-            {@edge.to.name}は{@edge.from.name}から <strong>{@edge.label || "影響を受けた"}</strong>、と AI が書いています。
+            <strong>{@edge.to.name}</strong>は<strong>{@edge.from.name}</strong>から影響を受けた、と AI が書いています。
           </p>
+          <h3 class="edge-heading">何を受けたか</h3>
+          <p :if={@edge.label} class="edge-label-text">{@edge.label}</p>
+          <p :if={!@edge.label} class="muted-note">AI は中身を書いていません（線だけがあります）。</p>
+        <% else %>
+          <p class="edge-reason">
+            <strong>{@edge.from.name}と{@edge.to.name}は、記事どうしが互いにリンクしています。</strong>
+          </p>
+        <% end %>
+
+        <%!-- **説明の中で相手に触れているところ。** AI の一言だけでは根拠が読めない
+             ので、本文から相手の名前が出てくる文を拾って出す --%>
+        <%= if @edge.excerpt != [] do %>
+          <h3 class="edge-heading">
+            {if @edge.kind == :influence, do: @edge.to.name, else: @edge.from.name}の説明より
+          </h3>
+          <blockquote class="edge-excerpt">
+            <p :for={sentence <- @edge.excerpt}>{sentence}</p>
+          </blockquote>
+        <% end %>
+
+        <%!-- 2 人を並べて比べる。**時代と地域と様式が並ぶと、線の意味が読める**
+             （同じ国の師弟なのか、時代を越えた私淑なのか） --%>
+        <table class="edge-compare">
+          <thead>
+            <tr>
+              <th></th>
+              <th>{@edge.from.name}</th>
+              <th>{@edge.to.name}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th>年代</th>
+              <td>{@edge.from[:years] || "—"}</td>
+              <td>{@edge.to[:years] || "—"}</td>
+            </tr>
+            <tr>
+              <th>地域</th>
+              <td>{regions_of(@edge.from) |> Enum.join("、") |> blank_dash()}</td>
+              <td>{regions_of(@edge.to) |> Enum.join("、") |> blank_dash()}</td>
+            </tr>
+            <tr>
+              <th>様式</th>
+              <td>{Enum.join(@edge.from[:styles] || [], "、") |> blank_dash()}</td>
+              <td>{Enum.join(@edge.to[:styles] || [], "、") |> blank_dash()}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p :if={shared_styles(@edge) != []} class="muted-note">
+          共通する様式: {Enum.join(shared_styles(@edge), "、")}
+        </p>
+        <p :if={@edge.kind == :influence and @edge.mutual} class="muted-note">
+          逆向き（{@edge.to.name} → {@edge.from.name}）の影響も書かれています。互いに影響し合った組です。
+        </p>
+        <p :if={@edge.kind == :influence and @edge.others != []} class="muted-note">
+          {@edge.to.name}の影響元はほかに: {Enum.join(@edge.others, "、")}
+        </p>
+
+        <%= if @edge.kind == :influence do %>
           <p class="muted-note">
             <strong>これは AI の判断です。</strong>
             名簿・年代・様式・相互リンクは Wikipedia から機械的に引いていますが、 <strong>誰が誰から何を受けたのかは記事に書いていない</strong>ので引けません。
             確かめるには、それぞれの記事を読んでください。
           </p>
         <% else %>
-          <p class="edge-reason">
-            <strong>{@edge.from.name}と{@edge.to.name}は、記事どうしが互いにリンクしています。</strong>
-          </p>
           <p class="muted-note">
             これは Wikipedia から機械的に引いた線で、<strong>影響関係ではありません</strong>。
             <strong>片側だけのリンクは採りません</strong>
@@ -540,7 +677,30 @@
       >
         <div class="artwork-head">
           <strong id="artwork-name">{@detail.name}</strong>
+          <span :if={@detail[:unreviewed?]} class="review-badge">未レビュー</span>
           <button type="button" phx-click="close_work">閉じる</button>
+        </div>
+
+        <%!-- **未レビューの人は、区画ごと先にざっと見てもらえる。** 1 人だけ頼むより、
+             同じ地域・同じ時代の未レビューの人がまとめて片付く --%>
+        <div :if={@detail[:unreviewed?]} class="review-ask">
+          <p class="muted-note">
+            AI がまだ目を通していない画家です（機械で名簿に入っただけで、説明や影響元が空のことがあります）。
+          </p>
+          <%= if @detail[:partition] do %>
+            <% asked = partition_state(@relation, @detail.partition) %>
+            <p :if={asked && asked.state == :sent} class="muted-note">
+              区画「{@detail.partition}」を先にざっと見るよう頼みました。
+            </p>
+            <p :if={asked && asked.state == :failed} class="warn-note">{focus_error(asked)}</p>
+            <form :if={!asked or asked.state == :failed} phx-submit="focus_partition">
+              <input type="hidden" name="key" value={@detail.partition} />
+              <input type="hidden" name="sweep" value={Tazuna.Relations.rough_sweep()} />
+              <button type="submit" phx-disable-with="頼んでいます…">
+                この画家の区画（{@detail.partition}・未レビュー {unreviewed_in(@relation, @detail.partition)} 人）を先にざっと見てもらう
+              </button>
+            </form>
+          <% end %>
         </div>
 
         <%!-- **行き先は画家の記事。** 押したのは画家なので、代表作の記事へ飛ばすと
@@ -570,20 +730,34 @@
           <% is_list(@artwork) and @artwork != [] -> %>
             <%!-- **何枚もあるなら全部出す。** 多作の画家を 1 枚で代表させると、
                  どれを選んでも「その人らしさ」を外す --%>
-            <figure :for={work <- @artwork} class="artwork-figure">
-              <img src={work.image} alt={work.title} />
-              <figcaption>
+            <%= for work <- @artwork do %>
+              <figure :if={work.image} class="artwork-figure">
+                <img src={work.image} alt={work.title} />
+                <figcaption>
+                  <span class="artwork-title">{work.title}</span>
+                  <span :if={work[:extract]} class="artwork-extract">{work.extract}</span>
+                  <a :if={work[:page]} href={work.page} target="_blank" rel="noreferrer">
+                    この絵を Wikipedia で見る
+                  </a>
+                </figcaption>
+              </figure>
+              <%!-- **Wikipedia に絵が無い作品は、画像検索へつなぐ。** 記事の無い作品の
+                   ほうが多く、落とすと代表作が入っているのに何も見られない --%>
+              <p :if={!work.image} class="artwork-search">
                 <span class="artwork-title">{work.title}</span>
-                <span :if={work.extract} class="artwork-extract">{work.extract}</span>
-                <a :if={work.page} href={work.page} target="_blank" rel="noreferrer">
-                  この絵を Wikipedia で見る
+                <a
+                  href={image_search_url(@detail.name, work.title)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Google 画像検索で見る
                 </a>
-              </figcaption>
-            </figure>
+              </p>
+            <% end %>
           <% works_of(@detail) == [] -> %>
             <p class="muted-note">この画家には、まだ代表作が入っていません。</p>
           <% true -> %>
-            <p class="muted-note">代表作の絵は見つかりませんでした。</p>
+            <p class="muted-note">代表作を読み込めませんでした。</p>
         <% end %>
 
         <%!-- 見に行った記録。**図に出ているのは Chiezo から読んだものだけ**で、

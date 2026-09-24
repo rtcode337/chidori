@@ -35,6 +35,11 @@ const base = {
   minScale: 0.2,
   maxScale: 12,
 
+  // 全体表示の倍率を下限にするか。**全体より小さくしても読めるものは増えない**
+  // 図（関連図）で使う。縦に長い図では全体表示が 1 倍より小さくなるので、
+  // 決まった値を下限にすると、開いたときに全体が収まらない
+  fitFloor: false,
+
   // ここから始まった引きずりは図を動かさない（押す口・入力の口がこれに当たる）
   skip: "[data-zoom]",
 
@@ -74,8 +79,22 @@ const base = {
     // **自分が書いた値を「元」にしない** —— 動かしたぶんが元に化けると、
     // 描き直されるたびに図がそのぶんずれていく。サーバーが書き戻した値
     // （＝自分が書いたものと違う値）のときだけ取り直す
-    if (now && now !== this.written) { this.base = this.viewBox() || this.base }
+    if (now && now !== this.written) {
+      const before = this.base
+      this.base = this.viewBox() || this.base
+      // **図の大きさが変わったら全体表示からやり直す。** 絞り込みで置き直すと
+      // 高さが変わるので、前の倍率のままだと一部しか見えない（または余白だらけ）
+      if (!before || before[2] !== this.base[2] || before[3] !== this.base[3]) {
+        this.fit()
+        return
+      }
+    }
     this.apply()
+  },
+
+  // いまの倍率の下限
+  lowest() {
+    return this.fitFloor && this.fitted > 0 ? Math.min(this.fitted, 1) : this.minScale
   },
 
   // いまの viewBox（`[x, y, 幅, 高さ]`）。読めなければ null
@@ -192,7 +211,7 @@ const base = {
   // 倍率を変える。**押した点を動かさない** —— 中心を固定して拡大すると、
   // 見ていたものが画面の外へ逃げる
   zoomAt(factor, clientX, clientY) {
-    const next = Math.min(this.maxScale, Math.max(this.minScale, this.scale * factor))
+    const next = Math.min(this.maxScale, Math.max(this.lowest(), this.scale * factor))
     if (next === this.scale) { return }
     const box = this.el.getBoundingClientRect()
     const px = clientX - box.left
@@ -230,6 +249,8 @@ const base = {
       const height = box.width * (vh / vw)
       this.scale = Math.max(this.minScale, Math.min(1, box.height / height))
     }
+    // 全体表示の倍率を覚える（`fitFloor` の図ではこれが縮める下限になる）
+    this.fitted = this.scale
 
     this.clamp()
     this.apply()

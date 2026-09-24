@@ -37,6 +37,64 @@ defmodule Tazuna.Relations.GraphTest do
     assert edge.label == "光と色彩"
   end
 
+  describe "未レビューと消えたもの" do
+    test "未レビューの人も図に出し、印を付ける" do
+      graph =
+        Graph.from_docs([
+          painter("クロード・モネ", ["年代:1860-1920"]),
+          painter("誰か", ["年代:1900-1950", "_chiezo_unreviewed"])
+        ])
+
+      assert Enum.map(graph.nodes, &{&1.name, &1.unreviewed?}) ==
+               [{"クロード・モネ", false}, {"誰か", true}]
+
+      assert graph.unreviewed == 1
+    end
+
+    test "人数の多い絞り込みは、置き直さずに元の位置のまま絞る" do
+      # 置き直すと数千人ぶんの升目で図の高さが桁違いに伸び、全体表示で何も描けない
+      many =
+        for i <- 1..450,
+            do: painter("画家#{i}", ["年代:#{1500 + i}-#{1560 + i}"])
+
+      graph = Graph.from_docs([painter("誰か", ["年代:1900-1950", "_chiezo_unreviewed"]) | many])
+      shown = Graph.only_reviewed(graph)
+
+      assert length(shown.nodes) == 450
+      assert shown.height == graph.height
+      before = Map.new(graph.nodes, &{&1.id, {&1.x, &1.y}})
+      assert Enum.all?(shown.nodes, &(before[&1.id] == {&1.x, &1.y}))
+    end
+
+    test "消えたものは出さない" do
+      graph = Graph.from_docs([painter("消えた人", ["_chiezo_removed"])])
+      assert graph.nodes == []
+    end
+
+    test "未レビューだけ・レビュー済みだけに絞れる" do
+      graph =
+        Graph.from_docs([
+          painter("クロード・モネ", ["年代:1860-1920"]),
+          painter("誰か", ["年代:1900-1950", "_chiezo_unreviewed"])
+        ])
+
+      assert Enum.map(Graph.only_unreviewed(graph).nodes, & &1.name) == ["誰か"]
+      assert Enum.map(Graph.only_reviewed(graph).nodes, & &1.name) == ["クロード・モネ"]
+    end
+  end
+
+  test "線には、受けた側の説明で相手に触れている文を添える" do
+    gogh =
+      "画家"
+      |> then(&doc("フィンセント・ファン・ゴッホ", [&1, "影響元:クロード・モネ:明るい色彩"]))
+      |> Map.put("body", "オランダの画家。パリでモネらの印象派に触れ、色調が明るくなった。晩年は南仏で描いた。")
+
+    graph = Graph.from_docs([painter("クロード・モネ", []), gogh])
+
+    # 本文では姓だけで呼ぶことが多いので、中黒の後ろでも探す
+    assert [%{excerpt: ["パリでモネらの印象派に触れ、色調が明るくなった。"]}] = graph.edges
+  end
+
   test "説明の無い影響元も線にする" do
     graph =
       Graph.from_docs([painter("A", ["年代:1800-1850"]), painter("B", ["年代:1850-1900", "影響元:A"])])

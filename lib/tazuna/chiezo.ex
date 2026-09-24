@@ -39,6 +39,16 @@ defmodule Tazuna.Chiezo do
   """
   def tombstone_tag, do: "_chiezo_tombstone"
 
+  @doc """
+  消えたものの印。**読み口は既定でこれを外します**が、未レビューのものも一緒に
+  外れるので、未レビューを見たい読み手は `include_removed` で両方を受け取り、
+  こちらで消えたものだけを落とします。
+  """
+  def removed_tag, do: "_chiezo_removed"
+
+  @doc "AI がまだ目を通していないものの印（機械で入ったばかりのもの）。"
+  def unreviewed_tag, do: "_chiezo_unreviewed"
+
   @doc "Chiezo の画面へのリンク。相対パスをルートURLに繋ぐだけです。"
   def url(path) when is_binary(path) do
     case base_url() do

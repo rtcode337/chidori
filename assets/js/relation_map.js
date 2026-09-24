@@ -30,8 +30,11 @@ const touchLike = () =>
   window.matchMedia && window.matchMedia("(pointer: coarse)").matches
 
 export default panZoom({
-  // 全体表示より小さくしても読めるものが増えないので、下は 1 倍
-  minScale: 1,
+  // 全体表示より小さくしても読めるものが増えないので、**下は全体表示の倍率**。
+  // 画家の図は縦に長く、1 倍（幅いっぱい）を下限にしていた頃は、開いたときに
+  // 下のほうが器からはみ出して全体が見えなかった
+  minScale: 0.02,
+  fitFloor: true,
   maxScale: 8,
 
   // 探す欄と道具の上では図を動かさない（字を打つ口・選ぶ口なので）

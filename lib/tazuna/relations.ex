@@ -17,6 +17,7 @@ defmodule Tazuna.Relations do
   alias Tazuna.Chiezo
   alias Tazuna.Http
   alias Tazuna.Relations.Graph
+  alias Tazuna.Relations.Partitions
 
   # 図を描く面の大きさ。サンプルの座標もこの中に収めてある
   @canvas_width 980
@@ -142,6 +143,11 @@ defmodule Tazuna.Relations do
 
   # 割り込みを頼む先の巡回。**専用の 1 本は置かない**（同じ仕事を頼むので）
   @survey_sweep "整理"
+  # **未レビューの人が残る区画を、先にざっと見てもらう**ときの巡回。
+  # 整理（漏れ探しと磨き）を頼むより軽く、AI が目を通した印もこれで付く
+  @rough_sweep "ざっと見る"
+  # 区画への割り込みで名指しできる巡回
+  @partition_sweeps [@survey_sweep, @rough_sweep]
 
   # 押すたびに AI へ投げると枠を使い切る。こちら側で間隔を空ける
   @min_interval_ms 15_000
@@ -307,14 +313,23 @@ defmodule Tazuna.Relations do
   end
 
   @doc """
-  **この区画を先に調べて**、を Chiezo へ割り込ませます。
+  **この区画を先に見て**、を Chiezo へ割り込ませます。
 
   区画を名指しするので、**その区画には印が付きます** —— 先に見てほしいと頼んだ
   のだから、巡回が同じところをもう一度見る必要はありません。
+
+  `sweep` はどの巡回として走らせるか。整理（漏れ探しと磨き）か、ざっと見る
+  （未レビューの人に目を通して空欄を埋める）のどちらか。それ以外は整理に倒します。
   """
-  def focus_partition(key, partition, note) when is_binary(key) and is_binary(partition) do
-    GenServer.cast(__MODULE__, {:focus_partition, valid_key(key), partition, note})
+  def focus_partition(key, partition, note, sweep \\ @survey_sweep)
+      when is_binary(key) and is_binary(partition) do
+    sweep = if sweep in @partition_sweeps, do: sweep, else: @survey_sweep
+    GenServer.cast(__MODULE__, {:focus_partition, valid_key(key), partition, note, sweep})
   end
+
+  @doc "区画への割り込みで名指しできる巡回（整理・ざっと見る）。"
+  def survey_sweep, do: @survey_sweep
+  def rough_sweep, do: @rough_sweep
 
   @doc """
   Chiezo に溜まっているものを読み直します。**依頼も収集もしません**。
@@ -452,7 +467,7 @@ defmodule Tazuna.Relations do
     end
   end
 
-  def handle_cast({:focus_partition, key, partition, note}, state) do
+  def handle_cast({:focus_partition, key, partition, note, sweep}, state) do
     case chiezo_base_url() do
       nil ->
         {:noreply,
@@ -462,7 +477,7 @@ defmodule Tazuna.Relations do
         me = self()
 
         Task.Supervisor.start_child(Tazuna.TaskSupervisor, fn ->
-          send(me, {:focus_done, key, partition, ask_partition(base_url, partition, note)})
+          send(me, {:focus_done, key, partition, ask_partition(base_url, partition, note, sweep)})
         end)
 
         {:noreply,
@@ -754,15 +769,35 @@ defmodule Tazuna.Relations do
           # jawiki の月次ページビューのほうが客観的で、実行のたびに揺れない。
           # **その値は収集の中に入っている**（集める回が長期記憶から写す）ので、
           # ここで外へ引きに行かない
-          sized = Graph.sized(graph.nodes)
+          placed = graph.nodes |> Graph.sized() |> with_partitions(collection)
 
           {:ok,
            fallback
-           |> Map.merge(%{graph | nodes: sized})
+           |> Map.merge(%{graph | nodes: placed})
+           |> Map.put(:partition_unreviewed, unreviewed_by_partition(placed))
            |> Map.put(:collection, collection)
            |> Map.put(:sample?, false)}
         end
     end
+  end
+
+  # 1 人ずつ、どの区画に入っているか。**区画の一覧が無ければ付けない**
+  # （区画を持つ前の収集や、読めなかったとき）
+  defp with_partitions(nodes, %{partitions: [_ | _] = partitions}) do
+    find = Partitions.locator(partitions, Graph.region_tag(), Graph.years_tag())
+    Enum.map(nodes, &Map.put(&1, :partition, find.(&1[:tags] || [], &1.name)))
+  end
+
+  defp with_partitions(nodes, _collection), do: nodes
+
+  @doc """
+  区画ごとの、AI がまだ目を通していない人の数（`%{鍵 => 人数}`）。
+  **どこを先にざっと見てもらうか**を決める材料です。
+  """
+  def unreviewed_by_partition(nodes) do
+    nodes
+    |> Enum.filter(&(&1[:unreviewed?] and is_binary(&1[:partition])))
+    |> Enum.frequencies_by(& &1.partition)
   end
 
   @doc """
@@ -819,10 +854,10 @@ defmodule Tazuna.Relations do
   **区画ではなく名指しで渡します** —— 区画を渡すだけでは、直してほしい 1 人が
   差し込みに載る保証がありません。
   """
-  def ask_partition(base_url, key, note) do
+  def ask_partition(base_url, key, note, sweep \\ @survey_sweep) do
     # **区画を名指しした割り込み。** その区画に印が付くので、巡回が同じところを
     # もう一度見ることはない —— 「ここを先に見てほしい」を頼む口
-    Chiezo.focus(base_url, painters_collection(), note, [], @survey_sweep, key)
+    Chiezo.focus(base_url, painters_collection(), note, [], sweep, key)
   end
 
   def ask_focus(base_url, name, note) do
@@ -908,9 +943,10 @@ defmodule Tazuna.Relations do
     新古典主義も本当です）。当てはまるものを全部書いてください。
 
     **代表作は誰にも入っていません。** 名簿にあるのは名前と年代だけで、機械では
-    引けないところです。**知られている絵から順に 3 つまで**、日本語版 Wikipedia に
-    記事がある絵を書いてください（記事の無い絵は図から辿れないので、入れなくて
-    構いません）。**1 つも思い当たらない画家は空のままで構いません** ——
+    引けないところです。**知られている絵から順に 3 つまで**書いてください。
+    日本語版 Wikipedia に記事がある絵はその記事名で、**記事の無い絵も入れて
+    構いません**（一般に通っている日本語の題名で。画面は、記事の無い絵を画像検索へ
+    つなぎます）。**1 つも思い当たらない画家は空のままで構いません** ——
     無理に埋めると、その画家の絵でないものが代表作として並びます。
 
     **図の丸の大きさは、日本語版 Wikipedia の読まれ方で決まります。**
@@ -932,12 +968,16 @@ defmodule Tazuna.Relations do
     - tags: **その人にいま付いているタグをすべて残したうえで**、次を足してください
       - "様式:<ロマン主義 / 印象派 / キュビスム のような様式名>"。**当てはまる様式の数だけ
         並べてよい**（時期で作風が変わった画家は 1 つに決められません）
-      - "#{Graph.work_tag()}:<日本語版 Wikipedia にあるその絵の記事名。例: 印象・日の出>"。
+      - "#{Graph.work_tag()}:<その絵の題名。例: 印象・日の出>"。
         **知られている順に 3 つまで**（多い画家ほど、代表作を 1 つに決められません）。
-        **記事があるものだけ挙げてください** —— 画面はこの名前で日本語版 Wikipedia を
-        引いて絵を出すので、記事の無い作品名を書くと、その枠はずっと空のままになります。
-        確かなものが 1 つも無ければ、この行は書かなくて構いません
-      - "影響元:<影響を受けた画家名>:<何を受けたかを10文字ほどで>"
+        日本語版 Wikipedia に記事があればその記事名に、無ければ一般に通っている
+        日本語の題名にしてください（画面は記事から絵を出し、記事が無ければ画像検索へ
+        つなぎます）。確かなものが 1 つも無ければ、この行は書かなくて構いません
+      - "影響元:<影響を受けた画家名>:<何を受けたか>"
+        **何を受けたかは 1〜2 文で具体的に**（40〜80 字ほど。例: 「師事して明暗法と
+        劇的な構図を学び、宗教画の群像表現を受け継いだ」）。**「影響を受けた」
+        「色彩」だけのような一語では書かないでください** —— 線を押した人が読む
+        説明はこれだけです。**タグの区切りの「:」は本文に使わないでください**。
         影響を受けた画家ごとに 1 つ。**その人の「#{Graph.related_tag()}」タグに
         挙がっている画家から選んでください** —— あれは名簿にいる相手だけが載っているので、
         そこから選べば必ず図に線が出ます。名簿にいない相手への線は出ません。
@@ -1015,11 +1055,12 @@ defmodule Tazuna.Relations do
       - "#{Graph.years_tag()}:<1840-1926 のような生没年>"（**区画がこれで決まります**）
       - "#{Graph.region_tag()}:<フランス / 日本 のような国や地域>"（**同じく区画の材料**）
       - "#{Graph.style_tag()}:<様式名>"（当てはまる数だけ並べてよい）
-      - "#{Graph.work_tag()}:<代表作の記事名>"（知られている順に 3 つまで。
-        **日本語版 Wikipedia に記事があるものだけ** —— 画面はこの名前で引いて絵を
-        出すので、記事の無い作品名を書くと、その枠はずっと空のままになります）
-      - "#{Graph.influence_tag()}:<影響を受けた画家名>:<何を受けたかを10文字ほどで>"
-        **その人の「#{Graph.related_tag()}」タグに挙がっている画家から選んでください**
+      - "#{Graph.work_tag()}:<代表作の題名>"（知られている順に 3 つまで。
+        日本語版 Wikipedia に記事があればその記事名、無ければ一般に通っている日本語の
+        題名 —— 記事の無い絵は、画面が画像検索へつなぎます）
+      - "#{Graph.influence_tag()}:<影響を受けた画家名>:<何を受けたか>"
+        （**1〜2 文で具体的に**。40〜80 字ほど。「色彩」のような一語では書かない。
+        本文に「:」は使わない）。**その人の「#{Graph.related_tag()}」タグに挙がっている画家から選んでください**
         —— あれは名簿にいる相手だけが載っているので、そこから選べば必ず図に線が出ます
       - "#{Graph.related_tag()}" のタグは**そのまま残してください**（消すと線が消えます）
     """
@@ -1112,12 +1153,12 @@ defmodule Tazuna.Relations do
       # **網羅。** ある括りの全部が対象で、増減はしても古いものが要らなくなることは
       # ない —— 期限で落とすと穴が開く
       kind: "stock",
-      # **実在しない見出しを指すタグは、Chiezo が焼く前に落とす。** AI は代表作を
-      # 挙げられても、それが記事として存在するかは知らない —— 図は「タグがある =
-      # 押せば何か出る」として印を付けるので、混ざっていると押しても何も出ない印が
-      # 並ぶ。**画面で取り繕わず、データの側で揃える**
+      # **実在しない見出しを指すタグは、Chiezo が焼く前に落とす。** 関連の相手は
+      # 名簿にいる人でなければ線にならないので、記事の無い名前は落とす。
+      # **代表作は照らさない。** 作品が単独の記事を持つことは少なく、照らしていた頃は
+      # AI が目を通した画家の 9 割で代表作が落ちていた（3,637 人中 322 人しか残らない）。
+      # 絵が見つからない作品は、画面が画像検索へのリンクにする
       verify_tags: [
-        %{prefix: Graph.work_tag(), source: "jawiki"},
         %{prefix: Graph.related_tag(), source: "jawiki"}
       ],
       requested_by: "tazuna"
@@ -1150,6 +1191,10 @@ defmodule Tazuna.Relations do
 
   # 溜まっているものを全部引く。**まだ焼かれていなければソースごと無い**ので、
   # 404 は「まだ何も入っていない」として扱う（繋がらないのとは別）
+  # **未レビューのものも読む**（`include_removed`）。読み口の既定は AI がまだ目を
+  # 通していないものを外すが、それだと名簿の 6 割が図から消え、どこが残って
+  # いるのかも分からなくなる。**消えたものも一緒に届く**ので、図にする側で落とす
+  # （`Graph`）。
   # **溜まっているぶんは全部読む。** かつては先頭 200 件だけを読んでいたが、
   # あれは「超えた分は有名な順に落ちる」という前提で置いた上限で、その前提が
   # 成り立っていなかった —— 収集ソースには rank_score が入らないので、Chiezo の
@@ -1167,7 +1212,8 @@ defmodule Tazuna.Relations do
       base_url <>
         "/v1/" <>
         name <>
-        "/filter?limit=#{@page_size}&offset=#{offset}&fields=title,body,tags,extra,updated_at&tag=" <>
+        "/filter?limit=#{@page_size}&offset=#{offset}&fields=title,body,tags,extra,updated_at" <>
+        "&include_removed=true&tag=" <>
         URI.encode_www_form(Graph.kind_tag())
 
     case Http.get(url,

@@ -57,6 +57,9 @@ defmodule TazunaWeb.RelationsLive do
        # 直近の巡回で動いたものだけを出しているか。**様式の絞り込みとは排他** ——
        # 2 つ重ねると、出ていないものが「動かなかった」のか「別の様式」なのか読めない
        changed_only: false,
+       # レビューの有無で絞っているか（nil / "reviewed" / "unreviewed"）。
+       # **ほかの絞り込みとは排他**（重ねると、出ていない理由が読めない）
+       review_filter: nil,
        focus_sent: nil,
        backends: [],
        # 「見た」印。**ノード名で引く** —— 図は読み直すたびに id が振り直されるので、
@@ -117,8 +120,18 @@ defmodule TazunaWeb.RelationsLive do
 
   # **この区画を先に調べて、を頼む。** 区画を名指しするので、その区画には印が付く
   # —— 先に見てほしいと頼んだのだから、巡回が同じところをもう一度見る必要は無い
+  # **どの巡回として頼むかを選べる。** 整理（漏れ探しと磨き）のほかに、
+  # 未レビューの人が残る区画を「先にざっと見て」と頼める
   def handle_event("focus_partition", %{"key" => key} = params, socket) do
-    Relations.focus_partition(socket.assigns.view, key, partition_note(key, params["note"]))
+    sweep = params["sweep"] || Relations.survey_sweep()
+
+    Relations.focus_partition(
+      socket.assigns.view,
+      key,
+      partition_note(key, params["note"], sweep),
+      sweep
+    )
+
     {:noreply, socket}
   end
 
@@ -176,7 +189,9 @@ defmodule TazunaWeb.RelationsLive do
          socket
          |> assign(detail: node, artwork: :loading, edge: nil, focus_sent: nil, mark_saved: nil)
          |> start_async(:artwork, fn ->
-           works |> Enum.map(&Tazuna.Artwork.lookup/1) |> Enum.reject(&is_nil/1)
+           # **見つからなかった作品も落とさない。** 記事の無い作品は多く、落とすと
+           # 代表作が入っているのに何も出ない。画面が画像検索へのリンクにする
+           Enum.map(works, &(Tazuna.Artwork.lookup(&1) || %{title: &1, image: nil}))
          end)}
     end
   end
@@ -190,15 +205,30 @@ defmodule TazunaWeb.RelationsLive do
     nodes = Map.new(socket.assigns.relation.nodes, &{&1.id, &1})
     kind = if params["kind"] == "influence", do: :influence, else: :related
 
-    edge =
-      Enum.find(socket.assigns.relation.edges, fn e ->
-        e.from == from and e.to == to and e.kind == kind
-      end)
+    edges = socket.assigns.relation.edges
+    edge = Enum.find(edges, fn e -> e.from == from and e.to == to and e.kind == kind end)
 
     if edge && nodes[from] && nodes[to] do
       {:noreply,
        assign(socket,
-         edge: %{from: nodes[from], to: nodes[to], label: edge.label, kind: kind},
+         edge: %{
+           from: nodes[from],
+           to: nodes[to],
+           label: edge.label,
+           kind: kind,
+           excerpt: edge[:excerpt] || [],
+           # **逆向きの影響も書かれているか**（互いに影響し合った組）
+           mutual: Enum.any?(edges, &(&1.from == to and &1.to == from and &1.kind == :influence)),
+           # 受けた側が、ほかに誰から受けているか。**この線だけを見て「この人から
+           # 学んだ画家」と読まないため** —— 影響元が 5 人いる 1 本かもしれない
+           others:
+             for(
+               e <- edges,
+               e.kind == :influence and e.to == to and e.from != from,
+               other = nodes[e.from],
+               do: other.name
+             )
+         },
          detail: nil,
          artwork: nil
        )}
@@ -213,7 +243,14 @@ defmodule TazunaWeb.RelationsLive do
     next = if style == "" or socket.assigns.style_filter == style, do: nil, else: style
 
     # 絞り込みを変えたら見ている場所も倍率も意味を失うので、図を初めから見せ直す
-    {:noreply, assign(socket, style_filter: next, changed_only: false, viewport: nil, focus: nil)}
+    {:noreply,
+     assign(socket,
+       style_filter: next,
+       changed_only: false,
+       review_filter: nil,
+       viewport: nil,
+       focus: nil
+     )}
   end
 
   # 直近の巡回で動いたものだけにする。**もう一度押すと戻る**（凡例と同じ押し方）
@@ -221,6 +258,20 @@ defmodule TazunaWeb.RelationsLive do
     {:noreply,
      assign(socket,
        changed_only: not socket.assigns.changed_only,
+       review_filter: nil,
+       style_filter: nil,
+       viewport: nil,
+       focus: nil
+     )}
+  end
+
+  # レビュー済みだけ / 未レビューだけにする。**同じものをもう一度押すと戻る**
+  def handle_event("filter_review", %{"only" => only}, socket)
+      when only in ["reviewed", "unreviewed"] do
+    {:noreply,
+     assign(socket,
+       review_filter: if(socket.assigns.review_filter == only, do: nil, else: only),
+       changed_only: false,
        style_filter: nil,
        viewport: nil,
        focus: nil
@@ -424,6 +475,8 @@ defmodule TazunaWeb.RelationsLive do
   位置をもとのままにして絞ると、数十人が高さ 2,500 の面に散らばって拡大しないと
   読めません（絞った意味が無い）。
   """
+  def shown(relation, %{review_filter: "unreviewed"}), do: Graph.only_unreviewed(relation)
+  def shown(relation, %{review_filter: "reviewed"}), do: Graph.only_reviewed(relation)
   def shown(relation, %{changed_only: true}), do: Graph.only_changed(relation)
   def shown(relation, %{style_filter: style}), do: Graph.only(relation, style)
 
@@ -480,11 +533,67 @@ defmodule TazunaWeb.RelationsLive do
   区画は `partition` で別に渡していて、Chiezo はそちらを見て範囲を差し込みます。
   ただし**指示文だけを読んだ人には、どこ宛てか分かりません**。
   """
-  def partition_note(key, note) do
-    case String.trim(note || "") do
-      "" -> "#{key} の区画を先に調べてください。"
-      written -> "#{key} の区画について。#{written}"
+  def partition_note(key, note, sweep \\ Relations.survey_sweep()) do
+    case {String.trim(note || ""), sweep == Relations.rough_sweep()} do
+      {"", true} ->
+        "#{key} の区画を先にざっと見てください。まだ目を通していない画家が残っています。"
+
+      {"", false} ->
+        "#{key} の区画を先に調べてください。"
+
+      {written, _rough} ->
+        "#{key} の区画について。#{written}"
     end
+  end
+
+  @doc """
+  AI がまだ目を通していない人が残る区画。**多い順**に `{鍵, 未レビュー, 区画の人数}`。
+  """
+  def unreviewed_partitions(relation) do
+    sizes = Map.new(get_in(relation, [:collection, :partitions]) || [], &{&1.key, &1.count})
+
+    (relation[:partition_unreviewed] || %{})
+    |> Enum.map(fn {key, count} -> {key, count, Map.get(sizes, key, count)} end)
+    |> Enum.sort_by(fn {key, count, _size} -> {-count, key} end)
+  end
+
+  @doc "その画家の地域（タグのまま。複数あれば全部）。"
+  def regions_of(node), do: for(t <- node[:tags] || [], v = strip(t, "地域:"), do: v)
+
+  @doc "線の両端に共通する様式。"
+  def shared_styles(%{from: from, to: to}),
+    do: Enum.filter(from[:styles] || [], &(&1 in (to[:styles] || [])))
+
+  @doc "空なら「—」。表の空欄を、書き忘れと見分けるため。"
+  def blank_dash(""), do: "—"
+  def blank_dash(text), do: text
+
+  @doc """
+  図の器の縦横比。**図と同じ比にします**（表示例のあいだは決めない）。
+  """
+  def canvas_style(%{sample?: true}, _shown), do: nil
+
+  def canvas_style(_relation, %{width: w, height: h})
+      when is_number(w) and is_number(h) and w > 0 and h > 0,
+      do: "aspect-ratio: #{w} / #{h}"
+
+  def canvas_style(_relation, _shown), do: nil
+
+  @doc "区画ごとの未レビューの人数（無ければ 0）。"
+  def unreviewed_in(relation, key), do: get_in(relation, [:partition_unreviewed, key]) || 0
+
+  @doc """
+  区画への割り込みの届き具合（その区画宛てのものだけ）。
+  """
+  def partition_state(relation, key), do: focus_state(relation, key)
+
+  @doc """
+  記事の無い代表作を探す先。**画家名と題名を並べて引く** —— 題名だけだと、
+  同じ題の別の絵（「自画像」「睡蓮」）ばかり並ぶ。
+  """
+  def image_search_url(painter, work) do
+    "https://www.google.com/search?" <>
+      URI.encode_query(%{"tbm" => "isch", "q" => "#{painter} #{work}"})
   end
 
   @doc """
@@ -566,6 +675,7 @@ defmodule TazunaWeb.RelationsLive do
 
     [
       {"年代", for(t <- tags, v = strip(t, "年代:"), do: v)},
+      {"地域", regions_of(node)},
       {"様式", for(t <- tags, v = strip(t, "様式:"), do: v)},
       {"代表作", for(t <- tags, v = strip(t, "代表作:"), do: v)},
       {"影響元", for(t <- tags, v = strip(t, "影響元:"), do: v)},
@@ -583,7 +693,8 @@ defmodule TazunaWeb.RelationsLive do
 
   # 頭に区分の付いていないタグ（「画家」など）。**関連は出さない**（線で見えている）
   defp plain_tag?(tag) do
-    not Enum.any?(~w(年代: 様式: 代表作: 影響元: 関連:), &String.starts_with?(tag, &1))
+    # **機械の印（`_chiezo_…`）も出さない** —— 未レビューかどうかは見出しの横に出す
+    not Enum.any?(~w(年代: 地域: 様式: 代表作: 影響元: 関連: _chiezo_), &String.starts_with?(tag, &1))
   end
 
   @doc "その画家の Wikipedia の記事。**代表作ではなく画家を指す**。"

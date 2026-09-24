@@ -99,6 +99,10 @@ defmodule Tazuna.Relations.Graph do
   # 押したときに出す説明の長さ。**記事の冒頭をそのまま持つと重い** ——
   # 8,000 人ぶんが画面の裏に載るので、1 人ぶんの読み出しに足りる長さで切る
   @summary_chars 240
+  # 絞り込みで置き直す人数の上限。これより多ければ元の位置のまま絞る
+  @refocus_max 400
+  # 線を押したときに出す、本文から拾う文の数
+  @max_mentions 3
 
   # 名前の後ろに付ける、代表作を持っている印。**札の幅にも数える** ——
   # 幅に入れないと、印のぶんだけ名前が札からはみ出す（札にした意味が消える）
@@ -253,6 +257,25 @@ defmodule Tazuna.Relations.Graph do
     end
   end
 
+  @doc """
+  AI がまだ目を通していない人だけを取り出して、置き直した図を返します
+  （`only_changed/1` と同じ考え方）。
+  """
+  def only_unreviewed(relation) do
+    case Enum.filter(relation.nodes || [], & &1[:unreviewed?]) do
+      [] -> relation
+      kept -> refocus(relation, kept)
+    end
+  end
+
+  @doc "AI が目を通した人だけを取り出して、置き直した図を返します。"
+  def only_reviewed(relation) do
+    case Enum.reject(relation.nodes || [], & &1[:unreviewed?]) do
+      [] -> relation
+      kept -> refocus(relation, kept)
+    end
+  end
+
   defp refocus(%{nodes: []} = relation, _kept), do: relation
 
   defp refocus(relation, []), do: relation
@@ -265,6 +288,18 @@ defmodule Tazuna.Relations.Graph do
         MapSet.member?(ids, edge.from) and MapSet.member?(ids, edge.to)
       end)
 
+    # **人数が多ければ置き直さない。** 置き直しは読める大きさの升目に並べ直すので、
+    # 数千人を並べると図の高さが桁違いに伸び（レビュー済み 3,637 人で約 3 万）、
+    # 全体表示では札が 1 枚も描けなくなる。そこまで多いなら元の位置のまま絞る
+    if length(kept) > @refocus_max do
+      keep = MapSet.new(kept, & &1.id)
+      %{relation | nodes: Enum.filter(relation.nodes, &MapSet.member?(keep, &1.id)), edges: edges}
+    else
+      relaid(relation, kept, edges)
+    end
+  end
+
+  defp relaid(relation, kept, edges) do
     # 升目が変わるので、大きさも付け直す（知名度は `sized` が残しておいたものを使う）
     bare = Enum.map(kept, &Map.drop(&1, [:cell]))
     laid = layout(bare, edges, fitted_columns(bare))
@@ -332,6 +367,8 @@ defmodule Tazuna.Relations.Graph do
       # いつの話か分からず、時刻だけでは何件動いたのか分からない
       changed_at: changed_at,
       changed: Enum.count(marked, & &1[:changed?]),
+      # AI がまだ目を通していない人の数（凡例と絞り込みに使う）
+      unreviewed: Enum.count(marked, & &1[:unreviewed?]),
       edges: edges,
       ticks: ticks(laid.nodes),
       bands: laid.bands,
@@ -608,7 +645,10 @@ defmodule Tazuna.Relations.Graph do
     name = String.trim(title)
     tags = tags_of(doc)
 
-    if name == "" or @kind_tag not in tags do
+    # **消えたものは出さない。** 未レビューのものを見るために、読み口の既定の
+    # 外し方をやめて両方を受け取っている（`Tazuna.Relations` の読み込み）ので、
+    # 消えたほうはここで落とす
+    if name == "" or @kind_tag not in tags or Tazuna.Chiezo.removed_tag() in tags do
       []
     else
       [
@@ -620,8 +660,8 @@ defmodule Tazuna.Relations.Graph do
           note: styles_note(tags),
           years: tag_value(tags, @years_prefix),
           # **代表作は複数持つ。** 抽出が人気の順に何枚か拾ってくるので、
-          # そのまま並べる（`@max_works` まで）。**実在しない作品名は入ってこない** ——
-          # Chiezo が焼く前に落とす（収集の `verify_tags`）
+          # そのまま並べる（`@max_works` まで）。**記事の無い作品名も入ってくる**
+          # （絵が見つからなければ、画面は画像検索へのリンクにする）
           works: tags |> tag_values(@work_prefix) |> Enum.take(@max_works),
           # 押したときに出す、その画家の短い説明（記事の冒頭）
           summary: summary_of(doc),
@@ -639,6 +679,9 @@ defmodule Tazuna.Relations.Graph do
           # **いつ動いたか。** Chiezo は 1 回の巡回で触れた文書に同じ刻みを打つので、
           # これが揃っているものが「その回で動いたぶん」になる
           changed_at: stamp_of(doc),
+          # **AI がまだ目を通していないか。** 機械で名簿に入っただけの人は、説明も
+          # 影響元もまだ無いことが多い。図には出すが、見分けられるようにする
+          unreviewed?: Tazuna.Chiezo.unreviewed_tag() in tags,
           kind: :artist
         }
       ]
@@ -734,7 +777,15 @@ defmodule Tazuna.Relations.Graph do
           from = by_name[from_name],
           from != nil,
           from.id != to.id do
-        %{from: from.id, to: to.id, label: label, kind: :influence}
+        %{
+          from: from.id,
+          to: to.id,
+          label: label,
+          kind: :influence,
+          # 受けた側の説明のうち、相手の名前が出てくる文。**線を押したときに出す** ——
+          # AI の一言だけでは、何を根拠にした線なのかが読めない
+          excerpt: mentions(doc["body"], from.name)
+        }
       end
       # 同じ向きの線は 1 本に畳む（同じ相手を 2 つのタグで挙げても重ならない）
       |> Enum.uniq_by(&{&1.from, &1.to})
@@ -761,10 +812,33 @@ defmodule Tazuna.Relations.Graph do
         # 古い側から新しい側へ 1 本だけ（相互リンクなので両方の文書に出てくる）
         {from, to} = order_by_age(node, other),
         from.id == node.id do
-      %{from: from.id, to: to.id, label: nil, kind: :related}
+      # 相互リンクの線にも、本文でその相手に触れている文を添える（あれば）
+      %{
+        from: from.id,
+        to: to.id,
+        label: nil,
+        kind: :related,
+        excerpt: mentions(doc["body"], other.name)
+      }
     end
     |> Enum.uniq_by(&{&1.from, &1.to})
   end
+
+  # 本文のうち、その名前が出てくる文（多くて @max_mentions 文）。
+  # 本文では姓だけで呼ぶことが多い（「クロード・モネ」を「モネ」）ので、
+  # 中黒で区切った最後の語でも探す
+  defp mentions(body, name) when is_binary(body) and is_binary(name) do
+    short = name |> String.replace(~r/\s*\(.*\)$/u, "") |> String.split("・") |> List.last()
+    names = Enum.uniq([name, short]) |> Enum.filter(&(String.length(&1) >= 2))
+
+    body
+    |> String.split(~r/(?<=。)|\n/u, trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(fn sentence -> Enum.any?(names, &String.contains?(sentence, &1)) end)
+    |> Enum.take(@max_mentions)
+  end
+
+  defp mentions(_body, _name), do: []
 
   defp order_by_age(a, b) do
     if (year_of(a) || 9999) <= (year_of(b) || 9999), do: {a, b}, else: {b, a}

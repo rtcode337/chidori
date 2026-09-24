@@ -73,16 +73,12 @@ defmodule Tazuna.RelationsTest do
       assert payload["partition"] ==
                %{"by" => "band", "prefix" => "地域", "value" => "年代", "target" => 25}
 
-      # **実在しない見出しを指すタグは Chiezo が焼く前に落とす。** AI は代表作を
-      # 挙げられても、それが記事として存在するかは知らない —— 図は「タグがある =
-      # 押せば何か出る」として印を付けるので、混ざっていると押しても何も出ない印が並ぶ
+      # **関連の相手は実在する見出しに限る**（名簿にいない相手への線は出ない）。
+      # **代表作は照らさない** —— 記事を持たない作品のほうが多く、照らすと 9 割が落ちる
       # **網羅。** ある括りの全部が対象で、古いものが要らなくなることはない
       assert payload["kind"] == "stock"
 
-      assert payload["verify_tags"] == [
-               %{"prefix" => "代表作", "source" => "jawiki"},
-               %{"prefix" => "関連", "source" => "jawiki"}
-             ]
+      assert payload["verify_tags"] == [%{"prefix" => "関連", "source" => "jawiki"}]
 
       # **巡回は 5 本で、頼むことが違う。** 名簿は機械で引き直すだけ（AI を呼ばない）、
       # ざっとは区画の材料を埋め（数日で一周）、調査は区画ごとに仕上げ、
@@ -128,6 +124,8 @@ defmodule Tazuna.RelationsTest do
       # 一枚ものなので、新しい順に何件かではなく全部を引く
       assert url =~ "/filter?"
       assert url =~ "tag="
+      # 未レビューの人も図に出すので、読み口の既定の外し方をやめる
+      assert url =~ "include_removed=true"
 
       assert Enum.map(relation.nodes, & &1.name) == ["クロード・モネ", "フィンセント・ファン・ゴッホ"]
       assert [%{label: "光", kind: :influence}] = relation.edges

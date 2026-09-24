@@ -251,7 +251,15 @@ defmodule TazunaWeb.RelationsLiveTest do
       # （走っている間の依頼は捨てられるので、頼んでもすぐには始まらない）
       assert wait_until(fn -> Tazuna.Relations.current("painters").status != :loading end)
       Tazuna.Relations.refresh("painters")
-      assert wait_until(fn -> Tazuna.Relations.current("painters").status == :ready end)
+
+      # **読み終えたことは、中身で確かめる。** 前のテストから ready のままなので、
+      # 状態だけを見るとすぐ抜けて、読み直しが走っている最中に次のテストへ進む
+      assert wait_until(fn ->
+               relation = Tazuna.Relations.current("painters")
+
+               settled?(relation) and
+                 Enum.any?(relation.nodes, &(&1.name == "クロード・モネ" and &1[:works] == ["印象・日の出"]))
+             end)
 
       :ok
     end
@@ -287,6 +295,55 @@ defmodule TazunaWeb.RelationsLiveTest do
     end
   end
 
+  describe "絵の見つからない代表作" do
+    # **ほかのテストと題名を重ねない。** 引いた結果は 1 日覚えるので、同じ題名を
+    # 絵つきで引いたテストが先に走ると、ここでも絵が見つかってしまう
+    @work "記事の無い絵（画像検索のテスト）"
+
+    setup do
+      System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+
+      docs = [
+        %{
+          "title" => "画像検索の画家",
+          "body" => "説明",
+          "tags" => ["画家", "年代:1860-1920", "代表作:" <> @work]
+        }
+      ]
+
+      Tazuna.HttpStub.stub(fn
+        %{url: url} ->
+          if String.contains?(url, "/filter?") do
+            Tazuna.HttpStub.ok(Jason.encode!(%{"results" => docs, "total" => 1}))
+          else
+            Tazuna.HttpStub.ok(Jason.encode!(%{"collections" => []}))
+          end
+      end)
+
+      assert wait_until(fn -> Tazuna.Relations.current("painters").status != :loading end)
+      Tazuna.Relations.refresh("painters")
+
+      assert wait_until(fn ->
+               relation = Tazuna.Relations.current("painters")
+               settled?(relation) and Enum.any?(relation.nodes, &(&1.name == "画像検索の画家"))
+             end)
+
+      :ok
+    end
+
+    test "画像検索へつなぐ", %{conn: conn} do
+      # 記事を持たない作品のほうが多い。落とすと、代表作が入っているのに何も見られない
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+
+      live |> element(~s|[phx-value-name="画像検索の画家"]|) |> render_click()
+      html = render_async(live)
+
+      assert html =~ "Google 画像検索で見る"
+      assert html =~ "tbm=isch"
+    end
+  end
+
   # **収集の状態は 1 つのプロセスに溜まる。** 押した時刻も覚えているので、
   # 前のテストが押していると次のテストが「少し待ってから」で弾かれる（並びで
   # 結果が変わる）。押すテストは、まっさらな状態から始める
@@ -295,6 +352,9 @@ defmodule TazunaWeb.RelationsLiveTest do
     {:ok, _pid} = Supervisor.restart_child(Tazuna.Supervisor, Tazuna.Relations)
     :ok
   end
+
+  # 読み直しが走っていないか（走っている間は画面が操作を止める）
+  defp settled?(relation), do: relation[:step] in [nil, %{}]
 
   defp wait_until(check, tries \\ 100) do
     cond do
@@ -821,6 +881,45 @@ defmodule TazunaWeb.RelationsLiveTest do
     end
   end
 
+  describe "未レビューの区画を先にざっと見てもらう" do
+    alias TazunaWeb.RelationsLive
+
+    test "未レビューが残る区画を、多い順に並べる" do
+      relation = %{
+        partition_unreviewed: %{"フランス|1801-1850" => 3, "日本|-" => 12},
+        collection: %{
+          partitions: [%{key: "日本|-", count: 25}, %{key: "フランス|1801-1850", count: 20}]
+        }
+      }
+
+      assert RelationsLive.unreviewed_partitions(relation) ==
+               [{"日本|-", 12, 25}, {"フランス|1801-1850", 3, 20}]
+
+      assert RelationsLive.unreviewed_in(relation, "日本|-") == 12
+      assert RelationsLive.unreviewed_in(relation, "無い区画") == 0
+    end
+
+    test "ざっと見るの指示文は、区画の名前で始める" do
+      note = RelationsLive.partition_note("日本|-", "", Tazuna.Relations.rough_sweep())
+      assert note =~ ~r/^日本\|- の区画を先にざっと見て/
+    end
+
+    test "ざっと見るの巡回として、区画を名指しして頼む" do
+      test_pid = self()
+
+      Tazuna.HttpStub.stub(fn %{method: :post, url: url, body: body} ->
+        send(test_pid, {:focus, url, Jason.decode!(body)})
+        Tazuna.HttpStub.ok("{}")
+      end)
+
+      assert :ok = Tazuna.Relations.ask_partition("http://chiezo.test", "日本|-", "先に", "ざっと見る")
+      assert_received {:focus, url, body}
+      assert url =~ "/focus"
+      assert body["sweep"] == "ざっと見る"
+      assert body["partition"] == "日本|-"
+    end
+  end
+
   describe "この画家を詳しく調べてもらう" do
     alias TazunaWeb.RelationsLive
 
@@ -1066,7 +1165,9 @@ defmodule TazunaWeb.RelationsLiveTest do
     end
 
     test "覆いだけでなく、操作そのものを止める", %{conn: conn} do
-      # 見た目だけ止めても、タブ送りでは押せてしまう
+      # 見た目だけ止めても、タブ送りでは押せてしまう。
+      # 前のテストが頼んだ読み直しが終わってから開く（走っている間は止まっているのが正しい）
+      assert wait_until(fn -> settled?(Tazuna.Relations.current("painters")) end)
       {:ok, _live, html} = live(conn, ~p"/relations")
 
       refute html =~ "is-busy"
