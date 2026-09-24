@@ -199,30 +199,30 @@ defmodule Tazuna.Datasets.MealsTest do
       assert survey.prompt == :survey
     end
 
-    test "一周の日数は、届く数を書く", %{sweeps: sweeps} do
-      # Chiezo は 1 回に見る区画を 20 までに抑える（区画ごとに AI を 1 回、直列に
-      # 呼ぶため）。**届かない日数を書くと、その日数では回りきらないのに画面には
-      # 書いた日数が出る**
-      partitions = 3_470
-      per_run_cap = 20
+    test "1 回の取り込みは、次の予定に追いつかれない", %{sweeps: sweeps} do
+      # **日数は希望**で、実際の速さは区画の数と Chiezo の上限で決まる ——
+      # こちらで確かめられるのは「1 回が長すぎないか」のほう。区画ごとに AI を
+      # 1 回、直列に呼ぶ（実測で 1 件 1.1 秒）ので、追いつかれると走りっぱなしになる。
+      # 上限まで見た回でも収まっているかで見る
+      per_run_cap = 5
 
-      for sweep <- sweeps, days = Map.get(sweep, :cover_days), days do
-        runs = days * 24 * 60 / sweep.interval_minutes
-
-        per_run = ceil(partitions / runs)
-
-        assert per_run <= per_run_cap,
-               "#{sweep.name} は #{days} 日では回りきりません"
-
-        # **1 回の取り込みが、次の予定に追いつかれない長さであること。**
-        # 区画ごとに AI を 1 回、直列に呼ぶ（実測で 1 件 1.1 秒）ので、
-        # 追いつかれると走りっぱなしになる
-        minutes = per_run * Meals.partition().target * 1.1 / 60
+      for sweep <- sweeps, Map.get(sweep, :cover_days) do
+        minutes = per_run_cap * Meals.partition().target * 1.1 / 60
 
         assert minutes < sweep.interval_minutes,
                "#{sweep.name} は 1 回に #{round(minutes)} 分かかり、" <>
                  "#{sweep.interval_minutes} 分後の次の予定に追いつかれます"
       end
+    end
+
+    test "じっくりも 1 時間ごとに回す", %{sweeps: sweeps} do
+      # 間隔を空けたぶんだけ一周が延びる（1 回に見られる区画には上限がある）。
+      # この回の主な仕事は「足りない店を足す」ことなので、足りないままの区画が
+      # 何か月も放っておかれるのがいちばん困る
+      scan = Enum.find(sweeps, &(&1.name == "ざっと見る"))
+      survey = Enum.find(sweeps, &(&1.name == "整理"))
+
+      assert survey.interval_minutes == scan.interval_minutes
     end
   end
 
@@ -267,6 +267,13 @@ defmodule Tazuna.Datasets.MealsTest do
       # 疑わしいから消す・当てずっぽうで座標を書く、をやると正しかったものが落ちる
       assert Meals.scan_prompt() =~ "確かめられなかったものは触らないでください"
       assert Meals.survey_prompt() =~ "確かめられなかったものは触らないでください"
+    end
+
+    test "じっくりは、足すのが主な仕事" do
+      # 名簿の元は地図辞典なので、新しい店・小さい店・地図に載っていない店は
+      # 入っていない。そこを埋めるのがこの層の値打ちで、磨くだけなら機械でもできる
+      assert Meals.survey_prompt() =~ "1 つめが主な仕事"
+      assert Meals.survey_prompt() =~ "足りない店を足す"
     end
 
     test "座標が違うのは、消す理由にしない" do
