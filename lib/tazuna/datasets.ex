@@ -88,6 +88,16 @@ defmodule Tazuna.Datasets do
   end
 
   @doc """
+  この収集から作る収集（本棚・話題の網）を用意します —— **無ければ作り、
+  あれば設定を送り直します**。**走らせはしません**（止めた状態で作られます）。
+  """
+  def push_derived(%{derived: derived}) when not is_nil(derived) do
+    with {:ok, base} <- base_url(), do: derived.setup(base)
+  end
+
+  def push_derived(_dataset), do: {:error, :not_requested}
+
+  @doc """
   選んだ区画を、選んだ巡回で **1 回走らせます**（Chiezo の「選んだ区画で 1 回
   走らせる」と同じ形）。
 

@@ -1,98 +1,62 @@
 defmodule Tazuna.Datasets.Books do
   @moduledoc """
-  定番の技術書を集めるところ。**「良い本」ではなく「勧められている数」で決めます。**
+  **技術書を勧めている記事**を集めるところ。本そのものは別の収集で数えます
+  （`Tazuna.Datasets.Bookshelf`）。
 
-  1 人が絶賛した本と、10 年のあいだに何十本の記事が挙げてきた本は別物です ——
-  後者が「技術者なら読んでいる」に当たるもので、**それは数でしか見分けられません**。
-  だから 1 冊ごとに**勧めている出どころ**を並べて持ち、その数で定番かどうかを分けます。
+  **なぜ記事を溜めるのか。** 「定番かどうか」を決めるのは**何本の記事が挙げているか**で、
+  その数は**母数が動くと意味を失います** —— AI にその場で探させて数えさせると、
+  同じ本が次の回では見つからず、数が増えたり戻ったりします。
+  記事のほうを溜めておけば、**同じ材料からは同じ数**が出ます。
 
-  **AI に「良い本を挙げて」とは頼みません。** それをやると、学習に多く出てくる
-  名前が並ぶだけで、**なぜその本なのかを後から確かめられません**（出どころが
-  無いので、間違っていても気づけない）。頼むのは「**勧めている記事を探して、
-  その URL と一緒に挙げる**」ことです。
+  **立ち上げは人気順、定常は新着順。** 定番の根拠は何年も前の記事にあるので、
+  新着だけを追っても永遠に届きません（実測で、人気順なら 2022〜2024 年の記事が
+  ブックマーク 1,000 超えの順に出てきます）。人気順はページを繰れるので、
+  **1 周目で過去を拾い、2 周目からは新着だけが足されます**（同じ記事は
+  見出しと URL で弾かれます）。
 
-  **区画は分野です**（`分野:` のタグ）。分野ごとに回すと、1 回の仕事が
-  「この分野の定番は揃っているか」に絞れます —— 全部を一度に見ると、
-  毎回同じ有名どころを挙げて終わります（画家の収集と同じ理由）。
-  **最初は区画がありません**（まだ 1 冊も無いので）。そのときは全体を 1 回として
-  走り、分野のタグが溜まるにつれて区画が立ちます。
+  **本の名前を書くのは AI です。** 配信元が配るのは見出しと要約だけなので、
+  どの本を勧めているかは記事を開かないと分かりません —— そこは機械では無理です。
+  付けるのは `#{"本"}:<書名>` のタグで、**数えるのはそのタグ**になります。
   """
 
   alias Tazuna.Chiezo
 
-  @collection "tazuna_books"
+  @collection "tazuna_book_posts"
 
-  # 1 冊ごとに必ず付く印。読む側はこれで拾います
-  @kind_tag "技術書"
+  # 記事 1 本ごとに付く印
+  @kind_tag "記事"
 
-  # 分野のタグの頭。**区画もここで切ります**（`分野:` ごとに 1 区画）
-  @field_tag "分野"
+  # 勧めている本のタグの頭。**数える側（本棚）はこの頭だけを拾います**
+  @book_tag "本"
 
-  # 定番と候補の印。**数で分けます** —— 出どころが 1 つしか無いものを
-  # 定番と呼ぶと、この収集の意味が無くなる
-  @classic_tag "定番"
-  @candidate_tag "候補"
+  # 探す語。**はてなの検索を配信元として使います**（RSS で返ります）。
+  # 語を増やすと拾える範囲も増えますが、**関係の薄い記事も混ざります**
+  @queries ["技術書", "エンジニア 本 おすすめ", "プログラマ 読むべき 本", "読んでよかった 技術書"]
 
-  # 定番に上げる下限（勧めている出どころの数）。**3 は「たまたま」を外せる数**で、
-  # 高すぎると新しい定番が何年も候補のままになる
-  @classic_sources 3
+  # 人気順で繰るページ数。**立ち上げの 1 周で過去を拾うため** ——
+  # 2 周目からは同じ記事が返るだけなので、重複として弾かれます
+  @popular_pages 3
 
-  # 分野の語彙。**tazuna が持ちます** —— AI に決めさせると回ごとに表記が割れ、
-  # 区画（＝分野）が毎回作り直されます（画家の様式と同じ扱い）
-  @fields [
-    "プログラミング言語",
-    "設計・アーキテクチャ",
-    "アルゴリズムとデータ構造",
-    "OS・低レイヤ",
-    "ネットワーク",
-    "データベース",
-    "分散システム",
-    "セキュリティ",
-    "テスト・品質",
-    "開発プロセス・チーム",
-    "機械学習・AI",
-    "インフラ・運用",
-    "フロントエンド",
-    "数学・理論",
-    "キャリア・働き方"
-  ]
+  # 機械で拾う回の間隔。AI を呼ばないので短くてよい
+  @pick_minutes 180
 
-  # 探す回。**web を開ける**（勧めている記事を当たるのが仕事なので）
-  @hunt_sweep "探す"
-  @hunt_minutes 360
+  # 読む回の間隔。**記事を開くので web を開ける**（配信元は要約しか配らない）
+  @read_minutes 720
 
-  # 整える回。重複を畳み、数を数え直し、定番と候補を付け替える
-  @tidy_sweep "整える"
-  @tidy_minutes 1440
-
-  # 1 区画（＝分野）に入る冊数の目安。**多すぎると 1 回の答えが切れる**ので、
-  # 食事処と同じ考え方で「出口」から決める
-  @partition_target 40
-
-  @doc "1 冊ごとに必ず付く印。読む側はこれで拾います。"
+  @doc "記事 1 本ごとに付く印。"
   def kind_tag, do: @kind_tag
 
-  @doc "分野のタグの頭（`分野:設計・アーキテクチャ` の形）。"
-  def field_tag, do: @field_tag
+  @doc "勧めている本のタグの頭（`本:リーダブルコード` の形）。"
+  def book_tag, do: @book_tag
 
-  @doc "定番の印。"
-  def classic_tag, do: @classic_tag
-
-  @doc "候補の印（出どころがまだ足りないもの）。"
-  def candidate_tag, do: @candidate_tag
-
-  @doc "定番に上げる下限（勧めている出どころの数）。"
-  def classic_sources, do: @classic_sources
-
-  @doc "分野の語彙。"
-  def fields_of_study, do: @fields
+  @doc "探す語。"
+  def queries, do: @queries
 
   @doc """
-  溜め先の収集の名前（= Chiezo のソース名）。**後から変えない** ——
-  変えると、それまで溜めた先を見失います。
+  溜め先の収集の名前（= Chiezo のソース名）。**後から変えない**。
   """
   def collection do
-    case System.get_env("TAZUNA_BOOKS_COLLECTION", "") |> String.trim() do
+    case System.get_env("TAZUNA_BOOK_POSTS_COLLECTION", "") |> String.trim() do
       "" -> @collection
       name -> name
     end
@@ -107,170 +71,119 @@ defmodule Tazuna.Datasets.Books do
       eyebrow: "BOOKS ENGINEERS KEEP RECOMMENDING",
       title: "定番の技術書",
       description:
-        "技術者が繰り返し勧めている本を集めます。" <>
-          "良し悪しは AI に決めさせず、勧めている記事の数で定番かどうかを分けます。",
+        "技術者が繰り返し勧めている本を集めます。良し悪しは AI に決めさせず、" <>
+          "勧めている記事を溜めて、その数で定番かどうかを分けます。",
       collection: collection(),
       reader: "読む人",
-      unit: "1 冊 1 文書",
-      survey_sweep: @tidy_sweep,
-      partition_sweeps: [@hunt_sweep, @tidy_sweep]
+      unit: "記事 1 本 1 文書",
+      note:
+        "本そのものは別の収集で数えます（下の「本棚」）。" <>
+          "数える材料がこの記事なので、ここが溜まるほど数は確かになります。",
+      # **この収集から作る収集**（画面に別の口として出します）
+      derived: Tazuna.Datasets.Bookshelf,
+      survey_sweep: "読む",
+      partition_sweeps: []
     }
   end
 
-  @doc """
-  1 冊ぶんに入る項目。**何がどこから来るか**が読めないと、間違いを AI のせいに
-  してしまいます —— 勧めている数は AI が数えたものではなく、並べた URL の数です。
-  """
+  @doc "1 本ぶんに入る項目。"
   def fields do
     [
-      %{field: "書名", stored: "title", who: "AI（邦題があれば邦題。原書名は本文へ）"},
+      %{field: "記事の見出し", stored: "title", who: "配信元（機械）"},
+      %{field: "URL", stored: "extra.url", who: "配信元（機械）"},
+      %{field: "配信日", stored: "extra.published_at", who: "配信元（機械）"},
       %{
-        field: "分野",
-        stored: "タグ「#{@field_tag}:<分野>」",
-        who: "AI（語彙は tazuna が持つ）"
+        field: "勧めている本",
+        stored: "タグ「#{@book_tag}:<書名>」",
+        who: "AI（記事を開いて読む。**ここが数の元**）"
       },
-      %{
-        field: "勧めている出どころ",
-        stored: "extra.sources（URL を並べたもの）",
-        who: "AI（探す回が見つけたぶんを足していく）"
-      },
-      %{
-        field: "勧めている数",
-        stored: "extra.recommended",
-        who: "並べた URL の数（整える回が数え直す）"
-      },
-      %{
-        field: "定番か候補か",
-        stored: "タグ「#{@classic_tag}」/「#{@candidate_tag}」",
-        who: "数で決まる（#{@classic_sources} 以上で定番）"
-      },
-      %{field: "なぜ定番か", stored: "body", who: "AI（勧められている理由をまとめる）"},
-      %{field: "著者・出た年・版", stored: "body", who: "AI"}
+      %{field: "何の記事か", stored: "body", who: "AI（1〜2 行）"}
     ]
   end
 
-  @doc "区画の割り方。**分野ごとに 1 区画**（`#{@field_tag}:` のタグで切る）。"
-  def partition do
-    %{by: "tag", prefix: "#{@field_tag}:", target: @partition_target}
+  @doc """
+  配信元。**はてなブックマークの検索**を RSS で引きます。
+
+  **人気順と新着順を両方書きます** —— 人気順は過去（定番の根拠）、
+  新着順はこれから出る記事。1 つの収集で両方を束ねられます。
+  """
+  def feed_spec do
+    popular =
+      for q <- @queries,
+          page <- 1..@popular_pages,
+          do: %{url: search_url(q, "popular", page), tags: ["はてな"]}
+
+    recent = for q <- @queries, do: %{url: search_url(q, "recent", 1), tags: ["はてな"]}
+
+    %{urls: popular ++ recent, since: "always", limit: 200}
+  end
+
+  defp search_url(query, sort, page) do
+    "https://b.hatena.ne.jp/q/" <>
+      URI.encode(query, &URI.char_unreserved?/1) <>
+      "?" <>
+      URI.encode_query(%{"mode" => "rss", "target" => "text", "sort" => sort, "page" => page})
   end
 
   @doc """
-  巡回 2 本。**探すのと整えるのは別の仕事**です —— 探す回は外を当たるので
-  web を開け、整える回は手元のものだけを読んで畳みます。
+  巡回 2 本。**拾うのは機械、読むのは AI**（配信元は要約しか配らないので、
+  どの本を勧めているかは記事を開かないと分かりません）。
   """
   def sweeps do
     [
-      %{
-        name: @hunt_sweep,
-        interval_minutes: @hunt_minutes,
-        web: true,
-        prompt: :hunt
-      },
-      %{
-        name: @tidy_sweep,
-        interval_minutes: @tidy_minutes,
-        prompt: :tidy
-      }
+      %{name: "拾う", interval_minutes: @pick_minutes, use_feed: true, only_new: true},
+      %{name: "読む", interval_minutes: @read_minutes, web: true, prompt: :read}
     ]
   end
 
   @doc """
-  探す回の依頼文。**勧めている記事を当たって、URL と一緒に挙げさせます。**
-
-  「良い本を挙げて」と頼まないのは、それだと学習に多く出てくる名前が並ぶだけで、
-  **なぜその本なのかを後から確かめられない**ためです。
+  読む回の依頼文。**手元の記事を開いて、勧めている本をタグにします。**
+  ついでに、**手元に無い記事**も探させます。
   """
-  def hunt_prompt do
+  def read_prompt do
     """
-    技術者が繰り返し勧めている本を集めています。**この分野ぶんだけ**見てください。
-
-    **今回見る範囲**
-    {partition}
+    技術書を勧めている記事を溜めています。**やってほしいことは 2 つ**です。
 
     {current}
 
-    **やってほしいことは 2 つ**です。
+    **1. まだ本の付いていない記事を読んで、勧めている本をタグにする。**
+    記事を開いて、**その記事が勧めている本**を
+    「#{@book_tag}:<書名>」のタグで並べてください（1 本の記事に何冊でも）。
 
-    **1. 勧めている記事を探す。** 「◯◯ おすすめ 本」「新人エンジニアに読んでほしい」
-    のような記事・社内の推薦リスト・カンファレンスの発表・書評を当たって、
-    **そこで挙げられている本**を拾ってください。**本を思い出すのではなく、
-    勧めている文章を探すのが仕事**です —— 挙げるときは必ず、
-    **どこで勧められていたかの URL** を添えてください。
+    - **書名は邦題があれば邦題**で、**版や巻の数字は入れない**でください
+      （「リーダブルコード」であって「リーダブルコード 第 2 版」ではない）。
+      **ここが数える鍵**なので、表記が割れると同じ本が別々に数えられます
+    - **勧めている本だけ**です。「読んでいない」「合わなかった」と書かれている本は
+      入れないでください
+    - body には**何の記事か**を 1〜2 行（「新人向けの推薦リスト」「設計の本を 5 冊」）
+    - **開けなかった記事は触らないでください**（当て推量で本を並べると、
+      根拠の無い数になります）
 
-    **2. 既にあるものに出どころを足す。** 上に並んでいる本が別の記事でも
-    勧められていたら、**その URL を足して**ください（`extra.sources` に並べます）。
-    **数が増えること自体が、この収集の値打ち**です。
+    **2. 手元に無い記事を探す。** 上に並んでいるのは**いま持っている記事**です。
+    ここに無い「技術書を勧めている記事」を探して足してください ——
+    **社内ブログ・海外の記事・カンファレンスの発表資料**は、配信元からは入ってきません。
+    足すときは `title`（記事の見出し）・`url`・`body`・上のタグを書いてください。
 
-    返す形は 1 冊ごとに次のとおりです。
-
-    - `title` … 書名（訳書があれば邦題。原書名は body に書く）
-    - `body` … **なぜ勧められているのか**を 2〜3 行。著者・原著の年・版も 1 行で
-    - `url` … 代表的な出どころ 1 本
-    - `extra.sources` … 勧めている記事の URL を並べたもの（**最大 20 本**）
-    - `extra.recommended` … その本数（`sources` の数と同じにしてください）
-    - `tags` … 「#{@kind_tag}」、「#{@field_tag}:<分野>」（下の語彙から 1〜2 個）、
-      それに **出どころが #{@classic_sources} 本以上なら「#{@classic_tag}」、
-      足りなければ「#{@candidate_tag}」**
-
-    **分野の語彙**（この中から選んでください。新しい語は作らない）
-    #{Enum.map_join(@fields, " / ", & &1)}
-
-    **確信の持てないものは挙げないでください。** 出どころの URL を示せない本は、
-    この収集には入りません —— **勧められている数で定番を決める**収集なので、
-    根拠の無い 1 冊が混ざると、並びの意味がそこで壊れます。
-    **心当たりが無ければ、足さなくて構いません。**
+    **宣伝と本の紹介ページは入れないでください。** 出版社の告知や書店のページは、
+    誰かが勧めた記事ではありません。
 
     **触ったものと足すものだけ返してください。** 触れなかったものはそのまま残ります。
     """
   end
 
-  @doc """
-  整える回の依頼文。**手元のものだけを読んで畳みます**（外は当たりません）。
-  """
-  def tidy_prompt do
-    """
-    集めた技術書の一覧を整えます。**この分野ぶんだけ**見てください。
-
-    **今回見る範囲**
-    {partition}
-
-    {current}
-
-    **やってほしいことは 4 つ**です。
-
-    **1. 同じ本を 1 つにまとめる。** 原書と訳書、版違い、副題の有無で分かれている
-    ものは 1 冊にしてください（残すのは**邦題のあるものを優先**）。
-    出どころ（`extra.sources`）は**両方を合わせて**残し、重複した URL は畳みます。
-    消すほうには墓標を付けてください（tags に "#{Chiezo.tombstone_tag()}" を入れ、
-    body に理由を 1 行）。
-
-    **2. 数を数え直す。** `extra.recommended` は **`extra.sources` に並んでいる
-    本数と同じ**にしてください。合っていないものは直します。
-
-    **3. 定番と候補を付け替える。** 出どころが #{@classic_sources} 本以上なら
-    「#{@classic_tag}」、足りなければ「#{@candidate_tag}」。**数で決まります** ——
-    あなたの評価では決めないでください。
-
-    **4. 技術書でないものを落とす。** 資格の問題集・特定の製品のマニュアル・
-    読み物ではない辞典は、この収集の対象ではありません（墓標で消してください）。
-
-    **出どころの URL は消さないでください。** ここが数の根拠で、消すと
-    「なぜ定番なのか」を後から誰も確かめられません。
-
-    **触ったものだけ返してください。** 触れなかったものはそのまま残ります。
-    """
-  end
+  @doc "巡回ごとの依頼文（画面に出すため）。"
+  def prompts, do: [{"読む", read_prompt()}]
 
   @doc "Chiezo へ送る収集の設定ぜんぶ。"
   def attrs(choices \\ %{}) do
     %{
       name: collection(),
-      description: "tazuna のデータ収集（定番の技術書）",
-      prompt: hunt_prompt(),
-      interval_minutes: @hunt_minutes,
-      partition: partition(),
+      description: "tazuna のデータ収集（技術書を勧めている記事）",
+      prompt: read_prompt(),
+      interval_minutes: @read_minutes,
+      feed: feed_spec(),
       sweeps: with_choices(sweeps(), choices),
-      # **網羅。** 古い本が要らなくなることはない（定番はむしろ古い）
+      # **網羅。** 2022 年の記事も根拠として生きている（期限で落とすと数が減る）
       kind: "stock",
       requested_by: "tazuna"
     }
@@ -285,10 +198,9 @@ defmodule Tazuna.Datasets.Books do
     end
   end
 
-  defp resolve_prompt(%{prompt: :hunt} = sweep), do: %{sweep | prompt: hunt_prompt()}
-  defp resolve_prompt(%{prompt: :tidy} = sweep), do: %{sweep | prompt: tidy_prompt()}
+  defp resolve_prompt(%{prompt: :read} = sweep), do: %{sweep | prompt: read_prompt()}
   defp resolve_prompt(sweep), do: sweep
 
-  @doc "巡回ごとの依頼文（画面に出すため）。"
-  def prompts, do: [{@hunt_sweep, hunt_prompt()}, {@tidy_sweep, tidy_prompt()}]
+  @doc "墓標のタグ（依頼文から参照するため）。"
+  def tombstone_tag, do: Chiezo.tombstone_tag()
 end

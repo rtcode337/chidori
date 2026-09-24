@@ -116,6 +116,16 @@ defmodule TazunaWeb.DatasetsLive do
     do: {:noreply, assign(socket, picked: nil)}
 
   # **この区画を先に調べて、を頼む。** 定時の巡回の進み具合にも次の予定にも触りません
+  # **この収集から作る収集**（本棚）を用意する。無ければ作り、あれば送り直す
+  def handle_event("collect_derived", _params, socket) do
+    dataset = socket.assigns.dataset
+
+    {:noreply,
+     socket
+     |> assign(asking: true, asked: nil)
+     |> start_async(:ask, fn -> Datasets.push_derived(dataset) end)}
+  end
+
   # **選んだ区画を、選んだ巡回で 1 回走らせる**（Chiezo の画面と同じ形）。
   #
   # 割り込みにしていた頃は、進み具合にも区画の印にも触らないので、

@@ -1,66 +1,87 @@
 defmodule Tazuna.Datasets.BooksTest do
   @moduledoc """
-  定番の技術書。見ているのは **「良い本」ではなく「勧められている数」で決めているか**です。
+  技術書を勧めている**記事**の収集。見ているのは、**数の母数が動かないか**です。
 
-  AI に良し悪しを聞くと、学習に多く出てくる名前が並ぶだけで、**なぜその本なのかを
-  後から確かめられません**（出どころが無いので、間違っていても気づけない）。
+  AI にその場で探させて数えさせると、同じ本が次の回では見つからず、数が増えたり
+  戻ったりします。記事を溜めておけば、同じ材料からは同じ数が出ます。
   """
 
   use ExUnit.Case, async: true
 
-  alias Tazuna.Chiezo
   alias Tazuna.Datasets.Books
 
+  describe "配信元" do
+    setup do
+      %{feed: Books.feed_spec()}
+    end
+
+    test "人気順と新着順を両方引く", %{feed: feed} do
+      # 定番の根拠は何年も前の記事にある —— 新着だけを追っても永遠に届かない
+      # （実測で、人気順なら 2022〜2024 年の記事がブクマ 1,000 超えの順に出る）
+      urls = Enum.map(feed.urls, & &1.url)
+
+      assert Enum.any?(urls, &(&1 =~ "sort=popular"))
+      assert Enum.any?(urls, &(&1 =~ "sort=recent"))
+    end
+
+    test "人気順はページを繰る", %{feed: feed} do
+      # 1 ページ 40 件。立ち上げの 1 周で過去を拾うため
+      pages =
+        feed.urls
+        |> Enum.filter(&(&1.url =~ "sort=popular"))
+        |> Enum.map(&(URI.parse(&1.url).query |> URI.decode_query() |> Map.get("page")))
+        |> Enum.uniq()
+
+      assert length(pages) > 1
+    end
+
+    test "語ごとに引く", %{feed: feed} do
+      # 語を増やすと拾える範囲も増えるが、関係の薄い記事も混ざる
+      assert length(Books.queries()) >= 3
+      assert length(feed.urls) >= length(Books.queries())
+    end
+
+    test "http(s) だけ", %{feed: feed} do
+      for one <- feed.urls, do: assert(one.url =~ ~r{\Ahttps://})
+    end
+  end
+
   describe "依頼文" do
-    test "本ではなく、勧めている記事を探させる" do
-      prompt = Books.hunt_prompt()
+    test "手元の記事を開いて、本をタグにさせる" do
+      # 配信元が配るのは見出しと要約だけ —— どの本を勧めているかは開かないと分からない
+      prompt = Books.read_prompt()
 
-      assert prompt =~ "勧めている記事を探す"
-      assert prompt =~ "本を思い出すのではなく"
-      assert prompt =~ "URL"
+      assert prompt =~ "#{Books.book_tag()}:"
+      assert prompt =~ "記事を開いて"
     end
 
-    test "根拠の無い 1 冊は入れさせない" do
-      # 出どころを示せない本が混ざると、数で並べる意味がそこで壊れる
-      assert Books.hunt_prompt() =~ "出どころの URL を示せない本は"
-      assert Books.hunt_prompt() =~ "心当たりが無ければ、足さなくて構いません"
+    test "書名の表記を揃えさせる" do
+      # ここが数える鍵。表記が割れると、同じ本が別々に数えられる
+      prompt = Books.read_prompt()
+
+      assert prompt =~ "邦題があれば邦題"
+      assert prompt =~ "版や巻の数字は入れない"
     end
 
-    test "分野の語彙は tazuna が持つ" do
-      # AI に決めさせると回ごとに表記が割れ、区画（＝分野）が毎回作り直される
-      prompt = Books.hunt_prompt()
-
-      assert prompt =~ "新しい語は作らない"
-
-      for field <- Books.fields_of_study() do
-        assert prompt =~ field
-      end
+    test "勧めていない本は入れさせない" do
+      assert Books.read_prompt() =~ "勧めている本だけ"
     end
 
-    test "定番と候補は数で分ける" do
-      for prompt <- [Books.hunt_prompt(), Books.tidy_prompt()] do
-        assert prompt =~ Books.classic_tag()
-        assert prompt =~ Books.candidate_tag()
-        assert prompt =~ "#{Books.classic_sources()}"
-      end
-
-      # **あなたの評価では決めないでください** —— ここが崩れると収集の意味が無くなる
-      assert Books.tidy_prompt() =~ "あなたの評価では決めないで"
+    test "開けなかった記事は触らせない" do
+      # 当て推量で本を並べると、根拠の無い数になる
+      assert Books.read_prompt() =~ "開けなかった記事は触らないでください"
     end
 
-    test "整える回は数を数え直す" do
-      # AI が書いた数と、並んでいる URL の数が食い違うと、並びが嘘になる
-      assert Books.tidy_prompt() =~ "extra.sources"
-      assert Books.tidy_prompt() =~ "同じ"
+    test "手元に無い記事も探させる" do
+      # 社内ブログ・海外の記事・発表資料は配信元からは入ってこない
+      prompt = Books.read_prompt()
+
+      assert prompt =~ "手元に無い記事を探す"
+      assert prompt =~ "社内ブログ"
     end
 
-    test "出どころは消させない" do
-      # ここが数の根拠。消すと「なぜ定番なのか」を誰も確かめられない
-      assert Books.tidy_prompt() =~ "出どころの URL は消さないでください"
-    end
-
-    test "消すのは墓標で" do
-      assert Books.tidy_prompt() =~ Chiezo.tombstone_tag()
+    test "宣伝は入れさせない" do
+      assert Books.read_prompt() =~ "宣伝と本の紹介ページは入れないでください"
     end
   end
 
@@ -71,54 +92,41 @@ defmodule Tazuna.Datasets.BooksTest do
     end
 
     test "網羅として溜める", %{attrs: attrs} do
-      # 定番はむしろ古い。期限で落とすと、この収集は成り立たない
+      # 2022 年の記事も根拠として生きている（期限で落とすと数が減る）
       assert attrs.kind == "stock"
     end
 
-    test "区画は分野で切る", %{attrs: attrs} do
-      # 全部を一度に見ると、毎回同じ有名どころを挙げて終わる
-      assert attrs.partition.by == "tag"
-      assert attrs.partition.prefix == "#{Books.field_tag()}:"
+    test "拾う回は AI を呼ばない", %{sweeps: sweeps} do
+      assert sweeps["拾う"].use_feed
+      refute Map.get(sweeps["拾う"], :web)
     end
 
-    test "探す回だけ外を当たる", %{sweeps: sweeps} do
-      # 整える回は手元のものを畳むだけ（外を当たる理由が無い）
-      assert sweeps["探す"].web
-      refute Map.get(sweeps["整える"], :web)
+    test "読む回は web を開ける", %{sweeps: sweeps} do
+      # 記事を開かないと、どの本を勧めているかが分からない
+      assert sweeps["読む"].web
+      assert sweeps["読む"].prompt =~ "記事を開いて"
     end
 
-    test "巡回ごとに依頼文を持つ", %{sweeps: sweeps} do
-      # 1 つの文で全部を頼むと、どの回も同じ薄さの仕事になる
-      assert sweeps["探す"].prompt =~ "勧めている記事を探す"
-      assert sweeps["整える"].prompt =~ "同じ本を 1 つにまとめる"
-    end
+    test "画面で選んだ相手を載せる" do
+      attrs = Books.attrs(%{"読む" => %{backend: "codex", model: "gpt-6-sol-high"}})
+      read = Enum.find(attrs.sweeps, &(&1.name == "読む"))
 
-    test "画面で選んだ相手を載せる", %{attrs: _attrs} do
-      attrs = Books.attrs(%{"探す" => %{backend: "codex", model: "gpt-6-sol-high"}})
-      hunt = Enum.find(attrs.sweeps, &(&1.name == "探す"))
-
-      assert hunt.backend == "codex"
-      assert hunt.model == "gpt-6-sol-high"
+      assert read.backend == "codex"
     end
   end
 
   describe "画面に出す 1 タブぶん" do
-    test "読む相手と単位を持つ" do
-      # 文面を画面に決め打つと、対象を足すたびに食い違う
+    test "本棚を子として持つ" do
+      # 別のタブにすると、何から作られたものかが読めなくなる
       d = Books.definition()
 
       assert d.key == "books"
-      assert d.reader != ""
-      assert d.unit == "1 冊 1 文書"
-      assert d.partition_sweeps == ["探す", "整える"]
+      assert d.derived == Tazuna.Datasets.Bookshelf
+      assert d.unit == "記事 1 本 1 文書"
     end
 
-    test "どの項目が誰から来るかを出す" do
-      fields = Books.fields()
-
-      assert Enum.any?(fields, &(&1.stored =~ "extra.sources"))
-      # **数は AI が数えたものではなく、並べた URL の数**
-      assert Enum.any?(fields, &(&1.who =~ "URL の数"))
+    test "数の元がどれかを出す" do
+      assert Enum.any?(Books.fields(), &(&1.stored =~ Books.book_tag()))
     end
   end
 end

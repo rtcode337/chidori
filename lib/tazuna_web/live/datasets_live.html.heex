@@ -90,6 +90,25 @@
         </p>
       </div>
 
+      <%!-- **この収集から作る収集**（本棚・話題の網）。**親の下に置く** ——
+           別のタブにすると、何から作られたものかが読めなくなる --%>
+      <section :if={@dataset[:derived]} class="collect-panel" aria-label="この収集から作るもの">
+        <h2>{@dataset.derived.name()}</h2>
+        <p>
+          上の収集に付いた<strong>タグから機械で作ります</strong>。
+          数えるのは Chiezo で、<strong>AI がやるのは整えるところだけ</strong>です
+          （言い換えを畳む・分野を付ける・技術書でない語を外す・一言で説明する）。
+        </p>
+        <p class="muted-note">
+          溜め先は別の収集です（<code>{@dataset.derived.collection()}</code>）。
+          <strong>止めた状態で作ります</strong> —— 動き出すのは Chiezo の管理画面で
+          有効にしたときだけです。
+        </p>
+        <button type="button" phx-click="collect_derived" disabled={@state.pushing}>
+          {@dataset.derived.name()}の収集を更新
+        </button>
+      </section>
+
       <%!-- **区画の一覧。** どこがまだ見られていないかは、ここにしか無い ——
            「ここを先に見てほしい」を頼む口でもある。数百あるので畳んで置く --%>
       <% rows = partition_rows(@state, @dataset.partition_sweeps) %>
