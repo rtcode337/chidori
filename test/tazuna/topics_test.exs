@@ -30,6 +30,51 @@ defmodule Tazuna.TopicsTest do
     end
   end
 
+  describe "技術イベント" do
+    setup do
+      %{events: Topics.get("tazuna_events")}
+    end
+
+    test "国内を中心に、大きな海外も入れる", %{events: events} do
+      assert events.name == "技術イベント"
+      assert events.interest =~ "国内"
+      assert events.interest =~ "海外"
+    end
+
+    test "日付では古くならない", %{events: events} do
+      # 半年先のイベントを 30 日の期限で落とすと、いちばん要るときに消える。
+      # 古さは「終わったかどうか」だけ
+      refute Topics.ages_out?(events)
+      assert Topics.ages_out?(Topics.get("tazuna_tech"))
+    end
+
+    test "終わったものは整理の回が落とす", %{events: events} do
+      assert events.note =~ "終わったイベントは消して"
+    end
+
+    test "行けるかどうかを決められる項目を書かせる", %{events: events} do
+      # 開催日と場所が無いと、読む人は何も決められない
+      assert events.note =~ "開催日"
+      assert events.note =~ "場所"
+      assert events.note =~ "申込先の URL"
+    end
+
+    test "同じイベントの別の回は別の 1 件", %{events: events} do
+      # 見出しが同じだと、第 3 回の内容が第 4 回で上書きされる
+      assert events.note =~ "別の回は別の 1 件"
+    end
+
+    test "機械で引ける配信元を持つ", %{events: events} do
+      assert events.feeds != []
+    end
+  end
+
+  test "話題ごとに、古くなり方を選べる" do
+    # 既定は「日が経てば古くなる」（ニュースも記事もそう）
+    assert Topics.ages_out?(%{name: "何か"})
+    refute Topics.ages_out?(%{name: "何か", ages_out: false})
+  end
+
   test "映画の話題が入っている" do
     movies = Topics.get("tazuna_movies")
 

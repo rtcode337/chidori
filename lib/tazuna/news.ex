@@ -22,6 +22,7 @@ defmodule Tazuna.News do
 
   require Logger
 
+  alias Tazuna.Topics
   alias Tazuna.Chiezo
   alias Tazuna.Http
   alias Tazuna.Jst
@@ -563,8 +564,10 @@ defmodule Tazuna.News do
         # 重要度やタグを後から付け直す（それができるのは育てる側だけ）
         # **流れ。** 時とともに増えるものを追っていて、直近だけが対象 ——
         # 古いものは順に要らなくなるので、Chiezo に期限で落としてもらう
-        # （落とさないと、この収集は永久に増え続ける）
-        kind: "flow",
+        # （落とさないと、この収集は永久に増え続ける）。
+        # **終わったら要らなくなる話題は網羅にする**（`ages_out?`）——
+        # 日付では落とせないので、整理の回に落とさせる
+        kind: if(Topics.ages_out?(topic), do: "flow", else: "stock"),
         feed: feed_spec(topic),
         sweeps: with_choices(sweeps(topic), choices),
         requested_by: "tazuna"

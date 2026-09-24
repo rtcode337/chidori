@@ -233,6 +233,11 @@ defmodule Tazuna.NewsTest do
       # （落とさないと、この収集は永久に増え続ける）
       assert payload["kind"] == "flow"
 
+      # **終わったら要らなくなる話題は網羅にする。** 半年先のイベントを 30 日の
+      # 期限で落とすと、いちばん要るときに消える
+      events = Tazuna.Topics.get("tazuna_events")
+      assert News.attrs("tazuna_events", events)[:kind] == "stock"
+
       # 巡回は仕事ごとに分ける（集める・漏れを探す・読んで印を付ける・まとめる）
       assert Enum.map(payload["sweeps"], & &1["name"]) ==
                ["集める", "整理", "要約"]

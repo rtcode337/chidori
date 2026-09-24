@@ -243,18 +243,19 @@
       </details>
     </section>
 
-    <%!-- **何が溜まるのかを、使う側の項目で書く。** 集めたものを読むのは
-         travel-log なので、ここで「どの項目がどこから来るか」が読めないと、
-         足りない項目に気づけない --%>
-    <section class="collect-panel" aria-label="travel-log に渡す中身">
-      <h2>travel-log に渡す中身</h2>
+    <%!-- **何が溜まるのかを、使う側の項目で書く。** ここで「どの項目がどこから
+         来るか」が読めないと、足りない項目に気づけない。**読む相手も単位も対象ごとに
+         違う**ので、文面は定義の側が持つ --%>
+    <section class="collect-panel" aria-label={"#{@dataset.reader} に渡す中身"}>
+      <h2>{@dataset.reader} に渡す中身</h2>
       <p>
-        1 店 1 文書で溜まります。travel-log は <strong>タグ「{@dataset.module.kind_tag()}」</strong>で拾い、次の項目をスポットにします。
+        {@dataset.unit}で溜まります。{@dataset.reader}は
+        <strong>タグ「{@dataset.module.kind_tag()}」</strong>で拾い、次の項目を読みます。
       </p>
       <table class="sweep-table">
         <thead>
           <tr>
-            <th>travel-log の項目</th>
+            <th>項目</th>
             <th>収集の中身</th>
             <th>誰が入れるか</th>
           </tr>
@@ -267,12 +268,7 @@
           </tr>
         </tbody>
       </table>
-      <p class="muted-note">
-        <strong>座標は AI に書かせません</strong>（当てにならないうえ、実行のたびに変わります）。
-        辞典から運んだ値を下地にして、<strong>食い違っているものだけ</strong>を
-        「ざっと見る」の回に直させます。座標を持たない 1 件はどの区画にも入らないので、
-        足すときは必ず座標を入れるよう頼んであります。
-      </p>
+      <p :if={@dataset[:note]} class="muted-note">{@dataset[:note]}</p>
     </section>
 
     <footer>

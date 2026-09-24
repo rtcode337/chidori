@@ -323,7 +323,7 @@ defmodule TazunaWeb.DatasetsLive do
 
   defp collection_prompt(_assigns), do: ""
 
-  defp default_prompts(%{dataset: dataset}) do
-    [{"ざっと見る", dataset.module.scan_prompt()}, {"整理", dataset.module.survey_prompt()}]
-  end
+  # **まだ Chiezo に無い収集では、対象の側の雛形を出す。** 巡回の名前も文も
+  # 対象ごとに違うので、ここで決め打つと対象を足すたびに画面が食い違う
+  defp default_prompts(%{dataset: dataset}), do: dataset.module.prompts()
 end

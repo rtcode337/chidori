@@ -15,12 +15,13 @@ defmodule Tazuna.Datasets do
   """
 
   alias Tazuna.Chiezo
+  alias Tazuna.Datasets.Books
   alias Tazuna.Datasets.Meals
 
   @doc """
   tazuna が持っている収集の対象。**この並びがタブの並び**。
   """
-  def defined, do: [Meals.definition()]
+  def defined, do: [Meals.definition(), Books.definition()]
 
   @doc "対象の一覧（定義の順）。"
   def list, do: defined()
