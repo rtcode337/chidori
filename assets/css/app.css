@@ -298,6 +298,22 @@ article p:last-child { color: #475569; line-height: 1.7; }
 
 /* 押したときに出す、その画家のこと */
 .artwork-source { margin: 0 0 0.6rem; font-size: 0.9rem; }
+/* Wikipedia などへの行き先。**小さく、リンクと分かる見た目にする** ——
+   全体の CSS がリンクの色と下線を消しているので、ここで戻す。
+   本文と同じ大きさ・色だと、押せるものだと気づかれない */
+.artwork-source a, .edge-links a, .artwork-figure figcaption a, .artwork-search a {
+  color: #554bc0; font-size: .78rem; text-decoration: underline; text-underline-offset: .2em;
+}
+.artwork-source a:hover, .edge-links a:hover, .artwork-figure figcaption a:hover, .artwork-search a:hover { color: #332c75; }
+.artwork-source a::after, .edge-links a::after, .artwork-figure figcaption a::after, .artwork-search a::after { content: " ↗"; text-decoration: none; display: inline-block; margin-left: .15em; }
+.edge-links { list-style: none; padding-left: 0; }
+.edge-links li + li { margin-top: .2rem; }
+/* 画家の姿。説明の横に小さく置く（狭い画面では上に回す） */
+.portrait { float: right; width: 7.5rem; margin: .2rem 0 .6rem .9rem; }
+.portrait img { display: block; width: 100%; margin: 0; max-height: 10rem; object-fit: cover; object-position: top; border-radius: .5rem; box-shadow: 0 .3rem .8rem rgba(24, 22, 51, .18); }
+.portrait figcaption { margin-top: .25rem; color: #98a0ba; font-size: .68rem; text-align: center; }
+@media (max-width: 30rem) { .portrait { float: none; width: 9rem; margin: .2rem auto .6rem; } }
+.artwork-tags { clear: both; }
 .artwork-tags {
   display: grid;
   grid-template-columns: auto 1fr;

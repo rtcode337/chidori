@@ -703,6 +703,14 @@
           <% end %>
         </div>
 
+        <%!-- **その画家の姿。** 記事の先頭画像は、たいてい自画像か肖像写真。
+             説明の横に小さく置く（主役は代表作のほうなので、大きくしない）。
+             無ければ何も出さない —— 探している最中の文言も出さない（無い人のほうが多い） --%>
+        <figure :if={is_map(@portrait) and is_binary(@portrait[:image])} class="portrait">
+          <img src={@portrait.image} alt={"#{@detail.name}の肖像"} />
+          <figcaption>Wikipedia より</figcaption>
+        </figure>
+
         <%!-- **行き先は画家の記事。** 押したのは画家なので、代表作の記事へ飛ばすと
              「この人のことを知りたい」に答えていない --%>
         <p :if={article_url(@detail)} class="artwork-source">

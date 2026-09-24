@@ -52,6 +52,8 @@ defmodule TazunaWeb.RelationsLive do
        page_title: "関連図",
        detail: nil,
        artwork: nil,
+       # 押した画家の記事の先頭画像（自画像や写真）。nil / :loading / 見つかったもの / :none
+       portrait: nil,
        edge: nil,
        style_filter: nil,
        # 直近の巡回で動いたものだけを出しているか。**様式の絞り込みとは排他** ——
@@ -175,24 +177,14 @@ defmodule TazunaWeb.RelationsLive do
 
       # もう一度押したら閉じる
       detail_name(socket.assigns.detail) == name ->
-        {:noreply, assign(socket, detail: nil, artwork: nil, mark_saved: nil)}
-
-      works_of(node) == [] ->
-        # 絵が無いことは分かっているので、探しているふりをしない
-        {:noreply,
-         assign(socket, detail: node, artwork: [], edge: nil, focus_sent: nil, mark_saved: nil)}
+        {:noreply, assign(socket, detail: nil, artwork: nil, portrait: nil, mark_saved: nil)}
 
       true ->
-        works = works_of(node)
-
         {:noreply,
          socket
-         |> assign(detail: node, artwork: :loading, edge: nil, focus_sent: nil, mark_saved: nil)
-         |> start_async(:artwork, fn ->
-           # **見つからなかった作品も落とさない。** 記事の無い作品は多く、落とすと
-           # 代表作が入っているのに何も出ない。画面が画像検索へのリンクにする
-           Enum.map(works, &(Tazuna.Artwork.lookup(&1) || %{title: &1, image: nil}))
-         end)}
+         |> assign(detail: node, edge: nil, focus_sent: nil, mark_saved: nil)
+         |> with_portrait(node)
+         |> with_works(works_of(node))}
     end
   end
 
@@ -230,7 +222,8 @@ defmodule TazunaWeb.RelationsLive do
              )
          },
          detail: nil,
-         artwork: nil
+         artwork: nil,
+         portrait: nil
        )}
     else
       {:noreply, socket}
@@ -305,7 +298,8 @@ defmodule TazunaWeb.RelationsLive do
 
   # 閉じ方は3つとも同じところへ来る（ボタン・図の外を押す・Esc）
   def handle_event("close_work", _params, socket) do
-    {:noreply, assign(socket, detail: nil, artwork: nil, edge: nil, mark_saved: nil)}
+    {:noreply,
+     assign(socket, detail: nil, artwork: nil, portrait: nil, edge: nil, mark_saved: nil)}
   end
 
   # 図が「いまどこを、どれくらいの倍率で見ているか」を知らせてくる。
@@ -399,9 +393,55 @@ defmodule TazunaWeb.RelationsLive do
     {:noreply, assign(socket, artwork: result)}
   end
 
+  # **届いたときに開いている画家のものだけを使う。** 続けて別の画家を押すと、
+  # 前の画家の画像があとから届くことがある
+  def handle_async(:portrait, {:ok, found}, socket) do
+    case {socket.assigns.detail, found} do
+      {nil, _found} ->
+        {:noreply, socket}
+
+      {_detail, :none} ->
+        {:noreply, assign(socket, portrait: :none)}
+
+      {detail, %{title: title}} ->
+        {:noreply, assign(socket, portrait: portrait_for(detail, title, found))}
+    end
+  end
+
+  def handle_async(:portrait, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, portrait: :none)}
+
   def handle_async(:artwork, {:exit, _reason}, socket) do
     # **空の一覧にする。** nil にすると「探している最中」と見分けが付かない
     {:noreply, assign(socket, artwork: [])}
+  end
+
+  # **その画家の姿。** 画家の記事の先頭画像は、たいてい自画像か肖像写真になる
+  # （代表作の記事の先頭がその絵になるのと同じ理屈）。引き方は代表作と同じ
+  # `Tazuna.Artwork` —— まず Chiezo、無ければ Wikipedia、結果は 1 日覚える
+  defp with_portrait(socket, node) do
+    case node[:article] || node[:name] do
+      title when is_binary(title) ->
+        socket
+        |> assign(portrait: :loading)
+        |> start_async(:portrait, fn -> Tazuna.Artwork.lookup(title) || :none end)
+
+      _ ->
+        assign(socket, portrait: :none)
+    end
+  end
+
+  # 絵が無いことは分かっているので、探しているふりをしない
+  defp with_works(socket, []), do: assign(socket, artwork: [])
+
+  defp with_works(socket, works) do
+    socket
+    |> assign(artwork: :loading)
+    |> start_async(:artwork, fn ->
+      # **見つからなかった作品も落とさない。** 記事の無い作品は多く、落とすと
+      # 代表作が入っているのに何も出ない。画面が画像検索へのリンクにする
+      Enum.map(works, &(Tazuna.Artwork.lookup(&1) || %{title: &1, image: nil}))
+    end)
   end
 
   # 押したときに送る値。**覚えているほうを勝たせる** —— 画面が描き直されると
@@ -578,6 +618,11 @@ defmodule TazunaWeb.RelationsLive do
       do: "aspect-ratio: #{w} / #{h}"
 
   def canvas_style(_relation, _shown), do: nil
+
+  # 開いている画家の記事と同じものか（別の画家の画像を出さない）
+  defp portrait_for(detail, title, found) do
+    if title in [detail[:article], detail[:name]], do: found, else: :none
+  end
 
   @doc "区画ごとの未レビューの人数（無ければ 0）。"
   def unreviewed_in(relation, key), do: get_in(relation, [:partition_unreviewed, key]) || 0

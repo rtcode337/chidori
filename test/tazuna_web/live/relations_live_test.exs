@@ -295,6 +295,66 @@ defmodule TazunaWeb.RelationsLiveTest do
     end
   end
 
+  describe "画家の姿" do
+    # 題名はほかのテストと重ねない（引いた結果は 1 日覚えるため）
+    setup do
+      System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+
+      docs = [
+        %{"title" => "肖像のある画家", "body" => "説明", "tags" => ["画家", "年代:1860-1920"]},
+        %{"title" => "肖像の無い画家", "body" => "説明", "tags" => ["画家", "年代:1870-1930"]}
+      ]
+
+      Tazuna.HttpStub.stub(fn %{url: url} ->
+        cond do
+          String.contains?(url, "/filter?") ->
+            Tazuna.HttpStub.ok(Jason.encode!(%{"results" => docs, "total" => 2}))
+
+          String.contains?(url, "/v1/jawiki/doc") and
+              String.contains?(url, URI.encode_www_form("肖像のある画家")) ->
+            Tazuna.HttpStub.ok(
+              Jason.encode!(%{
+                "title" => "肖像のある画家",
+                "opening" => "画家。",
+                "extra" => %{"image" => "https://example.com/self-portrait.jpg"}
+              })
+            )
+
+          true ->
+            Tazuna.HttpStub.ok(Jason.encode!(%{"collections" => []}))
+        end
+      end)
+
+      assert wait_until(fn -> Tazuna.Relations.current("painters").status != :loading end)
+      Tazuna.Relations.refresh("painters")
+
+      assert wait_until(fn ->
+               relation = Tazuna.Relations.current("painters")
+               settled?(relation) and Enum.any?(relation.nodes, &(&1.name == "肖像のある画家"))
+             end)
+
+      :ok
+    end
+
+    test "記事に画像があれば、自画像や写真として出す", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+
+      live |> element(~s|[phx-value-name="肖像のある画家"]|) |> render_click()
+      html = render_async(live)
+
+      assert html =~ ~s(class="portrait")
+      assert html =~ "https://example.com/self-portrait.jpg"
+    end
+
+    test "画像が無ければ何も出さない", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+
+      live |> element(~s|[phx-value-name="肖像の無い画家"]|) |> render_click()
+      refute render_async(live) =~ ~s(class="portrait")
+    end
+  end
+
   describe "絵の見つからない代表作" do
     # **ほかのテストと題名を重ねない。** 引いた結果は 1 日覚えるので、同じ題名を
     # 絵つきで引いたテストが先に走ると、ここでも絵が見つかってしまう
