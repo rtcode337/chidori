@@ -50,4 +50,26 @@ defmodule TazunaWeb.CollectTest do
       assert fact(c, "進み具合") == nil
     end
   end
+
+  describe "巡回の行" do
+    test "手で回す回は、時計の代わりにそう出す" do
+      # 間隔を出すと、勝手に動くように読める
+      sweep = %{
+        name: "整理",
+        backend: nil,
+        model: nil,
+        interval_minutes: 60,
+        by_hand: true,
+        enabled: true,
+        partitions_visited: 0,
+        next_run_at: nil,
+        last_run_at: nil,
+        last_status: nil,
+        last_error: nil
+      }
+
+      assert [%{interval: "手で回す"}] =
+               Collect.sweep_rows(%{collection: collection(%{sweeps: [sweep]})})
+    end
+  end
 end

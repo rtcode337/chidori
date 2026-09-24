@@ -182,21 +182,24 @@ defmodule Tazuna.Datasets.MealsTest do
       # 名簿が無ければ区画に何も並ばず、空の一覧に「この範囲の全部です」と言う形になる。
       # **じっくりはざっとの一周を待たない** —— 起点のまわりから回すので、
       # 全国のざっとが一周するのを待っていては、見たいところにいつまでも着かない
-      assert Enum.map(sweeps, & &1.name) == ["機械収集", "ざっと見る", "整理"]
+      assert Enum.map(sweeps, & &1.name) == ["機械収集", "ざっと見る", "情報収集"]
       assert Enum.find(sweeps, &(&1.name == "ざっと見る")).after == "機械収集"
-      assert Enum.find(sweeps, &(&1.name == "整理")).after == "機械収集"
+      assert Enum.find(sweeps, &(&1.name == "情報収集")).after == "機械収集"
     end
 
     test "じっくりは Chiezo の時計では走らず、tazuna が起こす", %{sweeps: sweeps} do
       # 1 区画に 6〜14 分かかる仕事なので、全国を順に回すと一周に何か月もかかる。
       # 起点と時刻は利用者が決め、tazuna が名指しで起こす
-      survey = Enum.find(sweeps, &(&1.name == "整理"))
+      survey = Enum.find(sweeps, &(&1.name == "情報収集"))
 
       assert survey.enabled == false
       refute Map.get(survey, :by_hand)
-      assert Meals.definition().survey_plan_sweep == "整理"
-      # 1 回に何区画見るかは、今までどおり巡回の設定から決まる
-      assert survey.cover_days > 0
+      assert Meals.definition().survey_plan_sweep == "情報収集"
+
+      # **間隔は持たない**（時刻は tazuna が決める）。1 回に見る数は直に渡す
+      refute Map.has_key?(survey, :interval_minutes)
+      refute Map.has_key?(survey, :cover_days)
+      assert survey.partitions_per_run == 5
     end
 
     test "割り込みはざっとが引き受ける" do
@@ -218,11 +221,8 @@ defmodule Tazuna.Datasets.MealsTest do
       assert Enum.find(sweeps, &(&1.name == "ざっと見る")).one_lap
     end
 
-    test "じっくりは一周の日数で決める", %{sweeps: sweeps} do
-      # 区画が増えても 1 回あたりを Chiezo が計算し直す（区画数を手で追わなくてよい）
-      survey = Enum.find(sweeps, &(&1.name == "整理"))
-
-      assert survey.cover_days > 0
+    test "情報収集は自分の依頼文を持つ", %{sweeps: sweeps} do
+      survey = Enum.find(sweeps, &(&1.name == "情報収集"))
       assert survey.prompt == :survey
     end
 
@@ -241,16 +241,6 @@ defmodule Tazuna.Datasets.MealsTest do
                  "#{sweep.interval_minutes} 分後の次の予定に追いつかれます"
       end
     end
-
-    test "じっくりも 1 時間ごとに回す", %{sweeps: sweeps} do
-      # 間隔を空けたぶんだけ一周が延びる（1 回に見られる区画には上限がある）。
-      # この回の主な仕事は「足りない店を足す」ことなので、足りないままの区画が
-      # 何か月も放っておかれるのがいちばん困る
-      scan = Enum.find(sweeps, &(&1.name == "ざっと見る"))
-      survey = Enum.find(sweeps, &(&1.name == "整理"))
-
-      assert survey.interval_minutes == scan.interval_minutes
-    end
   end
 
   describe "依頼の中身" do
@@ -260,15 +250,15 @@ defmodule Tazuna.Datasets.MealsTest do
     end
 
     test "巡回の依頼文は、送るときに実物へ入れ替わる" do
-      survey = Enum.find(Meals.attrs().sweeps, &(&1.name == "整理"))
+      survey = Enum.find(Meals.attrs().sweeps, &(&1.name == "情報収集"))
 
       assert is_binary(survey.prompt)
       assert survey.prompt =~ "足りない店"
     end
 
     test "画面で選んだ相手を巡回に載せる" do
-      attrs = Meals.attrs(%{"整理" => %{backend: "antigravity", model: nil}})
-      survey = Enum.find(attrs.sweeps, &(&1.name == "整理"))
+      attrs = Meals.attrs(%{"情報収集" => %{backend: "antigravity", model: nil}})
+      survey = Enum.find(attrs.sweeps, &(&1.name == "情報収集"))
 
       assert survey.backend == "antigravity"
       # 渡していない項目で、巡回が元から持っているものを潰さない

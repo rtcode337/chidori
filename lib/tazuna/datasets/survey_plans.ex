@@ -1,19 +1,31 @@
 defmodule Tazuna.Datasets.SurveyPlans do
   @moduledoc """
-  整理の起点と時刻の読み書き。**持っていない収集には空のもの**を返します
+  起点と情報収集の時刻の読み書き。**持っていない収集には空のもの**を返します
   （画面はそのままフォームに載せる）。
   """
 
   alias Tazuna.Datasets.SurveyPlan
   alias Tazuna.Repo
 
-  def get(collection) when is_binary(collection) do
-    Repo.get_by(SurveyPlan, collection: collection) || %SurveyPlan{collection: collection}
+  @doc """
+  その収集の起点と時刻。`default`（`%{name, lat, lon}`）を渡すと、**起点を決めて
+  いなければそれを入れて返します**（保存はしない。決めた時刻も空のまま）。
+  """
+  def get(collection, default \\ nil) when is_binary(collection) do
+    plan = Repo.get_by(SurveyPlan, collection: collection) || %SurveyPlan{collection: collection}
+
+    case default do
+      %{name: name, lat: lat, lon: lon} ->
+        if SurveyPlan.placed?(plan), do: plan, else: %{plan | place: name, lat: lat, lon: lon}
+
+      _none ->
+        plan
+    end
   end
 
   @doc """
-  起点を決めます。**決めた時刻も一緒に控えます** —— それより前に見た区画は
-  「まだ見ていない」ものとして扱い、新しい起点から回り直すためです。
+  起点を決めます。**決めた時刻も一緒に控えます**（画面に「いつ決めたか」を出す）。
+  Chiezo へ送るのは `Tazuna.Datasets.put_origin/2` の仕事です。
   """
   def put_place(collection, %{name: name, lat: lat, lon: lon}) do
     update(collection, %{

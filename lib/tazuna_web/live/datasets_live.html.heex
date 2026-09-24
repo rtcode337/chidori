@@ -138,29 +138,31 @@
         </form>
       </section>
 
-      <%!-- **整理の起点と時刻。** 整理は 1 区画に何分もかかる仕事なので、全国を順に
-           回すと一周に何か月もかかる。見たいところを起点に決め、そこから放射状に、
-           決めた時刻に tazuna が頼む（Chiezo の時計では走らせない） --%>
-      <section :if={@plan} class="survey-plan" aria-label="整理の起点と時刻">
-        <h3>整理の起点と時刻</h3>
+      <%!-- **起点と情報収集の時刻。** 情報収集は 1 区画に何分もかかる仕事なので、
+           全国を順に回すと一周に何か月もかかる。見たいところを起点に決め、そこから
+           放射状に、決めた時刻に tazuna が頼む（Chiezo の時計では走らせない）。
+           **起点はざっと見ると共通**（Chiezo の収集の起点にも同じものを送る） --%>
+      <section :if={@plan} class="survey-plan" aria-label="起点と情報収集の時刻">
+        <h3>起点と情報収集の時刻</h3>
         <p class="muted-note">
-          決めた起点から「ざっと見る」と同じ選び方（まだ見ていない区画が先、同じなら近い順）で、
-          決めた時刻に 1 回ぶんの区画を整理の回として頼みます。起点を変えると、変えた時刻より前に見た区画も
-          まだ見ていないものとして扱い、新しい起点のまわりから回り直します。
+          「ざっと見る」も「情報収集」も、この起点から近い順に広げます（決めていなければ東京駅）。
+          起点を決め直すと、Chiezo の収集の起点も書き換えます。情報収集は、決めた時刻に tazuna が 1 回起こし、
+          見る区画は Chiezo が選びます（その巡回で見た古い順、同じなら起点に近い順）。
           Chiezo が取り込み中なら、次の予定の時刻まで空くのを待って頼みます。
         </p>
+        <p :if={@origin_note} class="warn-note">{@origin_note}</p>
 
         <dl class="collect-facts">
           <div>
             <dt>起点</dt>
             <dd>
-              <%= if SurveyPlan.placed?(@plan) do %>
-                {@plan.place}（{Float.round(@plan.lat, 4)}, {Float.round(@plan.lon, 4)}。{Jst.format(
-                  @plan.place_set_at
-                )} から）
-              <% else %>
-                まだ決めていません
-              <% end %>
+              <%!-- 決めた時刻が無いのは既定（東京駅）のまま --%>
+              {@plan.place}（{Float.round(@plan.lat, 4)}, {Float.round(@plan.lon, 4)}）
+              <span class="muted-note">
+                {if @plan.place_set_at,
+                  do: "#{Jst.format(@plan.place_set_at)} に決めました",
+                  else: "既定のままです"}
+              </span>
             </dd>
           </div>
           <div>
@@ -239,7 +241,12 @@
       <%!-- **選んだところはサーバーが覚える**（`phx-change`）。覚えないと、状態が
            届いた拍子にフォームが描き直され、選んだ相手が元の値に戻る --%>
       <form id="collect-form" phx-submit="collect" phx-change="pick_sweep">
-        <.sweep_table state={@state} picks={@picks} backends={@backends} />
+        <.sweep_table
+          state={@state}
+          picks={@picks}
+          backends={@backends}
+          triggered={List.wrap(@dataset[:survey_plan_sweep])}
+        />
 
         <p class="muted-note">
           収集の名前は「{@dataset.collection}」です（Chiezo のソース名。<strong>後から変えません</strong>

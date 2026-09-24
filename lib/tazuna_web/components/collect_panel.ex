@@ -14,12 +14,17 @@ defmodule TazunaWeb.CollectPanel do
   attr :picks, :map, default: %{}, doc: "巡回ごとに選ばれている相手"
   attr :backends, :list, default: [], doc: "Chiezo で頼める相手"
 
+  attr :triggered, :list,
+    default: [],
+    doc: "tazuna が時刻に起こす巡回の名前（Chiezo 側では止めてあるもの）"
+
   @doc """
   巡回ごとに 1 行の表。**相手も進み具合も巡回ごとに違う**ので、収集に 1 つだけ
   出すと、そこに出る値はどちらか片方のものにしかなりません。
   """
   def sweep_table(assigns) do
-    assigns = assign(assigns, :rows, sweep_rows(assigns.state))
+    assigns =
+      assign(assigns, :rows, assigns.state |> sweep_rows() |> triggered_rows(assigns.triggered))
 
     ~H"""
     <table :if={@rows != []} class="sweep-table">
@@ -82,5 +87,18 @@ defmodule TazunaWeb.CollectPanel do
       </tbody>
     </table>
     """
+  end
+
+  # **tazuna が起こす巡回は、要約と同じ出し方にする**（時計なし・頼まれたとき）。
+  # Chiezo 側では止めてあるので、そのまま出すと Chiezo の間隔と「止めている」が並び、
+  # 動かないように読める。いつ起こすかは tazuna の欄が出す
+  defp triggered_rows(rows, []), do: rows
+
+  defp triggered_rows(rows, names) do
+    Enum.map(rows, fn row ->
+      if row.name in names,
+        do: %{row | interval: "時計なし", round: nil, next: "頼まれたとき"},
+        else: row
+    end)
   end
 end

@@ -86,7 +86,9 @@ defmodule Tazuna.Datasets.Meals do
   # （実測: 10,457 区画・1 回 5 区画・1 時間おきで一周 87 日）。
   # **2 周目からは何もしなくてよい** —— 1 周目を近い順に回れば印も近い順に付くので、
   # Chiezo の「古い順」がそのまま同じ広がり方をなぞる
+  # **利用者が画面で変えられる**（`Tazuna.Datasets.SurveyPlan`）。決めていないときの既定
   @start_from [35.681, 139.767]
+  @start_name "東京駅"
 
   # 1 区画あたりの目安。**Chiezo が 1 回に差し込めるぶんに収まる大きさ**にする ——
   # 超えると `{current}` が切られ、切られたぶんは「今回の対象外」になって、
@@ -122,20 +124,16 @@ defmodule Tazuna.Datasets.Meals do
   @scan_minutes 60
   @scan_days 15
 
-  # じっくり。**ざっとと同じ速さで回す**（1 時間ごと）。
-  #
-  # 6 時間ごとにしていた頃は、**区画の数に対して一周が現実的でありませんでした** ——
-  # 1 回に見られる区画には上限があるので、間隔を空けたぶんだけ一周が延びます。
-  # この回は「足りない店を足す」のが主な仕事で、**足りないままの区画が何か月も
-  # 放っておかれる**のがいちばん困ります。
-  #
-  # 日数は希望で、上限に当たればそこで頭打ちになる（ざっとと同じ）
-  @survey_minutes 60
-  @survey_days 15
+  # 情報収集が 1 回に見る区画の数。**間隔と一周の日数は持たせない** —— この回は
+  # tazuna が決めた時刻に起こすので、Chiezo の間隔は意味を持たない（画面にも
+  # 要約と同じく「時計なし」と出す）。数は Chiezo の 1 回の上限に合わせる
+  @survey_per_run 5
 
   # じっくりの名前。**この回は tazuna が起こす**（Chiezo 側では止めておく）——
-  # どこから回るかと何時に回すかは利用者が決める（`Tazuna.Datasets.Survey`）
-  @survey_sweep "整理"
+  # どこから回るかと何時に回すかは利用者が決める（`Tazuna.Datasets.Survey`）。
+  # **「整理」とは呼ばない** —— ほかの収集の「整理」は Chiezo の時計で端から回る回で、
+  # こちらは起点のまわりから時刻に起こす回。同じ名前だと同じ動きだと読まれる
+  @survey_sweep "情報収集"
 
   # 名簿の回。**どちらの AI の回もこれを待ちます** —— 名簿が無ければ区画に
   # 何も並ばず、差し込みが空のまま「この範囲の全部です」と言うことになる
@@ -436,8 +434,16 @@ defmodule Tazuna.Datasets.Meals do
   **どこから広げるかも渡します**（`origin`）。書かないと鍵の文字列順、つまり
   南西の隅からになります。
   """
-  def partition do
-    %{by: "geo", target: @partition_target, bbox: @japan_bbox, origin: @start_from}
+  def partition(origin \\ @start_from) do
+    %{by: "geo", target: @partition_target, bbox: @japan_bbox, origin: origin}
+  end
+
+  @doc """
+  起点の既定（利用者が決めていないとき）。**ざっと見るも情報収集もここから広げます**。
+  """
+  def default_origin do
+    [lat, lon] = @start_from
+    %{name: @start_name, lat: lat, lon: lon}
   end
 
   @doc """
@@ -481,8 +487,7 @@ defmodule Tazuna.Datasets.Meals do
       %{
         name: @survey_sweep,
         prompt: :survey,
-        interval_minutes: @survey_minutes,
-        cover_days: @survey_days,
+        partitions_per_run: @survey_per_run,
         enabled: false,
         after: @roster_sweep
       }

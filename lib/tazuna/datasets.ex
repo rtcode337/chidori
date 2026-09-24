@@ -17,6 +17,8 @@ defmodule Tazuna.Datasets do
   alias Tazuna.Chiezo
   alias Tazuna.Datasets.Books
   alias Tazuna.Datasets.Meals
+  alias Tazuna.Datasets.SurveyPlan
+  alias Tazuna.Datasets.SurveyPlans
 
   @doc """
   tazuna が持っている収集の対象。**この並びがタブの並び**。
@@ -65,14 +67,66 @@ defmodule Tazuna.Datasets do
   **既にある収集には送り直しが要ります。** 作るときの `POST` は「もうある」で
   断られるので、それだけだと tazuna 側で依頼文や区画を直しても永遠に届きません。
   """
-  def push(%{module: module, collection: name}, choices \\ %{}) do
-    attrs = module.attrs(choices)
+  def push(%{module: module, collection: name} = dataset, choices \\ %{}) do
+    # **起点は tazuna が持っているものを送る**（画面で決め直したもの）。定義の既定を
+    # 送ると、送り直すたびに東京駅へ戻る
+    attrs = module.attrs(choices) |> with_origin(dataset)
 
     with {:ok, base} <- base_url(),
          {:ok, existing} <- Chiezo.collection(base, name) do
       if existing, do: Chiezo.patch(base, name, attrs), else: Chiezo.request(base, attrs)
     end
   end
+
+  @doc """
+  起点と時刻（tazuna が持つもの）。**起点を決めていなければ、対象の既定**
+  （食事処なら東京駅）を入れて返します。
+  """
+  def plan(%{collection: name} = dataset), do: SurveyPlans.get(name, default_origin(dataset))
+
+  defp default_origin(%{module: module}) do
+    if function_exported?(module, :default_origin, 0), do: module.default_origin()
+  end
+
+  @doc """
+  起点を決め直します。**Chiezo の収集の起点も一緒に書き換えます** ——
+  ざっと見る（Chiezo の時計で回る）も同じ起点から広げるためです。
+  Chiezo は起点の変更を「並び順だけの違い」として扱うので、区画の見た記録は捨てません。
+
+  tazuna に保存できても Chiezo へ送れなかったときは `{:error, {:not_sent, 理由}}` ——
+  次に「収集の設定を更新」を押せば、保存した起点が送られます。
+  """
+  def put_origin(%{module: module, collection: name}, place) do
+    with {:ok, plan} <- SurveyPlans.put_place(name, place) do
+      case send_origin(module, name, plan) do
+        :ok -> {:ok, plan}
+        {:error, reason} -> {:error, {:not_sent, reason}}
+      end
+    end
+  end
+
+  defp send_origin(module, name, plan) do
+    with {:ok, base} <- base_url(),
+         {:ok, existing} <- Chiezo.collection(base, name) do
+      # まだ収集が無ければ送る先が無い（作るときに、保存した起点が載る）
+      if existing,
+        do: Chiezo.patch(base, name, %{partition: module.partition([plan.lat, plan.lon])}),
+        else: :ok
+    end
+  end
+
+  # 区画の割り方に起点を持つ対象だけ、保存した起点に差し替える
+  defp with_origin(%{partition: %{origin: _origin} = partition} = attrs, dataset) do
+    case plan(dataset) do
+      %SurveyPlan{lat: lat, lon: lon} when is_number(lat) and is_number(lon) ->
+        %{attrs | partition: %{partition | origin: [lat, lon]}}
+
+      _unplaced ->
+        attrs
+    end
+  end
+
+  defp with_origin(attrs, _dataset), do: attrs
 
   @doc """
   「この区画を先に調べて」を Chiezo へ割り込ませます。

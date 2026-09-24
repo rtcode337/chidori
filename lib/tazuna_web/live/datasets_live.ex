@@ -53,11 +53,13 @@ defmodule TazunaWeb.DatasetsLive do
        run_sweep: nil,
        run_backend: nil,
        run_model: nil,
-       # 整理の起点と時刻（tazuna が持つ）。起点の候補は探したときだけ引く
+       # 起点と情報収集の時刻（tazuna が持つ）。起点の候補は探したときだけ引く
        plan: nil,
        plan_form: nil,
        places: nil,
        place_query: "",
+       # 起点を Chiezo へ送れなかったときだけ出す一言
+       origin_note: nil,
        surveying: false
      )
      |> assign(state: empty_state())}
@@ -88,7 +90,7 @@ defmodule TazunaWeb.DatasetsLive do
      end}
   end
 
-  # ---- 整理の起点と時刻 ----------------------------------------------------
+  # ---- 起点と情報収集の時刻 ------------------------------------------------
 
   # 起点の候補を地図辞典から探す。**待たずに引く**（数百ミリ秒〜数秒かかる）
   def handle_event("search_place", %{"q" => q}, socket) do
@@ -109,15 +111,18 @@ defmodule TazunaWeb.DatasetsLive do
     end
   end
 
-  # 候補から起点を決める。**決めた時刻も控える**（それより前に見た区画は、
-  # まだ見ていないものとして扱い、新しい起点から回り直す）
+  # 候補から起点を決める。**Chiezo の収集の起点も一緒に書き換える** ——
+  # 区画を選ぶのは Chiezo で、ざっと見るも情報収集もその起点から広げる
   def handle_event("pick_place", %{"index" => index}, socket) do
     with {:ok, places} when is_list(places) <- socket.assigns.places,
          {i, ""} <- Integer.parse(index),
          %{} = place <- Enum.at(places, i),
-         {:ok, _plan} <- SurveyPlans.put_place(socket.assigns.dataset.collection, place) do
+         result = Datasets.put_origin(socket.assigns.dataset, place),
+         true <- saved?(result) do
       {:noreply,
-       socket |> assign_plan(socket.assigns.dataset) |> assign(places: nil, place_query: "")}
+       socket
+       |> assign_plan(socket.assigns.dataset)
+       |> assign(places: nil, place_query: "", origin_note: origin_note(result))}
     else
       _other -> {:noreply, socket}
     end
@@ -286,10 +291,9 @@ defmodule TazunaWeb.DatasetsLive do
 
   # **まだ何も読んでいない状態。** 「収集が無い」と区別する —— 読めていないのに
   # 「まだ作られていません」と出すと、押した人は作り直そうとする
-  # 整理の起点と時刻を読む（tazuna が持つものなので、DB から）
-  defp assign_plan(socket, %{survey_plan_sweep: sweep, collection: collection})
-       when is_binary(sweep) do
-    plan = SurveyPlans.get(collection)
+  # 起点と情報収集の時刻を読む（tazuna が持つものなので、DB から。起点の既定つき）
+  defp assign_plan(socket, %{survey_plan_sweep: sweep} = dataset) when is_binary(sweep) do
+    plan = Datasets.plan(dataset)
     assign(socket, plan: plan, plan_form: to_form(SurveyPlan.changeset(plan, %{})))
   end
 
@@ -298,6 +302,18 @@ defmodule TazunaWeb.DatasetsLive do
   @doc "次に頼む予定（JST の文字列）。時刻を書いていなければ nil。"
   def next_survey(%SurveyPlan{} = plan), do: plan |> SurveyScheduler.next() |> Jst.format()
   def next_survey(_plan), do: nil
+
+  # tazuna に保存できたか（Chiezo へ送れなかっただけなら、保存はできている）
+  defp saved?({:ok, _plan}), do: true
+  defp saved?({:error, {:not_sent, _reason}}), do: true
+  defp saved?(_result), do: false
+
+  defp origin_note({:error, {:not_sent, reason}}),
+    do:
+      "起点は保存しましたが、Chiezo へ送れませんでした（#{reason_text(reason)}）。" <>
+        "「収集の設定を更新」を押すと、保存した起点が送られます。"
+
+  defp origin_note(_result), do: nil
 
   @doc "起点の候補を見分ける一言（地域と種別）。"
   def place_label(place) do
@@ -442,8 +458,10 @@ defmodule TazunaWeb.DatasetsLive do
   def partition_text(%{collection: %{partition: spec}}) when is_map(spec),
     do: Jason.encode!(spec, pretty: true)
 
-  def partition_text(%{dataset: dataset}),
-    do: Jason.encode!(dataset.module.partition(), pretty: true)
+  def partition_text(%{dataset: dataset}) do
+    plan = Datasets.plan(dataset)
+    Jason.encode!(dataset.module.partition([plan.lat, plan.lon]), pretty: true)
+  end
 
   @doc """
   巡回ごとの依頼文。**回ごとに頼むことが違う**ので、1 つの文だけを出すと、

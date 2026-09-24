@@ -1,6 +1,6 @@
 defmodule Tazuna.Datasets.SurveyScheduler do
   @moduledoc """
-  整理を頼む時刻に起きるところ。**時計を持つのは tazuna です**（要約と同じ立場）。
+  情報収集を頼む時刻に起きるところ。**時計を持つのは tazuna です**（要約と同じ立場）。
 
   時刻は収集ごとに画面から決めます（`Tazuna.Datasets.SurveyPlan` の `run_at`）。
   空か、起点が決まっていなければ、その収集は自分からは回りません。
@@ -68,7 +68,7 @@ defmodule Tazuna.Datasets.SurveyScheduler do
     found =
       Enum.find_value(Datasets.defined(), fn dataset ->
         with sweep when is_binary(sweep) <- dataset[:survey_plan_sweep],
-             plan = SurveyPlans.get(dataset.collection),
+             plan = Datasets.plan(dataset),
              true <- SurveyPlan.placed?(plan),
              %DateTime{} = at <- due(plan, now) do
           {dataset, plan, at}
@@ -139,9 +139,8 @@ defmodule Tazuna.Datasets.SurveyScheduler do
     System.monotonic_time(:millisecond) + wait
   end
 
-  defp log(collection, {:ok, keys}),
-    do: Logger.info("整理を頼んだ（#{collection}）: #{Enum.join(keys, ", ")}")
+  defp log(collection, :ok), do: Logger.info("情報収集を頼んだ（#{collection}）")
 
   defp log(collection, {:error, reason}),
-    do: Logger.warning("整理を頼めなかった（#{collection}）: #{inspect(reason)}")
+    do: Logger.warning("情報収集を頼めなかった（#{collection}）: #{inspect(reason)}")
 end

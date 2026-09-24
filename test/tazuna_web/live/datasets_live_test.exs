@@ -93,13 +93,13 @@ defmodule TazunaWeb.DatasetsLiveTest do
           "count" => 150,
           "visits" => %{
             "ざっと見る" => "2026-08-20T00:00:00Z",
-            "整理" => "2026-09-01T00:00:00Z"
+            "情報収集" => "2026-09-01T00:00:00Z"
           }
         },
         %{
           "key" => "43.0,141.3/43.1,141.4",
           "count" => 90,
-          "visits" => %{"整理" => "2026-08-01T00:00:00Z"}
+          "visits" => %{"情報収集" => "2026-08-01T00:00:00Z"}
         }
       ],
       "sweeps" => [
@@ -110,12 +110,13 @@ defmodule TazunaWeb.DatasetsLiveTest do
           "enabled" => true
         },
         %{"name" => "ざっと見る", "interval_minutes" => 60, "cover_days" => 3, "enabled" => true},
+        # tazuna が起こす回。Chiezo 側では止めてあり、間隔は収集のものが入って返る
         %{
-          "name" => "整理",
-          "interval_minutes" => 360,
-          "cover_days" => 14,
-          "by_hand" => true,
-          "enabled" => true
+          "name" => "情報収集",
+          "interval_minutes" => 60,
+          "partitions_per_run" => 5,
+          "enabled" => false,
+          "blocked" => "止めている"
         }
       ]
     }
@@ -218,9 +219,10 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert length(sent["sweeps"]) == 3
     end
 
-    test "手で回す回は「どの巡回として」に出さない", %{conn: conn} do
-      # 選んでも Chiezo が断る（走らせる中身は、人が持ち帰って読み込んだときに揃う）
-      # —— 選べるのに効かない欄は「設定したつもり」を作る
+    test "tazuna が起こす回も「どの巡回として」に出す（機械で引く回は出さない）", %{conn: conn} do
+      # 情報収集は Chiezo 側では止めてあるが、名前で起こせばふつうの回として走る ——
+      # 選んだ区画を情報収集で 1 回見てもらうことはできる。
+      # 機械で引く回は区画を回らないので、選べるのに効かない欄になる
       {live, _html} = shown(conn)
 
       html =
@@ -229,14 +231,25 @@ defmodule TazunaWeb.DatasetsLiveTest do
         |> render_click()
 
       assert html =~ ~s(<option value="ざっと見る")
-      refute html =~ ~s(<option value="整理")
+      assert html =~ ~s(<option value="情報収集")
+      refute html =~ ~s(<option value="機械収集")
     end
 
-    test "手で回す回は、時計の代わりにそう出す", %{conn: conn} do
-      # 間隔を出すと、勝手に動くように読める
-      {_live, html} = shown(conn)
+    test "tazuna が起こす回は、要約と同じく時計なし・頼まれたときと出す", %{conn: conn} do
+      # Chiezo 側では止めてあるので、そのまま出すと間隔と「止めている」が並び、
+      # 動かないように読める。いつ起こすかは「起点と情報収集の時刻」の欄が出す
+      {live, _html} = shown(conn)
 
-      assert html =~ "手で回す"
+      row =
+        live
+        |> element(~s|#collect-form .sweep-table tbody tr:nth-child(3)|)
+        |> render()
+
+      assert row =~ "情報収集"
+      assert row =~ "時計なし"
+      assert row =~ "頼まれたとき"
+      refute row =~ "60 分ごと"
+      refute row =~ "止めている"
     end
 
     test "一覧からも、その区画を選べる", %{conn: conn} do
@@ -342,7 +355,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
     end
   end
 
-  describe "整理の起点と時刻" do
+  describe "起点と情報収集の時刻" do
     setup do
       System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
       on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
@@ -382,8 +395,10 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
     test "地名で探して起点を決め、時刻を保存する", %{conn: conn} do
       {:ok, live, html} = live(conn, ~p"/datasets")
-      assert html =~ "整理の起点と時刻"
-      assert html =~ "まだ決めていません"
+      assert html =~ "起点と情報収集の時刻"
+      # 決めていなければ東京駅（ざっと見るが元から広げていた起点）
+      assert html =~ "東京駅（35.681, 139.767）"
+      assert html =~ "既定のままです"
 
       live |> form("#place-search", %{"q" => "銀座"}) |> render_submit()
       html = render_async(live)
@@ -394,8 +409,11 @@ defmodule TazunaWeb.DatasetsLiveTest do
       refute html =~ "node:1"
 
       html = live |> element(~s([phx-click="pick_place"])) |> render_click()
-      assert html =~ "銀座（35.6728, 139.7631"
+      assert html =~ "銀座（35.6728, 139.7631）"
       assert Tazuna.Datasets.SurveyPlans.get("tazuna_meals").place_set_at
+
+      # 収集がまだ無いので Chiezo へは送らない（作るときに載る）。送れなかった旨も出さない
+      refute html =~ "Chiezo へ送れませんでした"
 
       html =
         live
