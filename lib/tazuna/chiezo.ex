@@ -402,12 +402,15 @@ defmodule Tazuna.Chiezo do
 
   @doc """
   その巡回の「頼む相手」。**ワーカーを名指ししていればそちらを返します**
-  （`worker:<名前>`）。Chiezo の相手の一覧でも同じ値で並ぶので、セレクトは
+  （`worker:<id>`）。Chiezo の相手の一覧でも同じ値で並ぶので、セレクトは
   1 つで足ります。
+
+  **名指しは id で、名前ではありません。** 画面に出る札（`label`）は Chiezo 側で
+  いつでも直せるので、名前で結ぶと改名した瞬間に指し先を見失います。
   """
   def backend_of(%{} = sweep) do
     case sweep["worker"] do
-      name when is_binary(name) and name != "" -> worker_prefix() <> name
+      ref when is_binary(ref) and ref != "" -> worker_prefix() <> ref
       _ -> sweep["backend"]
     end
   end
