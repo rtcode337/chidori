@@ -428,6 +428,8 @@ defmodule Tazuna.Chiezo do
     for s <- list, is_map(s) do
       %{
         name: s["name"] || "",
+        # 巡回の依頼文（書いていなければ収集の依頼文が返る）。`{cursor}` を使うかを見る
+        prompt: s["prompt"] || "",
         # **ワーカーに頼む回は、相手の欄がワーカーを指します。** Chiezo は
         # 別の項目（`worker`）で返すので、こちらで相手の欄の値へ直します ——
         # セレクトは 1 つしか無いので、どちらが入っているかを画面に持ち込まない

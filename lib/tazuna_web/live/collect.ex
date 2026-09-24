@@ -101,16 +101,19 @@ defmodule TazunaWeb.Collect do
 
   流れ（ニュースのように時とともに増えるもの）と網羅（画家の名簿のようにある括りの
   全部）は、そもそも別のことをしています —— 同じ言い方になるほうがおかしい。
+
+  **呼び名は Chiezo の管理画面と揃えます**（「流れ」「網羅」）。同じ収集を両方の
+  画面で見るので、別の名前で呼ぶと同じものだと分からない。
   """
-  def kind_text(%{kind: "flow"} = c), do: "流れを追う（新しいものを足し、直近を整理する）#{held(c)}"
+  def kind_text(%{kind: "flow"} = c), do: "流れ（時とともに増えるものを追う。#{held(c)}）"
 
   def kind_text(_collection),
-    do: "全部を精査する（その括りの全部を集めて、端から端まで見直す）"
+    do: "網羅（ある括りの全部を集めて、端から端まで精査し続ける）"
 
   defp held(%{keep_days: days}) when is_integer(days) and days > 0,
-    do: "。#{days} 日ぶんを持ち、古いものは順に落ちます"
+    do: "#{days} 日ぶんを持ち、古いものは順に落とす"
 
-  defp held(_collection), do: ""
+  defp held(_collection), do: "期限では落とさない"
 
   # 区画を持たない収集（最新情報のような）には出さない
   defp partitions_fact(%{partitions_total: total}) when is_integer(total) and total > 0,
@@ -118,10 +121,21 @@ defmodule TazunaWeb.Collect do
 
   defp partitions_fact(_collection), do: nil
 
-  defp cursor_fact(%{cursor: cursor}) when is_binary(cursor) and cursor != "",
-    do: {"進み具合", cursor}
+  # **依頼文が `{cursor}` を使う収集だけに出す。** Chiezo は答えの形として毎回
+  # `next_cursor` を求めるので、使わない収集でも AI が何かしら書いて返し、それが
+  # そのまま残る（区画で回る画家の図に「1879-」とだけ出ていた）。使われない値を
+  # 「進み具合」と呼ぶと、読んだ人はそこまで進んだのだと受け取る。
+  # 区画で回る収集の進み具合は、巡回ごとの行（一周のうちどこまで）が持つ
+  defp cursor_fact(%{cursor: cursor} = c) when is_binary(cursor) and cursor != "" do
+    if uses_cursor?(c), do: {"進み具合", cursor}
+  end
 
   defp cursor_fact(_collection), do: nil
+
+  defp uses_cursor?(c) do
+    [c[:prompt] | Enum.map(c[:sweeps] || [], & &1[:prompt])]
+    |> Enum.any?(&(is_binary(&1) and String.contains?(&1, "{cursor}")))
+  end
 
   @doc """
   巡回ごとの行（名前・いつ走るか・一周のうちどこまで・前回）。

@@ -172,7 +172,7 @@ defmodule TazunaWeb.NewsLiveTest do
 
       # **言い方は収集の種類から出す。** 流れ（ニュース）と網羅（画家の名簿）は
       # そもそも別のことをしているので、同じ言い方になるほうがおかしい
-      assert html =~ "流れを追う"
+      assert html =~ "流れ（時とともに増えるものを追う"
       refute html =~ "整理する（磨いていく）"
     end
 

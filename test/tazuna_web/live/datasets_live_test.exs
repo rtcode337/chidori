@@ -184,8 +184,9 @@ defmodule TazunaWeb.DatasetsLiveTest do
     test "集め方は網羅だと出す", %{conn: conn} do
       {_live, html} = shown(conn)
 
-      assert html =~ "全部を精査する"
-      refute html =~ "流れを追う"
+      # 呼び名は Chiezo の管理画面と揃える
+      assert html =~ "網羅（"
+      refute html =~ "流れ（"
     end
 
     test "区画は、まだ見ていないものが先に並ぶ", %{conn: conn} do
