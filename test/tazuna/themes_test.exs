@@ -50,24 +50,24 @@ defmodule Tazuna.ThemesTest do
       assert extract.min_docs >= 2
     end
 
-    test "巡回は、拾う回と整える回に分ける" do
+    test "巡回は、機械収集の回と整理の回に分ける" do
       assert [pick, tidy] = Themes.sweeps(topic())
 
-      # 拾う回は機械（AI を呼ばない）。足すだけと組にしないと、AI の説明を
+      # 機械収集の回は AI を呼ばない。足すだけと組にしないと、AI の説明を
       # 機械の 1 行で上書きする
-      assert pick.name == "拾う"
+      assert pick.name == "機械収集"
       assert pick.use_extract
       assert pick.only_new
       refute Map.has_key?(pick, :prompt)
 
-      assert tidy.name == "整える"
-      # 拾うほうが高い頻度（AI を呼ばないので短い間隔で回せる）
+      assert tidy.name == "整理"
+      # 機械収集のほうが高い頻度（AI を呼ばないので短い間隔で回せる）
       assert pick.interval_minutes < tidy.interval_minutes
     end
   end
 
   describe "依頼文" do
-    test "整える回は、4 つの分け方だけを頼む" do
+    test "整理の回は、4 つの分け方だけを頼む" do
       # 語はもう機械が拾ってある。ここでやるのは精査だけ
       prompt = Themes.tidy_prompt(topic())
 
@@ -140,7 +140,7 @@ defmodule Tazuna.ThemesTest do
     end
 
     test "数が無いうちは、静かなものとして読む" do
-      # 拾う回が 1 度も走っていない間は脇書きが空（読めないだけで、壊れではない）
+      # 機械収集の回が 1 度も走っていない間は脇書きが空（読めないだけで、壊れではない）
       one = Themes.to_theme(%{"title" => "AI", "opening" => "", "tags" => ["トピック"]})
 
       assert {one.docs, one.recent, one.related} == {0, 0, []}

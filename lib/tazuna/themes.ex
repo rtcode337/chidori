@@ -45,8 +45,13 @@ defmodule Tazuna.Themes do
   # 読み込む上限。図に出せる数はもっと少ないが、一覧と数えるぶんは全部読む
   @limit 200
 
-  # 拾う回と、整える回。**分けるのは仕事が違うから** —— 拾うのは機械が数える回で、
-  # AI を呼ばないぶん短い間隔で回せる。整えるのは読んで判断する回
+  # 巡回の名前。**他の収集（食事処・関連図）の巡回と同じ呼び名にそろえる** ——
+  # Chiezo の管理画面では収集をまたいで並ぶので、同じ仕事が別の名前だと読み比べられない
+  @pick_sweep "機械収集"
+  @tidy_sweep "整理"
+
+  # 機械収集の回と、整理の回。**分けるのは仕事が違うから** —— 機械収集は機械が数える回で、
+  # AI を呼ばないぶん短い間隔で回せる。整理は読んで判断する回
   @pick_minutes 60
   @tidy_minutes 360
 
@@ -105,7 +110,7 @@ defmodule Tazuna.Themes do
 
   **外す語はここで書きます** —— 機械が読む印（`_chiezo_…`）と、tazuna が決めている
   語（種別・重要度・話題度）は話題ではありません。**配信元の名前は書けません**
-  （配信元が名乗るタイトルなので、tazuna は知りません）—— あれは整える回が
+  （配信元が名乗るタイトルなので、tazuna は知りません）—— あれは整理の回が
   「技術の話ではない」として外します。
   """
   def extract_spec(topic) do
@@ -127,18 +132,18 @@ defmodule Tazuna.Themes do
   end
 
   @doc """
-  巡回。**拾う回と整える回に分けます**。
+  巡回。**機械収集の回と整理の回に分けます**。
 
-  - 拾う —— 記事のタグを名簿にし、件数と一緒に出てくる語を数え直す（**AI を呼びません**）
-  - 整える —— 手元にある語を読んで、言い換えを畳み、親子と分野を決め、話題でない語を外す
+  - 機械収集 —— 記事のタグを名簿にし、件数と一緒に出てくる語を数え直す（**AI を呼びません**）
+  - 整理 —— 手元にある語を読んで、言い換えを畳み、親子と分野を決め、話題でない語を外す
 
-  **拾う回は足すだけ**にします。組にしないと、AI が書いた説明を機械の 1 行で
+  **機械収集の回は足すだけ**にします。組にしないと、AI が書いた説明を機械の 1 行で
   上書きします（数のほうは足すだけの回でも入れ替わります）。
   """
   def sweeps(topic) do
     [
-      %{name: "拾う", interval_minutes: @pick_minutes, use_extract: true, only_new: true},
-      %{name: "整える", interval_minutes: @tidy_minutes, prompt: tidy_prompt(topic)}
+      %{name: @pick_sweep, interval_minutes: @pick_minutes, use_extract: true, only_new: true},
+      %{name: @tidy_sweep, interval_minutes: @tidy_minutes, prompt: tidy_prompt(topic)}
     ]
   end
 
@@ -152,7 +157,7 @@ defmodule Tazuna.Themes do
   end
 
   @doc """
-  整える回の依頼文。**語はもう拾ってあります**（機械が）。この回は**精査だけ**です。
+  整理の回の依頼文。**語はもう拾ってあります**（機械が）。この回は**精査だけ**です。
 
   分類の 4 択にしてあるのは、**間違い方に差がある**からです —— 言い換えでないものを
   畳むと片方が消え、外した語は二度と戻ってきません。迷ったものは触らせずに
@@ -344,7 +349,7 @@ defmodule Tazuna.Themes do
   **止まっている収集は Chiezo が断ります。**
   """
   def pick_now(base, topic) do
-    Chiezo.run(base, collection_name(topic), sweep: "拾う")
+    Chiezo.run(base, collection_name(topic), sweep: @pick_sweep)
   end
 
   defp first_after(tags, prefix) do
