@@ -119,23 +119,55 @@
             <dd>{if picked.by, do: "#{picked.by}（#{picked.seen}）", else: "まだ"}</dd>
           </div>
         </dl>
-        <form phx-submit="focus_partition">
+        <%!-- **Chiezo の「選んだ区画で 1 回走らせる」と同じ形**にする ——
+             割り込み（進み具合にも印にも触らない）は、押しても画面が変わらず
+             「何が起きたのか分からない」になっていた。こちらは**ふつうの回として
+             走る**ので、印が付き、読み直せば結果が見える --%>
+        <form phx-submit="run_partition" phx-change="pick_run" class="collect-form">
           <input type="hidden" name="key" value={picked.key} />
+          <% {plain, hands} = by_kind(@backends) %>
+          <% models = models_for(@backends, @run_backend) %>
           <p>
             <label>
-              頼みたいこと（書かなくてよい）<br />
-              <input
-                type="text"
-                name="note"
-                placeholder="例: 閉店しているものを直して"
-              />
+              どの巡回として<br />
+              <select name="sweep">
+                <option :for={name <- @dataset.partition_sweeps} value={name} selected={name == @run_sweep}>
+                  {name}
+                </option>
+              </select>
+            </label>
+          </p>
+          <p>
+            <label>
+              頼む相手<br />
+              <%!-- 欄の名前を `run|backend` にしておくと、モデルの入れ替えは
+                   収集の表と同じ台本が引き受ける（`pages.BACKEND_PICKER_SCRIPT`）--%>
+              <select name="run|backend">
+                <option value="">巡回の設定のまま</option>
+                <option :for={b <- plain} value={b.id} selected={b.id == @run_backend}>
+                  {b.label}
+                </option>
+                <optgroup :if={hands != []} label="ワーカー（枠を見て振り替える）">
+                  <option :for={b <- hands} value={b.id} selected={b.id == @run_backend}>
+                    {b.label}
+                  </option>
+                </optgroup>
+              </select>
+            </label>
+            <label :if={models != []}>
+              モデル<br />
+              <select name="run|model">
+                <option value="">モデルは相手の既定</option>
+                <option :for={m <- models} value={m} selected={m == @run_model}>{m}</option>
+              </select>
             </label>
           </p>
           <p class="muted-note">
-            定時の巡回とは別に 1 回だけ走ります（進み具合にも次の予定にも触りません）。 <strong>頼んだ区画には印が付く</strong>ので、巡回が同じところをもう一度見ることはありません。
+            <strong>ふつうの回として走ります</strong> —— この区画に「見た」印が付き、
+            進み具合も次の予定も進みます。AI の呼び出しは<strong>この 1 区画ぶん</strong>です。
           </p>
-          <button type="submit" disabled={@asking} phx-disable-with="頼んでいます…">
-            この区画を先に調べてもらう
+          <button type="submit" disabled={@asking} phx-disable-with="走らせています…">
+            この区画で 1 回走らせる
           </button>
           <button type="button" phx-click="unpick_partition">やめる</button>
         </form>
@@ -163,16 +195,9 @@
               <td>{row.count}</td>
               <td>{if row.by, do: "#{row.by}（#{row.seen}）", else: "まだ"}</td>
               <td>
-                <form phx-submit="focus_partition">
-                  <input type="hidden" name="key" value={row.key} />
-                  <button
-                    type="submit"
-                    disabled={@asking}
-                    phx-disable-with="頼んでいます…"
-                  >
-                    先に調べる
-                  </button>
-                </form>
+                <button type="button" phx-click="pick_partition" phx-value-key={row.key}>
+                  選ぶ
+                </button>
               </td>
             </tr>
           </tbody>

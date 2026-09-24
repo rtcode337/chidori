@@ -41,7 +41,13 @@ defmodule TazunaWeb.DatasetsLive do
        asked: nil,
        # 地図で選んでいる区画。**選ぶのと頼むのを分ける** —— 押した瞬間に走ると、
        # どこを押したのか確かめる前に AI が動く
-       picked: nil
+       picked: nil,
+       # 選んだ区画を走らせるときの、巡回と相手。**覚えるのはサーバー側** ——
+       # 状態が届いた拍子にフォームが描き直されるので、覚えないと選び直した
+       # ところが元へ戻る（巡回の表と同じ理由）
+       run_sweep: nil,
+       run_backend: nil,
+       run_model: nil
      )
      |> assign(state: empty_state())}
   end
@@ -110,14 +116,30 @@ defmodule TazunaWeb.DatasetsLive do
     do: {:noreply, assign(socket, picked: nil)}
 
   # **この区画を先に調べて、を頼む。** 定時の巡回の進み具合にも次の予定にも触りません
-  def handle_event("focus_partition", %{"key" => key} = params, socket) do
+  # **選んだ区画を、選んだ巡回で 1 回走らせる**（Chiezo の画面と同じ形）。
+  #
+  # 割り込みにしていた頃は、進み具合にも区画の印にも触らないので、
+  # **押しても画面が何も変わらず**「何が起きたのか分からない」になっていた
+  # （しかも整理の回は「ざっとが一周するまで走らない」ので、実際に何も起きない）。
+  def handle_event("run_partition", %{"key" => key} = params, socket) do
     dataset = socket.assigns.dataset
-    note = partition_note(key, params["note"])
+    opts = run_options(params, socket.assigns.backends)
 
     {:noreply,
      socket
      |> assign(asking: true, asked: nil)
-     |> start_async(:ask, fn -> Datasets.focus_partition(dataset, key, note) end)}
+     |> start_async(:ask, fn -> Datasets.run_partition(dataset, key, opts) end)}
+  end
+
+  # 相手を選び直したら、そのぶんだけ覚える（モデルの候補は相手ごとに別物なので、
+  # 覚えていないと選び直した拍子に前の相手のモデルが出る）
+  def handle_event("pick_run", params, socket) do
+    {:noreply,
+     assign(socket,
+       run_sweep: params["sweep"] || socket.assigns.run_sweep,
+       run_backend: params["run|backend"] || socket.assigns.run_backend,
+       run_model: params["run|model"] || socket.assigns.run_model
+     )}
   end
 
   # 定時の巡回とは別に、1 回だけ頼む
@@ -263,6 +285,30 @@ defmodule TazunaWeb.DatasetsLive do
 
   @doc "区画の一覧に出す数。"
   def shown_partitions, do: @shown_partitions
+
+  @doc """
+  「この区画で 1 回走らせる」に渡す指定。**ワーカーは相手とは別の鍵**で渡します ——
+  渡す先はそのときの枠で決まるので、モデルを 1 つ選んでも意味が決まりません。
+  """
+  def run_options(params, backends) do
+    picked = String.trim(params["run|backend"] || "")
+    {_plain, hands} = TazunaWeb.Collect.by_kind(backends)
+    worker? = Enum.any?(hands, &(&1.id == picked))
+
+    [sweep: blank_to_nil(params["sweep"])] ++
+      cond do
+        picked == "" -> []
+        worker? -> [worker: picked]
+        true -> [backend: picked, model: blank_to_nil(params["run|model"])]
+      end
+  end
+
+  defp blank_to_nil(value) do
+    case String.trim(value || "") do
+      "" -> nil
+      text -> text
+    end
+  end
 
   @doc """
   選んでいる区画の 1 行ぶん。**選ばれていなければ nil**。

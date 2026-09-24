@@ -200,22 +200,17 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert length(sent["sweeps"]) == 3
     end
 
-    test "この区画を先に調べて、を頼める", %{conn: conn} do
+    test "一覧からも、その区画を選べる", %{conn: conn} do
+      # 一覧と地図は同じ 1 つの口へ繋ぐ（押した先で何が起きるかが変わらないように）
       {live, _html} = shown(conn)
 
-      # 区画ごとに 1 つずつあるので、先頭の行（いちばん長く見ていない区画）を押す
-      live
-      |> element(~s|.partition-table tbody tr:first-child form|)
-      |> render_submit()
+      html =
+        live
+        |> element(~s|.partition-table tbody tr:first-child button|)
+        |> render_click()
 
-      assert_receive {:posted, url, sent}, 2_000
-      assert url =~ "/focus"
-
-      # **必ず区画の名前で始める** —— 指示文だけを読んだ人には、どこ宛てか分からない
-      assert sent["note"] =~ "35.6,139.7/35.7,139.8"
-      assert sent["partition"] == "35.6,139.7/35.7,139.8"
-      # 頼むのは同じ仕事なので、設定も依頼文もじっくりのものでよい
-      assert sent["sweep"] == "整理"
+      assert html =~ "選んだ区画"
+      assert html =~ "この区画で 1 回走らせる"
     end
 
     test "区画は地図にもなる", %{conn: conn} do
@@ -252,12 +247,17 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert html =~ "43.0,141.3/43.1,141.4"
       assert html =~ "90 件"
 
-      live |> form(~s|.partition-picked form|, %{note: "閉店を見て"}) |> render_submit()
+      # **ふつうの回として走らせる。** 割り込みは進み具合にも印にも触らないので、
+      # 押しても画面が変わらず「何が起きたのか分からない」になっていた
+      live
+      |> form(~s|.partition-picked form|, %{"sweep" => "整理", "run|backend" => "antigravity"})
+      |> render_submit()
 
       assert_receive {:posted, url, sent}, 2_000
-      assert url =~ "/focus"
-      assert sent["partition"] == "43.0,141.3/43.1,141.4"
-      assert sent["note"] =~ "閉店を見て"
+      assert url =~ "/run"
+      assert url =~ "sweep=%E6%95%B4%E7%90%86"
+      assert sent["partitions"] == ["43.0,141.3/43.1,141.4"]
+      assert sent["backend"] == "antigravity"
     end
 
     test "定時の巡回とは別に、1 回だけ頼める", %{conn: conn} do

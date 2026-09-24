@@ -263,6 +263,16 @@ defmodule Tazuna.Datasets.MealsTest do
       assert Meals.scan_prompt() =~ "理由"
     end
 
+    test "返す形のところにも、消し方を書く" do
+      # 仕事の並びの中に 1 行あるだけでは守られなかった（実測で、墓標だけが付いて
+      # 理由が 1 件も書かれず、座標違いで消えた店を戻す判断ができなかった）
+      for prompt <- [Meals.scan_prompt(), Meals.survey_prompt()] do
+        assert prompt =~ "消す 1 件は、形が 1 つ違います"
+        assert prompt =~ "body に消す理由を 1 行"
+        assert prompt =~ "理由の無い墓標は、あとから誰にも直せません"
+      end
+    end
+
     test "確かめられなかったものは触らせない" do
       # 疑わしいから消す・当てずっぽうで座標を書く、をやると正しかったものが落ちる
       assert Meals.scan_prompt() =~ "確かめられなかったものは触らないでください"

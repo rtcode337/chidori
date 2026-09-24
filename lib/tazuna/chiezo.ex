@@ -226,7 +226,22 @@ defmodule Tazuna.Chiezo do
     # **時計を持たない巡回は Chiezo が断る**（あれは割り込みからしか走らない）
     query = if sweep = opts[:sweep], do: "?" <> URI.encode_query(%{"sweep" => sweep}), else: ""
 
-    case post(base <> "/v1/collect/" <> name <> "/run" <> query, "", opts[:timeout] || 600_000) do
+    # **区画と相手は、その 1 回だけの上書き**（`once`）。書かなければ
+    # ふつうの回がふつうの設定で走る —— 区画の地図から「ここを 1 回見て」と
+    # 頼むときだけ書きます。**ふつうの回として走る**ので、印も進み具合も進みます
+    once =
+      %{
+        "partitions" => List.wrap(opts[:partitions] || opts[:partition]),
+        "backend" => opts[:backend],
+        "model" => opts[:model],
+        "worker" => opts[:worker]
+      }
+      |> Enum.reject(fn {_k, v} -> v in [nil, "", []] end)
+      |> Map.new()
+
+    body = if once == %{}, do: "", else: Jason.encode!(once)
+
+    case post(base <> "/v1/collect/" <> name <> "/run" <> query, body, opts[:timeout] || 600_000) do
       {:ok, %{status: status}} when status in 200..299 -> :ok
       {:ok, %{status: 403}} -> {:error, :collection_disabled}
       {:ok, %{status: 404}} -> {:error, :not_requested}

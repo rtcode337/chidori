@@ -88,6 +88,22 @@ defmodule Tazuna.Datasets do
   end
 
   @doc """
+  選んだ区画を、選んだ巡回で **1 回走らせます**（Chiezo の「選んだ区画で 1 回
+  走らせる」と同じ形）。
+
+  **割り込みとは別物です。** あちらは進み具合にも区画の印にも触らないので、
+  押しても画面が何も変わらず「何が起きたのか分からない」になります ——
+  こちらは**ふつうの回として走る**ので、印が付き、次に読み直せば結果が見えます。
+
+  相手は `backend`（＋ `model`）か `worker` のどちらか。書かなければ巡回の設定のまま。
+  """
+  def run_partition(%{collection: name}, key, opts \\ []) do
+    with {:ok, base} <- base_url() do
+      Chiezo.run(base, name, Keyword.merge(opts, partitions: [key]))
+    end
+  end
+
+  @doc """
   頼みごとを 1 回だけ走らせます（割り込み）。**専用の巡回は置きません** ——
   頼むのは同じ仕事なので、設定も依頼文も整理の回のものでよいためです。
   """
