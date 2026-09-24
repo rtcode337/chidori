@@ -56,6 +56,39 @@
 
       <%!-- **区画を地図にして出す。** 「8,185 区画のうち 2 つ見終わり」と数で言われても、
            それがどこなのかは読めない —— 押した四角から、その場で頼める --%>
+      <%!-- **travel-log へはファイルで渡す。** ブラウザから直接 Chiezo を読ませるには
+           CORS を開けたうえで Chiezo 自身を https で出す必要があり、LAN の中だけで
+           使う機械にそこまでさせる理由がない。中身は travel-log-data と同じ形なので、
+           向こうはリポジトリから取り込むのと同じ画面で入れられる --%>
+      <%!-- **地図の右上に小さく置く。** 書き出すのは集まった結果なので、区画の進み具合と
+           並べて見える場所がよい。主役の操作（送る・頼む）と並べると同じ重さに見える --%>
+      <div :if={Tazuna.Datasets.TravelLog.exportable?(@dataset)} class="export-corner">
+        <%!-- **リンクと分かる見た目にする。** 押すと降ってくるだけで、画面の状態は
+             何も変わらない —— ボタンに寄せると「送る」「走らせる」と同じ重さに見える --%>
+        <%!-- 組み立てに十数秒かかるので、**待っている間も押したと分かる**ように
+             JS で取りに行く（DownloadLink）。JS が無ければ素のリンクとして働く --%>
+        <a
+          id={"download-#{@dataset.key}"}
+          class="download-link"
+          href={~p"/datasets/#{@dataset.key}/travel-log.zip"}
+          download
+          phx-hook="DownloadLink"
+          data-status={"download-status-#{@dataset.key}"}
+        >
+          ⬇ travel-log 用の ZIP を書き出す
+        </a>
+        <span
+          id={"download-status-#{@dataset.key}"}
+          class="download-status"
+          role="status"
+          phx-update="ignore"
+        ></span>
+        <p class="muted-note">
+          AI が目を通したものだけが入ります（settings.json と spots.csv）。
+          取り出しに十数秒かかります。
+        </p>
+      </div>
+
       <.partition_map
         map={Tazuna.Datasets.Map.build(rows)}
         sweeps={@dataset.partition_sweeps}
@@ -261,36 +294,6 @@
         <a href={@state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
       </p>
 
-      <%!-- **travel-log へはファイルで渡す。** ブラウザから直接 Chiezo を読ませるには
-           CORS を開けたうえで Chiezo 自身を https で出す必要があり、LAN の中だけで
-           使う機械にそこまでさせる理由がない。中身は travel-log-data と同じ形なので、
-           向こうはリポジトリから取り込むのと同じ画面で入れられる --%>
-      <div :if={Tazuna.Datasets.TravelLog.exportable?(@dataset)}>
-        <%!-- **リンクと分かる見た目にする。** 押すと降ってくるだけで、画面の状態は
-             何も変わらない —— ボタンに寄せると「送る」「走らせる」と同じ重さに見える --%>
-        <%!-- 組み立てに十数秒かかるので、**待っている間も押したと分かる**ように
-             JS で取りに行く（DownloadLink）。JS が無ければ素のリンクとして働く --%>
-        <a
-          id={"download-#{@dataset.key}"}
-          class="download-link"
-          href={~p"/datasets/#{@dataset.key}/travel-log.zip"}
-          download
-          phx-hook="DownloadLink"
-          data-status={"download-status-#{@dataset.key}"}
-        >
-          ⬇ travel-log 用の ZIP を書き出す
-        </a>
-        <span
-          id={"download-status-#{@dataset.key}"}
-          class="download-status"
-          role="status"
-          phx-update="ignore"
-        ></span>
-        <p class="muted-note">
-          AI が目を通したものだけが入ります（settings.json と spots.csv）。
-          取り出しに十数秒かかります。
-        </p>
-      </div>
 
       <%!-- **この収集から作る収集**（本棚・話題の網）。**親の下に置く** ——
            別のタブにすると、何から作られたものかが読めなくなる --%>
