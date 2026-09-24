@@ -61,9 +61,18 @@ defmodule Tazuna.Datasets.MealsTest do
         assert key in by_source["osm_japan"].extra
       end
 
-      assert "confidence" in by_source["overture_japan"].extra
       # 知名度はここにしか無い（ランクを AI が決める材料になる）
       assert "pageviews_month" in by_source["jawiki"].extra
+    end
+
+    test "読まないものは運ばない" do
+      # 脇書きは毎回の素材に丸ごと乗る —— 読まないものを運ぶと、そのぶん焼きが遅くなる
+      # （実測で confidence と locality だけで 9.8 MB）
+      by_source = Map.new(Meals.extract(), &{&1.source, &1})
+
+      refute "confidence" in by_source["overture_japan"].extra
+      refute "locality" in by_source["overture_japan"].extra
+      refute "wikidata" in by_source["osm_japan"].extra
     end
 
     test "ジャンルの読み替えは、細かいものが先", %{by_source: by_source} do

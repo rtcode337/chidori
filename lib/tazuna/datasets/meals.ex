@@ -282,7 +282,7 @@ defmodule Tazuna.Datasets.Meals do
       %{field: "説明（description）", stored: "body の 2 行目以降", who: "百科事典が優先、無ければ AI"},
       %{
         field: "所在地の手がかり",
-        stored: "body の 1 行目 / extra.address / extra.locality",
+        stored: "body の 1 行目 / extra.address",
         who: "辞典と AI"
       },
       %{field: "連絡先・公式サイト", stored: "extra.phone / extra.website", who: "地図辞典が優先"},
@@ -365,7 +365,8 @@ defmodule Tazuna.Datasets.Meals do
       provides: ~w(extra),
       body: "opening",
       # `area` は都道府県。**travel-log の地域が機械で決まる**
-      extra: ~w(lat lon area address website phone wikidata),
+      # `wikidata` は使っていません（上と同じ理由で運びません）
+      extra: ~w(lat lon area address website phone),
       tags: [%{const: kind_tag()}, %{const: @source_tags[:osm]}]
     }
   end
@@ -393,7 +394,11 @@ defmodule Tazuna.Datasets.Meals do
           end,
       # **元の地物に書いてある事実は、そのまま運ぶ。** travel-log が要るのはここ ——
       # 読む側が 1 件ずつ地図辞典を引き直さずに済む
-      extra: ~w(lat lon address locality website phone confidence)
+      # **運ぶのは、後から読むものだけ。** `confidence` は名簿を作るときの並びに
+      # 使うだけで、溜めたあとは誰も読みません（`locality` は本文の「所在:」と同じ）——
+      # 脇書きは**毎回の素材に丸ごと乗る**ので、読まないものを運ぶと焼きが遅くなります
+      # （実測で、この 2 つだけで 9.8 MB）
+      extra: ~w(lat lon address website phone)
     }
   end
 
