@@ -285,6 +285,9 @@ defmodule TazunaWeb.Collect do
       key: partition.key,
       count: partition.count,
       stage: length(seen),
+      # **どの巡回が見たか**（地図の色分けに使う。何本かだけでは、どこまで進んだのか
+      # 読めない —— 後の回だけが見た区画が普通にできる）
+      seen_by: Enum.map(seen, &elem(&1, 0)),
       by: by,
       at: at,
       seen: Jst.format(at)

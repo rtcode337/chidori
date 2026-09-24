@@ -485,23 +485,23 @@ article p:last-child { color: #475569; line-height: 1.7; }
    **大きい区画には引かない** —— 外海を覆う区画の縁は、図を横切る長い線になる */
 .partition-map rect.is-tiny { stroke: #4f6bd8; stroke-width: 1; vector-effect: non-scaling-stroke; }
 /* 見終わった区画。**数では進み具合が読めない**（どこを見たのかが分からない）。
-   **濃さで深さを出す** —— 区画を回る巡回は順に走るので、ざっと見ただけのところと
-   じっくり見たところが同じ色だと、どこまで進んだのかが読めない */
-.partition-map rect.is-seen { fill: #4ade80; stroke: #4ade80; opacity: .9 !important; }
-.partition-map rect.is-done { fill: #15803d; stroke: #15803d; opacity: .9 !important; }
+   **色で「どの巡回まで済んだか」を出す** —— 前の巡回だけが見た区画は薄い黄色、
+   最後の巡回まで見た区画は薄い緑。同じ色の濃淡だと、どちらの巡回なのかが読めない */
+.partition-map rect.is-seen { fill: #fde68a; stroke: #fde68a; opacity: .95 !important; }
+.partition-map rect.is-done { fill: #86efac; stroke: #86efac; opacity: .95 !important; }
 /* **寄ったら、どの区画にも境目を出す。** 押す口は区画ひとつずつなので、
    どこからどこまでが 1 区画なのかが見えないと、押す先を狙えない
    （画面に出るのは数十区画だけなので、線で埋まることはない）。
    **線の色は面の色で変える** —— 薄い緑の上の白は見えず、見終わったところだけ
    境目の無い塊になる */
 .map-canvas.is-close rect { stroke: rgba(255, 255, 255, .55); stroke-width: .5; vector-effect: non-scaling-stroke; }
-.map-canvas.is-close rect.is-seen { stroke: #15803d; }
-.map-canvas.is-close rect.is-done { stroke: rgba(255, 255, 255, .75); }
+.map-canvas.is-close rect.is-seen { stroke: #d97706; }
+.map-canvas.is-close rect.is-done { stroke: #15803d; }
 .partition-map rect.is-picked { fill: #f97316; opacity: 1 !important; stroke: #7c2d12; stroke-width: 2; }
 /* 指しているところ。**面の色が何であれ同じ**に見せる —— 見終わった区画の上で
    色が変わらないと、押せるものだと分からない。あとの規則ほど強いので最後に置き、
    色ごとの境目（上）に負けないよう !important を付ける */
-.partition-map rect:hover { fill: #f59e0b !important; stroke: #b45309 !important; stroke-width: 1; opacity: 1 !important; vector-effect: non-scaling-stroke; }
+.partition-map rect:hover { fill: #ea580c !important; stroke: #9a3412 !important; stroke-width: 1; opacity: 1 !important; vector-effect: non-scaling-stroke; }
 
 /* 選んだ区画。押した先に何があるのかを読んでから頼めるように、選ぶのと頼むのを分ける */
 .partition-picked { margin-top: .8rem; border: 1px solid #dcdff0; border-radius: .8rem; padding: .9rem 1rem; background: #fff; }

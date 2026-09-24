@@ -275,17 +275,18 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert html =~ ~s(phx-value-key="35.6,139.7/35.7,139.8")
     end
 
-    test "色が変わるのは、何本が見たかで決まる", %{conn: conn} do
-      # どの巡回が見たかで測ると、片方だけを回している間はどこも「まだ」に見える。
-      # **深さでは数えない** —— 巡回は並んで回るので、後ろに書いた回だけが見た区画が
-      # 普通にできる。そこを「両方とも見終えた」と塗ると、まだ誰も座標を直して
-      # いない範囲が済んだ色で出る
+    test "色は、どの巡回まで見たかで決まる", %{conn: conn} do
+      # ざっと見るだけが見た区画は薄い黄色、情報収集まで見た区画は薄い緑。
+      # 何本が見たかで濃さを変えていた頃は、どちらの巡回が済んだのかが読めなかった
       {_live, html} = shown(conn)
 
+      # ざっと見るだけ
       assert html =~ ~r|<rect[^>]*is-seen[^>]*phx-value-key="35.0,135.7/35.1,135.8"|
-      # 2 本とも見た区画だけ、もう一段濃くする
+      # 両方
       assert html =~ ~r|<rect[^>]*is-done[^>]*phx-value-key="34.6,135.4/34.8,135.6"|
-      refute html =~ ~r|<rect[^>]*is-done[^>]*phx-value-key="43.0,141.3/43.1,141.4"|
+      # 情報収集だけ（情報収集が済んでいれば緑）
+      assert html =~ ~r|<rect[^>]*is-done[^>]*phx-value-key="43.0,141.3/43.1,141.4"|
+      assert html =~ "薄い黄色が「ざっと見る」まで、薄い緑が「情報収集」まで見終わった区画"
       assert html =~ "ざっと見る 済み"
     end
 

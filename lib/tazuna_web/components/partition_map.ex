@@ -22,7 +22,9 @@ defmodule TazunaWeb.PartitionMap do
         四角のひとつひとつが区画です。<strong>店の多いところほど細かく</strong>切られているので、
         細かい格子がそのまま「たくさん集まっているところ」になります。 <strong>押すと、その区画を先に調べてもらえます。</strong>
         濃いところほど詰まっています（区画は海の上まで覆うので、同じ濃さで塗ると島の形が沈みます）。 <strong>寄ると区画の境目が出ます。</strong>
-        <strong>緑は見終わった区画です</strong>（{seen_note(@sweeps)}）—— {@map.visited} / {length(@map.rects)}。
+        <strong>色が付いているのは見終わった区画です</strong>（{seen_note(@sweeps)}）—— {@map.visited} / {length(
+          @map.rects
+        )}。
       </p>
       <%!-- **操作は関連図と同じ**（引きずって移動、Ctrl+ホイールで拡大縮小、
            指 2 本でつまむ）—— 図ごとに操作が違うと、画面を移るたびに覚え直すことになる --%>
@@ -52,8 +54,7 @@ defmodule TazunaWeb.PartitionMap do
             height={rect.height}
             class={[
               rect.tiny && "is-tiny",
-              rect.stage > 0 && "is-seen",
-              rect.stage > 1 && "is-done",
+              seen_class(rect, @sweeps),
               rect.key == @picked && "is-picked"
             ]}
             style={"opacity: #{rect.tone}"}
@@ -72,11 +73,23 @@ defmodule TazunaWeb.PartitionMap do
     """
   end
 
-  # 緑の読み方。**濃さは「何本が見たか」** —— 巡回は並んで回るので、
-  # 「どちらが先か」では読めない（後の回だけが見た区画が普通にできる）
-  defp seen_note([first, second | _rest]),
-    do: "薄い緑が「#{first}」か「#{second}」の片方、濃い緑が両方"
+  # 区画の色。**最後に回る巡回まで見た区画は薄い緑、それより前の巡回だけが
+  # 見た区画は薄い黄色**。何本が見たかで濃さを変えていた頃は、どの巡回まで
+  # 済んだのかが読めなかった（後の回だけが見た区画も「片方」に数わる）
+  defp seen_class(rect, sweeps) do
+    cond do
+      sweeps != [] and List.last(sweeps) in rect.seen_by -> "is-done"
+      rect.stage > 0 -> "is-seen"
+      true -> nil
+    end
+  end
 
-  defp seen_note([only]), do: "「#{only}」が見終わったぶん"
+  defp seen_note([_ | _] = sweeps) when length(sweeps) >= 2 do
+    last = List.last(sweeps)
+    earlier = sweeps |> Enum.drop(-1) |> Enum.map_join("」「", & &1)
+    "薄い黄色が「#{earlier}」まで、薄い緑が「#{last}」まで見終わった区画"
+  end
+
+  defp seen_note([only]), do: "薄い緑が「#{only}」まで見終わった区画"
   defp seen_note(_sweeps), do: "見終わったぶん"
 end

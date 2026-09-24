@@ -178,6 +178,7 @@ defmodule Tazuna.Datasets.Map do
       # **どこまで見たか**（0 がまだ）。回る巡回が何本かあるので、
       # 「見たか見ていないか」では進み具合が読めない
       stage: stage(box),
+      seen_by: Map.get(box, :seen_by) || [],
       by: Map.get(box, :by),
       x: left,
       y: upper,
