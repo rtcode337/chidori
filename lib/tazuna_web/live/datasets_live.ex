@@ -129,8 +129,7 @@ defmodule TazunaWeb.DatasetsLive do
   # **選んだ区画を、選んだ巡回で 1 回走らせる**（Chiezo の画面と同じ形）。
   #
   # 割り込みにしていた頃は、進み具合にも区画の印にも触らないので、
-  # **押しても画面が何も変わらず**「何が起きたのか分からない」になっていた
-  # （しかも整理の回は「ざっとが一周するまで走らない」ので、実際に何も起きない）。
+  # **押しても画面が何も変わらず**「何が起きたのか分からない」になっていた。
   def handle_event("run_partition", %{"key" => key} = params, socket) do
     dataset = socket.assigns.dataset
     opts = run_options(params, socket.assigns.backends)

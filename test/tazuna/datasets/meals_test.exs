@@ -178,12 +178,13 @@ defmodule Tazuna.Datasets.MealsTest do
   describe "巡回" do
     setup do: %{sweeps: Meals.sweeps()}
 
-    test "名簿 → ざっと → じっくりの順に待つ", %{sweeps: sweeps} do
-      # 座標の直っていない状態で「この区画に足りないもの」を問うても、
-      # その店は別の区画に居るだけなので、既にあるものを挙げて終わる
+    test "AI の回は名簿だけを待ち、そのあとは並んで回る", %{sweeps: sweeps} do
+      # 名簿が無ければ区画に何も並ばない（空の一覧に「この範囲の全部です」と言う形になる）。
+      # 逆に、じっくりをざっとの一周待ちにすると、**いちばん効く仕事が 1 か月止まる**
+      # —— 1 回に見る区画には上限があり、4,105 区画では一周 34 日かかる
       assert Enum.map(sweeps, & &1.name) == ["機械収集", "ざっと見る", "整理"]
       assert Enum.find(sweeps, &(&1.name == "ざっと見る")).after == "機械収集"
-      assert Enum.find(sweeps, &(&1.name == "整理")).after == "ざっと見る"
+      assert Enum.find(sweeps, &(&1.name == "整理")).after == "機械収集"
     end
 
     test "名簿の回は機械で引き、足すだけ", %{sweeps: sweeps} do
@@ -299,9 +300,28 @@ defmodule Tazuna.Datasets.MealsTest do
       # 住所がこの範囲の外を指していても、消すと名簿から消えたままどの区画にも
       # 戻ってこない。直せば次の回から本来の区画に並ぶ
       # （実測で、座標と住所が食い違う店が墓標で消されていた）
-      assert Meals.scan_prompt() =~ "消す理由ではありません"
-      assert Meals.scan_prompt() =~ "正しい座標へ直して"
-      assert Meals.survey_prompt() =~ "消さないでください"
+      for prompt <- [Meals.scan_prompt(), Meals.survey_prompt()] do
+        assert prompt =~ "消す理由ではありません"
+        assert prompt =~ "消さずに正しい緯度・経度へ直してください"
+      end
+    end
+
+    test "「本来の区画へ移す」ために消させない" do
+      # 移す手立ては座標を直すことだけ。消すと、移った先の回はその店を知らず、
+      # 墓標が機械の名簿からの復帰も止める
+      # （実測で 2 件、「本来の区画へ移動」と書いて消されていた）
+      for prompt <- [Meals.scan_prompt(), Meals.survey_prompt()] do
+        assert prompt =~ "「本来の区画へ移す」ために消すのも同じです"
+      end
+    end
+
+    test "集めるのはイートインできる店だけ" do
+      # travel-log は「食べに行く先」の地図で、買って帰る店は行き先にならない。
+      # 書いていなかった頃は、同じ持ち帰り専門店が回によって残ったり消えたりした
+      for prompt <- [Meals.scan_prompt(), Meals.survey_prompt()] do
+        assert prompt =~ "その場で食べられるかで分けてください"
+        assert prompt =~ "持ち帰りもやっている店は残してください"
+      end
     end
 
     test "1 件に潰れた別々の店は、分けさせる" do

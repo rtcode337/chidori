@@ -72,10 +72,10 @@ defmodule TazunaWeb.PartitionMap do
     """
   end
 
-  # 緑の読み方。**濃さで深さを表す** —— 回る巡回は順に走るので、
-  # 「どちらが先か」が分かれば、濃いほうが進んでいると読める
+  # 緑の読み方。**濃さは「何本が見たか」** —— 巡回は並んで回るので、
+  # 「どちらが先か」では読めない（後の回だけが見た区画が普通にできる）
   defp seen_note([first, second | _rest]),
-    do: "薄い緑が「#{first}」、濃い緑が「#{second}」まで"
+    do: "薄い緑が「#{first}」か「#{second}」の片方、濃い緑が両方"
 
   defp seen_note([only]), do: "「#{only}」が見終わったぶん"
   defp seen_note(_sweeps), do: "見終わったぶん"

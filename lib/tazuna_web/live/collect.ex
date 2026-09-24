@@ -209,10 +209,13 @@ defmodule TazunaWeb.Collect do
   **見た印は巡回ごとに別**なので、どの巡回の目で見るかを渡します ——
   ざっと見るが見終えた区画を整理はまだ見ていない、が普通に起きます。
 
-  **回る順に並べて渡せます**（`["ざっと見る", "整理"]`）。区画を回る巡回が
-  何本かあるとき、**どこまで進んだか**は 1 本では読めません —— 後の回は前の回が
-  一周するまで走らないので、後の回だけを見ると、いつまでも「まだ」のままです。
-  返す `stage` は深さ（0 がまだ）、`by` はそこまで見た巡回の名前です。
+  **区画を回る巡回をまとめて渡せます**（`["ざっと見る", "整理"]`）。
+  **どこまで進んだかは 1 本では読めません** —— 1 本だけを見ると、もう片方が
+  回っているのに「まだ」のままになります。返す `stage` は**何本が見たか**
+  （0 がまだ）、`by` と `at` は**いちばん最近に見た**巡回とその時刻です。
+
+  **深さでは数えません。** 巡回は並んで回るので、後ろに書いた回だけが見た区画が
+  普通にできます —— 順番で数えると、その区画が「両方とも見終えた」に化けます。
   """
   def partition_rows(state, sweep) when is_binary(sweep), do: partition_rows(state, [sweep])
 
@@ -226,20 +229,21 @@ defmodule TazunaWeb.Collect do
   def partition_rows(_state, _sweeps), do: []
 
   defp partition_row(partition, sweeps) do
-    {stage, by, at} =
+    seen =
       sweeps
-      |> Enum.with_index(1)
-      |> Enum.reduce({0, nil, nil}, fn {sweep, depth}, unseen ->
-        case Map.get(partition.visits, sweep) do
-          nil -> unseen
-          at -> {depth, sweep, at}
-        end
-      end)
+      |> Enum.map(&{&1, Map.get(partition.visits, &1)})
+      |> Enum.reject(fn {_sweep, at} -> is_nil(at) end)
+
+    {by, at} =
+      case Enum.sort_by(seen, &elem(&1, 1), :desc) do
+        [{sweep, at} | _rest] -> {sweep, at}
+        [] -> {nil, nil}
+      end
 
     %{
       key: partition.key,
       count: partition.count,
-      stage: stage,
+      stage: length(seen),
       by: by,
       at: at,
       seen: Jst.format(at)
