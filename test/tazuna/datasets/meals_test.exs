@@ -178,13 +178,14 @@ defmodule Tazuna.Datasets.MealsTest do
   describe "巡回" do
     setup do: %{sweeps: Meals.sweeps()}
 
-    test "AI の回は名簿だけを待ち、そのあとは並んで回る", %{sweeps: sweeps} do
-      # 名簿が無ければ区画に何も並ばない（空の一覧に「この範囲の全部です」と言う形になる）。
-      # 逆に、じっくりをざっとの一周待ちにすると、**いちばん効く仕事が 1 か月止まる**
-      # —— 1 回に見る区画には上限があり、4,105 区画では一周 34 日かかる
+    test "名簿 → ざっと → じっくりの順に待つ", %{sweeps: sweeps} do
+      # 座標の直っていない状態で「この区画に足りないもの」を問うても、
+      # その店は別の区画に居るだけなので、既にあるものを挙げて終わる。
+      # 1 回にかかる時間も違う（ざっと 1 区画 2 分前後 / じっくり 6〜14 分）ので、
+      # 並べて回すと、外を当たる回が安い回の番を食い潰す
       assert Enum.map(sweeps, & &1.name) == ["機械収集", "ざっと見る", "整理"]
       assert Enum.find(sweeps, &(&1.name == "ざっと見る")).after == "機械収集"
-      assert Enum.find(sweeps, &(&1.name == "整理")).after == "機械収集"
+      assert Enum.find(sweeps, &(&1.name == "整理")).after == "ざっと見る"
     end
 
     test "名簿の回は機械で引き、足すだけ", %{sweeps: sweeps} do
