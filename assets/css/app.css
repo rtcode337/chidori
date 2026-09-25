@@ -103,14 +103,20 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .settings-panel .origin-note { margin-bottom: .8rem; }
 /* 整理の起点と時刻 */
 .survey-plan { margin: 1rem 0 1.25rem; }
-.survey-row { display: flex; flex-wrap: wrap; gap: .4rem; margin: .6rem 0 0; }
-.survey-row input { flex: 1 1 14rem; min-width: 0; }
+/* 入力欄とボタンは**同じ行に保つ**（狭い画面では入力欄のほうを縮める）。
+   折り返すと、保存のボタンがどの欄のものか読めなくなる */
+.survey-row { display: flex; flex-wrap: nowrap; align-items: center; gap: .4rem; margin: .6rem 0 0; }
+.survey-row input { flex: 1 1 auto; min-width: 0; }
+.survey-row button { flex: none; white-space: nowrap; }
 .place-candidates { display: flex; flex-wrap: wrap; gap: .35rem .9rem; margin: .5rem 0 0; padding: 0; list-style: none; }
 .place-candidates li { display: flex; align-items: baseline; gap: .35rem; }
 /* 区画の表。**数と時刻とボタンは折り返さない**（「ま/だ」と割れると読めない）。
    幅は区画の名前の列が引き受ける */
 .partition-table th, .partition-table td { white-space: nowrap; }
 .partition-table td:first-child { white-space: normal; }
+/* **ボタンだけの行は右に寄せる**（設定欄）。左に置くと説明文の続きに見え、
+   押す口がどこにあるか目で探すことになる */
+.button-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; margin-top: .6rem; }
 .partition-actions { display: flex; flex-wrap: nowrap; gap: .3rem; align-items: center; }
 .relation-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; }
 /* Chiezo の状態・巡回の設定・押すボタンを 1 つの枠に。**離れていると、何がどこへ

@@ -108,13 +108,15 @@
           <.sweep_table state={@news} picks={@picks} backends={@backends} />
 
           <p class="muted-note">{sweep_note(@topic)}</p>
-          <button
-            type="submit"
-            phx-disable-with="送っています…"
-            disabled={@news.status == :loading or not @news.configured}
-          >
-            {collect_label(@news)}
-          </button>
+          <div class="button-row">
+            <button
+              type="submit"
+              phx-disable-with="送っています…"
+              disabled={@news.status == :loading or not @news.configured}
+            >
+              {collect_label(@news)}
+            </button>
+          </div>
         </form>
 
         <p :if={@news.collection && @news.collection.url} class="muted-note">
@@ -171,7 +173,9 @@
             <strong>通知先を空にすると知らせなくなります。</strong>
             既定の通知先は持ちません —— 公開の ntfy では、推測できる名前は誰でも読めるので、<strong>推測されない名前</strong>にしてください。場所は書かなければ公式の公開サーバーへ送ります。
           </p>
-          <button type="submit">通知先を保存</button>
+          <div class="button-row">
+            <button type="submit">通知先を保存</button>
+          </div>
         </.form>
 
         <%!-- 時計を持つのは tazuna の側。Chiezo には「いま回してください」としか
@@ -186,22 +190,24 @@
         <p class="muted-note">{last_sent_text(@topic)}</p>
         <p :if={@digest_message} aria-live="polite">{@digest_message}</p>
 
-        <button
-          :if={can_notify?(@topic)}
-          type="button"
-          phx-click="digest_now"
-          phx-disable-with="始めています…"
-        >
-          いま作って知らせる
-        </button>
-        <button
-          :if={can_notify?(@topic)}
-          type="button"
-          phx-click="notify"
-          phx-disable-with="送っています…"
-        >
-          いまのまとめを知らせる
-        </button>
+        <div class="button-row">
+          <button
+            :if={can_notify?(@topic)}
+            type="button"
+            phx-click="digest_now"
+            phx-disable-with="始めています…"
+          >
+            いま作って知らせる
+          </button>
+          <button
+            :if={can_notify?(@topic)}
+            type="button"
+            phx-click="notify"
+            phx-disable-with="送っています…"
+          >
+            いまのまとめを知らせる
+          </button>
+        </div>
       </section>
 
       <%!-- トピックの収集。**記事とは別の収集**（記事は 30 日で落ちるが、
@@ -220,26 +226,24 @@
         <form id="theme-collect-form" phx-submit="collect_themes" phx-change="pick_theme_sweep">
           <.sweep_table state={@themes} picks={@theme_picks} backends={@backends} />
           <p class="muted-note">
-            <strong>語を拾うのは機械、精査するのが AI です。</strong>
-            記事に付いたタグがそのままトピックになり、件数と一緒に出てくる語も Chiezo が
+            <strong>語を拾うのは機械、精査するのが AI です。</strong> 記事に付いたタグがそのままトピックになり、件数と一緒に出てくる語も Chiezo が
             数えます（機械収集の回は AI を呼びません）。AI の回は、言い換えを畳む・親子を決める・
             話題でない語を外す・説明を書く、の 4 つだけです。
           </p>
-          <button type="submit" phx-disable-with="送っています…">{theme_collect_label(@themes)}</button>
+          <div class="button-row">
+            <button type="submit" phx-disable-with="送っています…">{theme_collect_label(
+              @themes
+            )}</button>
+          </div>
         </form>
 
         <%!-- **押す口は増やさない。** 読み直しの口は置かず、開き直したときと
              設定を送り直したときに読む（記事のほうと同じ形） --%>
-        <p>
-          <button
-            :if={@themes.collection}
-            type="button"
-            phx-click="pick_themes"
-            phx-disable-with="頼んでいます…"
-          >
+        <div :if={@themes.collection} class="button-row">
+          <button type="button" phx-click="pick_themes" phx-disable-with="頼んでいます…">
             いま拾う
           </button>
-        </p>
+        </div>
 
         <p :if={@themes.collection && @themes.collection.url} class="muted-note">
           <a href={@themes.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
@@ -267,9 +271,11 @@
             走るのは「{Tazuna.News.focus_sweep()}」の設定です —— <strong>落とす力と印を付け直す力を持つのはこの回だけ</strong>なので、
             「これは宣伝だから落として」も頼めます。巡回の依頼文は書き換わりません。
           </p>
-          <button type="submit" disabled={@asking} phx-disable-with="頼んでいます…">
-            Chiezo に頼む
-          </button>
+          <div class="button-row">
+            <button type="submit" disabled={@asking} phx-disable-with="頼んでいます…">
+              Chiezo に頼む
+            </button>
+          </div>
         </form>
       </details>
 

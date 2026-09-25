@@ -474,13 +474,15 @@
               <.sweep_table state={cfg} picks={@picks} backends={@settings.backends} />
 
               <p class="muted-note">{source_note(@view)}</p>
-              <button
-                type="submit"
-                phx-disable-with="送っています…"
-                disabled={collecting?(@relation)}
-              >
-                {collect_label(@relation)}
-              </button>
+              <div class="button-row">
+                <button
+                  type="submit"
+                  phx-disable-with="送っています…"
+                  disabled={collecting?(@relation)}
+                >
+                  {collect_label(@relation)}
+                </button>
+              </div>
             </form>
 
             <%!-- **区画の一覧は全部出す。** どこがまだ見られていないかは、ここにしか

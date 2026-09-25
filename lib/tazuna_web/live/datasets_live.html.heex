@@ -173,10 +173,12 @@
             <strong>ふつうの回として走ります</strong> —— この区画に「見た」印が付き、
             進み具合も次の予定も進みます。AI の呼び出しは<strong>この 1 区画ぶん</strong>です。
           </p>
-          <button type="submit" disabled={@asking} phx-disable-with="走らせています…">
-            この区画で 1 回走らせる
-          </button>
-          <button type="button" phx-click="unpick_partition">やめる</button>
+          <div class="button-row">
+            <button type="submit" disabled={@asking} phx-disable-with="走らせています…">
+              この区画で 1 回走らせる
+            </button>
+            <button type="button" phx-click="unpick_partition">やめる</button>
+          </div>
         </form>
       </section>
 
@@ -261,9 +263,11 @@
           収集の名前は「{@dataset.collection}」です（Chiezo のソース名。<strong>後から変えません</strong>
           —— 変えると、それまで溜めた先を見失います）。
         </p>
-        <button type="submit" phx-disable-with="送っています…" disabled={@state.pushing}>
-          {collect_label(@state)}
-        </button>
+        <div class="button-row">
+          <button type="submit" phx-disable-with="送っています…" disabled={@state.pushing}>
+            {collect_label(@state)}
+          </button>
+        </div>
       </form>
 
       <p :if={@state.collection && @state.collection.url} class="muted-note">
@@ -305,15 +309,17 @@
         </.form>
         <p :for={{message, _opts} <- @plan_form[:run_at].errors} class="warn-note">{message}</p>
 
-        <button
-          :if={SurveyPlan.placed?(@plan)}
-          type="button"
-          phx-click="survey_now"
-          disabled={@surveying}
-          phx-disable-with="頼んでいます…"
-        >
-          {if @surveying, do: "頼んでいます…", else: "いま 1 回頼む"}
-        </button>
+        <div class="button-row">
+          <button
+            :if={SurveyPlan.placed?(@plan)}
+            type="button"
+            phx-click="survey_now"
+            disabled={@surveying}
+            phx-disable-with="頼んでいます…"
+          >
+            {if @surveying, do: "頼んでいます…", else: "いま 1 回頼む"}
+          </button>
+        </div>
       </section>
 
 
@@ -331,9 +337,11 @@
           <strong>止めた状態で作ります</strong> —— 動き出すのは Chiezo の管理画面で
           有効にしたときだけです。
         </p>
-        <button type="button" phx-click="collect_derived" disabled={@state.pushing}>
-          {@dataset.derived.name()}の収集を更新
-        </button>
+        <div class="button-row">
+          <button type="button" phx-click="collect_derived" disabled={@state.pushing}>
+            {@dataset.derived.name()}の収集を更新
+          </button>
+        </div>
       </section>
 
       <details :if={rows != []} class="partition-list">
@@ -397,9 +405,11 @@
             定時の巡回とは別に 1 回だけ走ります（進み具合にも次の予定にも触りません）。
             走るのは「{@dataset.survey_sweep}」の設定と依頼文です。
           </p>
-          <button type="submit" disabled={@asking} phx-disable-with="頼んでいます…">
-            Chiezo に頼む
-          </button>
+          <div class="button-row">
+            <button type="submit" disabled={@asking} phx-disable-with="頼んでいます…">
+              Chiezo に頼む
+            </button>
+          </div>
         </form>
       </details>
       <p :if={ask_message(@asked)} class="muted-note" aria-live="polite">{ask_message(@asked)}</p>
