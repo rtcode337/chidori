@@ -13,6 +13,10 @@ defmodule Tazuna.Digest do
   2. 終わるのを待って、**要約を起こす**。要約は時計を持たない巡回（`on_demand`）で、
      頼まれたときだけ動きます —— これで「いつ回ったか分からない」が無くなります
   3. **新しいまとめが出るのを待って、知らせる**
+  4. **興味トピックを選んでいれば、興味トピックの要約も書かせて知らせる**
+     （ふつうのまとめとは別の 1 本。`Tazuna.News.interest_digest_prompt/1`）。
+     ふつうのまとめを先に知らせるのは、興味の要約を待つあいだ、いつもの知らせを
+     遅らせないため。**興味の要約で止まっても、ふつうのまとめの結果は変えません**
 
   **起こした先は待ってくれません。** Chiezo の口は run も割り込みも「起こした」まで
   返すので、終わったかどうかはこちらが読み直して確かめます —— 整理は収集の前回時刻が
@@ -32,6 +36,7 @@ defmodule Tazuna.Digest do
   alias Tazuna.Chiezo
   alias Tazuna.Jst
   alias Tazuna.News
+  alias Tazuna.News.Interests
   alias Tazuna.Notify
   alias Tazuna.Notify.Settings
 
@@ -54,6 +59,13 @@ defmodule Tazuna.Digest do
   # 依頼文そのものは巡回の定義にあるので、ここは「この回で何をしてほしいか」だけ
   @digest_note "定時のまとめです。前回のまとめから今回までに入ったものを1件にまとめてください。" <>
                  "既にある記事は書き換えないでください。"
+
+  @interest_note "定時の、興味トピックの要約です。前回から今回までに入ったもののうち、" <>
+                   "選ばれた興味トピックに関わるものを1件にまとめてください。" <>
+                   "既にある記事は書き換えないでください。"
+
+  # 興味の要約を待つとき、前の 1 件を見つけるために読む件数
+  @interest_samples 20
 
   @doc """
   その話題のまとめを作らせて、知らせます。**数分かかります**。
@@ -120,8 +132,80 @@ defmodule Tazuna.Digest do
          {:ok, digest} <-
            wait_for_digest(base, collection, digest_title(before), deadline(@digest_wait_ms)) do
       tell(collection, "知らせています…")
-      Notify.deliver(collection, digest)
+      delivered = Notify.deliver(collection, digest)
+      interest_round(base, collection, free_by)
+      delivered
     end
+  end
+
+  # 興味トピックの要約。**選んでいなければ何もしない**（書く材料が無い）。
+  # ここで止まっても、ふつうのまとめの結果は変えない（画面とログにだけ残す）
+  defp interest_round(base, collection, free_by) do
+    if Interests.list(collection) == [] do
+      :skipped
+    else
+      result =
+        with {:ok, before} <- Chiezo.collection(base, collection, @interest_samples),
+             :ok <- tell(collection, "興味トピックの要約を書かせています…"),
+             :ok <-
+               Chiezo.when_free(
+                 fn ->
+                   busy_told(
+                     collection,
+                     Chiezo.focus(
+                       base,
+                       collection,
+                       @interest_note,
+                       [],
+                       News.interest_digest_sweep()
+                     )
+                   )
+                 end,
+                 free_by
+               ),
+             {:ok, digest} <-
+               wait_for_interest_digest(
+                 base,
+                 collection,
+                 interest_title(before),
+                 deadline(@digest_wait_ms)
+               ) do
+          tell(collection, "興味トピックの要約を知らせています…")
+          Notify.deliver(collection, digest)
+        end
+
+      case result do
+        {:error, reason} ->
+          Logger.warning("#{collection} の興味トピックの要約: #{inspect(reason)}")
+          tell(collection, "興味トピックの要約は作れませんでした（#{error_text(reason)}）")
+
+        _done ->
+          :ok
+      end
+
+      result
+    end
+  end
+
+  defp interest_title(%{recent: recent}) do
+    case News.to_interest_digests(recent) do
+      [%{title: title} | _rest] -> title
+      _none -> nil
+    end
+  end
+
+  # 興味の要約ができたか。ふつうのまとめと同じく**見出しで見る**
+  defp wait_for_interest_digest(base, collection, before, deadline) do
+    poll(deadline, fn ->
+      with {:ok, %{recent: recent}} <- Chiezo.collection(base, collection, @samples),
+           [digest | _rest] <- News.to_interest_digests(recent),
+           true <- digest.title != before do
+        [full | _rest] = News.with_body([digest], base, collection)
+        {:done, {:ok, full}}
+      else
+        _other -> :wait
+      end
+    end)
   end
 
   # 止まっている収集は Chiezo が断る。**押す前と同じ理由で先に見る** ——

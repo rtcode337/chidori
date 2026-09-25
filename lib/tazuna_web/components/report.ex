@@ -39,6 +39,8 @@ defmodule TazunaWeb.Report do
   # 全画面で読む。目次の項目は、押すと全画面でその章から開く（`open_event`）
   attr :intro_only, :boolean, default: false
   attr :open_event, :string, default: nil
+  # どの並びのまとめか（全画面で開くときに渡す。`main` / `interest`）
+  attr :open_kind, :string, default: nil
 
   @doc """
   まとめ 1 件を、レポートとして描きます。
@@ -95,6 +97,7 @@ defmodule TazunaWeb.Report do
               href={"#digest-viewer-s#{section.index}"}
               phx-click={@open_event}
               phx-value-index="0"
+              phx-value-kind={@open_kind}
               phx-value-section={section.index}
             >
               {section.title}

@@ -109,7 +109,7 @@ defmodule Tazuna.Themes do
   語を拾ってくる指定。**記事の収集のタグを、そのまま名簿にします**。
 
   **外す語はここで書きます** —— 機械が読む印（`_chiezo_…`）と、tazuna が決めている
-  語（種別・重要度・話題度）は話題ではありません。**配信元の名前は書けません**
+  語（種別・重要度・話題度・興味度・まとめの印）は話題ではありません。**配信元の名前は書けません**
   （配信元が名乗るタイトルなので、tazuna は知りません）—— あれは整理の回が
   「技術の話ではない」として外します。
   """
@@ -121,6 +121,9 @@ defmodule Tazuna.Themes do
         "^_chiezo_",
         "^#{Tazuna.News.importance_tag()}:",
         "^#{Tazuna.News.buzz_tag()}:",
+        "^#{Tazuna.News.interest_tag()}:",
+        # まとめの印も話題ではない（記事ではなく、要約の回が書いた読み物に付く）
+        "^(#{Tazuna.News.digest_tag()}|#{Tazuna.News.interest_digest_tag()})$",
         "^(#{Enum.join(Tazuna.News.kind_tags(), "|")})$"
       ],
       min_docs: @min_docs,

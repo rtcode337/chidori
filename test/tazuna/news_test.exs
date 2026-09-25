@@ -432,6 +432,56 @@ defmodule Tazuna.NewsTest do
     end
   end
 
+  describe "興味トピック" do
+    defp with_interests(names),
+      do: Map.put(defined_topic("tazuna_tech"), :interests, names)
+
+    test "選んでいれば、整理の回に興味度を付けさせる（付け終えた点は付け直させない）" do
+      prompt = News.refine_prompt(with_interests(["LLM", "Rust"]))
+
+      assert prompt =~ ~s("興味度:<0〜100 の整数>")
+      assert prompt =~ "「LLM」、「Rust」"
+      assert prompt =~ "付け直さないでください"
+    end
+
+    test "選んでいなければ、興味度を付けさせない" do
+      refute News.refine_prompt(with_interests([])) =~ "興味度"
+    end
+
+    test "選んでいるときだけ、興味トピックの要約の巡回を置く" do
+      names = &Enum.map(News.sweeps(&1), fn sweep -> sweep.name end)
+
+      assert "興味の要約" in names.(with_interests(["LLM"]))
+      refute "興味の要約" in names.(with_interests([]))
+
+      sweep = Enum.find(News.sweeps(with_interests(["LLM"])), &(&1.name == "興味の要約"))
+      assert sweep.on_demand
+      assert sweep.prompt =~ ~s(tags: "興味のまとめ" を**必ず**付けてください)
+      assert sweep.prompt =~ "「LLM」"
+      # ふつうのまとめの印は付けさせない（2 本が 1 つの並びに混ざる）
+      assert sweep.prompt =~ ~s("まとめ" は**付けないでください**)
+    end
+
+    test "興味度を読む（無ければ nil、範囲の外は端へ）" do
+      assert News.interest_score(["興味度:73"]) == 73
+      assert News.interest_score(["興味度:120"]) == 100
+      assert News.interest_score(["重要度:高"]) == nil
+    end
+
+    test "興味トピックの要約は、記事にもふつうのまとめにも混ぜない" do
+      recent = [
+        %{"title" => "興味のまとめ: A（1）", "tags" => ["興味のまとめ"]},
+        %{"title" => "まとめ: B（1）", "tags" => ["まとめ"]},
+        %{"title" => "記事", "tags" => ["ニュース", "興味度:40"]}
+      ]
+
+      assert Enum.map(News.to_articles(recent), & &1.title) == ["記事"]
+      assert Enum.map(News.to_digests(recent), & &1.title) == ["まとめ: B（1）"]
+      assert Enum.map(News.to_interest_digests(recent), & &1.title) == ["興味のまとめ: A（1）"]
+      assert [%{interest: 40}] = News.to_articles(recent)
+    end
+  end
+
   describe "巡回" do
     test "仕事ごとに別の時計で回す" do
       names = defined_topic("tazuna_news") |> News.sweeps() |> Enum.map(& &1.name)
@@ -649,7 +699,7 @@ defmodule Tazuna.NewsTest do
       # まとめが消える（実際に消えた）
       prompt = News.refine_prompt(defined_topic("tazuna_tech"))
 
-      assert prompt =~ "「まとめ」のタグが付いたものには触らないでください"
+      assert prompt =~ "「まとめ」「興味のまとめ」のタグが付いたものには触らないでください"
     end
 
     test "整理は、ニュース以外も探す" do

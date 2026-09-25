@@ -19,6 +19,8 @@ defmodule TazunaWeb.TopicMap do
   alias Tazuna.Themes.Graph
 
   attr :state, :map, required: true, doc: "`Tazuna.Themes.read/2` が返すもの"
+  attr :interests, :list, default: [], doc: "選んでいる興味トピック（札に印を付ける）"
+  attr :picked, :string, default: nil, doc: "押して選んでいる語（その線を濃くする）"
 
   def topic_map(assigns) do
     assigns =
@@ -26,6 +28,10 @@ defmodule TazunaWeb.TopicMap do
         map: Graph.build(assigns.state.themes),
         list: sorted(assigns.state.themes)
       )
+
+    # **選んでいる語はサーバーでも描く** —— 画面が描き直されると、`topic_map.js` が
+    # 付けた印は消える（押した直後はあちらが先に付け、描き直しの後はこちらが持つ）
+    assigns = assign(assigns, near: near(assigns.map.edges, assigns.picked))
 
     ~H"""
     <section :if={@map.nodes != []} class="topic-map" aria-label="トピックの網">
@@ -35,7 +41,7 @@ defmodule TazunaWeb.TopicMap do
            周りの話題を見に行く。全体は「全体」のボタンで見られる --%>
       <div
         id="topic-canvas"
-        class="relation-canvas topic-canvas"
+        class={["relation-canvas topic-canvas", @picked && "has-pick"]}
         phx-hook="TopicMap"
         data-focus-x={@map.focus.x}
         data-focus-y={@map.focus.y}
@@ -82,6 +88,7 @@ defmodule TazunaWeb.TopicMap do
                  その話題の線だけを濃く残す（`topic_map.js` が `is-lit` を付ける） --%>
             <line
               :for={edge <- @map.edges}
+              class={@picked in [edge.from, edge.to] && "is-lit"}
               data-from={edge.from}
               data-to={edge.to}
               x1={edge.x1}
@@ -92,7 +99,16 @@ defmodule TazunaWeb.TopicMap do
             />
           </g>
           <g class="topic-nodes">
-            <g :for={node <- @map.nodes} class="topic-node" data-name={node.name}>
+            <g
+              :for={node <- @map.nodes}
+              class={[
+                "topic-node",
+                node.name in @interests && "is-interest",
+                @picked == node.name && "is-picked",
+                MapSet.member?(@near, node.name) && "is-near"
+              ]}
+              data-name={node.name}
+            >
               <%!-- 話題は角丸の札。**大きさは字の大きさ**（直近の記事の数）で、
                    幅と高さは名前から決まる（名前を削らない） --%>
               <rect
@@ -124,7 +140,7 @@ defmodule TazunaWeb.TopicMap do
         </svg>
       </div>
       <p class="muted-note">
-        {length(@map.nodes)} 件の話題を出しています。札の大きさは直近の記事の数、囲みは親子（上位の話題とその仲間）。線は一緒に出てきた話題どうしを結び（太いほど多い）、札を押すとその話題の線だけが濃く残ります。
+        {length(@map.nodes)} 件の話題を出しています。札の大きさは直近の記事の数、囲みは親子（上位の話題とその仲間）、★ の札は興味トピック。札を押すと、その話題の記事が図の下に並びます。線は一緒に出てきた話題どうしを結び（太いほど多い）、札を押すとその話題の線だけが濃く残ります。
       </p>
 
       <%!-- 図に出ないものも読める道を残す。**畳んでおく** —— 記事より前に
@@ -155,6 +171,17 @@ defmodule TazunaWeb.TopicMap do
       </details>
     </section>
     """
+  end
+
+  # 選んでいる語と線で結ばれている語
+  defp near(_edges, nil), do: MapSet.new()
+
+  defp near(edges, picked) do
+    for edge <- edges,
+        picked in [edge.from, edge.to],
+        name <- [edge.from, edge.to],
+        into: MapSet.new(),
+        do: name
   end
 
   # 見出しの色は、枠と同じ分野の色を濃くしたもの

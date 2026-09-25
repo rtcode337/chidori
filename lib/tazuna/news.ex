@@ -26,6 +26,7 @@ defmodule Tazuna.News do
   alias Tazuna.Chiezo
   alias Tazuna.Http
   alias Tazuna.Jst
+  alias Tazuna.News.Interests
   alias Tazuna.News.Report
 
   @user_agent "tazuna/0.1 (+https://github.com/rtcode337/tazuna)"
@@ -82,6 +83,19 @@ defmodule Tazuna.News do
   # 判断です（同じ出来事が何本の媒体で報じられているか、人気枠から入っているか）。
   @buzz_tag "話題度"
 
+  # **興味トピックとの近さ**の印（0〜100。整理の回が付ける）。重要度とも話題度とも
+  # 別の軸 —— あちらは「誰にとっても読む価値があるか」「界隈が話しているか」で、
+  # こちらは「この読者が選んだ語にどれだけ近いか」。興味トピックを選んでいなければ付けない
+  @interest_tag "興味度"
+
+  # 興味トピックの要約に付ける印と、それを書く巡回。**ふつうのまとめと印を分ける** ——
+  # 同じ「まとめ」の印にすると、画面でも通知でも 2 本が 1 つの並びに混ざる
+  @interest_digest_tag "興味のまとめ"
+  @interest_digest_sweep "興味の要約"
+
+  # トピックから引く記事の上限（語 1 つあたり）。**見に行く画面なので、全部は要らない**
+  @tagged_limit 60
+
   # 話題に関心が書かれていないときの言い方
   @default_interest "暮らし・社会・経済への影響が大きいこと"
 
@@ -92,6 +106,8 @@ defmodule Tazuna.News do
             # まとめ（`@digest_tag` の付いた1件）。**記事と別に持つ** ——
             # 一覧に混ぜると、まとめが記事のふりをして並ぶ
             digests: [],
+            # 興味トピックの要約（`@interest_digest_tag`）。ふつうのまとめとは別の並び
+            interest_digests: [],
             checked_at: nil,
             reason: nil,
             task: nil,
@@ -239,6 +255,7 @@ defmodule Tazuna.News do
       collection: nil,
       articles: [],
       digests: [],
+      interest_digests: [],
       checked_at: nil,
       reason: nil,
       configured: chiezo_base_url() != nil
@@ -370,6 +387,7 @@ defmodule Tazuna.News do
         collection: collection,
         articles: articles,
         digests: Map.get(read, :digests, []),
+        interest_digests: Map.get(read, :interest_digests, []),
         checked_at: DateTime.utc_now(),
         reason: nil,
         task: nil
@@ -418,6 +436,7 @@ defmodule Tazuna.News do
       collection: state.collection,
       articles: state.articles,
       digests: state.digests,
+      interest_digests: state.interest_digests,
       checked_at: state.checked_at,
       reason: state.reason,
       configured: chiezo_base_url() != nil
@@ -429,13 +448,13 @@ defmodule Tazuna.News do
   defp perform(:refresh, base, name), do: read(base, name)
 
   defp perform({:request, topic}, base, name) do
-    with :ok <- create_collection(base, name, topic) do
+    with :ok <- create_collection(base, name, Interests.attach(topic)) do
       read(base, name)
     end
   end
 
   defp perform({:setup, topic, choices}, base, name) do
-    case create_collection(base, name, topic) do
+    case create_collection(base, name, Interests.attach(topic)) do
       :ok -> perform({:push, topic, choices}, base, name)
       {:error, reason} -> {:error, reason}
     end
@@ -444,7 +463,10 @@ defmodule Tazuna.News do
   defp perform({:push, topic, choices}, base, name) do
     # **断られても読み直す。** 読み直しは成功するので、結果だけ見ていると
     # 「押したのに何も変わらない」としか映らない（送れていないことに気づけない）
-    case {Tazuna.Chiezo.patch(base, name, attrs(name, topic, choices)), read(base, name)} do
+    # **興味トピックを載せてから組む**（整理と興味の要約の依頼文に書き込むため）
+    attrs = attrs(name, Interests.attach(topic), choices)
+
+    case {Tazuna.Chiezo.patch(base, name, attrs), read(base, name)} do
       {:ok, read} -> read
       {{:error, reason}, _read} -> {:error, reason}
     end
@@ -517,7 +539,8 @@ defmodule Tazuna.News do
              %{
                collection: collection,
                articles: to_articles(detail["recent"]),
-               digests: digests(base, name, detail["recent"])
+               digests: digests(base, name, detail["recent"]),
+               interest_digests: interest_digests(base, name)
              }}
 
           _ ->
@@ -618,8 +641,31 @@ defmodule Tazuna.News do
         only_new: true,
         prompt: digest_prompt(topic)
       }
-    ]
+    ] ++ interest_sweeps(topic)
   end
+
+  # 興味トピックの要約を書く回。**選んでいなければ置かない**（書く材料が無い）。
+  # 時計を持たないのは要約と同じ（起こすのは tazuna で、ふつうの要約のすぐ後）
+  defp interest_sweeps(topic) do
+    case interests_of(topic) do
+      [] ->
+        []
+
+      _interests ->
+        [
+          %{
+            name: @interest_digest_sweep,
+            on_demand: true,
+            only_new: true,
+            prompt: interest_digest_prompt(topic)
+          }
+        ]
+    end
+  end
+
+  @doc "話題に載っている興味トピック（`Tazuna.News.Interests.attach/1` が載せる）。"
+  def interests_of(%{interests: interests}) when is_list(interests), do: interests
+  def interests_of(_topic), do: []
 
   # 溜める回。**配信元があれば機械で引く** —— 見出し・要約・URL・配信日は機械が
   # 正確に取れるので、AI の枠は「何が重要か」「どうまとめるか」へ回す。
@@ -782,10 +828,15 @@ defmodule Tazuna.News do
     end
   end
 
-  defp tagged_digests(base, name) do
+  # 興味トピックの要約。**窓からは拾わない**（ふつうのまとめと同じ理由）。
+  # 無ければ空 —— 興味トピックを選んでいなければ書かれない
+  defp interest_digests(base, name),
+    do: base |> tagged_digests(name, @interest_digest_tag) |> with_body(base, name)
+
+  defp tagged_digests(base, name, tag \\ @digest_tag) do
     query =
       URI.encode_query(%{
-        "tag" => @digest_tag,
+        "tag" => tag,
         "fields" => "title,tags,opening,updated_at,extra",
         "limit" => 20
       })
@@ -797,7 +848,8 @@ defmodule Tazuna.News do
             # **並びは新しい順に直す。** filter が返すのは点数の順で、
             # そのまま先頭を取ると古いまとめが画面に出る
             results
-            |> to_digests()
+            |> to_entries()
+            |> Enum.filter(&(tag in &1.tags))
             |> Enum.sort_by(& &1.collected_at, :desc)
 
           _other ->
@@ -861,12 +913,22 @@ defmodule Tazuna.News do
   # まとめ（`@digest_tag` の付いたもの）。**記事と別に返す** ——
   # 一覧に混ぜると、まとめが記事のふりをして並ぶ
   def to_digests(recent) when is_list(recent) do
-    recent |> to_entries() |> Enum.filter(&digest?/1)
+    recent |> to_entries() |> Enum.filter(&(@digest_tag in &1.tags))
   end
 
   def to_digests(_recent), do: []
 
-  defp digest?(%{tags: tags}), do: @digest_tag in tags
+  # **興味トピックの要約も記事ではない**（一覧に混ぜると、要約が記事のふりをして並ぶ）。
+  # ふつうのまとめの並び（`to_digests/1`）にも入れない —— あちらは印で分ける
+  defp digest?(%{tags: tags}), do: @digest_tag in tags or @interest_digest_tag in tags
+
+  @doc false
+  # 興味トピックの要約（`@interest_digest_tag`）。直近の窓から拾う形（まとめを待つ側が使う）
+  def to_interest_digests(recent) when is_list(recent) do
+    recent |> to_entries() |> Enum.filter(&(@interest_digest_tag in &1.tags))
+  end
+
+  def to_interest_digests(_recent), do: []
 
   defp to_entries(recent) do
     Enum.flat_map(recent, fn
@@ -903,6 +965,8 @@ defmodule Tazuna.News do
               reason: reason,
               # **どれだけ反応されているか**（整理の回が付ける。無いこともある）
               buzz: buzz(tags),
+              # **興味トピックにどれだけ近いか**（0〜100。整理の回が付ける。無いこともある）
+              interest: interest_score(tags),
               # まとめが引いた記事（出典の URL → 見出しと絵）。記事の側では空のまま
               cited: %{}
             }
@@ -1015,7 +1079,7 @@ defmodule Tazuna.News do
     **迷ったら落とさないでください。** 消したものは Chiezo が覚えていて、
     次に同じ見出しが流れてきても戻りません。
 
-    **「#{@digest_tag}」のタグが付いたものには触らないでください**（消すのも書き換えるのも）。
+    **「#{@digest_tag}」「#{@interest_digest_tag}」のタグが付いたものには触らないでください**（消すのも書き換えるのも）。
     あれは要約の回が書いた読み物で、記事ではありません —— 同じ出来事に触れているので
     重複に見えますが、落とすと**画面と通知からまとめが消えます**（実際に消えました）。
 
@@ -1077,10 +1141,36 @@ defmodule Tazuna.News do
         見出しや本文に出てくる綴りのまま。**分野だけでは図になりません** ——
         話題のつながりはこのタグから作るので、「AI」「セキュリティ」のような広い語しか
         無いと、どの記事も同じ場所に集まってしまいます）
-
+    #{interest_rubric(topic)}
     **触ったものと足すものだけ返してください。** 触れなかったものはそのまま残ります。
     #{note_of(topic)}
     """
+  end
+
+  # 整理の回に付けさせる興味度の目安。**興味トピックを選んでいなければ何も足さない**
+  # （付ける基準が無いのに数を書かせると、どの記事にも同じような点が並ぶだけになる）
+  defp interest_rubric(topic) do
+    case interests_of(topic) do
+      [] ->
+        ""
+
+      interests ->
+        """
+          - "#{@interest_tag}:<0〜100 の整数>" を**必ず 1 つ**。読む人が選んだ興味トピック
+            （#{Enum.map_join(interests, "、", &"「#{&1}」")}）に、その 1 件が**どれだけ近いか**です。
+            **#{@importance_tag}・#{@buzz_tag}とは別の軸です** —— 誰にとっても大事か、界隈が
+            話しているかではなく、**この読者の興味に当たっているか**で決めてください。
+            目安は次のとおりです。
+            - 90〜100: 興味トピックそのものが主役（名指しで取り上げている）
+            - 60〜89: 興味トピックに直接効く（その技術の使い方・周辺の製品・競合）
+            - 30〜59: 同じ分野だが、興味トピックとのつながりは間接的
+            - 0〜29: 興味トピックとはほぼ関係がない
+            **既に「#{@interest_tag}:」が付いているものは付け直さないでください** ——
+            興味トピックは選び直されることがありますが、付けた点はその時点の興味での
+            判断として残します（選び直すたびに過去の点が動くと、並びが読めなくなります）。
+            **印がまだ無いものにだけ**付けてください。
+        """
+    end
   end
 
   # Chiezo での収集の名前（道具で引くときの相手）。**画面を通さない頼み方では
@@ -1226,6 +1316,41 @@ defmodule Tazuna.News do
     """
   end
 
+  @doc """
+  興味トピックの要約の依頼文。**ふつうの要約とは別の 1 本**を作ります。
+
+  同じ依頼文で材料だけ絞ると、どちらも「その期間の総ざらい」になって読み分けられません
+  （別の収集アプリ で同じことを確かめた判断）。こちらは**読む人が選んだ語に絞って**、
+  どの興味トピックの話か・何をすればよいかが分かるように書かせます。
+  形（要旨・要点・章・出典）はふつうの要約と同じにしてあります —— 画面と通知が
+  同じ読み方で扱えるように。
+  """
+  def interest_digest_prompt(topic) do
+    interests = Enum.map_join(interests_of(topic), "、", &"「#{&1}」")
+
+    digest_prompt(topic)
+    |> String.replace(
+      "前回のまとめから今回までに入ったものを、**1 件のレポート**にしてください。",
+      """
+      前回から今回までに入ったもののうち、**読む人が選んだ興味トピック（#{interests}）に
+      関わるものだけ**を、**1 件のレポート**にしてください。
+
+      **その期間の総ざらいにしないでください**（それは別の回が書いています）。
+      「#{@interest_tag}」の印が高いものを中心に、**どの興味トピックの話か**と、
+      **読む人が何をすればよいか**（試す・備える・追いかける）が分かるように書いてください。
+      興味トピックに関わるものが無ければ、**1 件も返さないでください**。
+      """
+    )
+    |> String.replace(
+      ~s("#{@digest_tag}: <その期間を一言で>（{now}）"),
+      ~s("#{@interest_digest_tag}: <その期間を一言で>（{now}）")
+    )
+    |> String.replace(
+      ~s(tags: "#{@digest_tag}" を**必ず**付けてください),
+      ~s(tags: "#{@interest_digest_tag}" を**必ず**付けてください。"#{@digest_tag}" は**付けないでください**)
+    )
+  end
+
   # 種別の言い方。**配信元の指定と揃える** —— 別々に書くと、機械が付ける種別と
   # AI が付ける種別が食い違う
   defp kinds, do: Enum.join(kind_tags(), " / ")
@@ -1247,6 +1372,50 @@ defmodule Tazuna.News do
 
   @doc "まとめに付くタグ。"
   def digest_tag, do: @digest_tag
+
+  @doc "興味度のタグの頭。"
+  def interest_tag, do: @interest_tag
+
+  @doc "興味トピックの要約に付くタグ。"
+  def interest_digest_tag, do: @interest_digest_tag
+
+  @doc "興味トピックの要約を書く巡回の名前。"
+  def interest_digest_sweep, do: @interest_digest_sweep
+
+  @doc """
+  そのトピックの記事（新しい順）。**トピックの語と、畳んだ言い換えのタグで引きます**
+  （記事の側は畳む前の表記のまま残っているので、言い換えで引かないと取りこぼす）。
+
+  トピックは記事のタグの値そのもの（`Tazuna.Themes`）なので、Chiezo のタグの口で
+  引けます。同じ記事が 2 つの語で当たることがあるので、見出しで 1 つにまとめます。
+  """
+  def articles_tagged(collection, names) when is_binary(collection) and is_list(names) do
+    case chiezo_base_url() do
+      nil ->
+        {:error, :chiezo_not_configured}
+
+      base ->
+        names
+        |> Enum.uniq()
+        |> Enum.reduce_while({:ok, []}, fn name, {:ok, found} ->
+          case Chiezo.spot_docs(base, collection, name, 0, @tagged_limit) do
+            {:ok, %{docs: docs}} -> {:cont, {:ok, found ++ docs}}
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
+        end)
+        |> case do
+          {:ok, docs} ->
+            {:ok,
+             docs
+             |> to_articles()
+             |> Enum.uniq_by(& &1.title)
+             |> Enum.sort_by(& &1.collected_at, :desc)}
+
+          error ->
+            error
+        end
+    end
+  end
 
   # 関心が空のままでも集めさせない文にはしない —— 指定なしで頼むと、
   # 何を集めればよいか決まらないまま AI が埋めることになる
@@ -1291,6 +1460,24 @@ defmodule Tazuna.News do
   end
 
   def buzz(_tags), do: nil
+
+  @doc """
+  興味度（0〜100）。**無ければ nil** —— 興味トピックを選ぶ前に入ったものや、
+  まだ整理が読んでいないものを「0 点」扱いすると、近いものまで下に沈む。
+  範囲の外の値は端へ寄せる（AI が 120 と書くことはある）。
+  """
+  def interest_score(tags) when is_list(tags) do
+    Enum.find_value(tags, fn tag ->
+      with [@interest_tag, value] <- String.split(tag, ":", parts: 2),
+           {n, _rest} <- Integer.parse(String.trim(value)) do
+        n |> max(0) |> min(100)
+      else
+        _ -> nil
+      end
+    end)
+  end
+
+  def interest_score(_tags), do: nil
 
   defp marked_importance(tags) do
     Enum.find_value(tags, fn tag ->

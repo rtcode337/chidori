@@ -63,6 +63,8 @@ defmodule Tazuna.DigestTest do
         which =
           cond do
             String.contains?(url, "/run") -> :refine
+            # 興味トピックの要約は、別の巡回として起こす
+            String.contains?(url, "/focus") and request.body =~ "興味の要約" -> :interest
             String.contains?(url, "/focus") -> :digest
             true -> :notify
           end
@@ -99,10 +101,19 @@ defmodule Tazuna.DigestTest do
           )
           |> Map.put(
             "recent",
-            if(MapSet.member?(done, :digest),
-              do: [digest("まとめ: 新しい回（2026-09-17 07:00）")],
-              else: [digest("まとめ: 前の回（2026-09-16 21:00）")]
-            )
+            if(MapSet.member?(done, :interest),
+              do: [
+                %{
+                  digest("興味のまとめ: 新しい回（2026-09-17 07:10）")
+                  | "tags" => ["興味のまとめ"]
+                }
+              ],
+              else: []
+            ) ++
+              if(MapSet.member?(done, :digest),
+                do: [digest("まとめ: 新しい回（2026-09-17 07:00）")],
+                else: [digest("まとめ: 前の回（2026-09-16 21:00）")]
+              )
           )
 
         HttpStub.ok(Jason.encode!(collection(overrides)))
@@ -133,6 +144,30 @@ defmodule Tazuna.DigestTest do
     # **どう終わったかを残す。** 誰も見ていない時刻に走る回なので、残さないと
     # 知らせが来なかった理由がログにしか無い
     assert Settings.get(@collection).last_digest_result =~ "知らせました"
+  end
+
+  test "興味トピックを選んでいれば、ふつうのまとめの後に興味の要約も書かせて知らせる",
+       %{topic: topic} do
+    Tazuna.News.Interests.toggle(@collection, "LLM")
+    stub_chiezo(%{})
+
+    assert Digest.run(topic) == {:ok, :sent}
+
+    assert_received {:digest, _url, _body}
+    assert_received {:notify, _url, _first}
+    assert_received {:interest, focus_url, body}
+    assert focus_url =~ "/focus"
+    assert Jason.decode!(body)["sweep"] == "興味の要約"
+    # 2 通目は興味の要約（見出しがタイトルになる）
+    assert_received {:notify, _url, second}
+    assert Jason.decode!(second)["title"] =~ "興味のまとめ"
+  end
+
+  test "興味トピックを選んでいなければ、興味の要約は起こさない", %{topic: topic} do
+    stub_chiezo(%{})
+
+    assert Digest.run(topic) == {:ok, :sent}
+    refute_received {:interest, _url, _body}
   end
 
   test "取り込み中なら、空くのを待ってから頼む", %{topic: topic} do

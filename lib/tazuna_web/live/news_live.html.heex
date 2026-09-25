@@ -41,38 +41,35 @@
          読めないので、何が起きたかを先に言う（通知へ流れるのは、この中の要旨） --%>
     <section :if={@news.digests != []} class="news-digest" aria-label="要約">
       <h2 class="news-section-title">要約</h2>
-      <% digest = List.first(@news.digests) %>
-      <%!-- **見出し・要旨・目次はここで読める。** 章と出典は全画面で読む ——
-           長いまとめをここに全部広げると、下の話題と記事一覧が遠くなる。
-           押すと全画面で開き、目次の項目を押すとその章から開く --%>
-      <div
-        class="digest-preview"
-        role="button"
-        tabindex="0"
-        phx-click="open_digest"
-        phx-value-index="0"
-        aria-label="要約を全画面で読む"
-      >
-        <.report
-          title={digest.title}
-          at={digest.collected_at}
-          body={digest.summary}
-          label={@topic && @topic.name}
-          articles={@news.articles}
-          cited={digest.cited}
-          intro_only
-          open_event="open_digest"
-        />
-        <p class="digest-open-hint">
-          タップで全文を全画面で読む<span :if={length(@news.digests) > 1}>（左右のスワイプで前後の要約へ）</span>
-        </p>
-      </div>
+      <.digest_preview
+        digests={@news.digests}
+        kind="main"
+        label={@topic && @topic.name}
+        articles={@news.articles}
+      />
+    </section>
+
+    <%!-- 興味トピックの要約。**ふつうの要約のすぐ下** —— 同じ期間を、読む人が選んだ
+         語に絞って書いた別の 1 本（興味トピックを選んでいなければ書かれない） --%>
+    <section
+      :if={@news.interest_digests != []}
+      class="news-digest"
+      aria-label="興味トピックの要約"
+    >
+      <h2 class="news-section-title">興味トピックの要約</h2>
+      <.digest_preview
+        digests={@news.interest_digests}
+        kind="interest"
+        label="興味トピック"
+        articles={@news.articles}
+      />
     </section>
 
     <%!-- 全画面の要約。**左右のスワイプで前後の要約へ**（`DigestSwipe`）。
          **古いほうを左に置く** —— 右へ払う（左のものを引き出す）のは「戻る」の
          動きなので、戻る先が古いほう。新しいほうへは左へ払う --%>
-    <%= if viewed = opened_digest(@digest_open, @news, @digest_full) do %>
+    <% viewing = digests_of(@news, @digest_kind) %>
+    <%= if viewed = opened_digest(@digest_open, @news, @digest_full, @digest_kind) do %>
       <div
         id="digest-viewer"
         class="digest-viewer"
@@ -89,12 +86,12 @@
             type="button"
             phx-click="digest_step"
             phx-value-by="1"
-            disabled={@digest_open >= length(@news.digests) - 1}
+            disabled={@digest_open >= length(viewing) - 1}
             aria-label="古い要約"
           >
             ← 古い
           </button>
-          <span class="digest-viewer-count">{@digest_open + 1} / {length(@news.digests)}</span>
+          <span class="digest-viewer-count">{@digest_open + 1} / {length(viewing)}</span>
           <button
             type="button"
             phx-click="digest_step"
@@ -118,7 +115,7 @@
             title={viewed.title}
             at={viewed.collected_at}
             body={viewed.summary}
-            label={@topic && @topic.name}
+            label={if @digest_kind == :interest, do: "興味トピック", else: @topic && @topic.name}
             articles={@news.articles}
             cited={viewed.cited}
             id_prefix="digest-viewer"
@@ -130,7 +127,69 @@
     <%!-- 記事から育った話題の網。**まとめのすぐ下** —— まとめが「この期間に何が
          あったか」を文で言うのに対して、図は同じことを語のつながりで見せる。
          育てるのは Chiezo で、tazuna は依頼文を渡して読むだけ --%>
-    <.topic_map state={@themes} />
+    <.topic_map state={@themes} interests={@interests} picked={@picked_theme} />
+
+    <%!-- 選んだトピックの記事と、興味トピックに入れる口。**図のすぐ下** —— 札を押したら
+         その話題の記事を読みに行ける（押すと網の線も濃くなる） --%>
+    <section :if={@picked_theme} class="theme-pick" aria-label={"「#{@picked_theme}」の記事"}>
+      <header class="theme-pick-head">
+        <h2 class="news-section-title">「{@picked_theme}」の記事</h2>
+        <button
+          type="button"
+          class={["interest-toggle", @picked_theme in @interests && "is-on"]}
+          phx-click="toggle_interest"
+          phx-value-name={@picked_theme}
+          aria-pressed={to_string(@picked_theme in @interests)}
+        >
+          {if @picked_theme in @interests, do: "★ 興味トピックから外す", else: "☆ 興味トピックに入れる"}
+        </button>
+        <button type="button" class="theme-pick-close" phx-click="pick_theme" phx-value-name="">
+          閉じる
+        </button>
+      </header>
+      <%= case @theme_articles do %>
+        <% :loading -> %>
+          <p class="muted-note">記事を探しています…</p>
+        <% {:error, reason} -> %>
+          <p class="muted-note">記事を引けませんでした（{ask_error(reason)}）</p>
+        <% [] -> %>
+          <p class="muted-note">この語の付いた記事は、いま溜まっていません。</p>
+        <% articles when is_list(articles) -> %>
+          <p class="muted-note">
+            {length(articles)} 件（新しい順）。トピックの語と、畳んだ言い換えのタグで引いています。
+          </p>
+          <div class="news-list">
+            <.article_card :for={article <- articles} article={article} />
+          </div>
+        <% _none -> %>
+      <% end %>
+    </section>
+
+    <%!-- 選んでいる興味トピック。**整理の回が付ける「興味度」と、興味トピックの要約の
+         材料**。札を押して選び、ここから外せる --%>
+    <section :if={@interests != []} class="interest-list" aria-label="興味トピック">
+      <h2 class="news-section-title">興味トピック</h2>
+      <ul>
+        <li :for={name <- @interests}>
+          <button type="button" class="interest-chip" phx-click="pick_theme" phx-value-name={name}>
+            ★ {name}
+          </button>
+          <button
+            type="button"
+            class="interest-remove"
+            phx-click="toggle_interest"
+            phx-value-name={name}
+            aria-label={"「#{name}」を興味トピックから外す"}
+          >
+            ×
+          </button>
+        </li>
+      </ul>
+      <p class="muted-note">
+        整理の回が、これから入る記事に興味度（0〜100）を付け、要約とは別に興味トピックの要約を書きます。
+        選び直すと依頼文を Chiezo へ送り直します（付け終えた点は動かしません）。
+      </p>
+    </section>
 
     <%!-- 記事の一覧。**ふだんは畳んでおく** —— 読むのは要約と話題の網で、1 件ずつを
          拾いに行くのは気になったときだけ。開いたままだと画面の大半を占める --%>
@@ -138,33 +197,27 @@
       <summary>
         <h2 class="news-section-title">記事一覧（{length(@news.articles)} 件）</h2>
       </summary>
+      <%!-- 並びの切り替え。**興味の近い順は、興味トピックを選んでいるときだけ** --%>
+      <div :if={@interests != []} class="article-sort" role="group" aria-label="並び">
+        <button
+          type="button"
+          class={@article_sort == :importance && "selected"}
+          phx-click="sort_articles"
+          phx-value-by="importance"
+        >
+          重要度順
+        </button>
+        <button
+          type="button"
+          class={@article_sort == :interest && "selected"}
+          phx-click="sort_articles"
+          phx-value-by="interest"
+        >
+          興味の近い順
+        </button>
+      </div>
       <section class="news-list" aria-live="polite">
-        <%= for article <- sorted_articles(@news) do %>
-          <article>
-            <%!-- 配信元が配っている絵。**無いほうが多い**ので、あるときだけ出す --%>
-            <img :if={article.image} class="news-thumb" src={article.image} alt="" loading="lazy" />
-            <div>
-              <%!-- 反応の大きさは重要度と別の軸なので、印の隣ではなく日付の並びに置く --%>
-              <p class="news-source">
-                {article.collected_at}<span :if={buzz_text(article)}>・{buzz_text(article)}</span>
-              </p>
-              <h2>
-                <%!-- 出典があれば原文へ。無ければ見出しだけ出す（Chiezo 側にも入口はある） --%>
-                <%= if article.url do %>
-                  <a href={article.url} target="_blank" rel="noreferrer">{article.title}</a>
-                <% else %>
-                  {article.title}
-                <% end %>
-              </h2>
-              <p :if={article.summary} class="news-summary">{article.summary}</p>
-              <%!-- なぜこの重さなのか。読んだ AI が付けた印なら、その旨も含めて出る --%>
-              <p class="news-reason">{article.reason}</p>
-            </div>
-            <span class={importance_class(article.importance)}>
-              {importance_label(article.importance)}
-            </span>
-          </article>
-        <% end %>
+        <.article_card :for={article <- sorted_articles(@news, @article_sort)} article={article} />
       </section>
     </details>
 

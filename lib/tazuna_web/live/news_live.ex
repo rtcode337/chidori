@@ -25,6 +25,7 @@ defmodule TazunaWeb.NewsLive do
   alias Tazuna.Digest.Scheduler
   alias Tazuna.Jst
   alias Tazuna.News
+  alias Tazuna.News.Interests
   alias Tazuna.Notify
   alias Tazuna.Notify.Setting
   alias Tazuna.Notify.Settings
@@ -47,8 +48,17 @@ defmodule TazunaWeb.NewsLive do
         asking: false,
         digest_message: nil,
         notify_form: nil,
-        # 全画面で開いているまとめ（`news.digests` の何件目か。閉じていれば nil）
+        # 全画面で開いているまとめ（何件目か。閉じていれば nil）と、どちらの並びか
+        # （`:main` = ふつうのまとめ / `:interest` = 興味トピックの要約）
         digest_open: nil,
+        digest_kind: :main,
+        # 興味トピック（話題ごと。tazuna が持つ）
+        interests: [],
+        # トピックの網で選んでいる語と、その記事（読み込み中は `:loading`）
+        picked_theme: nil,
+        theme_articles: nil,
+        # 記事一覧の並び（`:importance` = 重要度順 / `:interest` = 興味の近い順）
+        article_sort: :importance,
         # 全画面で開いたときに、先に見せる章（目次から開いたとき。番号）
         digest_section: nil,
         # 本文を取り直したまとめ（見出し → まとめ）。**最初から本文を持つのは先頭の
@@ -92,8 +102,13 @@ defmodule TazunaWeb.NewsLive do
         notify_form: notify_form(topic),
         themes: empty_themes(),
         digest_open: nil,
+        digest_kind: :main,
         digest_section: nil,
-        digest_full: %{}
+        digest_full: %{},
+        interests: if(topic, do: Interests.list(topic.collection), else: []),
+        picked_theme: nil,
+        theme_articles: nil,
+        article_sort: :importance
       )
 
     {:noreply, load_themes(socket)}
@@ -233,13 +248,81 @@ defmodule TazunaWeb.NewsLive do
     end
   end
 
+  # **トピックの網で語を選ぶ**（札を押したとき。`TopicMap` が送る）。選んだ語の記事を
+  # 引いて、図の下に並べる。**その語と、畳んだ言い換え**で引く（記事の側は畳む前の
+  # 表記のまま残っている）。空の名前は「選ぶのをやめる」
+  def handle_event("pick_theme", %{"name" => name}, socket) when name in [nil, ""],
+    do: {:noreply, assign(socket, picked_theme: nil, theme_articles: nil)}
+
+  def handle_event("pick_theme", %{"name" => name}, socket) do
+    topic = socket.assigns.topic
+
+    case Enum.find(socket.assigns.themes.themes, &(&1.name == name)) do
+      nil ->
+        {:noreply, socket}
+
+      theme when topic != nil ->
+        names = [theme.name | synonyms_of(theme)]
+
+        {:noreply,
+         socket
+         |> assign(picked_theme: theme.name, theme_articles: :loading)
+         |> start_async({:theme_articles, theme.name}, fn ->
+           News.articles_tagged(topic.collection, names)
+         end)}
+
+      _no_topic ->
+        {:noreply, socket}
+    end
+  end
+
+  # **興味トピックを選ぶ・外す。** 選び直したら、**整理と興味の要約の依頼文を
+  # Chiezo へ送り直す**（依頼文は Chiezo に置いてあるので、送らないと効かない）。
+  # 送るときは、いま Chiezo に入っている巡回ごとの相手をそのまま載せる ——
+  # 載せないと、送り直した拍子に画面で選んだ相手が既定へ戻る。
+  # **付け終えた興味度は動かさない**（依頼文でそう頼んである。点はその時点の興味での判断）
+  def handle_event("toggle_interest", %{"name" => name}, socket) do
+    topic = socket.assigns.topic
+
+    if topic do
+      interests = Interests.toggle(topic.collection, name)
+      socket = assign(socket, interests: interests)
+
+      if socket.assigns.news.collection do
+        News.push_settings(
+          News.server(topic.collection),
+          topic,
+          current_choices(socket.assigns.news.collection)
+        )
+
+        {:noreply, put_flash(socket, :info, "興味トピックを変えて、整理と要約の依頼文を Chiezo へ送り直しました。")}
+      else
+        {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # 記事一覧の並びを切り替える
+  def handle_event("sort_articles", %{"by" => "interest"}, socket),
+    do: {:noreply, assign(socket, article_sort: :interest)}
+
+  def handle_event("sort_articles", _params, socket),
+    do: {:noreply, assign(socket, article_sort: :importance)}
+
   # **まとめを全画面で読む。** 記事の一覧の上に置いたままだと、長いまとめは
   # 一覧を押し下げ、通しで読むにも画面の端が気になる。開いたら左右で前後のまとめへ
   # 目次の項目から開いたときは、その章から見せる（`section`）
   def handle_event("open_digest", %{"index" => index} = params, socket) do
     section = if params["section"], do: to_index(params["section"])
+    kind = if params["kind"] == "interest", do: :interest, else: :main
 
-    {:noreply, socket |> show_digest(to_index(index)) |> assign(digest_section: section)}
+    {:noreply,
+     socket
+     |> assign(digest_kind: kind)
+     |> show_digest(to_index(index))
+     |> assign(digest_section: section)}
   end
 
   # 左右のスワイプ・矢印。**1 が古いほう**（まとめは新しい順に並んでいる）。
@@ -291,7 +374,7 @@ defmodule TazunaWeb.NewsLive do
 
   # 開くまとめを決め、**本文をまだ持っていなければ引きに行く**。端より先へは進まない
   defp show_digest(socket, index) do
-    digests = socket.assigns.news.digests
+    digests = digests_of(socket.assigns.news, socket.assigns.digest_kind)
 
     if digests == [] do
       assign(socket, digest_open: nil)
@@ -316,14 +399,42 @@ defmodule TazunaWeb.NewsLive do
   @doc """
   全画面で見せるまとめ。本文を取り直したものがあればそちら（先頭の 1 件は最初から持つ）。
   """
-  def opened_digest(nil, _news, _full), do: nil
+  def opened_digest(index, news, full, kind \\ :main)
 
-  def opened_digest(index, news, full) do
-    case Enum.at(news.digests, index) do
+  def opened_digest(nil, _news, _full, _kind), do: nil
+
+  def opened_digest(index, news, full, kind) do
+    case Enum.at(digests_of(news, kind), index) do
       nil -> nil
       digest -> Map.get(full, digest.title, digest)
     end
   end
+
+  @doc "全画面で行き来する並び（ふつうのまとめ / 興味トピックの要約）。"
+  def digests_of(news, :interest), do: Map.get(news, :interest_digests, [])
+  def digests_of(news, _kind), do: Map.get(news, :digests, [])
+
+  # 畳んだ言い換え（トピックの `同義:` のタグ）
+  defp synonyms_of(theme) do
+    prefix = Themes.synonym_tag()
+
+    for tag <- theme.tags, String.starts_with?(tag, prefix) do
+      tag |> String.replace_prefix(prefix, "") |> String.trim()
+    end
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  @doc """
+  いま Chiezo に入っている巡回ごとの相手（`News.attrs/3` の `choices` の形）。
+  **送り直すときに載せる** —— 載せないと、画面で選んだ相手が既定へ戻る。
+  """
+  def current_choices(%{sweeps: sweeps}) when is_list(sweeps) do
+    Map.new(sweeps, fn sweep ->
+      {sweep.name, %{backend: sweep[:backend] || "", model: sweep[:model] || ""}}
+    end)
+  end
+
+  def current_choices(_collection), do: %{}
 
   defp with_base(fun) do
     case News.chiezo_base_url() do
@@ -363,6 +474,24 @@ defmodule TazunaWeb.NewsLive do
 
   # 引けなくても記事は読める。**選べないだけ**
   def handle_async(:backends, _result, socket), do: {:noreply, socket}
+
+  # 選んだ語の記事。**選び直したあとに前の語の結果が届くことがある**ので、語で確かめる
+  def handle_async({:theme_articles, name}, {:ok, result}, socket) do
+    if socket.assigns.picked_theme == name do
+      case result do
+        {:ok, articles} -> {:noreply, assign(socket, theme_articles: articles)}
+        {:error, reason} -> {:noreply, assign(socket, theme_articles: {:error, reason})}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_async({:theme_articles, name}, _exit, socket) do
+    if socket.assigns.picked_theme == name,
+      do: {:noreply, assign(socket, theme_articles: {:error, :chiezo_unavailable})},
+      else: {:noreply, socket}
+  end
 
   def handle_async({:digest, title}, {:ok, digest}, socket),
     do: {:noreply, update(socket, :digest_full, &Map.put(&1, title, digest))}
@@ -412,9 +541,97 @@ defmodule TazunaWeb.NewsLive do
 
   **低いものも消しません** —— 重要度は並びであって、ふるい分けではない。
   """
-  def sorted_articles(%{articles: articles}), do: Enum.sort_by(articles, &(-&1.importance))
+  def sorted_articles(news, sort \\ :importance)
 
-  def sorted_articles(_news), do: []
+  # **興味の近い順**。点の無いもの（興味トピックを選ぶ前に入った・まだ整理が
+  # 読んでいない）は後ろへ。同じ点なら重要度の順
+  def sorted_articles(%{articles: articles}, :interest),
+    do: Enum.sort_by(articles, &{-(&1[:interest] || -1), -&1.importance})
+
+  def sorted_articles(%{articles: articles}, _sort), do: Enum.sort_by(articles, &(-&1.importance))
+
+  def sorted_articles(_news, _sort), do: []
+
+  attr :digests, :list, required: true
+  attr :kind, :string, required: true
+  attr :label, :string, default: nil
+  attr :articles, :list, default: []
+
+  @doc """
+  要約の窓。**見出し・要旨・目次はここで読める。** 章と出典は全画面で読む ——
+  長いまとめをここに全部広げると、下の話題と記事一覧が遠くなる。
+  押すと全画面で開き、目次の項目を押すとその章から開く。
+  """
+  def digest_preview(assigns) do
+    assigns = assign(assigns, digest: List.first(assigns.digests))
+
+    ~H"""
+    <div
+      class="digest-preview"
+      role="button"
+      tabindex="0"
+      phx-click="open_digest"
+      phx-value-index="0"
+      phx-value-kind={@kind}
+      aria-label="要約を全画面で読む"
+    >
+      <.report
+        title={@digest.title}
+        at={@digest.collected_at}
+        body={@digest.summary}
+        label={@label}
+        articles={@articles}
+        cited={@digest.cited}
+        id_prefix={"preview-#{@kind}"}
+        intro_only
+        open_event="open_digest"
+        open_kind={@kind}
+      />
+      <p class="digest-open-hint">
+        タップで全文を全画面で読む<span :if={length(@digests) > 1}>（左右のスワイプで前後の要約へ）</span>
+      </p>
+    </div>
+    """
+  end
+
+  attr :article, :map, required: true
+
+  @doc "記事 1 件の札（記事一覧と、トピックから引いた記事で同じもの）。"
+  def article_card(assigns) do
+    ~H"""
+    <article>
+      <%!-- 配信元が配っている絵。**無いほうが多い**ので、あるときだけ出す --%>
+      <img :if={@article.image} class="news-thumb" src={@article.image} alt="" loading="lazy" />
+      <div>
+        <%!-- 反応の大きさ・興味の近さは重要度と別の軸なので、印の隣ではなく日付の並びに置く --%>
+        <p class="news-source">
+          {@article.collected_at}<span :if={buzz_text(@article)}>・{buzz_text(@article)}</span><span
+            :if={interest_text(@article)}
+            class="interest-score"
+          >・{interest_text(@article)}</span>
+        </p>
+        <h2>
+          <%!-- 出典があれば原文へ。無ければ見出しだけ出す（Chiezo 側にも入口はある） --%>
+          <%= if @article.url do %>
+            <a href={@article.url} target="_blank" rel="noreferrer">{@article.title}</a>
+          <% else %>
+            {@article.title}
+          <% end %>
+        </h2>
+        <p :if={@article.summary} class="news-summary">{@article.summary}</p>
+        <%!-- なぜこの重さなのか。読んだ AI が付けた印なら、その旨も含めて出る --%>
+        <p class="news-reason">{@article.reason}</p>
+      </div>
+      <span class={importance_class(@article.importance)}>
+        {importance_label(@article.importance)}
+      </span>
+    </article>
+    """
+  end
+
+  @doc "興味度の見え方（無ければ nil）。"
+  def interest_text(%{interest: n}) when is_integer(n), do: "興味 #{n}"
+  def interest_text(_article), do: nil
 
   @doc "重要度の見え方。0〜2 の 3 段で、高いものだけ色を変える。"
   def importance_class(2), do: "priority"

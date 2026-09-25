@@ -585,5 +585,111 @@ defmodule TazunaWeb.NewsLiveTest do
 
       refute html =~ "トピックの収集"
     end
+
+    # 札を押したときの記事と、興味トピックの PATCH を見る
+    defp stub_picking(test_pid) do
+      news =
+        Map.put(@news_collection, "sweeps", [
+          %{"name" => "機械収集", "use_feed" => true},
+          %{"name" => "整理", "backend" => "antigravity", "model" => "gemini-3.8-flash"}
+        ])
+
+      Tazuna.HttpStub.stub(fn
+        %{url: "http://chiezo.test:7010/v1/ai/backends"} ->
+          Tazuna.HttpStub.ok(~s({"backends":[]}))
+
+        %{url: "http://chiezo.test:7010/v1/sources"} ->
+          Tazuna.HttpStub.ok(~s({"sources":[]}))
+
+        %{method: :patch, url: url, body: body} ->
+          send(test_pid, {:patched, url, Jason.decode!(body)})
+          Tazuna.HttpStub.ok(~s({}))
+
+        %{url: "http://chiezo.test:7010/v1/collect"} ->
+          Tazuna.HttpStub.ok(Jason.encode!(%{"collections" => [news, @topic_collection]}))
+
+        %{url: "http://chiezo.test:7010/v1/tazuna_tech_topics/filter?" <> _query} ->
+          Tazuna.HttpStub.ok(
+            Jason.encode!(%{
+              "results" => [
+                theme("LLM", ["同義:大規模言語モデル"], %{"docs_recent" => 9}),
+                theme("Rust", [])
+              ]
+            })
+          )
+
+        # 記事をタグで引く口。**言い換えのタグでも引く**
+        %{url: "http://chiezo.test:7010/v1/tazuna_tech/filter?" <> query} ->
+          send(test_pid, {:tagged, URI.decode_query(query)["tag"]})
+
+          docs =
+            case URI.decode_query(query)["tag"] do
+              "LLM" -> [%{"title" => "LLM の新版", "tags" => ["LLM", "興味度:80"]}]
+              "大規模言語モデル" -> [%{"title" => "言い換えの記事", "tags" => ["大規模言語モデル"]}]
+              _other -> []
+            end
+
+          Tazuna.HttpStub.ok(Jason.encode!(%{"results" => docs, "total" => length(docs)}))
+
+        %{url: "http://chiezo.test:7010/v1/collect/tazuna_tech_topics" <> _rest} ->
+          Tazuna.HttpStub.ok(Jason.encode!(@topic_collection))
+
+        %{url: "http://chiezo.test:7010/v1/collect/tazuna_tech" <> _rest} ->
+          Tazuna.HttpStub.ok(Jason.encode!(news))
+
+        %{url: _other} ->
+          Tazuna.HttpStub.ok(~s({"results":[]}))
+      end)
+    end
+
+    test "札を押すと、その語と言い換えで記事を引いて図の下に並べる", %{conn: conn} do
+      stub_picking(self())
+      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_tech")
+      render_async(live, 2_000)
+
+      live |> element("#topic-canvas") |> render_hook("pick_theme", %{"name" => "LLM"})
+
+      assert_receive {:tagged, "LLM"}, 2_000
+      assert_receive {:tagged, "大規模言語モデル"}, 2_000
+      html = render_async(live, 2_000)
+
+      assert html =~ "「LLM」の記事"
+      assert html =~ "LLM の新版"
+      assert html =~ "言い換えの記事"
+      assert html =~ "興味 80"
+
+      # 押した札と、その線は描き直しても濃いまま（サーバーでも印を付ける）
+      assert html =~ ~r/class="topic-node[^"]*is-picked[^"]*" data-name="LLM"/
+
+      html = live |> element(".theme-pick-close") |> render_click()
+      refute html =~ "「LLM」の記事"
+    end
+
+    test "興味トピックに入れると、依頼文を Chiezo へ送り直す（選んだ相手はそのまま）", %{conn: conn} do
+      stub_picking(self())
+      Tazuna.News.subscribe("tazuna_tech")
+      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_tech")
+      assert_receive {:news_updated, %{status: :ready}}, 2_000
+      render_async(live, 2_000)
+
+      live |> element("#topic-canvas") |> render_hook("pick_theme", %{"name" => "LLM"})
+      html = live |> element(".interest-toggle") |> render_click()
+
+      assert html =~ "★ 興味トピックから外す"
+      assert html =~ ~s(class="interest-list")
+      assert Tazuna.News.Interests.list("tazuna_tech") == ["LLM"]
+
+      assert_receive {:patched, url, sent}, 2_000
+      assert url =~ "/v1/collect/tazuna_tech"
+      refine = Enum.find(sent["sweeps"], &(&1["name"] == "整理"))
+      assert refine["prompt"] =~ "興味度"
+      assert refine["prompt"] =~ "「LLM」"
+      # 送り直した拍子に、画面で選んだ相手が既定へ戻らない
+      assert refine["backend"] == "antigravity"
+      assert Enum.any?(sent["sweeps"], &(&1["name"] == "興味の要約"))
+
+      # 興味の近い順に並べ替えられる
+      assert html =~ "興味の近い順"
+    end
   end
 end

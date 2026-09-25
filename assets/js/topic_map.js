@@ -5,7 +5,8 @@
 //   ・開いたときは、いちばん動いている話題を真ん中に置く（`data-focus-x/y`）。
 //     全体を収めると 100 を超える札が豆粒になり、名前が 1 つも読めない。
 //     等倍（図の 1 単位 = 画面 1px）で寄せ、そこから引きずって周りを見に行く
-//   ・札を押したら、その話題の線だけを濃く残す（ふだんは全部の線を薄く出す）。
+//   ・札を押したら、その話題の線だけを濃く残し（ふだんは全部の線を薄く出す）、
+//     サーバーへ知らせて、その話題の記事を図の下に並べさせる。
 //     もう一度押すか余白を押すと戻る
 //   ・余白を押したら全画面（指で触る画面だけ。関連図と同じ）
 import {panZoom} from "./pan_zoom"
@@ -43,19 +44,25 @@ export default panZoom({
   tapped(ev) {
     const node = ev.target.closest(".topic-node")
     if (node) {
-      this.picked = this.picked === node.dataset.name ? null : node.dataset.name
-      this.mark()
+      this.pick(this.picked === node.dataset.name ? null : node.dataset.name)
       return
     }
     // 選んでいる間の余白は「選ぶのをやめる」。全画面へは飛ばない
     if (this.picked) {
-      this.picked = null
-      this.mark()
+      this.pick(null)
       return
     }
     if (touchLike() && !document.fullscreenElement) {
       this.fullscreen()
     }
+  },
+
+  // 選ぶ。**印はその場で付け**、サーバーへは記事を引かせるために知らせる
+  // （届いた記事は図の下に並ぶ。描き直しの後の印はサーバーが持つ）
+  pick(name) {
+    this.picked = name
+    this.mark()
+    this.pushEvent("pick_theme", {name: name || ""})
   },
 
   // 選んだ話題の線と、その相手の札に印を付ける
