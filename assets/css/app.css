@@ -108,6 +108,11 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .survey-row { display: flex; flex-wrap: nowrap; align-items: center; gap: .4rem; margin: .6rem 0 0; }
 .survey-row input { flex: 1 1 auto; min-width: 0; }
 .survey-row button { flex: none; white-space: nowrap; }
+/* 起点を地図で開く口。**座標のすぐ後ろのアイコン**（外へ出るので、押せると分かる色に） */
+.map-open { display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; margin-left: .25rem; vertical-align: -.35em; border: 1px solid #dcdff0; border-radius: .45rem; background: #fff; color: #554bc0; text-decoration: none; }
+.map-open:hover { border-color: #8b84d6; background: #f4f3ff; }
+/* いつ決めたかは座標の下の行に */
+.origin-when { display: block; margin-top: .15rem; font-size: .72rem; white-space: nowrap; }
 .place-candidates { display: flex; flex-wrap: wrap; gap: .35rem .9rem; margin: .5rem 0 0; padding: 0; list-style: none; }
 .place-candidates li { display: flex; align-items: baseline; gap: .35rem; }
 /* 区画の表。**数と時刻とボタンは折り返さない**（「ま/だ」と割れると読めない）。

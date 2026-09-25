@@ -417,6 +417,9 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert at.("<h3>Chiezo の収集</h3>") < at.(~s(aria-label="情報収集の時刻"))
       # 決めていなければ東京駅（ざっと見るが元から広げていた起点）
       assert html =~ "東京駅（35.681, 139.767）"
+
+      # 座標を Google マップで開ける（同じ名前の別の場所を選んでいないか確かめるため）
+      assert html =~ "https://www.google.com/maps/search/?api=1&amp;query=35.681%2C139.767"
       assert html =~ "既定のままです"
 
       live |> form("#place-search", %{"q" => "銀座"}) |> render_submit()

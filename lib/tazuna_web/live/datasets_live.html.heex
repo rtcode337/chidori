@@ -198,8 +198,22 @@
             <dt>起点</dt>
             <dd>
               <%!-- 決めた時刻が無いのは既定（東京駅）のまま --%>
-              {@plan.place}（{Float.round(@plan.lat, 4)}, {Float.round(@plan.lon, 4)}）
-              <span class="muted-note">
+              {@plan.place}（{Float.round(@plan.lat, 4)}, {Float.round(@plan.lon, 4)}）<%!--
+                **その座標を地図で確かめる口は、座標のすぐ後ろに**。地名で選んだので、
+                同じ名前の別の場所（駅と交差点など）を選んでいないかは、地図で見ないと
+                分からない。場所を取らないようアイコンにする（名前は読み上げとヒントで） --%><a
+                class="map-open"
+                href={google_maps_url(@plan)}
+                target="_blank"
+                rel="noreferrer"
+                title="Google マップで開く"
+                aria-label="Google マップで開く"
+              ><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path
+                d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"
+                fill="currentColor"
+              /></svg></a>
+              <%!-- **いつ決めたかは次の行に**（狭い画面で座標の途中から折り返すと読みにくい） --%>
+              <span class="muted-note origin-when">
                 {if @plan.place_set_at,
                   do: "#{Jst.format(@plan.place_set_at)} に決めました",
                   else: "既定のままです"}

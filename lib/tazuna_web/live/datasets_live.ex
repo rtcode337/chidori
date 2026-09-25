@@ -315,6 +315,17 @@ defmodule TazunaWeb.DatasetsLive do
 
   defp origin_note(_result), do: nil
 
+  @doc """
+  その座標を Google マップで開く URL。**座標で引く**（地名で引くと、同じ名前の
+  別の場所が出ることがある）。
+  """
+  def google_maps_url(%SurveyPlan{lat: lat, lon: lon}) when is_number(lat) and is_number(lon),
+    do:
+      "https://www.google.com/maps/search/?" <>
+        URI.encode_query(%{"api" => "1", "query" => "#{lat},#{lon}"})
+
+  def google_maps_url(_plan), do: nil
+
   @doc "起点の候補を見分ける一言（地域と種別）。"
   def place_label(place) do
     [place[:area], place[:feature]] |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join("・")
