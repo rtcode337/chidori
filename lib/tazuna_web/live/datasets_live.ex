@@ -251,7 +251,7 @@ defmodule TazunaWeb.DatasetsLive do
         deadline = System.monotonic_time(:millisecond) + @request_wait_ms
 
         Task.Supervisor.start_child(Tazuna.TaskSupervisor, fn ->
-          send(live, {:travel_log_request, Requests.run(dataset, plan.keys, text, deadline)})
+          send(live, {:travel_log_request, Requests.run(dataset, plan, deadline)})
         end)
 
         {:noreply, assign(socket, requesting: plan, requested: nil)}
@@ -447,7 +447,7 @@ defmodule TazunaWeb.DatasetsLive do
 
   def request_message(nil, {:ok, plan}) do
     "区画 #{length(plan.keys)} つで情報収集を頼みました（座標 #{length(plan.points)} 件）。" <>
-      "区画はふつうの回として見られ、貼ったテキストは補足として読まれます。" <>
+      "区画はふつうの回として見られ、依頼は区画ごとに、その区画に入るぶんだけが補足として読まれます。" <>
       missed_text(plan.missed)
   end
 

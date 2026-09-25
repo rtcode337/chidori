@@ -250,10 +250,12 @@ defmodule Tazuna.Chiezo do
         "model" => opts[:model],
         "worker" => opts[:worker],
         # **その回だけの補足**（travel-log から届いた依頼など）。Chiezo が依頼文の
-        # 後ろに足す。保存はされないので、定時の回は元の依頼文のまま走る
-        "note" => opts[:note]
+        # 後ろに足す。保存はされないので、定時の回は元の依頼文のまま走る。
+        # `note` は全部の区画に同じもの、`notes` は区画ごと（その区画を聞く回にだけ載る）
+        "note" => opts[:note],
+        "notes" => opts[:notes]
       }
-      |> Enum.reject(fn {_k, v} -> v in [nil, "", []] end)
+      |> Enum.reject(fn {_k, v} -> v in [nil, "", [], %{}] end)
       |> Map.new()
 
     body = if once == %{}, do: "", else: Jason.encode!(once)

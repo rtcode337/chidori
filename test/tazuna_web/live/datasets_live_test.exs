@@ -347,13 +347,17 @@ defmodule TazunaWeb.DatasetsLiveTest do
       |> render_submit()
 
       # **ふつうの回として走らせる**（割り込みではない）。区画は座標から引き、
-      # 同じ区画に入る 2 件は 1 つにまとめる。貼ったテキストは補足としてそのまま渡す
+      # 同じ区画に入る 2 件は 1 つにまとめる。補足は**区画ごと**に渡す
       assert_receive {:posted, url, sent}, 2_000
       assert url =~ "/v1/collect/tazuna_meals/run"
       assert url =~ URI.encode_query(%{"sweep" => "情報収集"})
       assert sent["partitions"] == ["35.6,139.7/35.7,139.8"]
-      assert sent["note"] =~ "閉店している"
-      assert sent["note"] =~ "そば屋がある"
+      note = sent["notes"]["35.6,139.7/35.7,139.8"]
+      assert note =~ "閉店している"
+      assert note =~ "そば屋がある"
+      # 区画の外の依頼は、どの区画にも渡さない
+      refute note =~ "区画の外"
+      refute Map.has_key?(sent, "note")
 
       # **外れた座標を黙って落とさない**
       html = render(live)

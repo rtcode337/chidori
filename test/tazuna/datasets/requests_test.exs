@@ -24,11 +24,38 @@ defmodule Tazuna.Datasets.RequestsTest do
     assert Requests.points(text) == [{35.65, 139.75}, {34.7, 135.5}]
   end
 
-  test "区画は矩形のものだけを見て、同じ区画は 1 つにまとめる" do
-    points = [{35.65, 139.75}, {35.66, 139.71}, {34.7, 135.5}, {26.2, 127.68}]
+  test "1 行ずつ、座標の入る区画の補足に振り分ける" do
+    # **区画ごとに分ける。** Chiezo は区画ごとに AI を呼ぶので、全部に同じ依頼を渡すと、
+    # その店を見ていない AI まで答えようとする
+    text = """
+    # 修正・追加の依頼(日本の食事処) 4件
+
+    - [修正] 東京の店 (35.65000,139.75000): 閉店
+      続きの説明
+    - [追加] (34.70000,135.50000): 大阪に足りない店
+    - [追加] (26.20000,127.68000): 区画の外
+      外の続き
+    - [修正] 東京の別の店 (35.66000,139.71000)
+    """
+
     ledger = partitions(["日本|-", @osaka, @tokyo])
 
-    assert Requests.partitions_for(points, ledger) == {[@tokyo, @osaka], [{26.2, 127.68}]}
+    assert {:ok, plan} = Requests.plan(text, ledger)
+    # 区画は矩形のものだけを見る。並びは書かれた順
+    assert plan.keys == [@tokyo, @osaka]
+    assert plan.missed == [{26.2, 127.68}]
+    assert length(plan.points) == 4
+
+    tokyo = plan.notes[@tokyo]
+
+    # 見出しはどの区画にも付け、座標の無い行は直前の依頼と同じ区画へ
+    assert tokyo =~ "# 修正・追加の依頼"
+    assert tokyo =~ "東京の店" and tokyo =~ "続きの説明" and tokyo =~ "東京の別の店"
+    refute tokyo =~ "大阪" or tokyo =~ "区画の外" or tokyo =~ "外の続き"
+
+    osaka = plan.notes[@osaka]
+    assert osaka =~ "# 修正・追加の依頼" and osaka =~ "大阪に足りない店"
+    refute osaka =~ "東京" or osaka =~ "外の続き"
   end
 
   test "区画が多すぎたら切らずに断る" do
