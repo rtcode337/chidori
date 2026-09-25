@@ -31,6 +31,15 @@ defmodule TazunaWeb.Report do
   attr :articles, :list, default: []
   attr :cited, :map, default: %{}
 
+  # 章の目印（目次のリンク先）の頭。**同じページに 2 つ描くときは変える** ——
+  # 同じ id が 2 つあると、目次が片方にしか飛ばず、LiveView も描き直す先を取り違える
+  attr :id_prefix, :string, default: "report"
+
+  # **頭だけを描く**（見出し・要旨・目次）。ページの上の窓がこれで、章と出典は
+  # 全画面で読む。目次の項目は、押すと全画面でその章から開く（`open_event`）
+  attr :intro_only, :boolean, default: false
+  attr :open_event, :string, default: nil
+
   @doc """
   まとめ 1 件を、レポートとして描きます。
 
@@ -81,12 +90,26 @@ defmodule TazunaWeb.Report do
       <nav :if={length(@sections) > 1} class="report-toc" aria-label="目次">
         <ol>
           <li :for={section <- @sections}>
-            <a href={"#report-s#{section.index}"}>{section.title}</a>
+            <a
+              :if={@open_event}
+              href={"#digest-viewer-s#{section.index}"}
+              phx-click={@open_event}
+              phx-value-index="0"
+              phx-value-section={section.index}
+            >
+              {section.title}
+            </a>
+            <a :if={!@open_event} href={"##{@id_prefix}-s#{section.index}"}>{section.title}</a>
           </li>
         </ol>
       </nav>
 
-      <section :for={section <- @sections} id={"report-s#{section.index}"} class="report-section">
+      <section
+        :for={section <- @sections}
+        :if={!@intro_only}
+        id={"#{@id_prefix}-s#{section.index}"}
+        class="report-section"
+      >
         <h3><span class="report-number">{section.index}</span>{section.title}</h3>
 
         <%!-- 絵は本文の脇に置く。上に置くと、読む前に大きな絵が挟まって章が切れる --%>
@@ -101,7 +124,7 @@ defmodule TazunaWeb.Report do
 
       <%!-- 出典一覧。章ごとの出典は読んだ流れで押すもので、こちらは後から
            「どこを見て書いたのか」をまとめて確かめるためのもの --%>
-      <div :if={@sources != []} class="report-refs">
+      <div :if={@sources != [] and !@intro_only} class="report-refs">
         <p class="report-refs-label">出典</p>
         <ol>
           <li :for={source <- @sources}>

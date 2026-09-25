@@ -39,51 +39,134 @@
 
     <%!-- まとめ。**記事の一覧より先に出す** —— 溜まったものをそのまま並べても
          読めないので、何が起きたかを先に言う（通知へ流れるのは、この中の要旨） --%>
-    <section :if={@news.digests != []} class="news-digest" aria-label="まとめ">
+    <section :if={@news.digests != []} class="news-digest" aria-label="要約">
+      <h2 class="news-section-title">要約</h2>
       <% digest = List.first(@news.digests) %>
-      <.report
-        title={digest.title}
-        at={digest.collected_at}
-        body={digest.summary}
-        label={@topic && @topic.name}
-        articles={@news.articles}
-        cited={digest.cited}
-      />
+      <%!-- **見出し・要旨・目次はここで読める。** 章と出典は全画面で読む ——
+           長いまとめをここに全部広げると、下の話題と記事一覧が遠くなる。
+           押すと全画面で開き、目次の項目を押すとその章から開く --%>
+      <div
+        class="digest-preview"
+        role="button"
+        tabindex="0"
+        phx-click="open_digest"
+        phx-value-index="0"
+        aria-label="要約を全画面で読む"
+      >
+        <.report
+          title={digest.title}
+          at={digest.collected_at}
+          body={digest.summary}
+          label={@topic && @topic.name}
+          articles={@news.articles}
+          cited={digest.cited}
+          intro_only
+          open_event="open_digest"
+        />
+        <p class="digest-open-hint">
+          タップで全文を全画面で読む<span :if={length(@news.digests) > 1}>（左右のスワイプで前後の要約へ）</span>
+        </p>
+      </div>
     </section>
+
+    <%!-- 全画面の要約。**左右のスワイプで前後の要約へ**（`DigestSwipe`）。
+         **古いほうを左に置く** —— 右へ払う（左のものを引き出す）のは「戻る」の
+         動きなので、戻る先が古いほう。新しいほうへは左へ払う --%>
+    <%= if viewed = opened_digest(@digest_open, @news, @digest_full) do %>
+      <div
+        id="digest-viewer"
+        class="digest-viewer"
+        role="dialog"
+        aria-modal="true"
+        aria-label="要約"
+        phx-hook="DigestSwipe"
+        phx-window-keydown="digest_key"
+        data-index={@digest_open}
+        data-section={@digest_section}
+      >
+        <nav class="digest-viewer-bar" aria-label="要約の切り替え">
+          <button
+            type="button"
+            phx-click="digest_step"
+            phx-value-by="1"
+            disabled={@digest_open >= length(@news.digests) - 1}
+            aria-label="古い要約"
+          >
+            ← 古い
+          </button>
+          <span class="digest-viewer-count">{@digest_open + 1} / {length(@news.digests)}</span>
+          <button
+            type="button"
+            phx-click="digest_step"
+            phx-value-by="-1"
+            disabled={@digest_open == 0}
+            aria-label="新しい要約"
+          >
+            新しい →
+          </button>
+          <button
+            type="button"
+            class="digest-viewer-close"
+            phx-click="close_digest"
+            aria-label="閉じる"
+          >
+            ×
+          </button>
+        </nav>
+        <div class="digest-viewer-body">
+          <.report
+            title={viewed.title}
+            at={viewed.collected_at}
+            body={viewed.summary}
+            label={@topic && @topic.name}
+            articles={@news.articles}
+            cited={viewed.cited}
+            id_prefix="digest-viewer"
+          />
+        </div>
+      </div>
+    <% end %>
 
     <%!-- 記事から育った話題の網。**まとめのすぐ下** —— まとめが「この期間に何が
          あったか」を文で言うのに対して、図は同じことを語のつながりで見せる。
          育てるのは Chiezo で、tazuna は依頼文を渡して読むだけ --%>
     <.topic_map state={@themes} />
 
-    <section class="news-list" aria-live="polite">
-      <%= for article <- sorted_articles(@news) do %>
-        <article>
-          <%!-- 配信元が配っている絵。**無いほうが多い**ので、あるときだけ出す --%>
-          <img :if={article.image} class="news-thumb" src={article.image} alt="" loading="lazy" />
-          <div>
-            <%!-- 反応の大きさは重要度と別の軸なので、印の隣ではなく日付の並びに置く --%>
-            <p class="news-source">
-              {article.collected_at}<span :if={buzz_text(article)}>・{buzz_text(article)}</span>
-            </p>
-            <h2>
-              <%!-- 出典があれば原文へ。無ければ見出しだけ出す（Chiezo 側にも入口はある） --%>
-              <%= if article.url do %>
-                <a href={article.url} target="_blank" rel="noreferrer">{article.title}</a>
-              <% else %>
-                {article.title}
-              <% end %>
-            </h2>
-            <p :if={article.summary} class="news-summary">{article.summary}</p>
-            <%!-- なぜこの重さなのか。読んだ AI が付けた印なら、その旨も含めて出る --%>
-            <p class="news-reason">{article.reason}</p>
-          </div>
-          <span class={importance_class(article.importance)}>
-            {importance_label(article.importance)}
-          </span>
-        </article>
-      <% end %>
-    </section>
+    <%!-- 記事の一覧。**ふだんは畳んでおく** —— 読むのは要約と話題の網で、1 件ずつを
+         拾いに行くのは気になったときだけ。開いたままだと画面の大半を占める --%>
+    <details class="news-articles">
+      <summary>
+        <h2 class="news-section-title">記事一覧（{length(@news.articles)} 件）</h2>
+      </summary>
+      <section class="news-list" aria-live="polite">
+        <%= for article <- sorted_articles(@news) do %>
+          <article>
+            <%!-- 配信元が配っている絵。**無いほうが多い**ので、あるときだけ出す --%>
+            <img :if={article.image} class="news-thumb" src={article.image} alt="" loading="lazy" />
+            <div>
+              <%!-- 反応の大きさは重要度と別の軸なので、印の隣ではなく日付の並びに置く --%>
+              <p class="news-source">
+                {article.collected_at}<span :if={buzz_text(article)}>・{buzz_text(article)}</span>
+              </p>
+              <h2>
+                <%!-- 出典があれば原文へ。無ければ見出しだけ出す（Chiezo 側にも入口はある） --%>
+                <%= if article.url do %>
+                  <a href={article.url} target="_blank" rel="noreferrer">{article.title}</a>
+                <% else %>
+                  {article.title}
+                <% end %>
+              </h2>
+              <p :if={article.summary} class="news-summary">{article.summary}</p>
+              <%!-- なぜこの重さなのか。読んだ AI が付けた印なら、その旨も含めて出る --%>
+              <p class="news-reason">{article.reason}</p>
+            </div>
+            <span class={importance_class(article.importance)}>
+              {importance_label(article.importance)}
+            </span>
+          </article>
+        <% end %>
+      </section>
+    </details>
 
     <%!-- 設定は 1 つの枠にまとめる（関連図と同じ形）。状態を見る場所と、直す場所と、
          押す場所が離れていると、何がどこへ効くのか読めない。

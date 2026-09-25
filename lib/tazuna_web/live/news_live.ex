@@ -46,7 +46,14 @@ defmodule TazunaWeb.NewsLive do
         theme_picks: %{},
         asking: false,
         digest_message: nil,
-        notify_form: nil
+        notify_form: nil,
+        # 全画面で開いているまとめ（`news.digests` の何件目か。閉じていれば nil）
+        digest_open: nil,
+        # 全画面で開いたときに、先に見せる章（目次から開いたとき。番号）
+        digest_section: nil,
+        # 本文を取り直したまとめ（見出し → まとめ）。**最初から本文を持つのは先頭の
+        # 1 件だけ**なので、前後を開いたときに引いて覚える
+        digest_full: %{}
       )
 
     socket =
@@ -83,7 +90,10 @@ defmodule TazunaWeb.NewsLive do
         page_title: if(topic, do: "最新情報 — #{topic.name}", else: "最新情報"),
         news: if(topic, do: News.current(News.server(topic.collection)), else: News.empty()),
         notify_form: notify_form(topic),
-        themes: empty_themes()
+        themes: empty_themes(),
+        digest_open: nil,
+        digest_section: nil,
+        digest_full: %{}
       )
 
     {:noreply, load_themes(socket)}
@@ -223,6 +233,98 @@ defmodule TazunaWeb.NewsLive do
     end
   end
 
+  # **まとめを全画面で読む。** 記事の一覧の上に置いたままだと、長いまとめは
+  # 一覧を押し下げ、通しで読むにも画面の端が気になる。開いたら左右で前後のまとめへ
+  # 目次の項目から開いたときは、その章から見せる（`section`）
+  def handle_event("open_digest", %{"index" => index} = params, socket) do
+    section = if params["section"], do: to_index(params["section"])
+
+    {:noreply, socket |> show_digest(to_index(index)) |> assign(digest_section: section)}
+  end
+
+  # 左右のスワイプ・矢印。**1 が古いほう**（まとめは新しい順に並んでいる）。
+  # 前後へ動いたら、章の指定は捨てる（別のまとめの章番号になるため）
+  def handle_event("digest_step", %{"by" => by}, socket) do
+    case socket.assigns.digest_open do
+      nil ->
+        {:noreply, socket}
+
+      at ->
+        {:noreply, socket |> show_digest(at + to_index(by)) |> assign(digest_section: nil)}
+    end
+  end
+
+  def handle_event("close_digest", _params, socket),
+    do: {:noreply, assign(socket, digest_open: nil)}
+
+  # 開いている間だけ、キーボードでも動かせる（← で古いほう、→ で新しいほう、Esc で閉じる）。
+  # 向きは上の帯のボタンの並びと同じ（古いほうが左）
+  def handle_event("digest_key", %{"key" => key}, socket) do
+    case {socket.assigns.digest_open, key} do
+      {nil, _key} ->
+        {:noreply, socket}
+
+      {_at, "Escape"} ->
+        {:noreply, assign(socket, digest_open: nil)}
+
+      {at, "ArrowLeft"} ->
+        {:noreply, socket |> show_digest(at + 1) |> assign(digest_section: nil)}
+
+      {at, "ArrowRight"} ->
+        {:noreply, socket |> show_digest(at - 1) |> assign(digest_section: nil)}
+
+      _other ->
+        {:noreply, socket}
+    end
+  end
+
+  defp to_index(value) when is_integer(value), do: value
+
+  defp to_index(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {n, ""} -> n
+      _other -> 0
+    end
+  end
+
+  defp to_index(_value), do: 0
+
+  # 開くまとめを決め、**本文をまだ持っていなければ引きに行く**。端より先へは進まない
+  defp show_digest(socket, index) do
+    digests = socket.assigns.news.digests
+
+    if digests == [] do
+      assign(socket, digest_open: nil)
+    else
+      index = index |> max(0) |> min(length(digests) - 1)
+      digest = Enum.at(digests, index)
+      socket = assign(socket, digest_open: index)
+
+      if index == 0 or Map.has_key?(socket.assigns.digest_full, digest.title) or
+           socket.assigns.topic == nil do
+        socket
+      else
+        collection = socket.assigns.topic.collection
+
+        start_async(socket, {:digest, digest.title}, fn ->
+          News.full_digest(collection, digest)
+        end)
+      end
+    end
+  end
+
+  @doc """
+  全画面で見せるまとめ。本文を取り直したものがあればそちら（先頭の 1 件は最初から持つ）。
+  """
+  def opened_digest(nil, _news, _full), do: nil
+
+  def opened_digest(index, news, full) do
+    case Enum.at(news.digests, index) do
+      nil -> nil
+      digest -> Map.get(full, digest.title, digest)
+    end
+  end
+
   defp with_base(fun) do
     case News.chiezo_base_url() do
       nil -> {:error, :chiezo_not_configured}
@@ -261,6 +363,12 @@ defmodule TazunaWeb.NewsLive do
 
   # 引けなくても記事は読める。**選べないだけ**
   def handle_async(:backends, _result, socket), do: {:noreply, socket}
+
+  def handle_async({:digest, title}, {:ok, digest}, socket),
+    do: {:noreply, update(socket, :digest_full, &Map.put(&1, title, digest))}
+
+  # 取れなくても冒頭は出ている（開けないより、切れた文でも読めるほうがよい）
+  def handle_async({:digest, _title}, _result, socket), do: {:noreply, socket}
 
   @impl true
   # まとめを作らせている最中の一言。**収集の状態とは別に受ける** ——

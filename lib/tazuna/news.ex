@@ -757,6 +757,18 @@ defmodule Tazuna.News do
 
   def with_body(digests, _base, _name), do: digests
 
+  @doc """
+  まとめ 1 件の本文を取り直します（`with_body/3` を 1 件ぶん）。**画面に最初から出す
+  1 件だけ**が本文を持っているので、前後のまとめを開いたときに引きます。
+  取れなければ冒頭のまま返します（開けないより、切れた文でも読めるほうがよい）。
+  """
+  def full_digest(collection, digest) when is_binary(collection) do
+    case chiezo_base_url() do
+      nil -> digest
+      base -> [digest] |> with_body(base, collection) |> List.first()
+    end
+  end
+
   # 画面に出すまとめ。**直近の窓から拾わない** —— 一覧に付いてくるのは新しい順の
   # 数十件で、見出しの回が 60 件足した後にはまとめがそこから押し出される
   # （実際、まとめが出ない時間帯ができた）。タグで引けば、窓の大きさに関係なく出る。

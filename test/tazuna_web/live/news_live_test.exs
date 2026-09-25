@@ -122,6 +122,11 @@ defmodule TazunaWeb.NewsLiveTest do
                 "tags" => ["まとめ"]
               },
               %{
+                "title" => "まとめ: 昨日の動き（2026-09-12）",
+                "opening" => "前の日は静かでした。",
+                "tags" => ["まとめ"]
+              },
+              %{
                 "title" => "React 19.3 が出た",
                 "opening" => "要約",
                 "tags" => ["ニュース", "話題度:高"],
@@ -184,6 +189,48 @@ defmodule TazunaWeb.NewsLiveTest do
       # そもそも別のことをしているので、同じ言い方になるほうがおかしい
       assert html =~ "流れ（時とともに増えるものを追う"
       refute html =~ "整理する（磨いていく）"
+    end
+
+    test "要約は押すと全画面で開き、右に払うと古いほう、左に払うと新しいほうへ動く", %{conn: conn} do
+      Tazuna.News.subscribe("tazuna_news")
+      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news")
+      assert_receive {:news_updated, %{status: :ready}}, 2_000
+
+      html = render(live)
+      assert html =~ ~s(<h2 class="news-section-title">要約</h2>)
+      refute html =~ "digest-viewer"
+
+      # **ページの上では頭だけ**（見出し・要旨・目次）。章と出典は全画面で読む
+      refute html =~ "report-section"
+
+      html = live |> element(".digest-preview") |> render_click()
+      assert html =~ "digest-viewer"
+      assert html =~ "1 / 2"
+      assert html =~ "report-section"
+
+      # **古いほうは左に置く**（右へ払う = 戻る）。フックは右へ払うと 1 を送る。
+      # 端より先へは進まない
+      html = live |> element("#digest-viewer") |> render_hook("digest_step", %{"by" => 1})
+      assert html =~ "2 / 2"
+      assert html =~ "昨日の動き"
+
+      html = live |> element("#digest-viewer") |> render_hook("digest_step", %{"by" => 1})
+      assert html =~ "2 / 2"
+
+      # 帯のボタンも同じ並び（古いほうが左）。← のキーは古いほう、→ は新しいほう
+      assert html =~ ~r/← 古い.*新しい →/s
+      html = render_keydown(live, "digest_key", %{"key" => "ArrowRight"})
+      assert html =~ "1 / 2"
+
+      html = live |> element(".digest-viewer-close") |> render_click()
+      refute html =~ "digest-viewer"
+    end
+
+    test "記事一覧は見出しを付けて、ふだんは畳んでおく", %{conn: conn} do
+      html = shown(conn)
+
+      assert html =~ ~s(<details class="news-articles">)
+      assert html =~ "記事一覧（2 件）"
     end
 
     test "まとめは記事の一覧に混ぜない", %{conn: conn} do
@@ -319,8 +366,12 @@ defmodule TazunaWeb.NewsLiveTest do
 
     test "まとめが、画面ではリンク入りで出る", %{conn: conn} do
       # 裸の URL のままだと、押す前にどこへ行くのか読めない。
-      # **通知のほうは逆**（URL のまま出す。ntfy が自分でリンクにする）
-      html = shown(conn)
+      # **通知のほうは逆**（URL のまま出す。ntfy が自分でリンクにする）。
+      # 章と出典は全画面で読む（ページの上には見出し・要旨・目次だけ）
+      Tazuna.News.subscribe("tazuna_news")
+      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news")
+      assert_receive {:news_updated, %{status: :ready}}, 2_000
+      html = live |> element(".digest-preview") |> render_click()
 
       assert html =~ "digest-source"
       assert html =~ ~s|href="https://example.com/1"|

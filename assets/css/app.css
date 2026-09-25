@@ -570,6 +570,28 @@ article p:last-child { color: #475569; line-height: 1.7; }
    何が起きたかを先に言う(通知へ流れるのは、この中の要旨)。
    枠そのものは場所を取るだけにして、見た目はレポート側で作る */
 .news-digest { margin: 1.5rem 0 2rem; }
+/* 要約・記事一覧の見出し(トピックの網の見出しと同じ大きさ) */
+.news-section-title { margin: 0 0 .7rem; font-size: 1.05rem; }
+/* 要約の窓。**見出し・要旨・目次はここで読める**(章と出典は押して全画面で読む) */
+.digest-preview { cursor: pointer; }
+.digest-open-hint { margin: .7rem 0 0; text-align: center; color: #554bc0; font-size: .82rem; font-weight: 700; }
+/* 全画面の要約。**中だけがスクロールする**(後ろのページは止める) */
+.digest-viewer { position: fixed; inset: 0; z-index: 70; overflow-y: auto; overscroll-behavior: contain; background: #f6f7fb; -webkit-overflow-scrolling: touch; }
+body.digest-open { overflow: hidden; }
+.digest-viewer-bar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: .4rem; padding: .5rem .8rem calc(.5rem); padding-top: calc(.5rem + env(safe-area-inset-top)); background: #fff; border-bottom: 1px solid #e6e8ef; }
+.digest-viewer-bar button { padding: .35rem .7rem; font-size: .85rem; white-space: nowrap; }
+.digest-viewer-bar button:disabled { opacity: .35; }
+.digest-viewer-count { flex: 1; text-align: center; color: #64748b; font-size: .82rem; }
+.digest-viewer-close { font-size: 1.1rem; line-height: 1; }
+.digest-viewer-body { max-width: 52rem; margin: 0 auto; padding: 1rem .8rem calc(2rem + env(safe-area-inset-bottom)); }
+/* 記事の一覧。**ふだんは畳んでおく**(見出しごと押して開く) */
+.news-articles { margin: 0 0 2rem; }
+.news-articles > summary { cursor: pointer; list-style: none; }
+.news-articles > summary::-webkit-details-marker { display: none; }
+.news-articles > summary h2 { display: inline; }
+.news-articles > summary h2::before { content: "▸ "; color: #554bc0; }
+.news-articles[open] > summary h2::before { content: "▾ "; }
+.news-articles[open] > summary { margin-bottom: .7rem; }
 
 /* レポート。一覧と同じ見た目にしない —— あちらは 1 件ずつの索引で、こちらは
    通しで読ませるもの。紙面として組む(余白・行間・章立て)ぶん、拾い読みにも耐える */

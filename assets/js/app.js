@@ -29,13 +29,15 @@ import {hooks as colocatedHooks} from "phoenix-colocated/tazuna"
 import PartitionMap from "./partition_map"
 import RelationMap from "./relation_map"
 import DownloadLink from "./download_link"
+// 全画面の要約を左右に払って前後へ動かす
+import DigestSwipe from "./digest_swipe"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, PartitionMap, RelationMap, DownloadLink},
+  hooks: {...colocatedHooks, PartitionMap, RelationMap, DownloadLink, DigestSwipe},
 })
 
 // Show progress bar on live navigation and form submits
