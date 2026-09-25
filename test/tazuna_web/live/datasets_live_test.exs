@@ -237,7 +237,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
     test "tazuna が起こす回は、要約と同じく時計なし・頼まれたときと出す", %{conn: conn} do
       # Chiezo 側では止めてあるので、そのまま出すと間隔と「止めている」が並び、
-      # 動かないように読める。いつ起こすかは「起点と情報収集の時刻」の欄が出す
+      # 動かないように読める。いつ起こすかは「情報収集の時刻」の欄が出す
       {live, _html} = shown(conn)
 
       row =
@@ -357,6 +357,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
   end
 
   describe "起点と情報収集の時刻" do
+    # 起点は区画の地図の下、時刻は Chiezo の収集の下（巡回の表の近く）に分けて置く
     setup do
       System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
       on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
@@ -396,7 +397,12 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
     test "地名で探して起点を決め、時刻を保存する", %{conn: conn} do
       {:ok, live, html} = live(conn, ~p"/datasets")
-      assert html =~ "起点と情報収集の時刻"
+      assert html =~ ~s(aria-label="起点")
+      assert html =~ ~s(aria-label="情報収集の時刻")
+      # 並びは 起点 → Chiezo の収集 → 情報収集の時刻（地図は起点の上）
+      at = fn needle -> html |> :binary.match(needle) |> elem(0) end
+      assert at.(~s(aria-label="起点")) < at.("<h3>Chiezo の収集</h3>")
+      assert at.("<h3>Chiezo の収集</h3>") < at.(~s(aria-label="情報収集の時刻"))
       # 決めていなければ東京駅（ざっと見るが元から広げていた起点）
       assert html =~ "東京駅（35.681, 139.767）"
       assert html =~ "既定のままです"

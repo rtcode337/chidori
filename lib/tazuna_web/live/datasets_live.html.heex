@@ -171,17 +171,14 @@
         </form>
       </section>
 
-      <%!-- **起点と情報収集の時刻。** 情報収集は 1 区画に何分もかかる仕事なので、
-           全国を順に回すと一周に何か月もかかる。見たいところを起点に決め、そこから
-           放射状に、決めた時刻に tazuna が頼む（Chiezo の時計では走らせない）。
-           **起点はざっと見ると共通**（Chiezo の収集の起点にも同じものを送る） --%>
-      <section :if={@plan} class="survey-plan" aria-label="起点と情報収集の時刻">
-        <h3>起点と情報収集の時刻</h3>
+      <%!-- **起点。** ざっと見るも情報収集も、ここから近い順に区画を広げる。
+           **Chiezo の収集の起点にも同じものを送る**（区画を選ぶのは Chiezo）。
+           区画の地図のすぐ下に置く —— どこから広がっているかを地図と並べて読むため --%>
+      <section :if={@plan} class="survey-plan" aria-label="起点">
+        <h3>起点</h3>
         <p class="muted-note">
-          「ざっと見る」も「情報収集」も、この起点から近い順に広げます（決めていなければ東京駅）。
-          起点を決め直すと、Chiezo の収集の起点も書き換えます。情報収集は、決めた時刻に tazuna が 1 回起こし、
-          見る区画は Chiezo が選びます（その巡回で見た古い順、同じなら起点に近い順）。
-          Chiezo が取り込み中なら、次の予定の時刻まで空くのを待って頼みます。
+          「ざっと見る」も「情報収集」も、この起点から近い順に区画を広げます（決めていなければ東京駅）。
+          決め直すと、Chiezo の収集の起点も書き換えます。
         </p>
         <p :if={@origin_note} class="warn-note">{@origin_note}</p>
 
@@ -197,14 +194,6 @@
                   else: "既定のままです"}
               </span>
             </dd>
-          </div>
-          <div>
-            <dt>次に頼む</dt>
-            <dd>{next_survey(@plan) || "時刻が決まっていません"}</dd>
-          </div>
-          <div :if={@plan.last_result not in [nil, ""]}>
-            <dt>前回</dt>
-            <dd>{@plan.last_result}</dd>
           </div>
         </dl>
 
@@ -236,28 +225,6 @@
             </ul>
           <% true -> %>
         <% end %>
-
-        <.form for={@plan_form} id="survey-times" phx-submit="save_survey_times" class="survey-row">
-          <input
-            type="text"
-            name={@plan_form[:run_at].name}
-            value={@plan_form[:run_at].value}
-            placeholder="頼む時刻（例: 03:00,15:00）"
-            aria-label="頼む時刻"
-          />
-          <button type="submit">時刻を保存</button>
-        </.form>
-        <p :for={{message, _opts} <- @plan_form[:run_at].errors} class="warn-note">{message}</p>
-
-        <button
-          :if={SurveyPlan.placed?(@plan)}
-          type="button"
-          phx-click="survey_now"
-          disabled={@surveying}
-          phx-disable-with="頼んでいます…"
-        >
-          {if @surveying, do: "頼んでいます…", else: "いま 1 回頼む"}
-        </button>
       </section>
 
       <h3>Chiezo の収集</h3>
@@ -293,6 +260,52 @@
       <p :if={@state.collection && @state.collection.url} class="muted-note">
         <a href={@state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
       </p>
+
+      <%!-- **情報収集の時刻。** 情報収集は 1 区画に何分もかかる仕事なので、Chiezo の
+           時計では走らせず、決めた時刻に tazuna が起こす（見る区画は Chiezo が選ぶ）。
+           **巡回の表のすぐ下に置く** —— 表の「時計なし・頼まれたとき」が、いつ頼まれる
+           のかをすぐ下で読めるように --%>
+      <section :if={@plan} class="survey-plan" aria-label="情報収集の時刻">
+        <h3>情報収集の時刻</h3>
+        <p class="muted-note">
+          決めた時刻に tazuna が情報収集を 1 回起こします。見る区画は Chiezo が選びます
+          （その巡回で見た古い順、同じなら起点に近い順）。
+          Chiezo が取り込み中なら、次の予定の時刻まで空くのを待って頼みます。
+        </p>
+
+        <dl class="collect-facts">
+          <div>
+            <dt>次に頼む</dt>
+            <dd>{next_survey(@plan) || "時刻が決まっていません"}</dd>
+          </div>
+          <div :if={@plan.last_result not in [nil, ""]}>
+            <dt>前回</dt>
+            <dd>{@plan.last_result}</dd>
+          </div>
+        </dl>
+
+        <.form for={@plan_form} id="survey-times" phx-submit="save_survey_times" class="survey-row">
+          <input
+            type="text"
+            name={@plan_form[:run_at].name}
+            value={@plan_form[:run_at].value}
+            placeholder="頼む時刻（例: 03:00,15:00）"
+            aria-label="頼む時刻"
+          />
+          <button type="submit">時刻を保存</button>
+        </.form>
+        <p :for={{message, _opts} <- @plan_form[:run_at].errors} class="warn-note">{message}</p>
+
+        <button
+          :if={SurveyPlan.placed?(@plan)}
+          type="button"
+          phx-click="survey_now"
+          disabled={@surveying}
+          phx-disable-with="頼んでいます…"
+        >
+          {if @surveying, do: "頼んでいます…", else: "いま 1 回頼む"}
+        </button>
+      </section>
 
 
       <%!-- **この収集から作る収集**（本棚・話題の網）。**親の下に置く** ——
