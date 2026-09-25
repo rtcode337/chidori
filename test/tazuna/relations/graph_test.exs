@@ -95,6 +95,42 @@ defmodule Tazuna.Relations.GraphTest do
     assert [%{excerpt: ["パリでモネらの印象派に触れ、色調が明るくなった。"]}] = graph.edges
   end
 
+  test "壊れた URL でも落ちず、名前から記事を指す" do
+    # AI が書いた URL の途中で符号が切れていた。そのまま戻すと正しい文字列にならず、
+    # 画面へ送る JSON が作れずに LiveView が落ちていた
+    broken =
+      "https://ja.wikipedia.org/wiki/%E3%83%9 territorial_link/" <>
+        "%E3%83%9D%E3%83%BC%E3%83%AB%E3%83%BB%E3%82%B0%E3%83%BC%E3%82%AE%E3%83%A3%E3%83%B3"
+
+    doc = Map.put(painter("ポール・ゴーギャン", []), "extra", %{"url" => broken})
+    [node] = Graph.from_docs([doc]).nodes
+
+    assert node.article == "ポール・ゴーギャン"
+    assert node.url == nil
+    assert String.valid?(node.article)
+  end
+
+  test "空白をそのまま書いた URL は壊れていない" do
+    # 符号にせず書いた URL は多く、ブラウザでも開ける
+    url = "https://ja.wikipedia.org/wiki/AKI (画家)"
+    doc = Map.put(painter("AKI (画家)", []), "extra", %{"url" => url})
+    [node] = Graph.from_docs([doc]).nodes
+
+    assert node.article == "AKI (画家)"
+    assert node.url == url
+  end
+
+  test "正しい URL からは記事名を読む" do
+    url =
+      "https://ja.wikipedia.org/wiki/%E3%82%AF%E3%83%AD%E3%83%BC%E3%83%89%E3%83%BB%E3%83%A2%E3%83%8D"
+
+    doc = Map.put(painter("クロード・モネ", []), "extra", %{"url" => url})
+    [node] = Graph.from_docs([doc]).nodes
+
+    assert node.article == "クロード・モネ"
+    assert node.url == url
+  end
+
   test "説明の無い影響元も線にする" do
     graph =
       Graph.from_docs([painter("A", ["年代:1800-1850"]), painter("B", ["年代:1850-1900", "影響元:A"])])

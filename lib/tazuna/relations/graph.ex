@@ -622,18 +622,39 @@ defmodule Tazuna.Relations.Graph do
 
   def text_width(_name, _font_size), do: 0.0
 
-  # 出典が Wikipedia の記事なら、その記事名。知名度も絵もここから辿る
-  defp article_title(%{"extra" => %{"url" => url}}) when is_binary(url) do
-    case URI.parse(url) do
-      %URI{host: host, path: "/wiki/" <> title} when is_binary(host) ->
-        if String.ends_with?(host, "wikipedia.org"), do: URI.decode(title), else: nil
+  # 出典が Wikipedia の記事なら、その記事名。知名度も絵もここから辿る。
+  #
+  # **壊れた URL は使わない。** URL は AI が書くので崩れていることがある
+  # （`/wiki/%E3%83%9 territorial_link/…` のように途中で符号が切れたもの）。
+  # 戻した記事名が正しい文字列にならないと、画面へ送る JSON が作れずに
+  # LiveView ごと落ち、押すたびに画面が読み直されていた
+  defp article_title(%{"extra" => %{"url" => url}}) when is_binary(url), do: wikipedia_title(url)
+  defp article_title(_doc), do: nil
 
-      _ ->
-        nil
+  defp wikipedia_title(url) do
+    # **空白はそのまま通す**（`/wiki/AKI (画家)` のように符号にせず書いた URL は多く、
+    # ブラウザでも開ける）。見るのは、戻した記事名が正しい文字列になるかだけ
+    with %URI{host: host, path: "/wiki/" <> raw} when is_binary(host) <- URI.parse(url),
+         true <- String.ends_with?(host, "wikipedia.org"),
+         {:ok, title} <- decoded(raw),
+         true <- String.valid?(title) and title != "" do
+      title
+    else
+      _broken -> nil
     end
   end
 
-  defp article_title(_doc), do: nil
+  defp decoded(raw) do
+    {:ok, URI.decode(raw)}
+  rescue
+    ArgumentError -> :error
+  end
+
+  # URL が書いてあるのに読めない（壊れている）か
+  defp broken_url?(%{"extra" => %{"url" => url}}) when is_binary(url),
+    do: String.match?(url, ~r/wikipedia\.org/u) and wikipedia_title(url) == nil
+
+  defp broken_url?(_doc), do: false
 
   # 記事の冒頭。**切ったことは出さない** —— 「…」だけ見せて全文へ誘うより、
   # 出典のリンクがすぐ上にあるほうが早い
@@ -646,7 +667,11 @@ defmodule Tazuna.Relations.Graph do
 
   defp summary_of(_doc), do: nil
 
-  defp article_url(%{"extra" => %{"url" => url}}) when is_binary(url), do: url
+  # 壊れた Wikipedia の URL は出さない（画面が記事名から組み立て直す）
+  defp article_url(%{"extra" => %{"url" => url}} = doc) when is_binary(url) do
+    if broken_url?(doc) or not String.valid?(url), do: nil, else: url
+  end
+
   defp article_url(_doc), do: nil
 
   @doc "代表作を持っている印（名前の後ろに出す）。"
@@ -680,7 +705,9 @@ defmodule Tazuna.Relations.Graph do
           # 押したときに出す、その画家の短い説明（記事の冒頭）
           summary: summary_of(doc),
           # 出典（Wikipedia の記事）。知名度を引くのと、絵を探すのに使う
-          article: article_title(doc),
+          # **URL が壊れていたら、名前を記事名として使う**（画家は日本語版の記事名で
+          # 名簿に入っているので、名前から記事へ辿れる）
+          article: article_title(doc) || if(broken_url?(doc), do: name),
           # **押したときに出す出典の URL。** 代表作の記事ではなく画家の記事を指す ——
           # 画家を押したのだから、行き先は画家であるべき
           url: article_url(doc),

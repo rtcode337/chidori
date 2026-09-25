@@ -1408,8 +1408,10 @@ defmodule TazunaWeb.RelationsLiveTest do
     test "覆いだけでなく、操作そのものを止める", %{conn: conn} do
       # 見た目だけ止めても、タブ送りでは押せてしまう。
       # 前のテストが頼んだ読み直しが終わってから開く（走っている間は止まっているのが正しい）
-      # 前のテストのスタブが応答を止めていることがある（最長 5 秒）ので、長めに待つ
-      assert wait_until(fn -> settled?(Tazuna.Relations.current("painters")) end, 400)
+      # 前のテストのスタブが応答を止めていることがある（1 回最長 5 秒で、読み直しの中で
+      # 何度か続けて当たる）ので、長めに待つ。**待つのは読み直しが終わるまで**なので、
+      # ふだんはすぐ抜ける
+      assert wait_until(fn -> settled?(Tazuna.Relations.current("painters")) end, 1500)
       {:ok, _live, html} = live(conn, ~p"/relations")
 
       refute html =~ "is-busy"
