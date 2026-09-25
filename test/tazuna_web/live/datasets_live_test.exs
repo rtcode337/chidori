@@ -331,23 +331,54 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert sent["backend"] == "antigravity"
     end
 
-    test "定時の巡回とは別に、1 回だけ頼める", %{conn: conn} do
+    test "travel-log からの依頼を、座標を含む区画の情報収集として頼める", %{conn: conn} do
       {live, _html} = shown(conn)
+
+      text = """
+      # 修正・追加の依頼(日本の食事処) 3件
+
+      - [修正] 駅前うどん (35.65000,139.75000): 閉店している
+      - [追加] (35.68000,139.76000): そば屋がある
+      - [追加] (26.20000,127.68000): 区画の外
+      """
 
       live
-      |> form(~s|form[phx-submit="ask"]|, %{note: "駅前にうどんの名店が抜けていないか"})
+      |> form(~s|form[phx-submit="travel_log_request"]|, %{text: text})
       |> render_submit()
 
-      assert_receive {:posted, _url, sent}, 2_000
-      assert sent["note"] =~ "うどん"
+      # **ふつうの回として走らせる**（割り込みではない）。区画は座標から引き、
+      # 同じ区画に入る 2 件は 1 つにまとめる。貼ったテキストは補足としてそのまま渡す
+      assert_receive {:posted, url, sent}, 2_000
+      assert url =~ "/v1/collect/tazuna_meals/run"
+      assert url =~ URI.encode_query(%{"sweep" => "情報収集"})
+      assert sent["partitions"] == ["35.6,139.7/35.7,139.8"]
+      assert sent["note"] =~ "閉店している"
+      assert sent["note"] =~ "そば屋がある"
+
+      # **外れた座標を黙って落とさない**
+      html = render(live)
+      assert html =~ "区画 1 つで情報収集を頼みました"
+      assert html =~ "(26.2,127.68)"
     end
 
-    test "何も書かずに頼ませない", %{conn: conn} do
+    test "座標の無いテキストでは頼まない", %{conn: conn} do
       {live, _html} = shown(conn)
 
-      live |> form(~s|form[phx-submit="ask"]|, %{note: "   "}) |> render_submit()
+      html =
+        live
+        |> form(~s|form[phx-submit="travel_log_request"]|, %{text: "駅前のうどん屋が閉店"})
+        |> render_submit()
 
+      assert html =~ "座標が見つかりませんでした"
       refute_receive {:posted, _url, _sent}, 300
+    end
+
+    test "travel-log が読む収集には、割り込みの欄を出さない", %{conn: conn} do
+      # 「travel-log からの依頼」がその役を引き受ける（同じ頼みごとの行き先が 2 つあると迷う）
+      {_live, html} = shown(conn)
+
+      assert html =~ "travel-log からの依頼"
+      refute html =~ ~s(phx-submit="ask")
     end
   end
 

@@ -311,7 +311,12 @@
           </div>
         </dl>
 
-        <.form for={@plan_form} id="survey-times" phx-submit="save_survey_times" class="survey-row">
+        <.form
+          for={@plan_form}
+          id="survey-times"
+          phx-submit="save_survey_times"
+          class="survey-row"
+        >
           <input
             type="text"
             name={@plan_form[:run_at].name}
@@ -336,10 +341,13 @@
         </div>
       </section>
 
-
       <%!-- **この収集から作る収集**（本棚・話題の網）。**親の下に置く** ——
            別のタブにすると、何から作られたものかが読めなくなる --%>
-      <section :if={@dataset[:derived]} class="collect-panel" aria-label="この収集から作るもの">
+      <section
+        :if={@dataset[:derived]}
+        class="collect-panel"
+        aria-label="この収集から作るもの"
+      >
         <h2>{@dataset.derived.name()}</h2>
         <p>
           上の収集に付いた<strong>タグから機械で作ります</strong>。
@@ -347,8 +355,8 @@
           （言い換えを畳む・分野を付ける・技術書でない語を外す・一言で説明する）。
         </p>
         <p class="muted-note">
-          溜め先は別の収集です（<code>{@dataset.derived.collection()}</code>）。
-          <strong>止めた状態で作ります</strong> —— 動き出すのは Chiezo の管理画面で
+          溜め先は別の収集です（<code>{@dataset.derived.collection()}</code>）。 <strong>止めた状態で作ります</strong>
+          —— 動き出すのは Chiezo の管理画面で
           有効にしたときだけです。
         </p>
         <div class="button-row">
@@ -400,9 +408,48 @@
         </p>
       </details>
 
+      <%!-- **travel-log からの依頼**（travel-log が読む収集だけ）。管理画面の
+           「修正・追加の依頼」のテキストを貼ると、座標を含む区画の情報収集に、
+           そのテキストを補足として載せて頼む。割り込みと違ってふつうの回として走るので、
+           書かれていない足りないものも探しに行く --%>
+      <details :if={@state.collection && @dataset.reader == "travel-log"} class="ask-more">
+        <summary>travel-log からの依頼</summary>
+        <form phx-submit="travel_log_request">
+          <p>
+            <label>
+              travel-log の「修正・追加の依頼」のテキスト<br />
+              <textarea
+                name="text"
+                rows="6"
+                placeholder="- [修正] 店名 (35.68123,139.76712): 閉店している&#10;- [追加] (35.68000,139.76000): うどんの名店がある"
+              ></textarea>
+            </label>
+          </p>
+          <p class="muted-note">
+            travel-log の管理画面の「テキストで表示」をそのまま貼ってください。
+            座標を含む区画（1 回に {Requests.max_partitions()} まで）で「{@dataset.survey_plan_sweep}」を
+            1 回走らせ、貼ったテキストを依頼文の補足として載せます。ふつうの回として走るので、
+            区画には印が付きます。取り込み中なら空くまで待ちます。
+          </p>
+          <div class="button-row">
+            <button
+              type="submit"
+              disabled={@requesting != nil}
+              phx-disable-with="見積もっています…"
+            >
+              区画を引いて頼む
+            </button>
+          </div>
+        </form>
+      </details>
+      <p :if={request_message(@requesting, @requested)} class="muted-note" aria-live="polite">
+        {request_message(@requesting, @requested)}
+      </p>
+
       <%!-- **この場で 1 回だけ頼める。** 定時の巡回は決まった仕事しかしないので、
-           「この店が閉店している」のような頼みごとの行き先がここにしかない --%>
-      <details :if={@state.collection} class="ask-more">
+           「この店が閉店している」のような頼みごとの行き先がここにしかない
+           （travel-log が読む収集は、上の「travel-log からの依頼」がこの役を引き受ける） --%>
+      <details :if={@state.collection && @dataset.reader != "travel-log"} class="ask-more">
         <summary>いま頼む（割り込み）</summary>
         <form phx-submit="ask">
           <p>
@@ -468,8 +515,7 @@
     <section class="collect-panel" aria-label={"#{@dataset.reader} に渡す中身"}>
       <h2>{@dataset.reader} に渡す中身</h2>
       <p>
-        {@dataset.unit}で溜まります。{@dataset.reader}は
-        <strong>タグ「{@dataset.module.kind_tag()}」</strong>で拾い、次の項目を読みます。
+        {@dataset.unit}で溜まります。{@dataset.reader}は <strong>タグ「{@dataset.module.kind_tag()}」</strong>で拾い、次の項目を読みます。
       </p>
       <table class="sweep-table">
         <thead>
@@ -489,6 +535,5 @@
       </table>
       <p :if={@dataset[:note]} class="muted-note">{@dataset[:note]}</p>
     </section>
-
   </div>
 </main>

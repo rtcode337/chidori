@@ -21,6 +21,7 @@ defmodule TazunaWeb.DatasetsLive do
 
   alias Tazuna.Chiezo
   alias Tazuna.Datasets
+  alias Tazuna.Datasets.Requests
   alias Tazuna.Datasets.Survey
   alias Tazuna.Datasets.SurveyPlan
   alias Tazuna.Datasets.SurveyPlans
@@ -30,6 +31,10 @@ defmodule TazunaWeb.DatasetsLive do
   # 区画の一覧に出す数。**数百あるので全部は並べない**（並びは次に回ってくる順なので、
   # 先頭だけ見えれば足りる）
   @shown_partitions 60
+
+  # travel-log からの依頼を、取り込みが空くまで待つ長さ。**1 回の焼きは十数分〜
+  # 30 分かかる**ので、それより短いと混んでいるときに頼めない
+  @request_wait_ms 60 * 60 * 1000
 
   @impl true
   def mount(_params, _session, socket) do
@@ -44,6 +49,9 @@ defmodule TazunaWeb.DatasetsLive do
        picks: %{},
        asking: false,
        asked: nil,
+       # travel-log からの依頼。頼んでいる間は見積もり（何区画で頼むか）を持つ
+       requesting: nil,
+       requested: nil,
        # 地図で選んでいる区画。**選ぶのと頼むのを分ける** —— 押した瞬間に走ると、
        # どこを押したのか確かめる前に AI が動く
        picked: nil,
@@ -226,6 +234,30 @@ defmodule TazunaWeb.DatasetsLive do
      )}
   end
 
+  # **travel-log からの依頼**を、その場所を含む区画の情報収集として頼む。
+  # 区画は画面が読み込んである一覧から引く（押した直後に何区画で頼むかを出すため）。
+  # **待つのは画面ではなく tazuna** —— 取り込みが空くまで最長 1 時間待つので、
+  # 画面を閉じても頼み続けられるよう `Tazuna.TaskSupervisor` の下で走らせる
+  def handle_event("travel_log_request", %{"text" => text}, socket) do
+    dataset = socket.assigns.dataset
+    partitions = get_in(socket.assigns, [:state, :collection, :partitions]) || []
+
+    case Requests.plan(text, partitions) do
+      {:error, reason} ->
+        {:noreply, assign(socket, requested: {:refused, reason})}
+
+      {:ok, plan} ->
+        live = self()
+        deadline = System.monotonic_time(:millisecond) + @request_wait_ms
+
+        Task.Supervisor.start_child(Tazuna.TaskSupervisor, fn ->
+          send(live, {:travel_log_request, Requests.run(dataset, plan.keys, text, deadline)})
+        end)
+
+        {:noreply, assign(socket, requesting: plan, requested: nil)}
+    end
+  end
+
   # 定時の巡回とは別に、1 回だけ頼む
   def handle_event("ask", %{"note" => note}, socket) do
     dataset = socket.assigns.dataset
@@ -288,6 +320,13 @@ defmodule TazunaWeb.DatasetsLive do
     do: {:noreply, assign(socket, backends: backends)}
 
   def handle_async(:backends, {:exit, _reason}, socket), do: {:noreply, socket}
+
+  # travel-log からの依頼が終わった（頼めた・断られた・待ちきれなかった）。
+  # 見積もりは一言に使うので、結果と組にして残す
+  @impl true
+  def handle_info({:travel_log_request, result}, socket) do
+    {:noreply, assign(socket, requesting: nil, requested: {result, socket.assigns.requesting})}
+  end
 
   # **まだ何も読んでいない状態。** 「収集が無い」と区別する —— 読めていないのに
   # 「まだ作られていません」と出すと、押した人は作り直そうとする
@@ -393,6 +432,34 @@ defmodule TazunaWeb.DatasetsLive do
     do:
       "押すと、tazuna が持っている抽出の指定・依頼文・区画の割り方・巡回を Chiezo へ" <>
         "送り直します（走らせはしません。Chiezo の画面で手で直したものは上書きされます）。"
+
+  @doc """
+  travel-log からの依頼の一言。**何区画で頼んだか**と、**どの区画にも入らなかった座標**を
+  言います —— 外れた座標を黙って落とすと、その依頼だけが誰にも読まれません。
+  """
+  def request_message(%{keys: keys, points: points, missed: missed}, _requested) do
+    "座標 #{length(points)} 件を含む区画 #{length(keys)} つで、情報収集を頼んでいます" <>
+      "（取り込み中なら空くまで最長 1 時間待ちます。画面を閉じても頼み続けます）。" <>
+      missed_text(missed)
+  end
+
+  def request_message(nil, {:refused, reason}), do: Requests.error_text(reason)
+
+  def request_message(nil, {:ok, plan}) do
+    "区画 #{length(plan.keys)} つで情報収集を頼みました（座標 #{length(plan.points)} 件）。" <>
+      "区画はふつうの回として見られ、貼ったテキストは補足として読まれます。" <>
+      missed_text(plan.missed)
+  end
+
+  def request_message(nil, {{:error, reason}, _plan}), do: reason_text(reason)
+  def request_message(_requesting, _requested), do: nil
+
+  defp missed_text([]), do: ""
+
+  defp missed_text(missed) do
+    points = Enum.map_join(missed, "、", fn {lat, lon} -> "(#{lat},#{lon})" end)
+    "区画の外だった座標: #{points}。"
+  end
 
   @doc "割り込みの届き具合。**断られたことも出します**。"
   def ask_message(:ok), do: "Chiezo に頼みました。定時の巡回とは別に 1 回だけ走ります。"

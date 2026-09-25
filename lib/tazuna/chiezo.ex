@@ -248,7 +248,10 @@ defmodule Tazuna.Chiezo do
         "partitions" => List.wrap(opts[:partitions] || opts[:partition]),
         "backend" => opts[:backend],
         "model" => opts[:model],
-        "worker" => opts[:worker]
+        "worker" => opts[:worker],
+        # **その回だけの補足**（travel-log から届いた依頼など）。Chiezo が依頼文の
+        # 後ろに足す。保存はされないので、定時の回は元の依頼文のまま走る
+        "note" => opts[:note]
       }
       |> Enum.reject(fn {_k, v} -> v in [nil, "", []] end)
       |> Map.new()

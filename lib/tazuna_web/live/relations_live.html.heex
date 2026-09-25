@@ -308,7 +308,9 @@
     <%!-- AI が目を通したかどうか。**薄い札が未レビュー**（機械で名簿に入っただけで、
          説明も影響元もまだ無いことが多い）。押すとその人たちだけになる --%>
     <section
-      :if={@view == "painters" and is_integer(@relation[:unreviewed]) and @relation.unreviewed > 0}
+      :if={
+        @view == "painters" and is_integer(@relation[:unreviewed]) and @relation.unreviewed > 0
+      }
       class="changed-note review-note"
     >
       <p>
@@ -876,4 +878,3 @@
      留める、見ている範囲をサーバーへ知らせる、探した人へ寄る —— を足してある。
 
      図ごとに写しを持つと、片方だけ直した操作の違いがそのまま残る。 --%>
-
