@@ -676,17 +676,31 @@ body.digest-open { overflow: hidden; }
 /* トピックの網。丸の大きさはつながりの数（記事の件数はこの収集が持っていない）。
    円環に並べるのは、開くたびに形が変わると「昨日と同じ図か」が読めなくなるため */
 .topic-map { margin-bottom: 2rem; border: 1px solid #e6e8ef; border-radius: 1rem; background: white; padding: 1rem 1rem .4rem; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
-.topic-map svg { display: block; width: 100%; height: auto; }
+/* 図の器は関連図と同じ(`relation-canvas`)。**高さは画面に合わせて決め打ち** ——
+   全部の話題を置くので図は大きく、縦横比のままでは器が縦に伸びすぎる */
+.topic-canvas { height: min(70vh, 34rem); min-height: 22rem; margin-bottom: .6rem; }
+.topic-canvas svg { height: 100%; }
+/* 親子の囲み。**中身より控えめに**(囲みが濃いと丸と名前が沈む) */
+.topic-clusters text { fill: #5b6478; font-weight: 800; dominant-baseline: auto; }
+.topic-clusters rect { fill: rgba(238, 240, 250, .55); stroke: #cfd4e6; stroke-width: 1.5; stroke-dasharray: 6 5; }
 /* まとめの直後に置くので、何の図かを名乗る（記事の一覧と地続きに見せない） */
 .topic-map > h2 { margin: 0 0 .6rem; font-size: 1.05rem; }
 .topic-map details { margin: .2rem 0 .8rem; }
 .topic-map summary { cursor: pointer; font-weight: 700; font-size: .9rem; color: #334155; }
-.topic-edges line { stroke: #d5d9e4; stroke-width: 1.5; }
-/* 上下のつながりは別の見え方にする（横のつながりと混ぜると、どちらも同じ網に見える） */
-.topic-edges line.is-parent { stroke: #f0b429; stroke-dasharray: 5 4; }
+/* 線は丸と囲みより控えめに(全部の話題を置くので、濃いと網が画面を埋める) */
+/* 線はいつも出す(網であることが読めるように)。**札より控えめに** —— 数百本あるので、
+   濃いと札と名前が線の下に沈む。札を押すと、その話題の線だけが濃く残る */
+.topic-edges line { stroke: #9aa3bd; stroke-width: 1.5; opacity: .3; }
+/* 丸を押したとき。その話題の線を全部濃く出し、相手の丸を立たせ、ほかは沈める */
+.topic-canvas.has-pick .topic-edges line { opacity: .06; }
+.topic-canvas.has-pick .topic-edges line.is-lit { opacity: .9; stroke: #6d64d8; }
+.topic-canvas.has-pick .topic-node { opacity: .28; }
+.topic-canvas.has-pick .topic-node.is-near, .topic-canvas.has-pick .topic-node.is-picked { opacity: 1; }
+.topic-node.is-picked rect { stroke-width: 4; }
+.topic-node { cursor: pointer; }
 .topic-edges text { fill: #9aa3b5; font-size: 11px; }
-.topic-nodes circle { fill: #eef2ff; stroke: #818cf8; stroke-width: 2; }
-/* 名前は丸の中。**大きさは図の側が 1 つずつ決める**（丸の大きさで入る字数が違う） */
+.topic-nodes rect { fill: #eef2ff; stroke: #818cf8; stroke-width: 2; }
+/* 名前は札の中。**字の大きさは図の側が 1 つずつ決める**(直近の記事の数) */
 .topic-nodes text { fill: #16203a; font-weight: 700; dominant-baseline: middle; }
 
 /* トピックの一覧。図に置ける数には限りがあるので、全部はこちらで読む */

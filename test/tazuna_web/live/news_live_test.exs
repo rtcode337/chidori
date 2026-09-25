@@ -535,8 +535,12 @@ defmodule TazunaWeb.NewsLiveTest do
 
       assert html =~ "topic-map"
       assert html =~ "topic-nodes"
-      # 上下のつながりは、横のつながりと見え方を分ける
-      assert html =~ "is-parent"
+      # 親子は線ではなく囲み（クラスタ）で表す。操作は関連図と同じ器
+      assert html =~ "topic-clusters"
+      assert html =~ "AI の仲間"
+      # 何のクラスタかを枠に書く
+      assert html =~ ~r/<g class="topic-cluster">.*?<text[^>]*>\s*AI\s*<\/text>/s
+      assert html =~ ~s(phx-hook="TopicMap")
 
       # 図に出ないものも読める（記事より前に居座らないよう畳んである）
       assert html =~ "トピックの一覧"

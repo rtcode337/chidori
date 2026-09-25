@@ -31,13 +31,15 @@ import RelationMap from "./relation_map"
 import DownloadLink from "./download_link"
 // 全画面の要約を左右に払って前後へ動かす
 import DigestSwipe from "./digest_swipe"
+// トピックの網を関連図と同じ操作で動かす
+import TopicMap from "./topic_map"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, PartitionMap, RelationMap, DownloadLink, DigestSwipe},
+  hooks: {...colocatedHooks, PartitionMap, RelationMap, DownloadLink, DigestSwipe, TopicMap},
 })
 
 // Show progress bar on live navigation and form submits
