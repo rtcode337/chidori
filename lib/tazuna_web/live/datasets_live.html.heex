@@ -480,21 +480,28 @@
       <details class="news-prompt">
         <summary>Chiezo への依頼文</summary>
 
-        <h3>抽出の指定（辞典から機械的に引く条件）</h3>
-        <p class="news-prompt-note">
-          名前・座標・住所・電話・サイト・ジャンル・紹介文は、この指定で辞典から引いています。 <strong>AI は関わりません</strong>（決まった結果が出ます）。 <strong>何本かに分けて書いてあれば、書いた順が優先の順</strong>です ——
-          <code>provides</code>
-          はその辞典が<strong>勝ちにいく項目</strong>で、
-          そこに書いていない項目は、どの辞典も埋めなかったときだけ使われます。
-        </p>
-        <pre>{extract_text(assigns)}</pre>
+        <%!-- 抽出の指定と区画の割り方は、**持つ対象だけ**（技術書はどちらも持たない） --%>
+        <% extract = extract_text(assigns) %>
+        <% partition = partition_text(assigns) %>
+        <%= if extract do %>
+          <h3>抽出の指定（辞典から機械的に引く条件）</h3>
+          <p class="news-prompt-note">
+            名前・座標・住所・電話・サイト・ジャンル・紹介文は、この指定で辞典から引いています。 <strong>AI は関わりません</strong>（決まった結果が出ます）。 <strong>何本かに分けて書いてあれば、書いた順が優先の順</strong>です ——
+            <code>provides</code>
+            はその辞典が<strong>勝ちにいく項目</strong>で、
+            そこに書いていない項目は、どの辞典も埋めなかったときだけ使われます。
+          </p>
+          <pre>{extract}</pre>
+        <% end %>
 
-        <h3>区画の割り方</h3>
-        <p class="news-prompt-note">
-          巡回はここで割った区画を 1 つずつ回ります。<strong>母集団は集めたもの自身</strong>なので、
-          座標が直れば区画も追随し、育ちすぎた区画・空になった区画は Chiezo が割り直します。
-        </p>
-        <pre>{partition_text(assigns)}</pre>
+        <%= if partition do %>
+          <h3>区画の割り方</h3>
+          <p class="news-prompt-note">
+            巡回はここで割った区画を 1 つずつ回ります。<strong>母集団は集めたもの自身</strong>なので、
+            座標が直れば区画も追随し、育ちすぎた区画・空になった区画は Chiezo が割り直します。
+          </p>
+          <pre>{partition}</pre>
+        <% end %>
 
         <h3>指示文（AI に頼んでいる内容）</h3>
         <p class="news-prompt-note">

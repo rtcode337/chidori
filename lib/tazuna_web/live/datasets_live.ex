@@ -530,15 +530,26 @@ defmodule TazunaWeb.DatasetsLive do
   def extract_text(%{collection: %{extract: spec}}) when is_map(spec),
     do: Jason.encode!(spec, pretty: true)
 
-  def extract_text(%{dataset: dataset}), do: Jason.encode!(dataset.module.extract(), pretty: true)
+  # **抽出の指定を持たない対象もある**（技術書は記事を溜めてからタグで数えるので、
+  # 辞典から引かない）。持たなければ nil で、画面はその見出しごと出さない
+  def extract_text(%{dataset: %{module: module}}) do
+    if defines?(module, :extract, 0), do: Jason.encode!(module.extract(), pretty: true)
+  end
 
   @doc "区画の割り方。**座標で割るので、鍵は矩形になります**。"
   def partition_text(%{collection: %{partition: spec}}) when is_map(spec),
     do: Jason.encode!(spec, pretty: true)
 
-  def partition_text(%{dataset: dataset}) do
-    plan = Datasets.plan(dataset)
-    Jason.encode!(dataset.module.partition([plan.lat, plan.lon]), pretty: true)
+  # 区画で回らない対象（技術書）は nil（画面はその見出しごと出さない）
+  def partition_text(%{dataset: %{module: module} = dataset}) do
+    if defines?(module, :partition, 1) do
+      plan = Datasets.plan(dataset)
+      Jason.encode!(module.partition([plan.lat, plan.lon]), pretty: true)
+    end
+  end
+
+  defp defines?(module, name, arity) do
+    Code.ensure_loaded?(module) and function_exported?(module, name, arity)
   end
 
   @doc """

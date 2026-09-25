@@ -37,6 +37,16 @@ defmodule TazunaWeb.DatasetsLiveTest do
     assert html =~ ~p"/datasets"
   end
 
+  test "技術書の画面も開ける（抽出の指定と区画を持たない対象）", %{conn: conn} do
+    # 技術書は記事を溜めてからタグで数えるので、辞典から引く指定も区画も持たない。
+    # 持つ前提で描いていて、開くと落ちていた
+    {:ok, _live, html} = live(conn, ~p"/datasets?view=books")
+
+    assert html =~ "Chiezo への依頼文"
+    refute html =~ "抽出の指定（辞典から機械的に引く条件）"
+    refute html =~ "区画の割り方"
+  end
+
   test "知らない種類は先頭の集めものに丸める", %{conn: conn} do
     # `?view=` は人が触れるところなので、書き換えられても画面が壊れない
     {:ok, _live, html} = live(conn, ~p"/datasets?view=%2E%2E%2F")
