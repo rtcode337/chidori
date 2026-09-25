@@ -72,4 +72,28 @@ defmodule TazunaWeb.CollectTest do
                Collect.sweep_rows(%{collection: collection(%{sweeps: [sweep]})})
     end
   end
+
+  describe "区画の見終わり具合" do
+    defp rows(seen), do: Enum.map(seen, &%{seen_by: &1})
+
+    test "前の巡回が一周するまでは、その巡回の数" do
+      rows = rows([["ざっと見る"], [], ["ざっと見る", "整理"]])
+      assert Collect.partition_progress(rows, ["ざっと見る", "整理"]) == {"ざっと見る", 2}
+    end
+
+    test "前の巡回が一周したら、次の巡回の数" do
+      rows = rows([["ざっと見る"], ["ざっと見る", "整理"], ["ざっと見る"]])
+      assert Collect.partition_progress(rows, ["ざっと見る", "整理"]) == {"整理", 1}
+    end
+
+    test "全部が一周していれば、最後の巡回の数" do
+      rows = rows([["ざっと見る", "整理"], ["ざっと見る", "整理"]])
+      assert Collect.partition_progress(rows, ["ざっと見る", "整理"]) == {"整理", 2}
+    end
+
+    test "区画も巡回も無ければ出さない" do
+      assert Collect.partition_progress([], ["ざっと見る"]) == nil
+      assert Collect.partition_progress(rows([[]]), []) == nil
+    end
+  end
 end

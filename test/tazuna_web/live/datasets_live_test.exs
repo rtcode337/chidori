@@ -202,6 +202,16 @@ defmodule TazunaWeb.DatasetsLiveTest do
                :binary.match(html, "34.6,135.4/34.8,135.6")
     end
 
+    test "区画の見出しは「いま回っている巡回が見終わった数 / 総数」", %{conn: conn} do
+      # ざっと見るが一周するまでは、ざっと見るの数（4 区画のうち 2 つ）
+      {_live, html} = shown(conn)
+
+      assert html =~ ~r|区画（<span[^>]*>2 / </span>4）|
+      assert html =~ "「ざっと見る」が見終わった区画の数です"
+      assert html =~ "まだ見ていないものが先に表示されます"
+      refute html =~ "— まだ見ていないものが先"
+    end
+
     test "既にある収集には、設定を送り直す", %{conn: conn} do
       # 作るときの POST は「もうある」で断られるので、それだけだと
       # tazuna 側で依頼文や区画を直しても永遠に届かない

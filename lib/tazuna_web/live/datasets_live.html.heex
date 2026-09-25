@@ -337,8 +337,15 @@
       </section>
 
       <details :if={rows != []} class="partition-list">
-        <summary>区画（{length(rows)}）— まだ見ていないものが先</summary>
+        <% progress = partition_progress(rows, @dataset.partition_sweeps) %>
+        <summary>
+          区画（<span :if={progress}>{elem(progress, 1)} / </span>{length(rows)}）
+        </summary>
         <p class="muted-note">
+          <span :if={progress}>
+            「/」の前は「{elem(progress, 0)}」が見終わった区画の数です（先の巡回が一周したら、次の巡回の数に変わります）。
+          </span>
+          まだ見ていないものが先に表示されます。
           区画は<strong>座標で</strong>切ってあります（鍵は「南西の緯度経度／北東の緯度経度」）。
           店の多いところは細かく、少ないところは粗くなります。 <strong>押すと、その区画を先に調べてもらえます</strong>（印が付くので、
           巡回が同じところをもう一度見ることはありません）。

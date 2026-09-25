@@ -258,6 +258,22 @@ defmodule TazunaWeb.Collect do
     end
   end
 
+  @doc """
+  区画の見終わり具合（`{巡回の名前, 見終わった区画の数}`）。**いま回っている巡回のもの**
+  を返します —— 前の巡回（ざっと見る）が一周するまではその数、一周したら次の巡回
+  （整理・情報収集）の数。全部が一周していれば最後の巡回の数です。
+
+  見出しに「この数 / 総数」と並べるので、1 つだけ返します（巡回ごとの数は表の列が持つ）。
+  """
+  def partition_progress([], _sweeps), do: nil
+  def partition_progress(_rows, []), do: nil
+
+  def partition_progress(rows, sweeps) do
+    total = length(rows)
+    counts = Enum.map(sweeps, fn sweep -> {sweep, Enum.count(rows, &(sweep in &1.seen_by))} end)
+    Enum.find(counts, fn {_sweep, count} -> count < total end) || List.last(counts)
+  end
+
   def partition_rows(state, sweep) when is_binary(sweep), do: partition_rows(state, [sweep])
 
   def partition_rows(%{collection: %{partitions: list}}, sweeps)

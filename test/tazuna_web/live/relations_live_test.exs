@@ -1137,6 +1137,14 @@ defmodule TazunaWeb.RelationsLiveTest do
     end
   end
 
+  describe "未レビューの数がいつのものか" do
+    test "図を取得した時刻を出す（見た印より古いことがあるため）" do
+      at = ~U[2026-09-25 00:53:00Z]
+      assert TazunaWeb.RelationsLive.unreviewed_as_of(%{checked_at: at}) =~ "2026-09-25 09:53"
+      assert TazunaWeb.RelationsLive.unreviewed_as_of(%{}) == "まだ取得していません"
+    end
+  end
+
   describe "設定欄の頭" do
     alias TazunaWeb.RelationsLive
 

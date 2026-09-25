@@ -491,8 +491,20 @@
             <% sweeps = [Tazuna.Relations.rough_sweep(), Tazuna.Relations.survey_sweep()] %>
             <% rows = partition_rows(cfg, sweeps) %>
             <details :if={rows != []} class="partition-list">
-              <summary>区画（{length(rows)}）— まだ見ていないものが先</summary>
+              <% progress = partition_progress(rows, sweeps) %>
+              <summary>
+                区画（<span :if={progress}>{elem(progress, 1)} / </span>{length(rows)}）
+              </summary>
               <p class="muted-note">
+                <span :if={progress}>
+                  「/」の前は「{elem(progress, 0)}」が見終わった区画の数です（ざっと見るが一周したら、整理の数に変わります）。
+                </span>
+                まだ見ていないものが先に表示されます。
+                <%!-- **未レビューの数だけは古いことがある。** 見た印は設定欄を開いたときに
+                     読み直すが、未レビューの数は図を取得したときの画家から数える ——
+                     図を取り直さないと、見た印だけが進んで数が食い違って見える --%>
+                <strong>未レビューの数は、図を最後に取得した時点（{unreviewed_as_of(@relation)}）のものです。</strong>
+                最新にするには、ページ上部の「最新の情報を取得」を押してください。
                 区画は「地域 × 生年」で切ってあります。 <strong>「ざっと見る」</strong>
                 は未レビューの人に目を通して空欄を埋める回、 <strong>「整理」</strong>
                 は漏れ探しと磨きの回として、その区画を先に見てもらいます（印が付くので、巡回が同じところをもう一度見ることはありません）。
@@ -503,7 +515,7 @@
                   <tr>
                     <th>区画</th>
                     <th>人数</th>
-                    <th>未レビュー</th>
+                    <th title="図を最後に取得した時点の数です">未レビュー（取得時点）</th>
                     <th :for={sweep <- sweeps}>{sweep}</th>
                     <th></th>
                   </tr>

@@ -514,6 +514,10 @@ defmodule TazunaWeb.RelationsLive do
   def checked_text(%{checked_at: at}) when at != nil, do: "最後に取得: #{Jst.format(at)}"
   def checked_text(_relation), do: "まだ取得していません"
 
+  @doc "未レビューの数がいつのものか（図を取得した時刻。JST）。"
+  def unreviewed_as_of(%{checked_at: at}) when at != nil, do: Jst.format(at)
+  def unreviewed_as_of(_relation), do: "まだ取得していません"
+
   @doc """
   AI に頼んでいる本文。**依頼した後は Chiezo が持っているものを出す** ——
   向こうの画面から直せるので、tazuna の雛形を出し続けると食い違う。
