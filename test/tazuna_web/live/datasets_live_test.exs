@@ -14,8 +14,10 @@ defmodule TazunaWeb.DatasetsLiveTest do
     {:ok, _live, html} = live(conn, ~p"/datasets")
 
     assert html =~ "日本の食事処"
-    # 集めるのは Chiezo だと画面から読めること
-    assert html =~ "Chiezo"
+
+    # 集めるのは Chiezo で、どこに残り誰が読むのかを、設定の頭で読めること
+    [_, settings] = String.split(html, "日本の食事処の設定", parts: 2)
+    assert settings =~ ~r|collect-origin.*「集める」層です.*tazuna_meals.*読むのはtravel-logです|s
   end
 
   test "travel-log 用の書き出しを、リンクと分かる形で出す", %{conn: conn} do

@@ -48,6 +48,15 @@
     <%!-- 設定はページの名前を冠した 1 つの枠にまとめる（他の画面と同じ形）--%>
     <section class="settings-panel" aria-label={"#{@dataset.title}の設定"}>
       <h2>{@dataset.title}の設定</h2>
+      <%!-- **誰が集めて、どこに残るか**を設定の頭に置く（ページの下に置いていた頃は、
+           設定を読む人の目に入らなかった）。主役ではないので小さく --%>
+      <p class="muted-note collect-origin">
+        集めるのは
+        <a href="https://github.com/rtcode337/chiezo" target="_blank" rel="noreferrer">Chiezo</a>
+        の「集める」層です。tazuna が持つのは依頼と進み具合だけで、
+        溜まったものは Chiezo のソース「{@dataset.collection}」として残ります
+        （読むのは{@dataset.reader}です）。
+      </p>
       <%!-- **区画の地図は見出しのすぐ下に置く。** どこまで見終わったかを最初に
            見たいので、状態の数字や巡回の表より先に出す --%>
       <%!-- **区画の一覧。** どこがまだ見られていないかは、ここにしか無い ——
@@ -450,14 +459,5 @@
       <p :if={@dataset[:note]} class="muted-note">{@dataset[:note]}</p>
     </section>
 
-    <footer>
-      <p>
-        集めるのは
-        <a href="https://github.com/rtcode337/chiezo" target="_blank" rel="noreferrer">Chiezo</a>
-        の「集める」層です。tazuna が持つのは依頼と進み具合だけで、
-        溜まったものは Chiezo のソース「{@dataset.collection}」として残ります
-        （読むのは travel-log です）。
-      </p>
-    </footer>
   </div>
 </main>

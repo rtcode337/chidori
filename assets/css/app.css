@@ -303,6 +303,9 @@ article p:last-child { color: #475569; line-height: 1.7; }
    一段強く出す（押すと降ってくるだけなので、ボタンには寄せない） */
 .download-link { display: inline-block; margin-top: .5rem; color: #554bc0; font-weight: 700; text-decoration: underline; text-underline-offset: .2em; }
 /* 地図の右上に置く書き出し。**主役ではないので小さく** */
+/* 設定の頭の「誰が集めて、どこに残るか」。主役ではないので小さく */
+.settings-panel .collect-origin { margin: .1rem 0 .6rem; font-size: .72rem; }
+.settings-panel .collect-origin a { color: #554bc0; }
 .export-corner { margin: .2rem 0 .4rem; text-align: right; }
 .export-corner .download-link { margin-top: 0; font-size: .82rem; }
 .export-corner .download-status { font-size: .72rem; }
