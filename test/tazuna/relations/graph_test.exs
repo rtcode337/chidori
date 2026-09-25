@@ -169,6 +169,32 @@ defmodule Tazuna.Relations.GraphTest do
     assert famous.radius > unknown.radius
   end
 
+  test "1 人だけ閲覧が跳ね上がっても、ほかの有名な画家は縮まない" do
+    # 亡くなった直後の画家は閲覧が一時に跳ね上がる（実測で 2 位の 8 倍）。いちばん上を
+    # 基準にすると、ほかの全員が縮んで全体表示にその 1 人しか残らなかった
+    views = fn name, n ->
+      Map.put(painter(name, ["年代:1900-1950"]), "extra", %{"pageviews_month" => n})
+    end
+
+    nodes =
+      Graph.from_docs([
+        views.("跳ねた画家", 400_000),
+        views.("有名な画家1", 50_000),
+        views.("有名な画家2", 48_000),
+        views.("有名な画家3", 47_000),
+        views.("有名な画家4", 46_000),
+        views.("ふつうの画家", 1_000)
+      ]).nodes
+      |> Graph.sized()
+
+    size = fn name -> Enum.find(nodes, &(&1.name == name)).radius end
+
+    # 上位 5 人はみな最大
+    assert size.("有名な画家4") == size.("跳ねた画家")
+    assert size.("有名な画家1") == size.("跳ねた画家")
+    assert size.("ふつうの画家") < size.("有名な画家4")
+  end
+
   test "知名度は収集の中から読む" do
     # **図を出すたびに外へ引きに行かない。** 引いていた頃は画家の数だけ往復していた
     # （初回で 9,000 回以上）。集める回が長期記憶から写してくる

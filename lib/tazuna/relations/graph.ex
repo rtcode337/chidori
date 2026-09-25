@@ -140,6 +140,12 @@ defmodule Tazuna.Relations.Graph do
   # 1.0（そのまま）まで上げると 116 人まで減るが、こんどは図がまばらに見える
   @fame_curve 0.65
 
+  # 大きさの基準にする順位。**いちばん上の 1 人を基準にしない** —— 亡くなった直後の
+  # 画家は閲覧が一時に跳ね上がり（実測で 2 位の 8 倍）、ほかの全員が 4 分の 1 に
+  # 縮んで、全体表示にその 1 人しか残らなかった。**上位 5 人はみな最大**になる。
+  # 5 人目は跳ね上がる前の 1 位とほぼ同じ値なので、上の曲がり具合の調整は崩れない
+  @fame_reference_rank 5
+
   # 名前の字。**丸と同じ升目から決める** —— 丸だけ大きくして字を揃えると、
   # 小さい丸から名前がはみ出し、拡大しても文字が重なったままになる。
   #
@@ -426,7 +432,7 @@ defmodule Tazuna.Relations.Graph do
   # 読めない。`@fitted_font` を基準にして知名度で上下させ、**名前が長くて升目から
   # はみ出すぶんだけ縮める**（縮めないと隣と重なり、重なりを避ける仕組みが間引く）。
   defp refit(nodes, fame) do
-    top = fame |> Map.values() |> Enum.max(fn -> 0 end)
+    top = fame |> Map.values() |> reference_top()
 
     Enum.map(nodes, fn node ->
       ratio = fame_ratio(Map.get(fame, node.article, 0), top)
@@ -516,7 +522,7 @@ defmodule Tazuna.Relations.Graph do
   1 人だけが巨大になって他が点になります。
   """
   def sized(nodes) do
-    top = nodes |> Enum.map(&views_of/1) |> Enum.max(fn -> 0 end)
+    top = nodes |> Enum.map(&views_of/1) |> reference_top()
 
     Enum.map(nodes, fn node ->
       views = views_of(node)
@@ -537,10 +543,18 @@ defmodule Tazuna.Relations.Graph do
   # 知名度を 0.0〜1.0 に均す。**そのままの比では使わない**のはページビューが桁で
   # 開くためで、曲げ具合は `@fame_curve` が持つ（強く曲げると差が縮み、
   # 弱くすると広がる）
+  # 基準の閲覧数（上から `@fame_reference_rank` 番目）。**人数が足りなければ
+  # いちばん上の人**（数人の図で下の人を基準にすると、全員が最大になる）
+  defp reference_top(views) do
+    sorted = Enum.sort(views, :desc)
+    Enum.at(sorted, @fame_reference_rank - 1) || List.first(sorted) || 0
+  end
+
   defp fame_ratio(_views, top) when top <= 0, do: 0.0
 
+  # **基準より上の人は 1 で止める**（上位の何人かはみな最大の大きさ）
   defp fame_ratio(views, top) when is_integer(views) and views > 0,
-    do: :math.pow(views / top, @fame_curve)
+    do: min(:math.pow(views / top, @fame_curve), 1.0)
 
   defp fame_ratio(_views, _top), do: 0.0
 
