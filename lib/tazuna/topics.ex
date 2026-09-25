@@ -33,6 +33,30 @@ defmodule Tazuna.Topics do
   """
   def defined do
     [
+      # **一般ニュースを先頭に置く。** タブの並びの先頭が、何も選ばずに開いたとき
+      # （トップページ）に出る話題になる
+      %{
+        name: "一般ニュース",
+        # **収集の名前は変えない**（それまで溜めた先を見失う）
+        collection: Tazuna.News.collection_name(),
+        interest:
+          "暮らし・社会・政治・経済・国際のうち、影響が大きいこと。" <>
+            "読む人の判断や備えが変わるもの(災害と避難、制度や料金の変更、" <>
+            "金融政策と相場の大きな動き、選挙と政権の動き、大きな事件・事故)を優先する。" <>
+            "多くの媒体が一斉に報じている話題も拾う",
+        # **技術ニュースと同じく、機械で引ける配信元は機械で引く。** 見出し・要約・URL・
+        # 配信日は機械が正確に取れるので、AI の枠は「何が重要か」「どうまとめるか」へ回す。
+        # **トピックの網は育てない**（`themes` を持たない）
+        feeds: [
+          %{url: "https://news.web.nhk/n-data/conf/na/rss/cat0.xml", tags: ["ニュース"]},
+          %{url: "https://news.web.nhk/n-data/conf/na/rss/cat1.xml", tags: ["ニュース"]},
+          %{url: "https://news.web.nhk/n-data/conf/na/rss/cat4.xml", tags: ["ニュース"]},
+          %{url: "https://news.web.nhk/n-data/conf/na/rss/cat5.xml", tags: ["ニュース"]},
+          %{url: "https://news.web.nhk/n-data/conf/na/rss/cat6.xml", tags: ["ニュース"]},
+          %{url: "https://www.asahi.com/rss/asahi/newsheadlines.rdf", tags: ["ニュース"]},
+          %{url: "https://news.yahoo.co.jp/rss/topics/top-picks.xml", tags: ["ニュース"]}
+        ]
+      },
       %{
         name: "技術ニュース",
         collection: "tazuna_tech",
@@ -126,14 +150,6 @@ defmodule Tazuna.Topics do
         - **募集がまだ始まっていないものも入れて構いません**。そのときは
           「募集開始日は未定」のように、**分からないことを分からないと書いて**ください
         """
-      },
-      %{
-        name: "ニュース",
-        collection: Tazuna.News.collection_name(),
-        interest: "暮らし・社会・経済への影響が大きいこと",
-        # 一般の報道は、機械で引ける配信元が話題の広さに追いつかない。
-        # ここは AI に集めさせる（外の道具を付けるなら、上と同じ形で書ける）
-        feeds: []
       }
     ]
   end

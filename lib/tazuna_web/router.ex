@@ -17,9 +17,10 @@ defmodule TazunaWeb.Router do
   scope "/", TazunaWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
-
+    # **トップは最新情報（一般ニュース）。** 何も選ばずに開いたときに読むものが
+    # いちばん上にあればよく、入口のためだけの頁は置かない。
     # 収集は数十秒かかるので LiveView にする。押した人に再読み込みをさせない
+    live "/", NewsLive, :index
     live "/news", NewsLive, :index
     # 記事のタグから育てたトピック。仕分けを頼むのもここ
     live "/relations", RelationsLive, :index

@@ -436,7 +436,18 @@ defmodule Tazuna.NewsTest do
     test "仕事ごとに別の時計で回す" do
       names = defined_topic("tazuna_news") |> News.sweeps() |> Enum.map(& &1.name)
 
+      # 一般ニュースも技術ニュースと同じく、配信元を機械で引く
+      assert names == ["機械収集", "整理", "要約"]
+    end
+
+    test "配信元を持たない話題は、AI に集めさせる" do
+      names = %{name: "何か", interest: "何か", feeds: []} |> News.sweeps() |> Enum.map(& &1.name)
       assert names == ["集める", "整理", "要約"]
+    end
+
+    test "一般ニュースはトピックの網を育てない" do
+      refute Tazuna.Topics.themes?(defined_topic("tazuna_news"))
+      assert Tazuna.Topics.themes?(defined_topic("tazuna_tech"))
     end
 
     test "割り込みは整理の回に乗せる" do
@@ -476,7 +487,7 @@ defmodule Tazuna.NewsTest do
     end
 
     test "配信元を持たない話題に外の道具は付けない" do
-      assert defined_topic("tazuna_news") |> News.feed_spec() == nil
+      assert %{name: "何か", feeds: []} |> News.feed_spec() == nil
     end
 
     test "落とす力を持つのは整理の回だけ" do

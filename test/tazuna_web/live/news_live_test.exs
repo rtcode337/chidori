@@ -14,12 +14,22 @@ defmodule TazunaWeb.NewsLiveTest do
   end
 
   test "最新情報のページを表示する", %{conn: conn} do
-    # 最初に開くのは定義の先頭の話題（いまは技術ニュース）
+    # 最初に開くのは定義の先頭の話題（一般ニュース）
     {:ok, _live, html} = live(conn, ~p"/news")
 
-    assert html =~ "今日、押さえておきたい技術ニュース"
+    assert html =~ ~r|<h1[^>]*>\s*一般ニュース\s*</h1>|
     # 集めるのは Chiezo だと画面から読めること
     assert html =~ "集めるのは Chiezo です"
+  end
+
+  test "トップページは一般ニュース", %{conn: conn} do
+    # 入口のためだけの頁は置かない。開いてすぐ読むものがいちばん上にあればよい
+    {:ok, _live, html} = live(conn, ~p"/")
+
+    assert html =~ ~r|<h1[^>]*>\s*一般ニュース\s*</h1>|
+    # タブは見出しの上（関連図・データ収集と同じ）
+    [before_heading | _rest] = String.split(html, "<h1")
+    assert before_heading =~ "relation-tabs"
   end
 
   test "Chiezo が未設定なら、その旨を出して依頼を押させない", %{conn: conn} do
@@ -390,7 +400,7 @@ defmodule TazunaWeb.NewsLiveTest do
 
       html = live |> element(~s|a[href="/news?view=tazuna_tech"]|) |> render_click()
 
-      assert html =~ "今日、押さえておきたい技術"
+      assert html =~ ~r|<h1[^>]*>\s*技術ニュース\s*</h1>|
       # 依頼の本文も話題の関心から作る（話題ごとに文面を持たせない）
       assert html =~ "ソフトウェア開発"
     end
@@ -399,7 +409,7 @@ defmodule TazunaWeb.NewsLiveTest do
       # 消した話題のリンクを踏んだだけで、空白の画面を出す理由が無い
       {:ok, _live, html} = live(conn, ~p"/news?view=nosuch")
 
-      assert html =~ "今日、押さえておきたい技術ニュース"
+      assert html =~ ~r|<h1[^>]*>\s*一般ニュース\s*</h1>|
     end
   end
 

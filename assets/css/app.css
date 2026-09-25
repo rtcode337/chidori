@@ -31,30 +31,24 @@ button { display: inline-block; border-radius: 99px; padding: .8rem 1.25rem; bor
 article { border: 1px solid #e2e8f0; border-radius: 1rem; background: white; padding: 1.25rem; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
 article p:last-child { color: #475569; line-height: 1.7; }
 
-.news-page { background: #f8fafc; min-height: 100vh; }
-.news-page > div { max-width: 56rem; }
-.news-page .brand { display: flex; align-items: center; gap: .65rem; font-size: 1.2rem; }
-.news-page .brand span { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; border-radius: 1rem; background: #f97316; color: white; font-weight: 900; }
-.news-link { color: #9a3412; font-weight: 700; text-decoration: none; }
-.news-intro { padding: 4.5rem 0 2.5rem; }
-.news-intro > p:first-child { color: #c2410c; font-size: .8rem; font-weight: 800; letter-spacing: .08em; }
-.news-intro h1 { max-width: 42rem; font-size: clamp(2.3rem, 6vw, 4rem); }
-.news-intro > p:last-child { max-width: 42rem; color: #475569; font-size: 1.05rem; line-height: 1.8; }
+/* 最新情報。**枠と色は関連図・データ収集と同じ**（`.relations-page` に乗る）。
+   ここに置くのは、記事の一覧のように この画面にしか無いものだけ */
+.news-link { color: #554bc0; font-weight: 700; text-decoration: none; }
 .news-list { display: grid; gap: 1rem; }
 .news-list article { display: flex; justify-content: space-between; align-items: start; gap: 1rem; padding: 1.4rem; }
 .news-list h2 { margin: .4rem 0; font-size: 1.1rem; line-height: 1.55; }
 .news-list h2 a { color: #0f172a; text-decoration: none; }
-.news-list h2 a:hover { color: #c2410c; text-decoration: underline; }
+.news-list h2 a:hover { color: #554bc0; text-decoration: underline; }
 .news-source { color: #64748b; font-size: .8rem; }
 .news-reason { color: #475569; font-size: .9rem; line-height: 1.6; }
 /* 重要度の札。3 段で、上と下だけ色を変える（真ん中がいちばん多いので目立たせない） */
 .priority, .standard, .later { flex: 0 0 auto; border-radius: 99px; padding: .3rem .6rem; font-size: .75rem; font-weight: 800; }
-.priority { background: #ffedd5; color: #9a3412; }
+.priority { background: #e8e5ff; color: #4338a8; }
 .standard { background: #e2e8f0; color: #334155; }
 .later { background: #f1f5f9; color: #94a3b8; }
-.news-message { border: 1px solid #fed7aa; border-radius: 1rem; background: #fff7ed; padding: 1rem 1.2rem; color: #9a3412; line-height: 1.7; }
+.news-message { border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; padding: 1rem 1.2rem; color: #4338a8; line-height: 1.7; }
 .news-page footer { margin-top: 2rem; border-top: 1px solid #e2e8f0; padding: 1.5rem 0; color: #64748b; font-size: .85rem; line-height: 1.7; }
-.news-page footer a { color: #c2410c; }
+.news-page footer a { color: #554bc0; }
 
 .relations-page { min-height: 100vh; background: #f6f7fb; color: #182033; }
 .relations-page > div { max-width: 72rem; }
@@ -63,6 +57,11 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relations-page header nav { display: flex; gap: 1rem; }
 .relations-page header nav a { color: #52607a; font-size: .9rem; font-weight: 700; text-decoration: none; }
 .relations-page header nav a.active { color: #4f46b9; }
+/* 狭い画面ではメニューを詰める。**語の途中で割らない**（「最新情/報」と割れると読めない） */
+@media (max-width: 640px) {
+  .relations-page header nav { gap: .7rem; }
+  .relations-page header nav a { font-size: .8rem; white-space: nowrap; }
+}
 /* 図を主役にする。見出しに 4.5rem 取っていた頃は、図が画面の下半分にしか
    出ていなかった（読みに来る人が見たいのは図のほう） */
 .relations-intro { padding: 1.25rem 0 1rem; }
@@ -76,6 +75,12 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relation-tabs a { margin-bottom: -1px; padding: .6rem 1.1rem; border: 1px solid transparent; border-bottom: 0; border-radius: .7rem .7rem 0 0; color: #616a82; font-size: .9rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
 .relation-tabs a:hover { background: #eceef8; color: #28235e; }
 .relation-tabs a.selected { border-color: #d9dcea; background: #f6f7fb; color: #28235e; box-shadow: inset 0 3px 0 #6254d6; }
+/* 狭い画面ではタブを詰める（最新情報は 4 つ並ぶ）。それでも入らなければ折り返す ——
+   はみ出すとページ全体が横に広がる */
+@media (max-width: 640px) {
+  .relation-tabs { flex-wrap: wrap; }
+  .relation-tabs a { padding: .5rem .65rem; font-size: .8rem; }
+}
 /* 設定欄の開閉。**押せる見出し**として見せる */
 /* 設定欄の見出し。**見出しそのものが開閉の口**なので、見た目は見出しのまま、
    押せることだけ分かるようにする（設定欄のボタンの塗りより強く当てる） */
@@ -548,7 +553,7 @@ article p:last-child { color: #475569; line-height: 1.7; }
 /* 見出しの塊。display を書き直すのは、素の header が横並びになっているため
    (このページの上部メニューがそれで組んである) */
 .report-head { display: block; margin-bottom: 1.6rem; border-bottom: 1px solid #edeff5; padding-bottom: 1.2rem; }
-.report-kicker { margin: 0 0 .5rem; color: #c2410c; font-size: .72rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.report-kicker { margin: 0 0 .5rem; color: #6254d6; font-size: .72rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .report-head h2 { margin: 0; font-size: clamp(1.35rem, 3.2vw, 1.95rem); font-weight: 800; line-height: 1.5; letter-spacing: .01em; color: #0f172a; }
 .report-at { margin: .7rem 0 0; color: #94a3b8; font-size: .8rem; }
 
@@ -556,13 +561,13 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .report p { margin: 0 0 1.1rem; color: #334155; font-size: .97rem; line-height: 2.05; }
 .report p:last-child { margin-bottom: 0; }
 .report strong { color: #0f172a; font-weight: 800; }
-.report a { color: #b4460f; }
+.report a { color: #554bc0; }
 
 /* 要旨。通知へ流れるのと同じ文。読み始めの 2〜3 文だけで用が足りることも多いので、
    本文より先に、本文と違う地の色で置く */
-.report-summary { margin-bottom: 1.8rem; border-left: 3px solid #f59e0b; border-radius: .2rem .9rem .9rem .2rem; background: #fffbeb; padding: 1.15rem 1.35rem; }
-.report-summary-label { margin: 0 0 .5rem !important; color: #92400e; font-size: .72rem; font-weight: 800; letter-spacing: .12em; }
-.report-summary p { margin-bottom: .6rem; color: #422006; font-size: .95rem; }
+.report-summary { margin-bottom: 1.8rem; border-left: 3px solid #6254d6; border-radius: .2rem .9rem .9rem .2rem; background: #f4f3ff; padding: 1.15rem 1.35rem; }
+.report-summary-label { margin: 0 0 .5rem !important; color: #4338a8; font-size: .72rem; font-weight: 800; letter-spacing: .12em; }
+.report-summary p { margin-bottom: .6rem; color: #1e1b4b; font-size: .95rem; }
 
 /* 目次。章が 2 つ以上あるときだけ出る。長いレポートは頭から読むとは限らない */
 .report-toc { margin-bottom: 2rem; border: 1px solid #edeff5; border-radius: .9rem; background: #fafbfd; padding: 1rem 1.2rem; }
@@ -570,14 +575,14 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .report-toc li { counter-increment: toc; font-size: .88rem; line-height: 1.6; }
 .report-toc li::before { content: counter(toc, decimal-leading-zero); margin-right: .6rem; color: #b8bfd0; font-weight: 800; font-size: .78rem; }
 .report-toc a { color: #334155; text-decoration: none; }
-.report-toc a:hover { color: #b4460f; text-decoration: underline; }
+.report-toc a:hover { color: #554bc0; text-decoration: underline; }
 
 /* 章。番号を振るのは画面の側 —— 本文に書かせると、章を足した回に番号がずれる */
 .report-section { margin-bottom: 2.2rem; scroll-margin-top: 1.5rem; }
 .report-section::after { content: ""; display: block; clear: both; }
 .report-section:last-of-type { margin-bottom: 0; }
 .report-section h3 { display: flex; align-items: center; gap: .7rem; margin: 0 0 .9rem; font-size: 1.12rem; font-weight: 800; line-height: 1.6; color: #16203a; }
-.report-number { display: grid; place-items: center; flex: none; width: 1.7rem; height: 1.7rem; border-radius: 99px; background: #fff1e6; color: #b4460f; font-size: .82rem; font-weight: 800; }
+.report-number { display: grid; place-items: center; flex: none; width: 1.7rem; height: 1.7rem; border-radius: 99px; background: #ece9ff; color: #4338a8; font-size: .82rem; font-weight: 800; }
 
 /* 記事の絵。本文の脇に置く —— 段落の上に挟むと、読む前に大きな絵で章が切れる。
    絵を持っているのは配信元が配っているものだけなので、無い章のほうが多い */
@@ -587,7 +592,7 @@ article p:last-child { color: #475569; line-height: 1.7; }
 /* 印は書き直す。素の ul は印も余白も消してある（Tailwind の下敷き） */
 .report-list { margin: 0 0 1.2rem; padding-left: 1.2rem; list-style: disc; display: grid; gap: .5rem; }
 .report-list li { color: #334155; font-size: .95rem; line-height: 1.85; }
-.report-list li::marker { color: #f59e0b; }
+.report-list li::marker { color: #8b84d6; }
 
 /* 注記。身構える点(未確定・注意・期限)を、本文の流れから外して置く */
 .report-note { margin: 0 0 1.2rem !important; border-left: 3px solid #cbd5e1; background: #f8fafc; padding: .7rem 1rem; color: #475569 !important; font-size: .9rem !important; line-height: 1.85 !important; }

@@ -1,11 +1,10 @@
 <Layouts.flash_group flash={@flash} />
-<main class="news-page">
+<%!-- **見た目は関連図・データ収集と同じ枠**（`relations-page`）。画面ごとに色や
+     見出しの作りが違うと、同じアプリの中を移っている気がしない --%>
+<main class="relations-page news-page">
   <div>
     <header>
-      <a href={~p"/"} class="brand" aria-label="tazuna トップページ">
-        <span> t </span>
-        <strong>tazuna</strong>
-      </a>
+      <a href={~p"/"} class="brand" aria-label="tazuna トップページ"><span>t</span>tazuna</a>
       <nav aria-label="主要メニュー">
         <a class="active" href={~p"/news"}>最新情報</a>
         <a href={~p"/relations"}>関連図</a>
@@ -13,27 +12,30 @@
       </nav>
     </header>
 
-    <section class="news-intro">
-      <p>DAILY UPDATES</p>
-      <h1>{if @topic, do: "今日、押さえておきたい#{@topic.name}", else: "最新情報"}</h1>
-      <p>
-        集めるのは Chiezo です。tazuna は収集を依頼して、溜まったものを読みます。
-        依頼して作られる収集は止まった状態なので、<strong>この画面から AI が勝手に動くことはありません</strong>。
-      </p>
-    </section>
-
     <%!-- 話題ごとのタブ。**集めるものも溜まるものも話題ごとに別**なので、
          1 つに混ぜると、どちらの状態を見ているのか読めなくなる。
-         並ぶのは `Tazuna.Topics` の話題そのもの（定義はコードにある） --%>
+         並ぶのは `Tazuna.Topics` の話題そのもの（定義はコードにある）。
+         **見出しの上に置く**（関連図・データ収集と同じ）—— 見出しと説明は選んだ話題の
+         ものなので、切り替える口がその下にあると、どこまでが切り替わるのかが読めない --%>
     <nav :if={@topics != []} class="relation-tabs" aria-label="話題">
       <.link
         :for={topic <- @topics}
         patch={~p"/news?view=#{topic.collection}"}
         class={if @topic && @topic.collection == topic.collection, do: "selected"}
+        aria-current={if @topic && @topic.collection == topic.collection, do: "page"}
       >
         {topic.name}
       </.link>
     </nav>
+
+    <section class="relations-intro">
+      <p>DAILY UPDATES</p>
+      <h1>{if @topic, do: @topic.name, else: "最新情報"}</h1>
+      <p>
+        集めるのは Chiezo です。tazuna は収集を依頼して、溜まったものを読みます。
+        依頼して作られる収集は止まった状態なので、この画面から AI が勝手に動くことはありません。
+      </p>
+    </section>
 
     <%!-- まとめ。**記事の一覧より先に出す** —— 溜まったものをそのまま並べても
          読めないので、何が起きたかを先に言う（通知へ流れるのは、この中の要旨） --%>
