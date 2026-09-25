@@ -103,6 +103,22 @@ article p:last-child { color: #475569; line-height: 1.7; }
 /* 設定の枠。**集めたものの表示から離す** —— 続けて置くと、記事の続きに見える。
    中は仕事ごとの節に分け、節の頭に線を引く(集める設定と知らせる設定は別のもの) */
 .settings-panel { margin: 2.5rem 0 1.25rem; padding: 1.2rem 1.3rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; }
+/* **狭い画面では、表だけを枠の中で横にずらす。** 巡回の表と区画の表は列を削ると
+   読めないので、はみ出させる代わりに表の中で横にスクロールさせる（はみ出すと
+   ページ全体が横に広がり、ほかの欄まで画面の外へ押し出される） */
+@media (max-width: 640px) {
+  .settings-panel { padding: 1rem .9rem; }
+  .settings-panel table, .collect-panel table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .settings-panel select { max-width: 11rem; }
+  /* 表は横にずらせるので、中の字は折り返さない（「ざっ/と見/る」と割れると読めない） */
+  .settings-panel table th, .settings-panel table td,
+  .collect-panel table th, .collect-panel table td { white-space: nowrap; }
+  .settings-panel .collect-facts dt { white-space: nowrap; }
+  /* 区画の名前の列は、ふつうの長さ（「フランス|1817-1821」）が 1 行に収まる幅を
+     持たせ、それより長い名前だけ折り返す。**全部を 1 行にはしない** —— 小さい国を
+     寄せ集めた区画の名前は長く、列がその幅（実測 772px）まで広がる */
+  .settings-panel .partition-table td:first-child { min-width: 10.5rem; max-width: 14rem; white-space: normal; overflow-wrap: anywhere; }
+}
 .settings-panel > h2 { margin: 0 0 .9rem; font-size: 1.05rem; color: #2a2463; }
 .settings-panel > h3 { margin: 0 0 .5rem; font-size: .95rem; color: #332c75; }
 .settings-block { margin-top: 1.2rem; border-top: 1px solid #dedcf5; padding-top: 1rem; }
