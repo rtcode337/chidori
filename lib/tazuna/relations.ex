@@ -1246,7 +1246,7 @@ defmodule Tazuna.Relations do
   3. 没年だけ(生年不詳) → `不詳-1518`。区画は没年で決まる(生年が分からないので、
      どこかに入れるほうを取る)
   4. 世紀だけ(生没年不詳) → `1700頃-1800頃`。世紀の頭を生年の目安にする。
-     2 つの世紀に当たる人は、古いほうを採る(先に並べた規則で止まる)
+     2 つの世紀に当たる人は、カテゴリの並びで先に当たったほうを採る
   """
   def years_rules do
     tag = Graph.years_tag()
@@ -1254,15 +1254,16 @@ defmodule Tazuna.Relations do
     [
       %{patterns: ["^(\\d{3,4})年生$", "^(\\d{3,4})年没$"], format: "#{tag}:{1}-{2}"},
       %{pattern: "^(\\d{3,4})年生$", format: "#{tag}:{1}-", fallback: true},
-      %{pattern: "^(\\d{3,4})年没$", format: "#{tag}:不詳-{1}", fallback: true}
-    ] ++
-      for century <- @centuries do
-        %{
-          pattern: "^#{century}世紀.+の(?:女性)?画家$",
-          format: "#{tag}:#{(century - 1) * 100}頃-#{century * 100}頃",
-          fallback: true
-        }
-      end
+      %{pattern: "^(\\d{3,4})年没$", format: "#{tag}:不詳-{1}", fallback: true},
+      # **世紀は 1 つの規則で、値の表で読み替える**（`map`）。世紀ごとに規則を
+      # 並べると Chiezo の上限（読み替えは 20 個まで）を超えて、設定の更新が断られた
+      %{
+        pattern: "^(\\d{1,2})世紀.+の(?:女性)?画家$",
+        format: "#{tag}:{1}",
+        fallback: true,
+        map: Map.new(@centuries, &{"#{&1}", "#{(&1 - 1) * 100}頃-#{&1 * 100}頃"})
+      }
+    ]
   end
 
   defp nothing_reason(nil), do: :collection_missing

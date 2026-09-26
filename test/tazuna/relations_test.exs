@@ -435,15 +435,18 @@ defmodule Tazuna.RelationsTest do
     assert "年代:{1}-" in formats
     assert "年代:不詳-{1}" in formats
 
-    # 世紀は、その世紀の頭を生年の目安にする。古い世紀から並べる
-    century = Enum.find(rest, &(&1.pattern =~ "^18世紀"))
-    assert century.format == "年代:1700頃-1800頃"
-    assert Regex.match?(Regex.compile!(century.pattern), "18世紀日本の女性画家")
-    idx = &Enum.find_index(rest, fn rule -> rule.pattern =~ "^#{&1}世紀" end)
-    assert idx.(17) < idx.(18)
+    # 世紀は、その世紀の頭を生年の目安にする。**規則は 1 つで、値の表で読み替える**
+    # (世紀ごとに並べると Chiezo の上限の 20 個を超える)
+    century = Enum.find(rest, &Map.has_key?(&1, :map))
+    assert century.format == "年代:{1}"
+    assert century.map["18"] == "1700頃-1800頃"
 
-    # 抽出の指定にそのまま入っている
+    assert Regex.run(Regex.compile!(century.pattern), "18世紀日本の女性画家") ==
+             ["18世紀日本の女性画家", "18"]
+
+    # 抽出の指定にそのまま入っていて、読み替えの規則は Chiezo の上限(20 個)に収まる
     assert Enum.all?(Relations.years_rules(), &(&1 in Relations.painters_extract().tags))
+    assert length(Relations.painters_extract().tags) <= 20
   end
 
   test "依頼文は、年代を数の形で書かせる" do
