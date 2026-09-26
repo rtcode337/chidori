@@ -44,8 +44,18 @@
            取り直すかは読む人に決めてもらう --%>
       <p class="relation-checked">
         <span class="muted-note">{checked_text(@relation)}</span>
-        <button type="button" phx-click="reload" disabled={@relation[:step] != nil}>
-          {if @relation[:step], do: "読んでいます…", else: "最新の情報を取得"}
+        <%!-- **取り直しの最中も印を出す。** 読むのは `status` が :loading のあいだで、
+             収集の途中経過（`step`）だけを見ていた頃は、取得中もボタンが押せるままで
+             押したのかどうかが分からなかった --%>
+        <% loading = reloading?(@relation) %>
+        <button
+          type="button"
+          phx-click="reload"
+          disabled={loading}
+          aria-busy={if loading, do: "true"}
+          class={if loading, do: "is-loading"}
+        >
+          {if loading, do: "取得しています…", else: "最新の情報を取得"}
         </button>
       </p>
     </section>

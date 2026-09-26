@@ -1392,6 +1392,15 @@ defmodule TazunaWeb.RelationsLiveTest do
       assert RelationsLive.partition_note("日本|1900-1910", "年代を埋めて") =~ "年代を埋めて"
     end
 
+    test "取り直している最中は、取得中だと分かる" do
+      # 読んでいるあいだは `status` が :loading。途中経過（`step`）だけを見ていた頃は、
+      # 取得中もボタンが押せるままだった
+      assert RelationsLive.reloading?(%{status: :loading, step: nil})
+      assert RelationsLive.reloading?(%{status: :ready, step: :collecting})
+      refute RelationsLive.reloading?(%{status: :ready, step: nil})
+      refute RelationsLive.reloading?(%{status: :ready, step: %{}})
+    end
+
     test "整理の既定の頼みごとは、いつもの手順を全部書く" do
       # 割り込みは「次の指示にだけ従って」と前置きされる。「調べて」だけだと、
       # 消したものの見直しに手を付けない

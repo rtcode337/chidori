@@ -232,6 +232,9 @@ article p:last-child { color: #475569; line-height: 1.7; }
    いま見ているものの古さがここで読める */
 .relation-checked { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: .8rem 0 0; }
 .relation-checked button { padding: .3rem .8rem; border: 1px solid #dcdff0; border-radius: .6rem; background: #fff; color: #4338a8; font-size: .82rem; font-weight: 600; }
+/* 取得中。押せないだけだと「押せたのか」が分からないので、回る印を付ける */
+.relation-checked button.is-loading { color: #8a90a6; cursor: progress; }
+.relation-checked button.is-loading::before { content: ""; display: inline-block; width: .8em; height: .8em; margin-right: .4em; vertical-align: -.1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: download-spin .8s linear infinite; }
 
 /* 行き先を選ぶ口。操作の口と同じく図の上に重ねる（全画面でも一緒に出したい） */
 .relation-find { position: absolute; top: .75rem; left: .75rem; z-index: 3; display: flex; flex-wrap: wrap; align-items: flex-start; gap: .3rem; }

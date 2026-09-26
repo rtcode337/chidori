@@ -551,6 +551,12 @@ defmodule TazunaWeb.RelationsLive do
   def checked_text(%{checked_at: at}) when at != nil, do: "最後に取得: #{Jst.format(at)}"
   def checked_text(_relation), do: "まだ取得していません"
 
+  @doc """
+  図を取り直している最中か（読んでいる・収集の途中経過が届いている、のどちらか）。
+  「最新の情報を取得」を押せなくし、取得中だと分かるようにするのに使います。
+  """
+  def reloading?(relation), do: relation[:status] == :loading or relation[:step] not in [nil, %{}]
+
   @doc "未レビューの数がいつのものか（図を取得した時刻。JST）。"
   def unreviewed_as_of(%{checked_at: at}) when at != nil, do: Jst.format(at)
   def unreviewed_as_of(_relation), do: "まだ取得していません"
