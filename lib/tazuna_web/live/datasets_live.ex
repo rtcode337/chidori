@@ -52,6 +52,8 @@ defmodule TazunaWeb.DatasetsLive do
        # travel-log からの依頼。頼んでいる間は見積もり（何区画で頼むか）を持つ
        requesting: nil,
        requested: nil,
+       # 直近の依頼と、その結果（Chiezo の変更履歴から引き当てたもの）
+       request_results: [],
        # 地図で選んでいる区画。**選ぶのと頼むのを分ける** —— 押した瞬間に走ると、
        # どこを押したのか確かめる前に AI が動く
        picked: nil,
@@ -93,6 +95,7 @@ defmodule TazunaWeb.DatasetsLive do
        |> assign(state: %{empty_state() | status: :loading})
        |> start_async(:read, fn -> Datasets.read(dataset) end)
        |> start_async(:backends, &Datasets.backends/0)
+       |> load_request_results()
      else
        socket
      end}
@@ -250,13 +253,22 @@ defmodule TazunaWeb.DatasetsLive do
         live = self()
         deadline = System.monotonic_time(:millisecond) + @request_wait_ms
 
+        # **頼む前に控える**（結果を依頼と並べて見せるため。待っている間も出せるように）
+        {:ok, log} = Requests.record(dataset, plan, text)
+
         Task.Supervisor.start_child(Tazuna.TaskSupervisor, fn ->
-          send(live, {:travel_log_request, Requests.run(dataset, plan, deadline)})
+          result = Requests.run(dataset, plan, deadline)
+          Requests.mark(log, result)
+          send(live, {:travel_log_request, result})
         end)
 
-        {:noreply, assign(socket, requesting: plan, requested: nil)}
+        {:noreply, socket |> assign(requesting: plan, requested: nil) |> load_request_results()}
     end
   end
+
+  # 依頼の結果を読み直す（Chiezo の変更履歴は回が終わってから 1 行になる）
+  def handle_event("reload_request_results", _params, socket),
+    do: {:noreply, load_request_results(socket)}
 
   # 定時の巡回とは別に、1 回だけ頼む
   def handle_event("ask", %{"note" => note}, socket) do
@@ -321,11 +333,19 @@ defmodule TazunaWeb.DatasetsLive do
 
   def handle_async(:backends, {:exit, _reason}, socket), do: {:noreply, socket}
 
+  def handle_async(:request_results, {:ok, results}, socket),
+    do: {:noreply, assign(socket, request_results: results)}
+
+  def handle_async(:request_results, {:exit, _reason}, socket), do: {:noreply, socket}
+
   # travel-log からの依頼が終わった（頼めた・断られた・待ちきれなかった）。
   # 見積もりは一言に使うので、結果と組にして残す
   @impl true
   def handle_info({:travel_log_request, result}, socket) do
-    {:noreply, assign(socket, requesting: nil, requested: {result, socket.assigns.requesting})}
+    {:noreply,
+     socket
+     |> assign(requesting: nil, requested: {result, socket.assigns.requesting})
+     |> load_request_results()}
   end
 
   # **まだ何も読んでいない状態。** 「収集が無い」と区別する —— 読めていないのに
@@ -547,6 +567,32 @@ defmodule TazunaWeb.DatasetsLive do
       Jason.encode!(module.partition([plan.lat, plan.lon]), pretty: true)
     end
   end
+
+  # travel-log から依頼を受ける対象だけ読む（依頼の口があるのはそこだけ）
+  defp load_request_results(%{assigns: %{dataset: %{reader: "travel-log"} = dataset}} = socket),
+    do: start_async(socket, :request_results, fn -> Requests.results(dataset) end)
+
+  defp load_request_results(socket), do: socket
+
+  @doc "依頼の状態の言い方。"
+  def request_state(%{log: %{status: "failed", error: error}}),
+    do: "頼めませんでした（#{error}）"
+
+  def request_state(%{log: %{status: "waiting"}}),
+    do: "取り込みが空くのを待っています"
+
+  def request_state(%{result: nil}),
+    do: "Chiezo が受けました。回が終わると、ここに結果が出ます"
+
+  def request_state(%{result: %{status: "ok"} = result}),
+    do: "足した #{result.added} ・直した #{result.updated} ・消した #{result.removed}"
+
+  def request_state(%{result: result}),
+    do: "回が失敗しました（#{result.error}）"
+
+  @doc "見出しの一覧に出しきれなかった数（Chiezo の控えは頭のほうだけ）。"
+  def more_than_shown(count, titles) when count > length(titles), do: count - length(titles)
+  def more_than_shown(_count, _titles), do: 0
 
   @doc "区画の地図に立てる起点（`{緯度, 経度}`。決まっていなければ nil）。"
   def origin_of(%SurveyPlan{lat: lat, lon: lon}) when is_number(lat) and is_number(lon),

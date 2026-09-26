@@ -373,6 +373,76 @@ defmodule Tazuna.Chiezo do
     end
   end
 
+  @doc """
+  収集の変更履歴（新しい順。1 回 = 1 行）。`sweep` で回を絞れます。
+
+  1 行に入るのは、いつ・どの巡回が・どの区画（`scope`）を見て、何を足し・直し・
+  消したか（件数と、見出しの頭のほう）。引けなければ `{:error, 理由}`。
+  """
+  def changes(base, name, opts \\ []) do
+    query =
+      %{"name" => name, "limit" => opts[:limit] || 30, "sweep" => opts[:sweep]}
+      |> Enum.reject(fn {_k, v} -> v in [nil, ""] end)
+      |> URI.encode_query()
+
+    case get(base <> "/v1/collect/changes?" <> query) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"changes" => rows}} when is_list(rows) -> {:ok, Enum.map(rows, &change_of/1)}
+          _other -> {:error, :chiezo_unexpected_body}
+        end
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  defp change_of(row) do
+    %{
+      at: parse_time(row["at"]),
+      status: row["status"],
+      sweep: row["sweep"],
+      scope: list_of(row["scope"]),
+      added: row["added"] || 0,
+      updated: row["updated"] || 0,
+      removed: row["removed"] || 0,
+      added_titles: list_of(row["added_titles"]),
+      updated_titles: list_of(row["updated_titles"]),
+      removed_titles: list_of(row["removed_titles"]),
+      error: row["error"] || "",
+      backend: row["backend"],
+      model: row["model"],
+      ms: row["ms"]
+    }
+  end
+
+  defp list_of(values) when is_list(values), do: Enum.map(values, &to_string/1)
+  defp list_of(_values), do: []
+
+  defp parse_time(text) when is_binary(text) do
+    case DateTime.from_iso8601(text) do
+      {:ok, at, _offset} -> at
+      _other -> nil
+    end
+  end
+
+  defp parse_time(_text), do: nil
+
+  @doc """
+  Chiezo の画面で、1 件の「直す前との違い」を開く URL（収集の 1 件のページ）。
+  """
+  def doc_page_url(name, title) when is_binary(name) and is_binary(title) do
+    url(
+      "/admin/collect/" <>
+        URI.encode(name, &URI.char_unreserved?/1) <>
+        "/doc?" <>
+        URI.encode_query(%{"title" => title})
+    )
+  end
+
   @doc "溜まった件数。集めたものは長期記憶側にあるので、ソース表から取ります。"
   def docs_count(base, name) do
     with {:ok, %{status: 200, body: body}} <- get(base <> "/v1/sources"),

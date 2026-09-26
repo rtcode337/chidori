@@ -18,8 +18,12 @@ defmodule Tazuna.Datasets.Requests do
   答えようとして、中身を知らないまま書き換えることがあります。
   """
 
+  import Ecto.Query
+
   alias Tazuna.Chiezo
   alias Tazuna.Datasets
+  alias Tazuna.Datasets.RequestLog
+  alias Tazuna.Repo
 
   # Chiezo が 1 回で受ける区画の数の天井（`MAX_TRIAL_PARTITIONS`）。**超えたら断る** ——
   # 黙って切ると、切られた区画の依頼だけが誰にも読まれない
@@ -179,6 +183,83 @@ defmodule Tazuna.Datasets.Requests do
         deadline
       )
     end
+  end
+
+  # 画面に並べる依頼の数
+  @shown_logs 5
+
+  @doc """
+  依頼を控えます（**頼む前に**。取り込みが空くのを最長 1 時間待つので、その間も
+  画面に「待っている」と出せるように）。返すのは控えの行。
+  """
+  def record(%{collection: name}, %{keys: keys, points: points, missed: missed}, text) do
+    %RequestLog{}
+    |> RequestLog.changeset(%{
+      collection: name,
+      keys: keys,
+      text: String.trim(text),
+      points: length(points),
+      missed: length(missed),
+      requested_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
+    |> Repo.insert()
+  end
+
+  @doc "頼んだ結果（Chiezo が受けたか・断ったか）を控えます。"
+  def mark(%RequestLog{} = log, :ok),
+    do: log |> RequestLog.changeset(%{status: "sent"}) |> Repo.update()
+
+  def mark(%RequestLog{} = log, {:error, reason}),
+    do: log |> RequestLog.changeset(%{status: "failed", error: inspect(reason)}) |> Repo.update()
+
+  @doc "直近の依頼（新しい順）。"
+  def recent(collection, limit \\ @shown_logs) do
+    RequestLog
+    |> where([r], r.collection == ^collection)
+    |> order_by([r], desc: r.requested_at, desc: r.id)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
+  依頼ごとに、**その結果になった回**を引き当てます（`result`。まだ無ければ nil）。
+
+  Chiezo の変更履歴は、その回がどの依頼から走ったのかを持ちません。そこで
+  **頼んだ時刻より後に、頼んだ区画をちょうど見た回**のうち、いちばん早いものを
+  結果とみなします（区画の並びは問わない）。定時の回は Chiezo が選んだ区画を
+  見るので、区画の組がそっくり一致することは、まずありません。
+  """
+  def with_results(logs, changes) do
+    Enum.map(logs, fn log ->
+      wanted = MapSet.new(log.keys)
+
+      result =
+        changes
+        |> Enum.filter(fn change ->
+          change.at != nil and DateTime.compare(change.at, log.requested_at) != :lt and
+            MapSet.new(change.scope) == wanted
+        end)
+        |> Enum.min_by(& &1.at, DateTime, fn -> nil end)
+
+      %{log: log, result: result}
+    end)
+  end
+
+  @doc """
+  直近の依頼と、その結果。Chiezo を引くので、呼ぶのは画面の裏から。
+  """
+  def results(%{collection: name} = dataset) do
+    logs = recent(name)
+
+    changes =
+      with {:ok, base} <- Datasets.base_url(),
+           {:ok, rows} <- Chiezo.changes(base, name, sweep: dataset.survey_plan_sweep, limit: 50) do
+        rows
+      else
+        _unavailable -> []
+      end
+
+    with_results(logs, changes)
   end
 
   @doc "見積もりの段で断った理由の言い方（Chiezo が断った理由は画面の側が言う）。"

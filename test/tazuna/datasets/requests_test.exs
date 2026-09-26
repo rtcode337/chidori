@@ -58,6 +58,32 @@ defmodule Tazuna.Datasets.RequestsTest do
     refute osaka =~ "東京" or osaka =~ "外の続き"
   end
 
+  describe "結果の引き当て" do
+    alias Tazuna.Datasets.RequestLog
+
+    defp change(at, scope), do: %{at: at, scope: scope, status: "ok"}
+
+    test "頼んだ後に、頼んだ区画をちょうど見た回のうち、いちばん早いものを結果にする" do
+      log = %RequestLog{keys: [@tokyo, @osaka], requested_at: ~U[2026-09-26 00:00:00Z]}
+
+      changes = [
+        change(~U[2026-09-26 02:00:00Z], [@osaka, @tokyo]),
+        change(~U[2026-09-26 01:00:00Z], [@tokyo, @osaka]),
+        # 頼む前の回・区画の組が違う回は結果にしない
+        change(~U[2026-09-25 23:00:00Z], [@tokyo, @osaka]),
+        change(~U[2026-09-26 00:30:00Z], [@tokyo])
+      ]
+
+      assert [%{result: %{at: ~U[2026-09-26 01:00:00Z]}}] = Requests.with_results([log], changes)
+    end
+
+    test "まだ回が終わっていなければ、結果は無い" do
+      log = %RequestLog{keys: [@tokyo], requested_at: ~U[2026-09-26 00:00:00Z]}
+
+      assert [%{result: nil}] = Requests.with_results([log], [])
+    end
+  end
+
   test "区画が多すぎたら切らずに断る" do
     keys = for i <- 0..20, do: "#{i}.0,100.0/#{i}.5,100.5"
     text = Enum.map_join(0..20, "\n", &"- [追加] (#{&1}.25,100.25)")

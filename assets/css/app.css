@@ -120,6 +120,26 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .place-candidates li { display: flex; align-items: baseline; gap: .35rem; }
 /* 区画の表。**数と時刻とボタンは折り返さない**（「ま/だ」と割れると読めない）。
    幅は区画の名前の列が引き受ける */
+/* travel-log からの依頼の結果。**足した・直した・消したを色で分ける** */
+.request-results { margin: .8rem 0 1.2rem; }
+.request-results-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.request-results-head h3 { margin: 0; }
+.request-results-head button { padding: .25rem .7rem; font-size: .8rem; }
+.request-result { margin: .5rem 0; padding: .6rem .8rem; border: 1px solid #e4e7f0; border-radius: .8rem; background: #fff; }
+.request-result > summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: .2rem .7rem; align-items: baseline; }
+.request-when { font-weight: 700; }
+.request-scope { color: #64748b; font-size: .85rem; }
+.request-state { color: #64748b; font-size: .85rem; }
+.request-state.has-result { color: #166534; font-weight: 700; }
+.request-changes h4 { margin: .7rem 0 .3rem; font-size: .9rem; }
+.request-changes ul { margin: 0; padding-left: 1.2rem; }
+.request-changes li { margin: .15rem 0; overflow-wrap: anywhere; }
+.request-changes a { color: #4338a8; text-decoration: underline; }
+.request-changes.is-added h4 { color: #166534; }
+.request-changes.is-updated h4 { color: #92620a; }
+.request-changes.is-removed h4 { color: #b42318; }
+.request-text { margin-top: .6rem; }
+.request-text pre { white-space: pre-wrap; font-size: .8rem; }
 /* 起点のピン。**区画の色と取り違えない赤**で、白い縁で区画から浮かせる。押す口ではない */
 .origin-pin { pointer-events: none; }
 .origin-pin path { fill: #e0433a; stroke: #fff; stroke-width: 1.2; }

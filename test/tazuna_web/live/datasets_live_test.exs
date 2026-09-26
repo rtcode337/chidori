@@ -147,6 +147,36 @@ defmodule TazunaWeb.DatasetsLiveTest do
             Jason.encode!(%{"sources" => [%{"name" => "tazuna_meals", "docs" => 42}]})
           )
 
+        # 変更履歴。**依頼した区画をちょうど見た回**が 1 つある（依頼の結果として引き当たる）
+        %{method: :get, url: "http://chiezo.test:7010/v1/collect/changes?" <> _query} ->
+          Tazuna.HttpStub.ok(
+            Jason.encode!(%{
+              "changes" => [
+                %{
+                  "at" => "2099-01-01T00:00:00+00:00",
+                  "status" => "ok",
+                  "sweep" => "情報収集",
+                  "scope" => ["35.6,139.7/35.7,139.8"],
+                  "added" => 25,
+                  "updated" => 1,
+                  "removed" => 1,
+                  "added_titles" => ["そば屋"],
+                  "updated_titles" => ["駅前うどん"],
+                  "removed_titles" => ["閉店した店"],
+                  "backend" => "antigravity"
+                },
+                # 定時の回（Chiezo が選んだ別の区画）は結果にしない
+                %{
+                  "at" => "2099-01-01T01:00:00+00:00",
+                  "status" => "ok",
+                  "sweep" => "情報収集",
+                  "scope" => ["35.0,135.7/35.1,135.8"],
+                  "added" => 9
+                }
+              ]
+            })
+          )
+
         %{method: :get, url: "http://chiezo.test:7010/v1/collect"} ->
           Tazuna.HttpStub.ok(Jason.encode!(%{"collections" => [@collection]}))
 
@@ -373,9 +403,22 @@ defmodule TazunaWeb.DatasetsLiveTest do
       refute Map.has_key?(sent, "note")
 
       # **外れた座標を黙って落とさない**
-      html = render(live)
+      html = render_async(live, 2_000)
       assert html =~ "区画 1 つで情報収集を頼みました"
       assert html =~ "(26.2,127.68)"
+
+      # **依頼と、その結果を並べる**（頼んだ区画をちょうど見た回を引き当てる）
+      assert [log] = Tazuna.Datasets.Requests.recent("tazuna_meals")
+      assert log.keys == ["35.6,139.7/35.7,139.8"]
+      assert log.status == "sent"
+      assert html =~ "依頼の結果"
+      assert html =~ "足した 25 ・直した 1 ・消した 1"
+      assert html =~ "そば屋"
+      assert html =~ "閉店した店"
+      # 見出しは Chiezo の画面の「直す前との違い」へ
+      assert html =~ "/admin/collect/tazuna_meals/doc?title="
+      # Chiezo の控えは頭のほうだけ（足した 25 件のうち 1 件だけ並ぶ）
+      assert html =~ "ほか 24 件"
     end
 
     test "座標の無いテキストでは頼まない", %{conn: conn} do
