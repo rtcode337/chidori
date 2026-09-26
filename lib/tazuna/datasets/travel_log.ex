@@ -18,7 +18,19 @@ defmodule Tazuna.Datasets.TravelLog do
   ```
   <キー>/settings.json   スポット種別の設定（名前・シリーズ一覧）
   <キー>/spots.csv       スポット（name,lat,lng,region,rank,series,categories,description,key）
+  <キー>/excluded_candidates/exclude.txt   消えたスポットの key（1 行に 1 つ。無ければ入れない）
   ```
+
+  **AI が目を通したあとで消えたもの（閉店・重複をまとめたもの）は exclude.txt で
+  渡します。** spots.csv に載らないだけでは、travel-log が前の回で読み込んだぶんは
+  消えません（向こうの取り込みは差分の追加・更新で、載っていない行を消しはしない）。
+  travel-log-data と同じ置き場所なので、向こうは同じ取り込みの中で key の一致する
+  スポットを消します。
+
+  **最初の目通しで弾かれたものは入れません。** 一度も書き出されていないので、
+  向こうに消すものがありません。どちらなのかは Chiezo が消した時点で脇書きに
+  残します（`extra.removed_after_review`）。それより前に消えたものには残って
+  いないので入りません。
 
   **`key` には Chiezo の `doc_id` を入れます。** 焼き直しても引き継がれる番号なので、
   AI が見出しを直した回でも同じスポットの更新として入ります（名前を鍵にすると、
@@ -31,6 +43,9 @@ defmodule Tazuna.Datasets.TravelLog do
 
   alias Tazuna.Chiezo
   alias Tazuna.Datasets
+
+  # 1 回に引く件数（Chiezo 側の上限）
+  @page_limit 500
 
   @csv_header ~w(name lat lng region rank series categories description key)
 
@@ -52,22 +67,34 @@ defmodule Tazuna.Datasets.TravelLog do
   @doc """
   travel-log 用の ZIP を組み立てます。`{:ok, 名前, 中身, 内訳}` か `{:error, 理由}`。
 
-  内訳は `%{rows: 書き出した件数, skipped: 落とした件数}`。
+  内訳は `%{rows: 書き出した件数, skipped: 落とした件数, excluded: 消えたものの件数}`。
   """
   def bundle(%{key: key, name: name, collection: collection, module: module} = dataset) do
     with true <- exportable?(dataset) || {:error, :not_exportable},
          {:ok, base} <- Datasets.base_url(),
-         {:ok, docs} <- fetch_all(base, collection, module.kind_tag()) do
+         {:ok, docs} <- fetch_all(base, collection, module.kind_tag()),
+         {:ok, removed} <-
+           fetch_all(base, collection, Chiezo.removed_tag(), include_removed: true) do
       rows = docs |> Enum.map(&row(&1, dataset)) |> Enum.reject(&is_nil/1)
+      excluded = excluded_keys(removed, dataset)
 
-      files = [
-        {~c"#{key}/settings.json", settings_json(key, name, rows)},
-        {~c"#{key}/spots.csv", csv(rows)}
-      ]
+      files =
+        [
+          {~c"#{key}/settings.json", settings_json(key, name, rows)},
+          {~c"#{key}/spots.csv", csv(rows)}
+        ] ++
+          if excluded == [],
+            do: [],
+            else: [{~c"#{key}/excluded_candidates/exclude.txt", exclude_txt(excluded)}]
 
       case :zip.create(~c"#{key}.zip", files, [:memory]) do
         {:ok, {_name, binary}} ->
-          {:ok, "#{key}.zip", binary, %{rows: length(rows), skipped: length(docs) - length(rows)}}
+          {:ok, "#{key}.zip", binary,
+           %{
+             rows: length(rows),
+             skipped: length(docs) - length(rows),
+             excluded: length(excluded)
+           }}
 
         {:error, reason} ->
           {:error, reason}
@@ -79,8 +106,8 @@ defmodule Tazuna.Datasets.TravelLog do
   end
 
   # 全ページ。**件数は 1 ページ目が教えてくれる**ので、何周するかはそこで決まる
-  defp fetch_all(base, collection, tag, offset \\ 0, acc \\ []) do
-    case Chiezo.spot_docs(base, collection, tag, offset) do
+  defp fetch_all(base, collection, tag, opts \\ [], offset \\ 0, acc \\ []) do
+    case Chiezo.spot_docs(base, collection, tag, offset, @page_limit, opts) do
       {:ok, %{docs: []}} ->
         {:ok, acc}
 
@@ -89,11 +116,46 @@ defmodule Tazuna.Datasets.TravelLog do
 
         if length(got) >= total,
           do: {:ok, got},
-          else: fetch_all(base, collection, tag, length(got), got)
+          else: fetch_all(base, collection, tag, opts, length(got), got)
 
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc """
+  消えたもののうち、exclude.txt に書く key（doc_id）。重複を落として番号順に並べます。
+
+  **AI が目を通したあとで消えたものだけ**です（Chiezo が消した時点で残す
+  `extra.removed_after_review`）。最初の目通しで弾かれたものは一度も書き出されて
+  いないので、渡す理由がありません。印の無いもの（印を残すようになる前に消えたもの）も
+  入れません。収集の目印（`kind_tag`）の無いものも落とします —— 同じ収集に別の種類の
+  文書が混ざっても、それは地図のスポットではないためです。
+  """
+  def excluded_keys(docs, %{module: module}) do
+    docs
+    |> Enum.filter(fn doc ->
+      tags = Map.get(doc, "tags") || []
+      extra = Map.get(doc, "extra") || %{}
+
+      Chiezo.removed_tag() in tags and module.kind_tag() in tags and
+        extra["removed_after_review"] == true
+    end)
+    |> Enum.map(&Map.get(&1, "doc_id"))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> Enum.sort()
+    |> Enum.map(&to_string/1)
+  end
+
+  @doc """
+  exclude.txt。1 行に 1 つの key で、改行は CRLF（spots.csv と揃える）。
+  先頭の `#` の行は注記で、travel-log は読み飛ばします。
+  """
+  def exclude_txt(keys) do
+    ["# tazuna の収集で消えたスポット（閉店・重複など）の key" | keys]
+    |> Enum.join("\r\n")
+    |> Kernel.<>("\r\n")
   end
 
   @doc """

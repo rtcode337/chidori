@@ -105,6 +105,42 @@ defmodule Tazuna.Datasets.TravelLogTest do
     end
   end
 
+  describe "exclude.txt" do
+    defp removed(doc_id, after_review, tags \\ ["食事処", "_chiezo_removed"]) do
+      doc(%{
+        "doc_id" => doc_id,
+        "tags" => tags,
+        "extra" => %{"removed_reason" => "閉店", "removed_after_review" => after_review}
+      })
+    end
+
+    test "目を通したあとで消えたものの key を、番号順に重複なく出す" do
+      # 消えたものは spots.csv に載らないだけでは、travel-log に前の回で入ったぶんが消えない
+      docs = [removed(300, true), removed(20, true), removed(300, true)]
+
+      assert TravelLog.excluded_keys(docs, dataset()) == ["20", "300"]
+    end
+
+    test "最初の目通しで弾かれたもの・印の無いものは出さない" do
+      # 一度も書き出されていないので、向こうに消すものが無い
+      without_mark = doc(%{"doc_id" => 3, "tags" => ["食事処", "_chiezo_removed"], "extra" => %{}})
+
+      assert TravelLog.excluded_keys([removed(1, false), without_mark], dataset()) == []
+    end
+
+    test "消えていないもの・収集の目印が無いものは出さない" do
+      docs = [removed(1, true, ["食事処"]), removed(2, true, ["別の種類", "_chiezo_removed"])]
+
+      assert TravelLog.excluded_keys(docs, dataset()) == []
+    end
+
+    test "1 行に 1 つの key で、注記の行は # で始める" do
+      # travel-log は空行と # で始まる行を読み飛ばす
+      assert TravelLog.exclude_txt(["20", "300"]) ==
+               "# tazuna の収集で消えたスポット（閉店・重複など）の key\r\n20\r\n300\r\n"
+    end
+  end
+
   describe "settings.json" do
     test "シリーズは出てきた数の多い順に並び、色が付く" do
       # 並び順がそのまま絞り込みの並びとピンの色の並びになる。色を付けないと

@@ -123,16 +123,24 @@ defmodule Tazuna.Chiezo do
   混ざるので、地図に並べる前の関門がここになります。
 
   1 回の上限は Chiezo 側で 500 件なので、呼ぶ側が `offset` を進めます。
+
+  `include_removed: true` で、外されていたもの（消えたもの・未レビューのもの）も
+  受け取ります。**目印に消えたものの印を渡して使います** —— 収集の目印で引くと
+  未レビューまで返り、件数が桁違いに増える（食事処で 2.8 万件 → 59.7 万件）。
   """
-  def spot_docs(base, name, tag, offset \\ 0, limit \\ @page_limit)
+  def spot_docs(base, name, tag, offset \\ 0, limit \\ @page_limit, opts \\ [])
       when is_binary(name) and is_binary(tag) and is_integer(offset) do
     query =
-      URI.encode_query(%{
+      %{
         "tag" => tag,
         "limit" => limit,
         "offset" => offset,
         "fields" => "doc_id,title,tags,extra,opening"
-      })
+      }
+      |> then(fn q ->
+        if opts[:include_removed], do: Map.put(q, "include_removed", "true"), else: q
+      end)
+      |> URI.encode_query()
 
     case get(base <> "/v1/" <> URI.encode(name) <> "/filter?" <> query) do
       {:ok, %{status: 200, body: body}} ->
