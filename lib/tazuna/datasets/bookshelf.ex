@@ -17,6 +17,7 @@ defmodule Tazuna.Datasets.Bookshelf do
 
   alias Tazuna.Chiezo
   alias Tazuna.Datasets.Books
+  alias Tazuna.SweepNames
 
   @collection "tazuna_books"
 
@@ -46,7 +47,7 @@ defmodule Tazuna.Datasets.Bookshelf do
   # 名簿の上限
   @tag_limit 400
 
-  # 拾う回（機械）と整える回（AI）の間隔
+  # 機械収集の回と整理の回（AI）の間隔
   @pick_minutes 360
   @tidy_minutes 1440
 
@@ -118,17 +119,22 @@ defmodule Tazuna.Datasets.Bookshelf do
   end
 
   @doc """
-  巡回 2 本。**拾う回は AI を呼びません**（機械がタグを数えるだけ）。
+  巡回 2 本。**機械収集の回は AI を呼びません**（機械がタグを数えるだけ）。
   """
   def sweeps do
     [
-      %{name: "拾う", interval_minutes: @pick_minutes, use_extract: true, only_new: true},
-      %{name: "整える", interval_minutes: @tidy_minutes, prompt: :tidy}
+      %{
+        name: SweepNames.machine(),
+        interval_minutes: @pick_minutes,
+        use_extract: true,
+        only_new: true
+      },
+      %{name: SweepNames.tidy(), interval_minutes: @tidy_minutes, prompt: :tidy}
     ]
   end
 
   @doc """
-  整える回の依頼文。**数には触らせません**（数えるのは機械の仕事）。
+  整理の回の依頼文。**数には触らせません**（数えるのは機械の仕事）。
   """
   def tidy_prompt do
     """

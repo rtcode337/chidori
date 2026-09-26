@@ -47,8 +47,8 @@ defmodule Tazuna.Themes do
 
   # 巡回の名前。**他の収集（食事処・関連図）の巡回と同じ呼び名にそろえる** ——
   # Chiezo の管理画面では収集をまたいで並ぶので、同じ仕事が別の名前だと読み比べられない
-  @pick_sweep "機械収集"
-  @tidy_sweep "整理"
+  @pick_sweep Tazuna.SweepNames.machine()
+  @tidy_sweep Tazuna.SweepNames.tidy()
 
   # 機械収集の回と、整理の回。**分けるのは仕事が違うから** —— 機械収集は機械が数える回で、
   # AI を呼ばないぶん短い間隔で回せる。整理は読んで判断する回

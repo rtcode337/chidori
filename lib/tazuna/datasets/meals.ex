@@ -133,16 +133,16 @@ defmodule Tazuna.Datasets.Meals do
   # どこから回るかと何時に回すかは利用者が決める（`Tazuna.Datasets.Survey`）。
   # **「整理」とは呼ばない** —— ほかの収集の「整理」は Chiezo の時計で端から回る回で、
   # こちらは起点のまわりから時刻に起こす回。同じ名前だと同じ動きだと読まれる
-  @survey_sweep "情報収集"
+  @survey_sweep Tazuna.SweepNames.survey()
 
   # 名簿の回。**どちらの AI の回もこれを待ちます** —— 名簿が無ければ区画に
   # 何も並ばず、差し込みが空のまま「この範囲の全部です」と言うことになる
-  @roster_sweep "機械収集"
+  @roster_sweep Tazuna.SweepNames.machine()
 
   # ざっとの名前。**Chiezo の時計で回るのはこの回だけ** —— じっくりは tazuna が
   # 決めた時刻にしか走らないので、割り込み（「この店が違う」「この区画を先に」）も
   # こちらが引き受ける
-  @scan_sweep "ざっと見る"
+  @scan_sweep Tazuna.SweepNames.scan()
 
   # 出典の目印。**travel-log と AI の両方が読む** —— 同じ店が 2 つに分かれているとき、
   # どちらの座標を残すかはここで決まる（1 軒に複数付くこともある）

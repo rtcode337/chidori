@@ -66,7 +66,7 @@ defmodule Tazuna.News do
 
   # 割り込みを頼む先。**専用の 1 本は置かない** —— 頼みごとは「落として」
   # 「印を直して」がほとんどで、その力を持つのは整理の回だけ
-  @focus_sweep "整理"
+  @focus_sweep Tazuna.SweepNames.tidy()
 
   # まとめに付ける印。**同じ収集の中に、記事とまとめが混ざる**ので、
   # これが無いと画面でも通知でも見分けられない
@@ -91,7 +91,7 @@ defmodule Tazuna.News do
   # 興味トピックの要約に付ける印と、それを書く巡回。**ふつうのまとめと印を分ける** ——
   # 同じ「まとめ」の印にすると、画面でも通知でも 2 本が 1 つの並びに混ざる
   @interest_digest_tag "興味のまとめ"
-  @interest_digest_sweep "興味の要約"
+  @interest_digest_sweep Tazuna.SweepNames.interest_digest()
 
   # トピックから引く記事の上限（語 1 つあたり）。**見に行く画面なので、全部は要らない**
   @tagged_limit 60
@@ -631,7 +631,7 @@ defmodule Tazuna.News do
         prompt: refine_prompt(topic)
       },
       %{
-        name: "要約",
+        name: Tazuna.SweepNames.digest(),
         # **時計を持たせない**（`on_demand`）。起こすのは tazuna の側で、
         # 何時に読みたいかは利用者の都合 —— Chiezo に持たせると、あちらが
         # 都合を知る場所になる。頼まれたときだけ動くので、**いつ回ったかが分かる**
@@ -672,7 +672,7 @@ defmodule Tazuna.News do
   # **足すだけと組にする** —— 組にしないと、整理が付けたタグを配信の薄い内容で上書きする
   defp intake(%{feeds: [_ | _]} = topic),
     do: %{
-      name: "機械収集",
+      name: Tazuna.SweepNames.machine(),
       interval_minutes: every(topic, :feed, @feed_minutes),
       use_feed: true,
       only_new: true
@@ -680,7 +680,7 @@ defmodule Tazuna.News do
 
   defp intake(topic),
     do: %{
-      name: "集める",
+      name: Tazuna.SweepNames.collect(),
       interval_minutes: every(topic, :collect, @collect_minutes),
       only_new: true,
       prompt: prompt(topic)

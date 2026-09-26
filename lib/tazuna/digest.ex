@@ -52,8 +52,8 @@ defmodule Tazuna.Digest do
   # 画面から押したときに、取り込みが空くのを待つ上限
   @manual_wait_ms 60 * 60 * 1000
 
-  @refine_sweep "整理"
-  @digest_sweep "要約"
+  @refine_sweep Tazuna.SweepNames.tidy()
+  @digest_sweep Tazuna.SweepNames.digest()
 
   # 割り込みに添える頼みごと。**Chiezo は指示文の無い割り込みを断ります** ——
   # 依頼文そのものは巡回の定義にあるので、ここは「この回で何をしてほしいか」だけ

@@ -33,7 +33,7 @@ defmodule Tazuna.Datasets.BookshelfTest do
     end
   end
 
-  describe "整える回" do
+  describe "整理の回" do
     test "数には触らせない" do
       # 数えるのは機械。AI に数えさせると、その回の検索運で数が動く
       prompt = Bookshelf.tidy_prompt()
@@ -76,14 +76,14 @@ defmodule Tazuna.Datasets.BookshelfTest do
       assert attrs.kind == "stock"
     end
 
-    test "拾う回は AI を呼ばない", %{sweeps: sweeps} do
+    test "機械収集の回は AI を呼ばない", %{sweeps: sweeps} do
       # 機械がタグを数えるだけ
-      assert sweeps["拾う"].use_extract
-      refute Map.has_key?(sweeps["拾う"], :prompt)
+      assert sweeps["機械収集"].use_extract
+      refute Map.has_key?(sweeps["機械収集"], :prompt)
     end
 
-    test "整える回だけが依頼文を持つ", %{sweeps: sweeps} do
-      assert sweeps["整える"].prompt =~ "本棚を整えます"
+    test "整理の回だけが依頼文を持つ", %{sweeps: sweeps} do
+      assert sweeps["整理"].prompt =~ "本棚を整えます"
     end
 
     test "記事の収集とは別の溜め先", %{attrs: attrs} do

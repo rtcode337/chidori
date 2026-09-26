@@ -96,20 +96,20 @@ defmodule Tazuna.Datasets.BooksTest do
       assert attrs.kind == "stock"
     end
 
-    test "拾う回は AI を呼ばない", %{sweeps: sweeps} do
-      assert sweeps["拾う"].use_feed
-      refute Map.get(sweeps["拾う"], :web)
+    test "機械収集の回は AI を呼ばない", %{sweeps: sweeps} do
+      assert sweeps["機械収集"].use_feed
+      refute Map.get(sweeps["機械収集"], :web)
     end
 
-    test "読む回は web を開ける", %{sweeps: sweeps} do
+    test "整理の回は web を開ける", %{sweeps: sweeps} do
       # 記事を開かないと、どの本を勧めているかが分からない
-      assert sweeps["読む"].web
-      assert sweeps["読む"].prompt =~ "記事を開いて"
+      assert sweeps["整理"].web
+      assert sweeps["整理"].prompt =~ "記事を開いて"
     end
 
     test "画面で選んだ相手を載せる" do
-      attrs = Books.attrs(%{"読む" => %{backend: "codex", model: "gpt-6-sol-high"}})
-      read = Enum.find(attrs.sweeps, &(&1.name == "読む"))
+      attrs = Books.attrs(%{"整理" => %{backend: "codex", model: "gpt-6-sol-high"}})
+      read = Enum.find(attrs.sweeps, &(&1.name == "整理"))
 
       assert read.backend == "codex"
     end

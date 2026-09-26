@@ -112,7 +112,7 @@ defmodule Tazuna.Relations do
     # **一度きり** —— 元の Wikipedia が変わらない限り何度やっても同じで、
     # その 1 回ぶんの取り込みが無駄になる。取り込み直したら押して走らせる
     %{
-      name: "機械収集",
+      name: Tazuna.SweepNames.machine(),
       interval_minutes: @roster_minutes,
       use_extract: true,
       only_new: true,
@@ -123,7 +123,7 @@ defmodule Tazuna.Relations do
     # **一周したら止まる** —— 行き渡れば用が済む回で、止めないと 2 周目 3 周目が
     # 回り続け、同じことを何度も聞くために枠を使う。そのあとの手入れは調査が引き継ぐ
     %{
-      name: "ざっと見る",
+      name: Tazuna.SweepNames.scan(),
       interval_minutes: @rough_minutes,
       cover_days: @rough_days,
       after: "機械収集",
@@ -133,7 +133,7 @@ defmodule Tazuna.Relations do
     # 3 本に分けていた頃は、同じ区画を 3 回渡して 3 回とも同じものを読ませていた。
     # **割り込みもここへ頼む**（時計を持たない 1 本は置かない）
     %{
-      name: "整理",
+      name: Tazuna.SweepNames.tidy(),
       interval_minutes: @survey_minutes,
       cover_days: @survey_days,
       prompt: :survey,
@@ -142,7 +142,7 @@ defmodule Tazuna.Relations do
   ]
 
   # 割り込みを頼む先の巡回。**専用の 1 本は置かない**（同じ仕事を頼むので）
-  @survey_sweep "整理"
+  @survey_sweep Tazuna.SweepNames.tidy()
   # **未レビューの人が残る区画を、先にざっと見てもらう**ときの巡回。
   # 整理（漏れ探しと磨き）を頼むより軽く、AI が目を通した印もこれで付く
   @rough_sweep "ざっと見る"

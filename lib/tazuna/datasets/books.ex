@@ -20,6 +20,7 @@ defmodule Tazuna.Datasets.Books do
   """
 
   alias Tazuna.Chiezo
+  alias Tazuna.SweepNames
 
   @collection "tazuna_book_posts"
 
@@ -37,10 +38,10 @@ defmodule Tazuna.Datasets.Books do
   # 2 周目からは同じ記事が返るだけなので、重複として弾かれます
   @popular_pages 3
 
-  # 機械で拾う回の間隔。AI を呼ばないので短くてよい
+  # 機械収集の回の間隔。AI を呼ばないので短くてよい
   @pick_minutes 180
 
-  # 読む回の間隔。**記事を開くので web を開ける**（配信元は要約しか配らない）
+  # 整理の回の間隔。**記事を開くので web を開ける**（配信元は要約しか配らない）
   @read_minutes 720
 
   @doc "記事 1 本ごとに付く印。"
@@ -81,7 +82,7 @@ defmodule Tazuna.Datasets.Books do
           "数える材料がこの記事なので、ここが溜まるほど数は確かになります。",
       # **この収集から作る収集**（画面に別の口として出します）
       derived: Tazuna.Datasets.Bookshelf,
-      survey_sweep: "読む",
+      survey_sweep: SweepNames.tidy(),
       partition_sweeps: []
     }
   end
@@ -131,13 +132,18 @@ defmodule Tazuna.Datasets.Books do
   """
   def sweeps do
     [
-      %{name: "拾う", interval_minutes: @pick_minutes, use_feed: true, only_new: true},
-      %{name: "読む", interval_minutes: @read_minutes, web: true, prompt: :read}
+      %{
+        name: SweepNames.machine(),
+        interval_minutes: @pick_minutes,
+        use_feed: true,
+        only_new: true
+      },
+      %{name: SweepNames.tidy(), interval_minutes: @read_minutes, web: true, prompt: :read}
     ]
   end
 
   @doc """
-  読む回の依頼文。**手元の記事を開いて、勧めている本をタグにします。**
+  整理の回の依頼文。**手元の記事を開いて、勧めている本をタグにします。**
   ついでに、**手元に無い記事**も探させます。
   """
   def read_prompt do
@@ -172,7 +178,7 @@ defmodule Tazuna.Datasets.Books do
   end
 
   @doc "巡回ごとの依頼文（画面に出すため）。"
-  def prompts, do: [{"読む", read_prompt()}]
+  def prompts, do: [{SweepNames.tidy(), read_prompt()}]
 
   @doc "Chiezo へ送る収集の設定ぜんぶ。"
   def attrs(choices \\ %{}) do
