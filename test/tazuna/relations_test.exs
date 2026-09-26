@@ -336,6 +336,19 @@ defmodule Tazuna.RelationsTest do
     assert prompt =~ "足さなくて構いません"
   end
 
+  test "区画ごとの回は、範囲に合わない人を消さずにタグを直させる" do
+    # 年代が西暦の数でない人（「21世紀」）はいちばん古い帯に入る。そこで
+    # 「範囲に合わない」と消されると、タグの誤りが人ごと消えることになる
+    prompt = Relations.painters_survey_prompt()
+
+    assert prompt =~ "そういう人は消さずに、年代と地域のタグを直して返して"
+    assert prompt =~ "墓標を付けるのは、絵で知られていない人と重複の 2 つだけです"
+    # 年代の書き方はざっと見る回と同じ文
+    assert prompt =~ "は必ず西暦の数で"
+    assert prompt =~ "「18世紀」「江戸時代」のような書き方がいま付いていたら"
+    assert Relations.painters_prompt() =~ "は必ず西暦の数で"
+  end
+
   test "指示文が頼むのは、Wikipedia に書いていないことだけ" do
     prompt = Relations.painters_prompt()
 
