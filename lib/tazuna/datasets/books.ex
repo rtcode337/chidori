@@ -63,6 +63,46 @@ defmodule Tazuna.Datasets.Books do
     end
   end
 
+  @doc """
+  その本を勧めている記事（**新しい順**）。本の見出し（「本:<書名>」）が、
+  そのまま記事に付いているタグなので、タグで引けます。
+  """
+  def recommending(base, book_title) when is_binary(book_title) do
+    query =
+      URI.encode_query(%{"tag" => book_title, "fields" => "title,extra", "limit" => 100})
+
+    case Chiezo.get(base <> "/v1/" <> collection() <> "/filter?" <> query) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"results" => results}} when is_list(results) ->
+            {:ok, results |> Enum.map(&to_post/1) |> Enum.sort_by(& &1.published_at, :desc)}
+
+          _other ->
+            {:error, :chiezo_unexpected_body}
+        end
+
+      {:ok, %{status: 404}} ->
+        {:ok, []}
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  defp to_post(result) do
+    extra = if is_map(result["extra"]), do: result["extra"], else: %{}
+
+    %{
+      title: to_string(result["title"] || ""),
+      url: if(is_binary(extra["url"]), do: extra["url"]),
+      # 日付の無い記事は後ろへ（空文字は降順で最後に来る）
+      published_at: to_string(extra["published_at"] || "")
+    }
+  end
+
   @doc "データ収集の画面に出す 1 タブぶん。"
   def definition do
     %{
@@ -145,14 +185,23 @@ defmodule Tazuna.Datasets.Books do
   @doc """
   整理の回の依頼文。**手元の記事を開いて、勧めている本をタグにします。**
   ついでに、**手元に無い記事**も探させます。
+
+  **読ませるのは、まだ目を通していない記事だけ**（`{unreviewed}`）。全部を渡して
+  いた頃は、読み終えた記事も開けなかった記事も毎回開き直していました ——
+  溜まるほど 1 回が重くなります。**探しに行く仕事には何も渡しません** ——
+  同じ記事は Chiezo が URL で弾くので、持っている記事の一覧は要りません
+  （記事は溜まり続けるので、一覧を渡すといずれ入り切らなくなります）。
   """
   def read_prompt do
     """
     技術書を勧めている記事を溜めています。**やってほしいことは 2 つ**です。
 
-    {current}
+    **1. 新しく入った記事を読んで、勧めている本をタグにする。**
+    次に並んでいるのは、**まだ誰も読んでいない記事だけ**です（読み終えた記事は
+    並びません。ここに載せたものは、読めても読めなくても次からは並びません）。
 
-    **1. まだ本の付いていない記事を読んで、勧めている本をタグにする。**
+    {unreviewed}
+
     記事を開いて、**その記事が勧めている本**を
     「#{@book_tag}:<書名>」のタグで並べてください（1 本の記事に何冊でも）。
 
@@ -165,8 +214,8 @@ defmodule Tazuna.Datasets.Books do
     - **開けなかった記事は触らないでください**（当て推量で本を並べると、
       根拠の無い数になります）
 
-    **2. 手元に無い記事を探す。** 上に並んでいるのは**いま持っている記事**です。
-    ここに無い「技術書を勧めている記事」を探して足してください ——
+    **2. 手元に無い記事を探す。** 「技術書を勧めている記事」で、まだ手元に無いものを
+    探して足してください ——
     **社内ブログ・海外の記事・カンファレンスの発表資料**は、配信元からは入ってきません。
     足すときは `title`（記事の見出し）・`url`・`body`・上のタグを書いてください。
 

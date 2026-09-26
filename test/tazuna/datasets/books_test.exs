@@ -80,6 +80,16 @@ defmodule Tazuna.Datasets.BooksTest do
       assert prompt =~ "社内ブログ"
     end
 
+    test "読ませるのは、まだ読んでいない記事だけ" do
+      # 全部を渡していた頃は、読み終えた記事も開けなかった記事も毎回開き直していた。
+      # 記事は溜まり続けるので、一覧（{names}）も渡さない（同じ記事は URL で弾かれる）
+      prompt = Books.read_prompt()
+
+      assert prompt =~ "{unreviewed}"
+      refute prompt =~ "{names}"
+      refute prompt =~ "{current}"
+    end
+
     test "宣伝は入れさせない" do
       assert Books.read_prompt() =~ "宣伝と本の紹介ページは入れないでください"
     end

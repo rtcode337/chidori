@@ -91,4 +91,98 @@ defmodule Tazuna.Datasets.BookshelfTest do
       assert attrs.name != Books.collection()
     end
   end
+
+  describe "本棚に並べる" do
+    defp book(title, extra, tags \\ ["技術書"]) do
+      Bookshelf.to_book(%{"title" => title, "tags" => tags, "opening" => "説明", "extra" => extra})
+    end
+
+    test "おすすめ度（勧めている記事の本数）の高い順に並べる" do
+      books =
+        Bookshelf.ranked([
+          book("本:少ない", %{"docs" => 2}),
+          book("本:多い", %{"docs" => 9}),
+          book("本:同じ数で直近が多い", %{"docs" => 2, "docs_recent" => 1})
+        ])
+
+      assert Enum.map(books, & &1.name) == ["多い", "同じ数で直近が多い", "少ない"]
+    end
+
+    test "見出しの「本:」は外し、分野と定番の印を読む" do
+      b = book("本:リーダブルコード", %{"docs" => 3}, ["技術書", "分野:設計・アーキテクチャ"])
+
+      assert b.name == "リーダブルコード"
+      assert b.fields == ["設計・アーキテクチャ"]
+      assert b.classic
+      refute book("本:x", %{"docs" => 2}).classic
+    end
+
+    test "ISBN から表紙の URL を組み立てる" do
+      b = book("本:リーダブルコード", %{"docs" => 3, "isbn" => "978-4-87311-565-8"})
+
+      assert b.isbn == "9784873115658"
+      assert b.cover_url == "https://www.hanmoto.com/bd/img/9784873115658.jpg"
+    end
+
+    test "チェックディジットが合わない ISBN は使わない" do
+      # AI が書いた番号なので、1 桁違いで別の本の表紙が出るのを止める
+      assert book("本:x", %{"isbn" => "9784873115659"}).cover_url == nil
+      assert book("本:x", %{}).cover_url == nil
+    end
+
+    test "10 桁の ISBN は 13 桁に直す" do
+      assert Bookshelf.isbn13("4873115655") == "9784873115658"
+      assert Bookshelf.isbn13("4-87311-565-X") == nil
+    end
+
+    test "整理の回に ISBN を調べさせる" do
+      assert Bookshelf.tidy_prompt() =~ ~s("isbn")
+    end
+
+    test "調べるのは、まだ調べていない本だけ（畳むのは書名の一覧で）" do
+      # 全部を渡していた頃は、調べ終えた本も見つからなかった本も毎回調べ直していた
+      prompt = Bookshelf.tidy_prompt()
+      assert prompt =~ "{unreviewed}"
+      assert prompt =~ "{names}"
+      refute prompt =~ "{current}"
+    end
+
+    test "1 回だけの調べ直しは、全部を並べて、無いものだけ埋めさせる" do
+      prompt = Bookshelf.backfill_prompt()
+      assert prompt =~ "{current}"
+      refute prompt =~ "{unreviewed}"
+      assert prompt =~ "まだ無いものだけ"
+    end
+
+    test "タグは数を決めずに付けさせる（技術ニュースのトピックに縛らない）" do
+      prompt = Bookshelf.tidy_prompt()
+      assert prompt =~ "付けるべきだと思う語を\nすべて"
+      refute prompt =~ "1〜3"
+      refute prompt =~ "tazuna_tech_topics"
+    end
+
+    test "話題のタグを読み、興味トピックに近い本に印を付ける" do
+      near = Tazuna.Themes.Search.near_map([], ["画像生成"])
+
+      [b, other] =
+        Bookshelf.with_interests(
+          [
+            book("本:x", %{"docs" => 2}, ["技術書", "話題:画像 生成"]),
+            book("本:y", %{"docs" => 2}, ["技術書", "話題:Kubernetes"])
+          ],
+          near
+        )
+
+      assert b.topics == ["画像 生成"]
+      assert b.near == ["画像生成"], "表記ゆれ（空白）でも当たる"
+      assert other.near == []
+    end
+
+    test "整理の回には、見出しを変えずに返させる" do
+      # 変えると別の本として足され、元の本は直らない（本番で 14 冊そうなった）
+      prompt = Bookshelf.tidy_prompt()
+      assert prompt =~ "いまの見出しを一字も変えずに"
+      assert prompt =~ "「本:」で始まらない見出し"
+    end
+  end
 end

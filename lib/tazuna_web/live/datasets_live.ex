@@ -5,6 +5,8 @@ defmodule TazunaWeb.DatasetsLive do
   **この画面は溜まったものを見せません。** 読むのは使う側のアプリ（食事処なら
   travel-log の地図）で、こちらが持つのは**依頼と進み具合**だけです ——
   同じものを 2 つの画面で見せると、どちらが本当の状態なのか読めなくなります。
+  **例外は読む側のアプリを持たないもの**（技術書の本棚）。読むのは人なので、
+  ここに並べないとどこからも読めません。
 
   **押しても走りません。** 作られる収集は止まった状態で、動き出すのは Chiezo の
   管理画面で有効にしたときだけです（この画面から AI が勝手に動くことはありません）。
@@ -47,6 +49,17 @@ defmodule TazunaWeb.DatasetsLive do
        # 巡回ごとに選んだ相手。**サーバー側で覚える** —— 覚えないと、状態が届いた
        # 拍子にフォームが描き直されて、選んだところが元の値に戻る
        picks: %{},
+       # この収集から作る収集（本棚）の巡回ごとの相手。親の収集とは別に覚える
+       derived_picks: %{},
+       # この収集から作る収集に溜まっているもの（本棚の本）。nil は「並べない対象」
+       shelf: nil,
+       # 本ごとの「勧めている記事」。**開いたものだけ引く**（79 冊ぶんを先に引かない）
+       book_posts: %{},
+       opened_books: MapSet.new(),
+       # 興味トピックに近い本だけを並べるか
+       shelf_near_only: false,
+       # 本棚の調べ直し（割り込み）を頼んだ結果
+       backfilled: nil,
        asking: false,
        asked: nil,
        # travel-log からの依頼。頼んでいる間は見積もり（何区画で頼むか）を持つ
@@ -72,7 +85,7 @@ defmodule TazunaWeb.DatasetsLive do
        origin_note: nil,
        surveying: false
      )
-     |> assign(state: empty_state())}
+     |> assign(state: empty_state(), derived_state: empty_state())}
   end
 
   @impl true
@@ -83,7 +96,12 @@ defmodule TazunaWeb.DatasetsLive do
     socket =
       socket
       |> assign(view: key, dataset: dataset, picks: %{}, asked: nil, picked: nil)
-      |> assign(state: empty_state())
+      |> assign(
+        state: empty_state(),
+        derived_state: empty_state(),
+        derived_picks: %{},
+        shelf: nil
+      )
       |> assign_plan(dataset)
       |> assign(places: nil, place_query: "")
 
@@ -94,6 +112,7 @@ defmodule TazunaWeb.DatasetsLive do
        socket
        |> assign(state: %{empty_state() | status: :loading})
        |> start_async(:read, fn -> Datasets.read(dataset) end)
+       |> read_derived(dataset)
        |> start_async(:backends, &Datasets.backends/0)
        |> load_request_results()
      else
@@ -187,7 +206,8 @@ defmodule TazunaWeb.DatasetsLive do
     {:noreply,
      socket
      |> assign(state: %{socket.assigns.state | status: :loading})
-     |> start_async(:read, fn -> Datasets.read(dataset) end)}
+     |> start_async(:read, fn -> Datasets.read(dataset) end)
+     |> read_derived(dataset)}
   end
 
   # **地図で区画を選ぶ。** ここでは頼みません —— 押した先に何があるのか
@@ -201,16 +221,69 @@ defmodule TazunaWeb.DatasetsLive do
   def handle_event("unpick_partition", _params, socket),
     do: {:noreply, assign(socket, picked: nil)}
 
-  # **この区画を先に調べて、を頼む。** 定時の巡回の進み具合にも次の予定にも触りません
-  # **この収集から作る収集**（本棚）を用意する。無ければ作り、あれば送り直す
-  def handle_event("collect_derived", _params, socket) do
+  # **この収集から作る収集**（本棚）を用意する。無ければ作り、あれば送り直す。
+  # 巡回ごとの相手は親の収集と同じ形で選ぶ（送り直したら読み直す）
+  def handle_event("collect_derived", params, socket) do
     dataset = socket.assigns.dataset
+    choices = merged_picks(socket.assigns.derived_picks, params)
 
     {:noreply,
      socket
-     |> assign(asking: true, asked: nil)
-     |> start_async(:ask, fn -> Datasets.push_derived(dataset) end)}
+     |> assign(derived_state: %{socket.assigns.derived_state | pushing: true, reason: nil})
+     |> start_async(:push_derived, fn ->
+       {Datasets.push_derived(dataset, choices), Datasets.read_derived(dataset)}
+     end)}
   end
+
+  def handle_event("toggle_shelf_near", _params, socket),
+    do: {:noreply, assign(socket, shelf_near_only: !socket.assigns.shelf_near_only)}
+
+  # **本棚の本を 1 回だけ全部調べ直させる。** 整理の回はまだ調べていない本しか見ないので、
+  # 仕組みを入れる前に目を通した本の ISBN と話題は、これでしか埋まらない
+  def handle_event("backfill_shelf", _params, socket) do
+    titles =
+      case socket.assigns.shelf do
+        {:ok, books} when is_list(books) -> Enum.map(books, & &1.title)
+        _none -> []
+      end
+
+    {:noreply,
+     socket
+     |> assign(backfilled: :asking)
+     |> start_async(:backfill, fn ->
+       with {:ok, base} <- Datasets.base_url(),
+            do: Tazuna.Datasets.Bookshelf.backfill(base, titles)
+     end)}
+  end
+
+  # **勧めている記事を開く・閉じる。** 引くのは初めて開いたときだけ
+  def handle_event("toggle_book_posts", %{"title" => title}, socket) do
+    opened = socket.assigns.opened_books
+
+    cond do
+      MapSet.member?(opened, title) ->
+        {:noreply, assign(socket, opened_books: MapSet.delete(opened, title))}
+
+      Map.has_key?(socket.assigns.book_posts, title) ->
+        {:noreply, assign(socket, opened_books: MapSet.put(opened, title))}
+
+      true ->
+        {:noreply,
+         socket
+         |> assign(
+           opened_books: MapSet.put(opened, title),
+           book_posts: Map.put(socket.assigns.book_posts, title, :loading)
+         )
+         |> start_async({:book_posts, title}, fn ->
+           with {:ok, base} <- Datasets.base_url(),
+                do: Tazuna.Datasets.Books.recommending(base, title)
+         end)}
+    end
+  end
+
+  # 選び直したら、その場で覚える（親の収集の `pick_sweep` と同じ理由）
+  def handle_event("pick_derived_sweep", params, socket),
+    do: {:noreply, assign(socket, derived_picks: sweep_choices(params))}
 
   # **選んだ区画を、選んだ巡回で 1 回走らせる**（Chiezo の画面と同じ形）。
   #
@@ -312,6 +385,51 @@ defmodule TazunaWeb.DatasetsLive do
   def handle_async(:push, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, state: %{crashed(socket.assigns.state) | pushing: false})}
 
+  def handle_async(:read_derived, {:ok, result}, socket),
+    do: {:noreply, assign(socket, derived_state: applied(socket.assigns.derived_state, result))}
+
+  def handle_async(:read_derived, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, derived_state: crashed(socket.assigns.derived_state))}
+
+  def handle_async(:shelf, {:ok, result}, socket), do: {:noreply, assign(socket, shelf: result)}
+
+  def handle_async(:backfill, {:ok, result}, socket),
+    do: {:noreply, assign(socket, backfilled: result)}
+
+  def handle_async(:backfill, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, backfilled: {:error, :collection_crashed})}
+
+  def handle_async({:book_posts, title}, {:ok, result}, socket),
+    do: {:noreply, assign(socket, book_posts: Map.put(socket.assigns.book_posts, title, result))}
+
+  def handle_async({:book_posts, title}, {:exit, _reason}, socket),
+    do:
+      {:noreply,
+       assign(socket,
+         book_posts: Map.put(socket.assigns.book_posts, title, {:error, :collection_crashed})
+       )}
+
+  def handle_async(:shelf, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, shelf: {:error, :collection_crashed})}
+
+  def handle_async(:push_derived, {:ok, {pushed, read}}, socket) do
+    state = %{applied(socket.assigns.derived_state, read) | pushing: false}
+
+    {:noreply,
+     assign(socket,
+       derived_state:
+         case pushed do
+           :ok -> state
+           {:error, reason} -> %{state | reason: reason}
+         end
+     )}
+  end
+
+  def handle_async(:push_derived, {:exit, _reason}, socket),
+    do:
+      {:noreply,
+       assign(socket, derived_state: %{crashed(socket.assigns.derived_state) | pushing: false})}
+
   def handle_async(:ask, {:ok, result}, socket),
     do: {:noreply, assign(socket, asking: false, asked: result)}
 
@@ -357,6 +475,16 @@ defmodule TazunaWeb.DatasetsLive do
   end
 
   defp assign_plan(socket, _dataset), do: assign(socket, plan: nil, plan_form: nil)
+
+  # この収集から作る収集を持つ対象だけ読む
+  defp read_derived(socket, %{derived: derived} = dataset) when not is_nil(derived) do
+    socket
+    |> assign(derived_state: %{empty_state() | status: :loading})
+    |> start_async(:read_derived, fn -> Datasets.read_derived(dataset) end)
+    |> start_async(:shelf, fn -> Datasets.shelf(dataset) end)
+  end
+
+  defp read_derived(socket, _dataset), do: socket
 
   @doc "次に頼む予定（JST の文字列）。時刻を書いていなければ nil。"
   def next_survey(%SurveyPlan{} = plan), do: plan |> SurveyScheduler.next() |> Jst.format()

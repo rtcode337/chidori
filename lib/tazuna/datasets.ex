@@ -142,14 +142,42 @@ defmodule Tazuna.Datasets do
   end
 
   @doc """
-  この収集から作る収集（本棚・話題の網）を用意します —— **無ければ作り、
+  この収集から作る収集（本棚など）を用意します —— **無ければ作り、
   あれば設定を送り直します**。**走らせはしません**（止めた状態で作られます）。
+
+  `choices` は巡回ごとに選んだ相手（親の収集の「収集の設定を更新」と同じ形）。
   """
-  def push_derived(%{derived: derived}) when not is_nil(derived) do
-    with {:ok, base} <- base_url(), do: derived.setup(base)
+  def push_derived(dataset, choices \\ %{})
+
+  def push_derived(%{derived: derived}, choices) when not is_nil(derived) do
+    with {:ok, base} <- base_url(), do: derived.setup(base, choices)
   end
 
-  def push_derived(_dataset), do: {:error, :not_requested}
+  def push_derived(_dataset, _choices), do: {:error, :not_requested}
+
+  @doc """
+  この収集から作る収集の状態。**まだ依頼していなければ `{:ok, nil}`**（`read/1` と同じ）。
+  """
+  def read_derived(%{derived: derived}) when not is_nil(derived),
+    do: read(%{collection: derived.collection()})
+
+  def read_derived(_dataset), do: {:ok, nil}
+
+  @doc """
+  この収集から作る収集に**溜まっているもの**（本棚の本など）。並べる口を持つ
+  対象だけ（`list/1`）。持たなければ `{:ok, nil}`。
+  """
+  def shelf(%{derived: derived}) when not is_nil(derived) do
+    Code.ensure_loaded(derived)
+
+    if function_exported?(derived, :list, 1) do
+      with {:ok, base} <- base_url(), do: derived.list(base)
+    else
+      {:ok, nil}
+    end
+  end
+
+  def shelf(_dataset), do: {:ok, nil}
 
   @doc """
   選んだ区画を、選んだ巡回で **1 回走らせます**（Chiezo の「選んだ区画で 1 回

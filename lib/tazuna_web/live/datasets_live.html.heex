@@ -42,6 +42,100 @@
       </p>
     </section>
 
+    <%!-- **本棚**（読む側のアプリを持たない対象だけ）。**設定より先に置く** ——
+         この対象で読みに来るのは、溜まった本のほう --%>
+    <section :if={match?({:ok, [_ | _]}, @shelf)} class="bookshelf" aria-label="本棚">
+      <% {:ok, all_books} = @shelf %>
+      <% near_count = Enum.count(all_books, &(&1.near != [])) %>
+      <% books =
+        if @shelf_near_only, do: Enum.filter(all_books, &(&1.near != [])), else: all_books %>
+      <h2>本棚 <span class="muted-note">（{length(all_books)} 冊・おすすめ度の高い順）</span></h2>
+      <%!-- **興味トピックに近い本は強調する**（技術ニュースで選んだもの。言い換えと
+           すぐ下の子も近いと数える）。絞り込みは押したときだけ --%>
+      <p :if={near_count > 0} class="shelf-near">
+        <button
+          type="button"
+          class={["shelf-near-toggle", @shelf_near_only && "is-on"]}
+          phx-click="toggle_shelf_near"
+          aria-pressed={to_string(@shelf_near_only)}
+        >
+          ★ 興味トピックに近い本だけ（{near_count} 冊）
+        </button>
+      </p>
+      <p class="muted-note">
+        おすすめ度は<strong>その本を勧めている記事の本数</strong>です（機械が数えたもの）。 {Tazuna.Datasets.Bookshelf.classic_sources()} 本以上で「定番」。表紙は
+        <a href="https://www.hanmoto.com/" target="_blank" rel="noreferrer">版元ドットコム</a>
+        の書影です。
+      </p>
+      <ol class="book-list">
+        <li :for={book <- books} class={["book-card", book.near != [] && "is-near"]}>
+          <a
+            :if={book.page_url}
+            href={book.page_url}
+            target="_blank"
+            rel="noreferrer"
+            class="book-cover"
+          >
+            <%!-- 表紙の無い本は 404 が返る。**壊れた画像の印を出さず、枠だけ残す** --%>
+            <img
+              src={book.cover_url}
+              alt=""
+              loading="lazy"
+              onerror="this.classList.add('is-missing')"
+            />
+          </a>
+          <span :if={!book.page_url} class="book-cover is-empty" aria-hidden="true"></span>
+          <div class="book-body">
+            <p class="book-title">
+              {book.name}
+              <span :if={book.classic} class="book-badge">定番</span>
+            </p>
+            <%!-- **数を押すと、勧めている記事が開く。** 数だけでは「誰がどう勧めたか」が
+                 読めない。引くのは開いたときだけ --%>
+            <% open = MapSet.member?(@opened_books, book.title) %>
+            <button
+              type="button"
+              class="book-score"
+              phx-click="toggle_book_posts"
+              phx-value-title={book.title}
+              aria-expanded={to_string(open)}
+            >
+              記事 {book.docs} 本が勧めている<span :if={book.recent > 0}>（直近 {book.recent} 本）</span>
+              <span aria-hidden="true">{if open, do: "▴", else: "▾"}</span>
+            </button>
+            <%= if open do %>
+              <%= case @book_posts[book.title] do %>
+                <% {:ok, [_ | _] = posts} -> %>
+                  <ul class="book-posts">
+                    <li :for={post <- posts}>
+                      <a :if={post.url} href={post.url} target="_blank" rel="noreferrer">
+                        {post.title}
+                      </a>
+                      <span :if={!post.url}>{post.title}</span>
+                      <span :if={post.published_at != ""} class="muted-note">
+                        {String.slice(post.published_at, 0, 10)}
+                      </span>
+                    </li>
+                  </ul>
+                <% {:ok, []} -> %>
+                  <p class="muted-note">記事が見つかりませんでした。</p>
+                <% {:error, reason} -> %>
+                  <p class="muted-note">{reason_text(reason)}</p>
+                <% _loading -> %>
+                  <p class="muted-note">記事を読んでいます…</p>
+              <% end %>
+            <% end %>
+            <p :if={book.near != []} class="book-near">★ 興味: {Enum.join(book.near, "・")}</p>
+            <p :if={book.fields != []} class="book-fields">{Enum.join(book.fields, "・")}</p>
+            <p :if={book.topics != []} class="book-topics">
+              <span :for={topic <- book.topics} class="book-topic">{topic}</span>
+            </p>
+            <p :if={book.note != ""} class="book-note">{book.note}</p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
     <%!-- Chiezo の状態と、そこへ送る設定を **1 つの枠にまとめる**（関連図と同じ形）。
          状態を見る場所と、直す場所と、押す場所が離れていると、何がどこへ効くのか
          読めない --%>
@@ -356,16 +450,53 @@
           数えるのは Chiezo で、<strong>AI がやるのは整えるところだけ</strong>です
           （言い換えを畳む・分野を付ける・技術書でない語を外す・一言で説明する）。
         </p>
-        <p class="muted-note">
-          溜め先は別の収集です（<code>{@dataset.derived.collection()}</code>）。 <strong>止めた状態で作ります</strong>
-          —— 動き出すのは Chiezo の管理画面で
-          有効にしたときだけです。
+        <%!-- **親の収集と同じ形で出す**（状態・巡回ごとの相手・送る）。ボタンだけだと、
+             いま Chiezo にあるのか、どの相手に頼んでいるのかが読めない --%>
+        <p aria-live="polite">{status_message(@derived_state)}</p>
+
+        <dl :if={@derived_state.collection} class="collect-facts">
+          <div :for={{label, value} <- collection_facts(@derived_state)}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        </dl>
+
+        <form
+          id="derived-collect-form"
+          phx-submit="collect_derived"
+          phx-change="pick_derived_sweep"
+        >
+          <.sweep_table state={@derived_state} picks={@derived_picks} backends={@backends} />
+          <p class="muted-note">
+            溜め先は別の収集です（<code>{@dataset.derived.collection()}</code>）。 <strong>止めた状態で作ります</strong>
+            —— 動き出すのは Chiezo の管理画面で
+            有効にしたときだけです。
+          </p>
+          <div class="button-row">
+            <button
+              type="submit"
+              phx-disable-with="送っています…"
+              disabled={@derived_state.pushing}
+            >
+              {collect_label(@derived_state)}
+            </button>
+          </div>
+        </form>
+
+        <p :if={@derived_state.collection && @derived_state.collection.url} class="muted-note">
+          <a href={@derived_state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
         </p>
-        <div class="button-row">
-          <button type="button" phx-click="collect_derived" disabled={@state.pushing}>
-            {@dataset.derived.name()}の収集を更新
+
+        <%!-- **1 回だけの調べ直し。** 整理の回はまだ調べていない本しか見ないので、
+             それより前に目を通した本の ISBN と話題は、ここからしか埋まらない --%>
+        <div :if={match?({:ok, [_ | _]}, @shelf)} class="button-row">
+          <button type="button" phx-click="backfill_shelf" disabled={@backfilled == :asking}>
+            {if @backfilled == :asking, do: "頼んでいます…", else: "本棚の本を 1 回調べ直す（ISBN・話題）"}
           </button>
         </div>
+        <p :if={@backfilled not in [nil, :asking]} class="muted-note" aria-live="polite">
+          {ask_message(@backfilled)}
+        </p>
       </section>
 
       <details :if={rows != []} class="partition-list">

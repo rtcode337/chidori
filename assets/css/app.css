@@ -780,6 +780,31 @@ body.digest-open { overflow: hidden; }
 .canvas-empty { display: grid; place-items: center; height: 100%; padding: 2rem; }
 .canvas-empty p { margin: 0; color: #7e879f; font-size: .95rem; text-align: center; }
 
+/* 本棚（技術書）。表紙・書名・おすすめ度を 1 冊 1 枚で並べる */
+.bookshelf { margin-bottom: 1.25rem; }
+.bookshelf h2 { margin-bottom: .3rem; font-size: 1.05rem; color: #332c75; }
+.book-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); gap: .75rem; margin: .75rem 0 0; padding: 0; list-style: none; }
+.book-card { display: flex; gap: .8rem; padding: .75rem; border: 1px solid #e2e5ef; border-radius: .8rem; background: #fff; min-width: 0; }
+.book-cover { flex: 0 0 4rem; width: 4rem; height: 5.6rem; border-radius: .3rem; background: #eef0f6; overflow: hidden; }
+.book-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.book-cover img.is-missing { visibility: hidden; }
+.book-body { min-width: 0; }
+.book-body p { margin: 0 0 .25rem; overflow-wrap: anywhere; }
+.book-title { font-weight: 700; color: #1d2433; }
+.book-badge { display: inline-block; margin-left: .3rem; padding: 0 .45rem; border-radius: 999px; background: #332c75; color: #fff; font-size: .7rem; font-weight: 600; vertical-align: middle; }
+.book-score { display: block; margin: 0 0 .25rem; padding: 0; border: 0; background: none; color: #332c75; font-size: .85rem; text-align: left; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.book-posts { margin: 0 0 .4rem; padding-left: 1.1rem; font-size: .8rem; line-height: 1.5; }
+.book-posts li { margin-bottom: .2rem; overflow-wrap: anywhere; }
+.book-posts .muted-note { margin-left: .3rem; }
+.book-fields { color: #616a82; font-size: .8rem; }
+.book-note { color: #3d4557; font-size: .82rem; line-height: 1.5; }
+.book-card.is-near { border-color: #f0b429; box-shadow: 0 0 0 2px #fdf0c4; }
+.book-near { color: #8a5a00; font-size: .8rem; font-weight: 600; }
+.book-topics { display: flex; flex-wrap: wrap; gap: .25rem; }
+.book-topic { padding: 0 .4rem; border-radius: 999px; background: #eef0f6; color: #3d4557; font-size: .72rem; }
+.shelf-near { margin: .4rem 0 0; }
+.shelf-near-toggle { padding: .2rem .7rem; border: 1px solid #f0b429; border-radius: 999px; background: #fff; color: #8a5a00; font-size: .8rem; cursor: pointer; }
+.shelf-near-toggle.is-on { background: #fdf0c4; font-weight: 600; }
 /* 記事の札。押すと詳細が開く */
 .article-card { cursor: pointer; }
 .article-card:hover { background: #fafaff; }

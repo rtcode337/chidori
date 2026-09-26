@@ -442,6 +442,152 @@ defmodule TazunaWeb.DatasetsLiveTest do
     end
   end
 
+  describe "この収集から作る収集（本棚）" do
+    # 親の収集と同じ形で出す —— 状態・巡回ごとの相手・送る
+    @shelf %{
+      "name" => "tazuna_books",
+      "enabled" => false,
+      "interval_minutes" => 1440,
+      "kind" => "stock",
+      "sweeps" => [
+        %{"name" => "機械収集", "interval_minutes" => 360, "use_extract" => true, "enabled" => true},
+        %{"name" => "整理", "interval_minutes" => 1440, "enabled" => true}
+      ]
+    }
+
+    setup do
+      System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+      test_pid = self()
+
+      Tazuna.HttpStub.stub(fn
+        %{url: "http://chiezo.test:7010/v1/ai/backends"} ->
+          Tazuna.HttpStub.ok(~s({"backends":[{"id":"antigravity","label":"Antigravity"}]}))
+
+        %{method: :get, url: "http://chiezo.test:7010/v1/collect"} ->
+          Tazuna.HttpStub.ok(Jason.encode!(%{"collections" => [@shelf]}))
+
+        %{method: :get, url: "http://chiezo.test:7010/v1/collect/tazuna_books" <> _rest} ->
+          Tazuna.HttpStub.ok(Jason.encode!(@shelf))
+
+        %{method: :get, url: "http://chiezo.test:7010/v1/tazuna_book_posts/filter?" <> _query} ->
+          Tazuna.HttpStub.ok(
+            Jason.encode!(%{
+              "results" => [
+                %{
+                  "title" => "おすすめの本 10 冊",
+                  "extra" => %{"url" => "https://example.com/a", "published_at" => "2026-01-07"}
+                }
+              ]
+            })
+          )
+
+        %{method: :get, url: "http://chiezo.test:7010/v1/tazuna_books/filter?" <> _query} ->
+          Tazuna.HttpStub.ok(
+            Jason.encode!(%{
+              "results" => [
+                %{
+                  "title" => "本:入門 監視",
+                  "tags" => ["技術書", "話題:監視"],
+                  "extra" => %{"docs" => 2}
+                },
+                # 整理の回が見出しを書き換えて足してしまったもの（数を持たない）
+                %{"title" => "リーダブルコード", "tags" => ["技術書"], "extra" => %{}},
+                %{
+                  "title" => "本:リーダブルコード",
+                  "tags" => ["技術書", "分野:設計・アーキテクチャ"],
+                  "opening" => "読みやすいコードの書き方",
+                  "extra" => %{"docs" => 5, "isbn" => "9784873115658"}
+                }
+              ]
+            })
+          )
+
+        %{method: :patch, url: url, body: body} ->
+          send(test_pid, {:patched, url, Jason.decode!(body)})
+          Tazuna.HttpStub.ok(~s({}))
+
+        %{method: :post, url: _url} ->
+          Tazuna.HttpStub.ok(~s({}))
+
+        %{method: :get, url: _other} ->
+          Tazuna.HttpStub.ok(~s({"collections":[],"sources":[],"changes":[]}))
+      end)
+
+      :ok
+    end
+
+    test "本棚の本を、表紙つきでおすすめ度の高い順に並べる", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/datasets?view=books")
+      html = render_async(live)
+
+      [_, shelf] = String.split(html, ~s(class="bookshelf"), parts: 2)
+      assert shelf =~ "https://www.hanmoto.com/bd/img/9784873115658.jpg"
+      assert shelf =~ "記事 5 本が勧めている"
+      assert shelf =~ "定番"
+      {first, _} = :binary.match(shelf, "リーダブルコード")
+      {second, _} = :binary.match(shelf, "入門 監視")
+      assert first < second
+      # 数を持たない本（見出しを書き換えて足されたもの）は並べない
+      refute shelf =~ ~s(phx-value-title="リーダブルコード")
+    end
+
+    test "興味トピックに近い本を強調し、絞り込める", %{conn: conn} do
+      Tazuna.News.Interests.toggle("tazuna_tech", "設計・アーキテクチャ")
+      Tazuna.News.Interests.toggle("tazuna_tech", "監視")
+
+      {:ok, live, _html} = live(conn, ~p"/datasets?view=books")
+      html = render_async(live)
+
+      assert html =~ "★ 興味: 監視"
+      assert html =~ "興味トピックに近い本だけ（1 冊）"
+
+      html = live |> element(".shelf-near-toggle") |> render_click()
+      [_, rest] = String.split(html, ~s(class="book-list"), parts: 2)
+      [shelf, _] = String.split(rest, "</ol>", parts: 2)
+      assert shelf =~ "入門 監視"
+      refute shelf =~ "リーダブルコード"
+    end
+
+    test "数を押すと、勧めている記事へのリンクが開く", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/datasets?view=books")
+      render_async(live)
+
+      refute render(live) =~ "https://example.com/a"
+
+      live
+      |> element(~s(button[phx-value-title="本:リーダブルコード"]))
+      |> render_click()
+
+      html = render_async(live)
+      assert html =~ ~s(href="https://example.com/a")
+      assert html =~ "おすすめの本 10 冊"
+    end
+
+    test "巡回ごとに相手を選んで送れる", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/datasets?view=books")
+      html = render_async(live)
+
+      [_, shelf] = String.split(html, "本棚（定番の技術書）", parts: 2)
+      assert shelf =~ "止まっている"
+      assert shelf =~ ~s(name="sweep|整理|backend")
+      # 機械収集の回は AI を呼ばないので選ばせない
+      refute shelf =~ ~s(name="sweep|機械収集|backend")
+      assert shelf =~ "収集の設定を更新"
+
+      live
+      |> element("#derived-collect-form")
+      |> render_submit(%{"sweep|整理|backend" => "antigravity"})
+
+      render_async(live)
+
+      assert_receive {:patched, url, sent}, 2_000
+      assert url =~ "/v1/collect/tazuna_books"
+      tidy = Enum.find(sent["sweeps"], &(&1["name"] == "整理"))
+      assert tidy["backend"] == "antigravity"
+    end
+  end
+
   describe "画面の文言" do
     test "区画への頼みごとは、必ず区画の名前で始まる" do
       assert DatasetsLive.partition_note("35.6,139.7/35.7,139.8", nil) =~ "35.6,139.7/35.7,139.8"

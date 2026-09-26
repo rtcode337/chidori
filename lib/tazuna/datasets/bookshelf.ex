@@ -18,6 +18,8 @@ defmodule Tazuna.Datasets.Bookshelf do
   alias Tazuna.Chiezo
   alias Tazuna.Datasets.Books
   alias Tazuna.SweepNames
+  alias Tazuna.Themes
+  alias Tazuna.Themes.Search
 
   @collection "tazuna_books"
 
@@ -26,6 +28,13 @@ defmodule Tazuna.Datasets.Bookshelf do
 
   # 分野のタグの頭
   @field_tag "分野"
+
+  # 本のタグの頭。**その本に付けるべき語を AI が自由に付ける**（数も決めない）。
+  # 興味トピックとはこのタグで突き合わせる
+  @topic_tag "話題"
+
+  # 話題の語彙を持つ技術ニュースの話題
+  @tech_topics "tazuna_tech"
 
   # 定番と候補の印
   @classic_tag "定番"
@@ -44,8 +53,18 @@ defmodule Tazuna.Datasets.Bookshelf do
   # 一緒に挙げられている本を、1 冊あたり何冊まで持つか
   @link_count 6
 
-  # 名簿の上限
-  @tag_limit 400
+  # 名簿の上限。**本を落とすための数ではない** —— 機械収集は足すだけなので、名簿から
+  # 外れた本も本棚には残るが、**数が更新されなくなる**（勧める記事が増えても反映されない）。
+  # 数えるのは手元の索引だけで軽いので、本棚が育っても外れない高さに置く
+  @tag_limit 20_000
+
+  # 画面に並べるときに読む上限（名簿の上限と揃える）
+  @list_limit 400
+
+  # 表紙の置き場。**ISBN から URL が決まる**ので、問い合わせずに組み立てられる
+  # （無い本は 404 が返るので、画面が隠す）
+  @cover_base "https://www.hanmoto.com/bd/img/"
+  @book_page_base "https://www.hanmoto.com/bd/isbn/"
 
   # 機械収集の回と整理の回（AI）の間隔
   @pick_minutes 360
@@ -56,6 +75,12 @@ defmodule Tazuna.Datasets.Bookshelf do
 
   @doc "分野のタグの頭。"
   def field_tag, do: @field_tag
+
+  @doc "本のタグの頭。"
+  def topic_tag, do: @topic_tag
+
+  @doc "話題の語彙を持つ技術ニュースの収集。"
+  def tech_topics, do: @tech_topics
 
   @doc "定番の印。"
   def classic_tag, do: @classic_tag
@@ -138,30 +163,60 @@ defmodule Tazuna.Datasets.Bookshelf do
   """
   def tidy_prompt do
     """
-    技術書の本棚を整えます。**1 冊 1 文書**で、見出しは書名です。
+    技術書の本棚を整えます。**1 冊 1 文書**で、見出しは「本:<書名>」です。
 
-    {current}
+    **返すときは、いまの見出しを一字も変えずに使ってください**（「本:」も付けたまま）。
+    見出しで既にある 1 冊に当てるので、変えると直したつもりの中身が**別の本として
+    足され**、元の本は直らないまま残ります。
 
     **数は機械が数えています**（その本を挙げている記事の本数）。
     **数を書き換えないでください** —— あなたの仕事は、**読めるようにする**ことです。
 
-    **やってほしいことは 4 つ**です。
+    ## A. 本棚ぜんたいを見て畳む
 
-    **1. 言い換えを 1 つに畳む。** 「リーダブルコード」と「Readable Code」、
+    いま並んでいる本の見出しです（本文は出していません）。
+
+    {names}
+
+    **言い換えを 1 つに畳む。** 「リーダブルコード」と「Readable Code」、
     副題の有無、版違いは同じ本です。**残すのは邦題のあるほう**で、
     消すほうには墓標を付けてください（tags に "#{Chiezo.tombstone_tag()}" を入れ、
     body に「◯◯と同じ本」と 1 行）。
 
-    **2. 技術書でない語を外す。** 「入門書」「名著」のような**本の名前でないもの**、
+    **「本:」で始まらない見出しがあれば、それは間違って足したものです。**
+    同じく墓標を付けてください（body に「本:◯◯と同じ本」）。
+
+    **技術書でない語を外す。** 「入門書」「名著」のような**本の名前でないもの**、
     雑誌、資格の問題集は本棚に置きません（同じく墓標で）。
 
-    **3. 分野を付ける。** 「#{@field_tag}:<分野>」を 1〜2 個。
+    ## B. 新しく入った本を調べる
+
+    次に並んでいるのは、**まだ誰も調べていない本だけ**です（調べ終えた本は並びません。
+    ここに載せたものは、調べがついてもつかなくても次からは並びません）。
+
+    {unreviewed}
+
+    1 冊ずつ、次を書いてください。
+
+    **1. 分野を付ける。** 「#{@field_tag}:<分野>」を、当てはまるものすべて。
     **下の語彙から選んでください**（新しい語は作らない）。
     #{Enum.map_join(fields_of_study(), " / ", & &1)}
 
-    **4. 一言で説明する。** body に 2〜3 行 —— **何の本で、どういう人が読むと効くか**。
+    **2. タグを付ける。** 「#{@topic_tag}:<語>」を、**その本に付けるべきだと思う語を
+    すべて**付けてください（数は決めません）。扱っている技術や道具の名前、
+    考え方や手法、対象の読み手（「新人向け」「リーダー向け」など）、
+    **読む人がその本を探すときに引きそうな語**です。読む人が興味で選んだ語と、
+    このタグで突き合わせます —— **付いていない語では見つけられません**。
+    表記は一般的なものを 1 つ（略称と正式名の両方が通るなら両方）。
+
+    **3. 一言で説明する。** body に 2〜3 行 —— **何の本で、どういう人が読むと効くか**。
     「名著です」ではなく、**読むかどうかを決められること**を書いてください。
     原書名・著者・出た年が分かれば 1 行足してください。
+
+    **4. ISBN を調べる。** 脇書き（extra）の "isbn" に、**いま手に入る日本語版の
+    ISBN-13**（ハイフンなし）を書いてください。邦訳が無い本は原書のもの。
+    **調べて確かめられたときだけ**書き、分からなければ書かないでください ——
+    表紙の画像はこの番号から引くので、違う番号だと別の本の表紙が出ます。
 
     **印は数で決まります**（あなたは書かなくて構いません）——
     「#{@classic_tag}」は #{@classic_sources} 本以上の記事が挙げている本、
@@ -172,6 +227,40 @@ defmodule Tazuna.Datasets.Bookshelf do
 
     **触ったものだけ返してください。** 触れなかったものはそのまま残ります。
     """
+  end
+
+  @doc """
+  いま本棚にある本の、**分野・タグ・説明・ISBN を埋め直す 1 回だけの依頼文**。
+
+  整理の回は**まだ調べていない本だけ**を見るので、仕組みを入れる前に目を通して
+  しまった本（ISBN の欄が無かった頃の本）には、もう回ってきません。
+  それを埋めるための割り込みです。
+  """
+  def backfill_prompt do
+    tidy_prompt()
+    |> String.replace("{unreviewed}", "{current}")
+    |> String.replace(
+      "次に並んでいるのは、**まだ誰も調べていない本だけ**です（調べ終えた本は並びません。\n" <>
+        "ここに載せたものは、調べがついてもつかなくても次からは並びません）。",
+      "**今回だけ、本棚の本を全部並べます。** 分野・タグ・説明・ISBN のうち、" <>
+        "**まだ無いものだけ**を埋めてください（あるものはそのまま）。"
+    )
+  end
+
+  @doc """
+  いま本棚にある本を、**1 回だけ全部調べ直させます**（割り込み。`backfill_prompt/0`）。
+  名指しした本だけが差し込まれるので、並べている本の見出しを全部渡します。
+  """
+  def backfill(base, titles) when is_list(titles) do
+    Chiezo.focus(
+      base,
+      collection(),
+      "本棚の本の分野・タグ・説明・ISBN のうち、まだ無いものを埋めてください",
+      titles,
+      SweepNames.tidy(),
+      nil,
+      backfill_prompt()
+    )
   end
 
   @doc "Chiezo へ送る収集の設定ぜんぶ。"
@@ -199,6 +288,198 @@ defmodule Tazuna.Datasets.Bookshelf do
       Chiezo.patch(base, attrs.name, attrs)
     end
   end
+
+  # ---- 画面に並べる ----------------------------------------------------------
+
+  @doc """
+  本棚に並んでいる本（**おすすめ度の高い順**）。
+
+  おすすめ度は**勧めている記事の本数**（機械が数えたもの）。同じ本数なら、
+  直近で挙げられている本・最後に挙げられた日が新しい本を先にします。
+  まだ 1 度も焼いていなければ空（失敗ではない）。
+  """
+  def list(base) do
+    query =
+      URI.encode_query(%{
+        "tag" => @kind_tag,
+        "fields" => "title,tags,opening,extra",
+        "limit" => @list_limit
+      })
+
+    case Chiezo.get(base <> "/v1/" <> collection() <> "/filter?" <> query) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"results" => results}} when is_list(results) ->
+            # **勧めている記事が数えられていない本は並べない。** 本棚に入るのは
+            # 機械が数えた本だけで、数を持たないのは整理の回が見出しを書き換えて
+            # 別の 1 冊として足してしまったもの（次の整理の回に畳ませる）
+            {:ok,
+             results
+             |> Enum.map(&to_book/1)
+             |> Enum.filter(&(&1.docs > 0))
+             |> with_interests(near_map(base))
+             |> ranked()}
+
+          _other ->
+            {:error, :chiezo_unexpected_body}
+        end
+
+      {:ok, %{status: 404}} ->
+        {:ok, []}
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
+  技術ニュースで選んだ興味トピックに**近い語**（均した形 → 興味トピック）。
+  興味トピックが無ければ空。トピックの網が読めなければ、興味トピックの名前だけで引く
+  （言い換えと子が効かなくなるだけで、強調が全部消えるよりよい）。
+  """
+  def near_map(base) do
+    case Tazuna.News.Interests.list(@tech_topics) do
+      [] ->
+        %{}
+
+      interests ->
+        themes =
+          case Themes.list(base, @tech_topics) do
+            {:ok, themes} -> themes
+            _unreadable -> []
+          end
+
+        Search.near_map(themes, interests)
+    end
+  end
+
+  @doc """
+  本ごとに、**近い興味トピック**を埋めます。`near_map` は均した語 → 興味トピック
+  （`Tazuna.Themes.Search.near_map/2`）。
+  """
+  def with_interests(books, near_map) when map_size(near_map) == 0, do: books
+
+  def with_interests(books, near_map) do
+    for book <- books do
+      near =
+        book.topics
+        |> Enum.flat_map(&List.wrap(Map.get(near_map, Search.normalize(&1))))
+        |> Enum.uniq()
+
+      %{book | near: near}
+    end
+  end
+
+  @doc "おすすめ度の高い順に並べます。"
+  def ranked(books) do
+    Enum.sort_by(books, &{-&1.docs, -&1.recent, invert(&1.last_seen), &1.name})
+  end
+
+  # 日付の新しいほうを先にするための並べ鍵（文字列の降順）
+  defp invert(date), do: date |> String.to_charlist() |> Enum.map(&(-&1))
+
+  @doc false
+  def to_book(%{"title" => title} = result) do
+    tags = for tag <- result["tags"] || [], is_binary(tag), do: tag
+    extra = if is_map(result["extra"]), do: result["extra"], else: %{}
+    docs = counted(extra["docs"])
+    isbn = isbn13(extra["isbn"])
+
+    %{
+      title: title,
+      # 見出しは「本:<書名>」（記事のタグと同じ形）。画面には書名だけ出す
+      name: title |> String.replace_prefix(Books.book_tag() <> ":", "") |> String.trim(),
+      note: result["opening"] || "",
+      fields: for("#{@field_tag}:" <> field <- tags, do: field),
+      topics: for("#{@topic_tag}:" <> topic <- tags, do: String.trim(topic)),
+      # 近い興味トピック（`with_interests/2` が埋める）
+      near: [],
+      docs: docs,
+      recent: counted(extra["docs_recent"]),
+      last_seen: to_string(extra["last_seen"] || ""),
+      classic: docs >= @classic_sources,
+      isbn: isbn,
+      cover_url: isbn && @cover_base <> isbn <> ".jpg",
+      page_url: isbn && @book_page_base <> isbn
+    }
+  end
+
+  @doc """
+  ISBN を 13 桁に揃えます。**チェックディジットが合わなければ nil** ——
+  AI が書いた番号なので、1 桁違いで別の本の表紙が出るのを止めます。
+  10 桁のものは 13 桁に直します。
+  """
+  def isbn13(raw) when is_binary(raw) do
+    digits = raw |> String.upcase() |> String.replace(~r/[^0-9X]/, "")
+
+    cond do
+      String.length(digits) == 13 and valid13?(digits) -> digits
+      String.length(digits) == 10 and valid10?(digits) -> from10(digits)
+      true -> nil
+    end
+  end
+
+  def isbn13(raw) when is_integer(raw), do: isbn13(Integer.to_string(raw))
+  def isbn13(_raw), do: nil
+
+  defp valid13?(digits) do
+    if digits =~ ~r/^97[89]\d{10}$/ do
+      nums = digits |> String.graphemes() |> Enum.map(&String.to_integer/1)
+
+      sum =
+        nums
+        |> Enum.with_index()
+        |> Enum.map(fn {n, i} -> if rem(i, 2) == 0, do: n, else: n * 3 end)
+        |> Enum.sum()
+
+      rem(sum, 10) == 0
+    else
+      false
+    end
+  end
+
+  defp valid10?(digits) do
+    if digits =~ ~r/^\d{9}[\dX]$/ do
+      sum =
+        digits
+        |> String.graphemes()
+        |> Enum.with_index()
+        |> Enum.map(fn {c, i} -> if(c == "X", do: 10, else: String.to_integer(c)) * (10 - i) end)
+        |> Enum.sum()
+
+      rem(sum, 11) == 0
+    else
+      false
+    end
+  end
+
+  defp from10(digits) do
+    body = "978" <> String.slice(digits, 0, 9)
+
+    sum =
+      body
+      |> String.graphemes()
+      |> Enum.with_index()
+      |> Enum.map(fn {c, i} -> String.to_integer(c) * if(rem(i, 2) == 0, do: 1, else: 3) end)
+      |> Enum.sum()
+
+    body <> Integer.to_string(rem(10 - rem(sum, 10), 10))
+  end
+
+  # 機械が入れた数。**読めなければ 0**
+  defp counted(value) when is_integer(value), do: value
+
+  defp counted(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {number, _rest} -> number
+      :error -> 0
+    end
+  end
+
+  defp counted(_value), do: 0
 
   defp with_choices(sweeps, choices) do
     for sweep <- Enum.map(sweeps, &resolve_prompt/1) do
