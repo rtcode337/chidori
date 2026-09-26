@@ -46,6 +46,9 @@ defmodule TazunaWeb.NewsLive do
         themes: empty_themes(),
         theme_picks: %{},
         asking: false,
+        # 詳細を開いている記事（モーダル）。そこから頼んだ割り込みの結果も持つ
+        opened_article: nil,
+        article_asked: nil,
         digest_message: nil,
         notify_form: nil,
         # 全画面で開いているまとめ（何件目か。閉じていれば nil）と、どちらの並びか
@@ -57,6 +60,7 @@ defmodule TazunaWeb.NewsLive do
         # トピックの網で選んでいる語と、その記事（読み込み中は `:loading`）
         picked_theme: nil,
         theme_articles: nil,
+        theme_query: "",
         # 記事一覧の並び（`:importance` = 重要度順 / `:interest` = 興味の近い順）
         article_sort: :importance,
         # 全画面で開いたときに、先に見せる章（目次から開いたとき。番号）
@@ -108,6 +112,7 @@ defmodule TazunaWeb.NewsLive do
         interests: if(topic, do: Interests.list(topic.collection), else: []),
         picked_theme: nil,
         theme_articles: nil,
+        theme_query: "",
         article_sort: :importance
       )
 
@@ -200,18 +205,39 @@ defmodule TazunaWeb.NewsLive do
 
   # **この場で 1 回だけ頼む。** 定時の巡回は決まった仕事しかしないので、
   # 「この話の続きを追って」のような頼みごとの行き先がここしかない
-  def handle_event("ask", %{"note" => note}, socket) do
+  # **記事を押すと詳細を開く**（画家の図と同じくモーダル）。探すのは一覧と、
+  # トピックで引いた記事の両方（どちらからも開ける）
+  def handle_event("open_article", %{"title" => title}, socket) do
+    theme_articles =
+      if is_list(socket.assigns.theme_articles), do: socket.assigns.theme_articles, else: []
+
+    article = Enum.find(socket.assigns.news.articles ++ theme_articles, &(&1.title == title))
+    {:noreply, assign(socket, opened_article: article, article_asked: nil)}
+  end
+
+  def handle_event("close_article", _params, socket),
+    do: {:noreply, assign(socket, opened_article: nil, article_asked: nil)}
+
+  # **その記事について頼む**（割り込み）。記事を名指しするので、頼んだ 1 件は
+  # 必ず AI に見せられる。定時の巡回の進み具合にも次の予定にも触らない
+  def handle_event("ask_article", %{"note" => note}, socket) do
     topic = socket.assigns.topic
+    article = socket.assigns.opened_article
 
-    case String.trim(note) do
-      "" ->
-        {:noreply, put_flash(socket, :error, "頼みたいことを書いてください。")}
+    case {String.trim(note || ""), article} do
+      {"", _} ->
+        {:noreply, assign(socket, article_asked: {:error, :empty_note})}
 
-      written ->
+      {_written, nil} ->
+        {:noreply, socket}
+
+      {written, article} ->
+        text = "「#{article.title}」について。#{written}"
+
         {:noreply,
          socket
-         |> assign(asking: true)
-         |> start_async(:ask, fn -> News.ask_focus(topic.collection, written) end)}
+         |> assign(asking: true, article_asked: :asking)
+         |> start_async(:ask, fn -> News.ask_focus(topic.collection, text, [article.title]) end)}
     end
   end
 
@@ -251,6 +277,35 @@ defmodule TazunaWeb.NewsLive do
   # **トピックの網で語を選ぶ**（札を押したとき。`TopicMap` が送る）。選んだ語の記事を
   # 引いて、図の下に並べる。**その語と、畳んだ言い換え**で引く（記事の側は畳む前の
   # 表記のまま残っている）。空の名前は「選ぶのをやめる」
+  # **トピックを名前で探す**（表記ゆれ・畳んだ言い換えも。`Tazuna.Themes.Search`）。
+  # **候補を出すだけで、図はまだ動かさない**（画家の図と同じ）—— 打っている途中で
+  # 図が飛び回ると、どこを見ていたのか分からなくなる
+  def handle_event("search_theme", %{"q" => q}, socket),
+    do: {:noreply, assign(socket, theme_query: q)}
+
+  def handle_event("clear_theme_search", _params, socket),
+    do: {:noreply, assign(socket, theme_query: "")}
+
+  # 候補を選んだら、その札へ寄り、札を押したのと同じく記事を開く。
+  # **寄せるのは画面の側**（`focus` を図へ送る）—— 器の大きさは向こうしか知らない
+  def handle_event("focus_theme", %{"name" => name}, socket) do
+    case Enum.find(
+           Tazuna.Themes.Graph.build(socket.assigns.themes.themes).nodes,
+           &(&1.name == name)
+         ) do
+      nil ->
+        {:noreply, socket}
+
+      node ->
+        {:noreply, socket} = handle_event("pick_theme", %{"name" => name}, socket)
+
+        {:noreply,
+         socket
+         |> assign(theme_query: "")
+         |> push_event("focus", %{x: node.x, y: node.y, name: name})}
+    end
+  end
+
   def handle_event("pick_theme", %{"name" => name}, socket) when name in [nil, ""],
     do: {:noreply, assign(socket, picked_theme: nil, theme_articles: nil)}
 
@@ -415,13 +470,30 @@ defmodule TazunaWeb.NewsLive do
   def digests_of(news, _kind), do: Map.get(news, :digests, [])
 
   # 畳んだ言い換え（トピックの `同義:` のタグ）
-  defp synonyms_of(theme) do
-    prefix = Themes.synonym_tag()
+  defp synonyms_of(theme), do: Themes.synonyms_of(theme)
 
-    for tag <- theme.tags, String.starts_with?(tag, prefix) do
-      tag |> String.replace_prefix(prefix, "") |> String.trim()
-    end
-    |> Enum.reject(&(&1 == ""))
+  # 探す欄の候補の数。**多すぎると図を覆う**（絞りたい人は語を足す）
+  @theme_hits 12
+
+  @doc "探す欄の候補（近い順・上限つき）。言い換えで当たったものは、その言い換えを添える。"
+  def theme_hits(themes, query) do
+    needle = Tazuna.Themes.Search.normalize(query)
+
+    themes
+    |> Tazuna.Themes.Search.search(query)
+    |> Enum.take(@theme_hits)
+    |> Enum.map(fn theme ->
+      alias_hit =
+        if String.contains?(Tazuna.Themes.Search.normalize(theme.name), needle),
+          do: nil,
+          else:
+            Enum.find(
+              Themes.synonyms_of(theme),
+              &String.contains?(Tazuna.Themes.Search.normalize(&1), needle)
+            )
+
+      %{name: theme.name, docs: theme.docs, alias: alias_hit}
+    end)
   end
 
   @doc """
@@ -449,19 +521,15 @@ defmodule TazunaWeb.NewsLive do
   end
 
   @impl true
-  def handle_async(:ask, {:ok, :ok}, socket) do
-    {:noreply,
-     socket
-     |> assign(asking: false)
-     |> put_flash(:info, "Chiezo へ頼みました。次の巡回とは別に走ります。")}
-  end
+  def handle_async(:ask, {:ok, :ok}, socket),
+    do: {:noreply, assign(socket, asking: false, article_asked: :ok)}
 
   def handle_async(:ask, {:ok, {:error, reason}}, socket),
-    do: {:noreply, socket |> assign(asking: false) |> put_flash(:error, ask_error(reason))}
+    do: {:noreply, assign(socket, asking: false, article_asked: {:error, reason})}
 
   # 起きなかったことは黙って捨てない。押した人には確かめようがない
   def handle_async(:ask, _result, socket),
-    do: {:noreply, socket |> assign(asking: false) |> put_flash(:error, ask_error(:unknown))}
+    do: {:noreply, assign(socket, asking: false, article_asked: {:error, :unknown})}
 
   def handle_async(:themes, {:ok, state}, socket) when is_map(state),
     do: {:noreply, assign(socket, themes: state)}
@@ -594,12 +662,22 @@ defmodule TazunaWeb.NewsLive do
     """
   end
 
-  attr :article, :map, required: true
-
   @doc "記事 1 件の札（記事一覧と、トピックから引いた記事で同じもの）。"
+  attr :article, :map, required: true
+  attr :interests, :list, default: []
+  attr :near, :map, default: %{}
+
   def article_card(assigns) do
     ~H"""
-    <article>
+    <%!-- **押すと詳細が開く**（画家の図と同じくモーダル）。原文へのリンクは詳細の中に
+         置く —— 札の中にもリンクがあると、押した場所で起きることが変わってしまう --%>
+    <article
+      class="article-card"
+      phx-click="open_article"
+      phx-value-title={@article.title}
+      role="button"
+      tabindex="0"
+    >
       <%!-- 配信元が配っている絵。**無いほうが多い**ので、あるときだけ出す --%>
       <img :if={@article.image} class="news-thumb" src={@article.image} alt="" loading="lazy" />
       <div>
@@ -610,15 +688,9 @@ defmodule TazunaWeb.NewsLive do
             class="interest-score"
           >・{interest_text(@article)}</span>
         </p>
-        <h2>
-          <%!-- 出典があれば原文へ。無ければ見出しだけ出す（Chiezo 側にも入口はある） --%>
-          <%= if @article.url do %>
-            <a href={@article.url} target="_blank" rel="noreferrer">{@article.title}</a>
-          <% else %>
-            {@article.title}
-          <% end %>
-        </h2>
+        <h2>{@article.title}</h2>
         <p :if={@article.summary} class="news-summary">{@article.summary}</p>
+        <.tag_chips tags={article_tags(@article, @interests, @near)} />
         <%!-- なぜこの重さなのか。読んだ AI が付けた印なら、その旨も含めて出る --%>
         <p class="news-reason">{@article.reason}</p>
       </div>
@@ -628,6 +700,27 @@ defmodule TazunaWeb.NewsLive do
     </article>
     """
   end
+
+  attr :tags, :list, required: true
+
+  @doc "記事のタグ。**興味トピックに当たるものは強調する**（そのもの / 近いもの）。"
+  def tag_chips(assigns) do
+    ~H"""
+    <p :if={@tags != []} class="article-tags">
+      <span
+        :for={{tag, mark} <- @tags}
+        class={["article-tag", mark == :exact && "is-interest", mark == :near && "is-near"]}
+        title={mark_title(mark)}
+      >
+        {tag}
+      </span>
+    </p>
+    """
+  end
+
+  defp mark_title(:exact), do: "興味トピック"
+  defp mark_title(:near), do: "興味トピックに近い語（言い換え・すぐ下の話題）"
+  defp mark_title(_mark), do: nil
 
   @doc "興味度の見え方（無ければ nil）。"
   def interest_text(%{interest: n}) when is_integer(n), do: "興味 #{n}"
@@ -879,7 +972,44 @@ defmodule TazunaWeb.NewsLive do
   def ask_error(:chiezo_busy), do: "Chiezo がいま別の依頼を抱えています。少し待ってください。"
   def ask_error(:chiezo_not_configured), do: "Chiezo の場所が設定されていません。"
   def ask_error({:chiezo_refused, _status, reason}) when is_binary(reason), do: reason
+  def ask_error(:empty_note), do: "頼みたいことを書いてください。"
   def ask_error(_reason), do: "Chiezo へ頼めませんでした。"
+
+  @doc "記事の詳細で頼んだ結果の一言。"
+  def article_ask_message(:ok),
+    do: "Chiezo へ頼みました。定時の巡回とは別に 1 回だけ走ります（この記事は必ず AI に見せます）。"
+
+  def article_ask_message({:error, reason}), do: ask_error(reason)
+  def article_ask_message(_asked), do: nil
+
+  # 画面に出さない印（重要度などは別の場所に出す。Chiezo の内部の印も出さない）
+  @meta_tag_prefixes ["重要度:", "話題度:", "興味度:", "_chiezo"]
+
+  @doc """
+  記事に付いたタグのうち、画面に出すもの。**興味トピックに当たるものに印**を付ける ——
+  `:exact` は興味トピックそのもの、`:near` は言い換えかすぐ下の子
+  （`Tazuna.Themes.Search.near_map/2`。均した形で比べる）。
+  """
+  def article_tags(article, interests, near) do
+    exact = MapSet.new(interests, &Tazuna.Themes.Search.normalize/1)
+
+    for tag <- article.tags || [],
+        not Enum.any?(@meta_tag_prefixes, &String.starts_with?(tag, &1)) do
+      key = Tazuna.Themes.Search.normalize(tag)
+
+      mark =
+        cond do
+          MapSet.member?(exact, key) -> :exact
+          Map.has_key?(near, key) -> :near
+          true -> nil
+        end
+
+      {tag, mark}
+    end
+  end
+
+  @doc "興味トピックに近い語（均した形 → 興味トピック）。"
+  def near_tags(themes, interests), do: Tazuna.Themes.Search.near_map(themes, interests)
 
   @doc """
   その話題を何で集めているかの一言。**機械で引いているかどうかが読めないと、

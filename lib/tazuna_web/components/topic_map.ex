@@ -21,6 +21,8 @@ defmodule TazunaWeb.TopicMap do
   attr :state, :map, required: true, doc: "`Tazuna.Themes.read/2` が返すもの"
   attr :interests, :list, default: [], doc: "選んでいる興味トピック（札に印を付ける）"
   attr :picked, :string, default: nil, doc: "押して選んでいる語（その線を濃くする）"
+  attr :query, :string, default: "", doc: "探す欄に打っている語"
+  attr :matches, :list, default: [], doc: "探す欄の候補（`Tazuna.Themes.Search.search/2`）"
 
   def topic_map(assigns) do
     assigns =
@@ -46,6 +48,46 @@ defmodule TazunaWeb.TopicMap do
         data-focus-x={@map.focus.x}
         data-focus-y={@map.focus.y}
       >
+        <%!-- **名前で探す口は図の左上**（画家の図と同じ）。候補を選ぶと、その札へ寄って
+             札を押したのと同じく記事が開く。全角半角・大小・カタカナとひらがな・中黒や
+             空白の違いは同じ語として扱い、畳んだ言い換えでも当たる --%>
+        <div class="relation-find">
+          <form
+            id="topic-search"
+            class="relation-search"
+            phx-change="search_theme"
+            phx-submit="search_theme"
+            autocomplete="off"
+          >
+            <input
+              type="search"
+              name="q"
+              value={@query}
+              placeholder="トピックを探す"
+              aria-label="トピックを探す"
+            />
+            <button
+              :if={@query != ""}
+              type="button"
+              phx-click="clear_theme_search"
+              aria-label="検索をやめる"
+            >
+              ×
+            </button>
+            <ul :if={@matches != []} class="relation-matches">
+              <li :for={match <- @matches}>
+                <button type="button" phx-click="focus_theme" phx-value-name={match.name}>
+                  <span>
+                    <span :if={match.name in @interests} aria-label="興味トピック">★</span>
+                    {match.name}
+                    <span :if={match.alias} class="match-years">（{match.alias}）</span>
+                  </span>
+                  <span class="match-years">{match.docs} 件</span>
+                </button>
+              </li>
+            </ul>
+          </form>
+        </div>
         <div class="relation-tools">
           <button type="button" data-zoom="in" aria-label="拡大">＋</button>
           <button type="button" data-zoom="out" aria-label="縮小">−</button>

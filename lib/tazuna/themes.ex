@@ -77,6 +77,14 @@ defmodule Tazuna.Themes do
   @doc "図に出す目印。"
   def theme_tag, do: @theme_tag
 
+  @doc "そのトピックに畳んだ言い換え（「#{@synonym_prefix}<語>」のタグ）。"
+  def synonyms_of(%{tags: tags}) do
+    for tag <- tags, String.starts_with?(tag, @synonym_prefix) do
+      tag |> String.replace_prefix(@synonym_prefix, "") |> String.trim()
+    end
+    |> Enum.reject(&(&1 == ""))
+  end
+
   @doc "上位のトピックを載せるタグの頭。"
   def parent_tag, do: @parent_prefix
 

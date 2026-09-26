@@ -127,7 +127,13 @@
     <%!-- 記事から育った話題の網。**まとめのすぐ下** —— まとめが「この期間に何が
          あったか」を文で言うのに対して、図は同じことを語のつながりで見せる。
          育てるのは Chiezo で、tazuna は依頼文を渡して読むだけ --%>
-    <.topic_map state={@themes} interests={@interests} picked={@picked_theme} />
+    <.topic_map
+      state={@themes}
+      interests={@interests}
+      picked={@picked_theme}
+      query={@theme_query}
+      matches={theme_hits(@themes.themes, @theme_query)}
+    />
 
     <%!-- 選んだトピックの記事と、興味トピックに入れる口。**図のすぐ下** —— 札を押したら
          その話題の記事を読みに行ける（押すと網の線も濃くなる） --%>
@@ -159,7 +165,12 @@
             {length(articles)} 件（新しい順）。トピックの語と、畳んだ言い換えのタグで引いています。
           </p>
           <div class="news-list">
-            <.article_card :for={article <- articles} article={article} />
+            <.article_card
+              :for={article <- articles}
+              article={article}
+              interests={@interests}
+              near={near_tags(@themes.themes, @interests)}
+            />
           </div>
         <% _none -> %>
       <% end %>
@@ -193,7 +204,13 @@
 
     <%!-- 記事の一覧。**ふだんは畳んでおく** —— 読むのは要約と話題の網で、1 件ずつを
          拾いに行くのは気になったときだけ。開いたままだと画面の大半を占める --%>
-    <details class="news-articles">
+    <%!-- **並び替えで閉じない**（開いているかはブラウザが持つ。描き直しで open を
+         外されると、押した並び替えのたびに一覧が畳まれる） --%>
+    <details
+      id="news-articles"
+      class="news-articles"
+      phx-mounted={Phoenix.LiveView.JS.ignore_attributes(["open"])}
+    >
       <summary>
         <h2 class="news-section-title">記事一覧（{length(@news.articles)} 件）</h2>
       </summary>
@@ -216,8 +233,14 @@
           興味の近い順
         </button>
       </div>
+      <% near = near_tags(@themes.themes, @interests) %>
       <section class="news-list" aria-live="polite">
-        <.article_card :for={article <- sorted_articles(@news, @article_sort)} article={article} />
+        <.article_card
+          :for={article <- sorted_articles(@news, @article_sort)}
+          article={article}
+          interests={@interests}
+          near={near}
+        />
       </section>
     </details>
 
@@ -386,35 +409,6 @@
         </p>
       </section>
 
-      <%!-- **この場で 1 回だけ頼める。** 定時の巡回は決まった仕事しかしないので、
-           「この話の続きを追って」のような頼みごとの行き先がここにしかない。
-           割り込みは定時の巡回の進み具合にも次の予定にも触らない --%>
-      <details :if={@news.collection} class="ask-more">
-        <summary>いま頼む（割り込み）</summary>
-        <form phx-submit="ask">
-          <p>
-            <label>
-              頼みたいこと<br />
-              <textarea
-                name="note"
-                rows="3"
-                placeholder="例: この件の続報を追って、関係する発表もまとめて"
-              ></textarea>
-            </label>
-          </p>
-          <p class="muted-note">
-            定時の巡回とは別に 1 回だけ走ります（進み具合にも次の予定にも触りません）。
-            走るのは「{Tazuna.News.focus_sweep()}」の設定です —— <strong>落とす力と印を付け直す力を持つのはこの回だけ</strong>なので、
-            「これは宣伝だから落として」も頼めます。巡回の依頼文は書き換わりません。
-          </p>
-          <div class="button-row">
-            <button type="submit" disabled={@asking} phx-disable-with="頼んでいます…">
-              Chiezo に頼む
-            </button>
-          </div>
-        </form>
-      </details>
-
       <%!-- AI に何を頼んでいるかは、押す前にも後にも読めるようにする。
            畳んでおくのは、ふだんは読みたいのが結果のほうだから --%>
       <details class="news-prompt">
@@ -436,5 +430,78 @@
         見出しを押すと Chiezo の中身（要約と出典）が開きます。
       </p>
     </footer>
+  </div>
+
+  <%!-- **記事の詳細**（画家の図と同じくモーダル）。原文へのリンクと、その記事に
+       ついて Chiezo へ頼む口（割り込み）を置く —— 頼みごとは記事を見ながら
+       思いつくので、設定の欄に離して置くと、どの記事の話か書き直すことになる --%>
+  <div
+    :if={@opened_article}
+    class="artwork-backdrop"
+    phx-window-keydown="close_article"
+    phx-key="Escape"
+  >
+    <section
+      class="artwork article-detail"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="article-detail-title"
+      phx-click-away="close_article"
+    >
+      <div class="artwork-head">
+        <strong id="article-detail-title">{@opened_article.title}</strong>
+        <button type="button" phx-click="close_article">閉じる</button>
+      </div>
+      <p class="news-source">
+        {@opened_article.collected_at}
+        <span :if={buzz_text(@opened_article)}>・{buzz_text(@opened_article)}</span>
+        <span :if={interest_text(@opened_article)} class="interest-score">
+          ・{interest_text(@opened_article)}
+        </span>
+        ・{importance_label(@opened_article.importance)}
+      </p>
+      <img
+        :if={@opened_article.image}
+        class="article-detail-image"
+        src={@opened_article.image}
+        alt=""
+        loading="lazy"
+      />
+      <p :if={@opened_article.summary} class="news-summary">{@opened_article.summary}</p>
+      <p class="news-reason">{@opened_article.reason}</p>
+      <.tag_chips tags={
+        article_tags(@opened_article, @interests, near_tags(@themes.themes, @interests))
+      } />
+      <p :if={@opened_article.url}>
+        <a href={@opened_article.url} target="_blank" rel="noreferrer">原文を開く ↗</a>
+      </p>
+
+      <form id="article-ask" phx-submit="ask_article" class="article-ask">
+        <label>
+          この記事について Chiezo に頼む<br />
+          <textarea
+            name="note"
+            rows="3"
+            placeholder="例: この件の続報を追って / これは宣伝なので落として / タグを直して"
+          ></textarea>
+        </label>
+        <p class="muted-note">
+          定時の巡回とは別に 1 回だけ走ります（進み具合にも次の予定にも触りません）。
+          走るのは「{Tazuna.News.focus_sweep()}」の設定で、この記事は必ず AI に見せます。
+        </p>
+        <div class="button-row">
+          <button type="submit" disabled={@asking} phx-disable-with="頼んでいます…">
+            Chiezo に頼む
+          </button>
+        </div>
+        <p
+          :if={article_ask_message(@article_asked)}
+          class="muted-note"
+          aria-live="polite"
+        >
+          {article_ask_message(@article_asked)}
+        </p>
+      </form>
+    </section>
   </div>
 </main>

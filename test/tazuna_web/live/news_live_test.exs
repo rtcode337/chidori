@@ -161,11 +161,8 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "収集の設定を更新"
       assert html =~ ~s(name="sweep|要約|backend")
 
-      # 定時の巡回とは別に頼める口。**どの回として走るかを押す前に読める** ——
-      # 落とす力と印を付け直す力を持つのは整理の回だけなので、
-      # そこへ乗ることが分からないと「落として」を頼めるのかが読めない
-      assert html =~ "いま頼む（割り込み）"
-      assert html =~ "走るのは「整理」の設定です"
+      # 割り込みは記事の詳細から頼む（設定の欄には置かない）
+      refute html =~ "いま頼む（割り込み）"
     end
 
     test "機械で引く巡回には相手を選ばせない", %{conn: conn} do
@@ -229,7 +226,11 @@ defmodule TazunaWeb.NewsLiveTest do
     test "記事一覧は見出しを付けて、ふだんは畳んでおく", %{conn: conn} do
       html = shown(conn)
 
-      assert html =~ ~s(<details class="news-articles">)
+      # 畳んだまま出す（open を付けない）。並び替えで閉じないよう、開閉はブラウザに任せる
+      [tag] = Regex.run(~r/<details[^>]*id="news-articles"[^>]*>/, html)
+      assert tag =~ "news-articles"
+      refute tag =~ ~r/\sopen(\s|>|=)/
+      assert tag =~ "ignore_attrs"
       assert html =~ "記事一覧（2 件）"
     end
 
@@ -453,7 +454,7 @@ defmodule TazunaWeb.NewsLiveTest do
 
       assert html =~ ~r|<h1[^>]*>\s*技術ニュース\s*</h1>|
       # 依頼の本文も話題の関心から作る（話題ごとに文面を持たせない）
-      assert html =~ "ソフトウェア開発"
+      assert html =~ "技術に関する新しい動き"
     end
 
     test "知らない話題は先頭に丸める", %{conn: conn} do
@@ -663,6 +664,55 @@ defmodule TazunaWeb.NewsLiveTest do
 
       html = live |> element(".theme-pick-close") |> render_click()
       refute html =~ "「LLM」の記事"
+    end
+
+    test "記事を押すと詳細が開き、その記事について頼める。タグは興味トピックで強調する", %{
+      conn: conn
+    } do
+      stub_picking(self())
+      Tazuna.News.Interests.toggle("tazuna_tech", "LLM")
+      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_tech")
+      render_async(live, 2_000)
+
+      live |> element("#topic-canvas") |> render_hook("pick_theme", %{"name" => "LLM"})
+      html = render_async(live, 2_000)
+
+      # 興味トピックそのものは濃く、言い換えは淡く
+      assert html =~ ~r/class="article-tag is-interest"[^>]*>\s*LLM/
+      assert html =~ ~r/class="article-tag[^"]*is-near"[^>]*>\s*大規模言語モデル/
+      # 画面の外の印（興味度など）はタグとして出さない
+      refute html =~ ~r/class="article-tag[^"]*"[^>]*>\s*興味度:80/
+
+      html =
+        live
+        |> element(~s(article[phx-value-title="LLM の新版"]))
+        |> render_click()
+
+      assert html =~ ~s(id="article-detail-title")
+      assert html =~ "この記事について Chiezo に頼む"
+
+      live |> form("#article-ask", %{"note" => "続報を追って"}) |> render_submit()
+      assert render_async(live, 2_000) =~ "Chiezo へ頼みました"
+    end
+
+    test "図の左上でトピックを名前で探せる（表記ゆれと言い換えでも）", %{conn: conn} do
+      stub_picking(self())
+      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_tech")
+      render_async(live, 2_000)
+
+      # 全角で打っても、言い換え（大規模言語モデル）で当たる
+      html = live |> element("#topic-search") |> render_change(%{"q" => "大規模　言語"})
+      [_, rest] = String.split(html, ~s(class="relation-matches"), parts: 2)
+      [hits, _] = String.split(rest, "</ul>", parts: 2)
+      assert hits =~ "LLM"
+      assert hits =~ "（大規模言語モデル）"
+      refute hits =~ "Rust"
+
+      # 候補を選ぶと、その札へ寄り（図へ知らせる）、札を押したのと同じく記事が開く
+      live |> element(~s(button[phx-click="focus_theme"][phx-value-name="LLM"])) |> render_click()
+      assert_push_event(live, "focus", %{name: "LLM"})
+      assert_receive {:tagged, "LLM"}, 2_000
+      assert render_async(live, 2_000) =~ "「LLM」の記事"
     end
 
     test "興味トピックに入れると、依頼文を Chiezo へ送り直す（選んだ相手はそのまま）", %{conn: conn} do

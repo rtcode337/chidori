@@ -24,7 +24,7 @@ export default panZoom({
   fitFloor: true,
   maxScale: 8,
 
-  skip: "[data-zoom], .relation-tools",
+  skip: "[data-zoom], .relation-tools, .relation-find",
 
   started() {
     const x = Number(this.el.dataset.focusX)
@@ -34,6 +34,13 @@ export default panZoom({
     if (!Number.isFinite(x) || !Number.isFinite(y) || !(width > 0) || !(box.width > 0)) { return }
     // perUnit = 器の幅 / 図の幅 × scale なので、等倍にする scale はその逆数
     this.centerOn(x, y, (START_PPU * width) / box.width)
+    // **探す欄で選んだ札へ寄る**（画家の図と同じ）。寄った札は押したのと同じ印を付ける
+    this.handleEvent("focus", ({x, y, name}) => {
+      const now = this.el.getBoundingClientRect()
+      this.centerOn(x, y, (START_PPU * this.base[2]) / (now.width || box.width))
+      this.picked = name
+      this.mark()
+    })
   },
 
   // 描き直されると付けた印が消えるので、当て直すたびに付け直す

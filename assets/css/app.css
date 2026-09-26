@@ -705,7 +705,7 @@ body.digest-open { overflow: hidden; }
 .topic-map { margin-bottom: 2rem; border: 1px solid #e6e8ef; border-radius: 1rem; background: white; padding: 1rem 1rem .4rem; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
 /* 図の器は関連図と同じ(`relation-canvas`)。**高さは画面に合わせて決め打ち** ——
    全部の話題を置くので図は大きく、縦横比のままでは器が縦に伸びすぎる */
-.topic-canvas { height: min(70vh, 34rem); min-height: 22rem; margin-bottom: .6rem; }
+.topic-canvas { height: min(105vh, 51rem); min-height: 33rem; margin-bottom: .6rem; }
 .topic-canvas svg { height: 100%; }
 /* 親子の囲み。**中身より控えめに**(囲みが濃いと丸と名前が沈む) */
 .topic-clusters text { fill: #5b6478; font-weight: 800; dominant-baseline: auto; }
@@ -779,3 +779,17 @@ body.digest-open { overflow: hidden; }
 /* 図がまだ無いとき。**器は残す**（高さが変わると、読み込み後に画面が跳ねる） */
 .canvas-empty { display: grid; place-items: center; height: 100%; padding: 2rem; }
 .canvas-empty p { margin: 0; color: #7e879f; font-size: .95rem; text-align: center; }
+
+/* 記事の札。押すと詳細が開く */
+.article-card { cursor: pointer; }
+.article-card:hover { background: #fafaff; }
+.article-card:focus-visible { outline: 2px solid #a9a2e6; outline-offset: -2px; }
+.article-tags { display: flex; flex-wrap: wrap; gap: .25rem; margin: .4rem 0 0; }
+.article-tag { padding: 0 .45rem; border-radius: 999px; background: #eef0f6; color: #3d4557; font-size: .72rem; }
+.article-tag.is-interest { background: #f0b429; color: #3b2a00; font-weight: 700; }
+.article-tag.is-near { background: #fdf0c4; color: #8a5a00; font-weight: 600; }
+.article-detail { width: min(40rem, 100%); }
+.article-detail .news-summary { margin: .6rem 0; }
+.article-detail-image { display: block; max-width: 100%; max-height: 14rem; margin: .5rem 0; border-radius: .5rem; object-fit: cover; }
+.article-ask { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid #e2e5ef; }
+.article-ask textarea { width: 100%; margin-top: .3rem; }
