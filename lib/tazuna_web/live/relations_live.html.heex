@@ -549,6 +549,41 @@
               </table>
             </details>
 
+            <%!-- **消えた画家。** 図に丸が無いので、戻すよう頼む口はここにしか無い --%>
+            <details
+              :if={@view == "painters" and (@relation[:removed] || []) != []}
+              class="partition-list"
+            >
+              <summary>消えた画家（{length(@relation[:removed])}）</summary>
+              <p class="muted-note">
+                Chiezo の整理が「画家ではない」「重複」などの理由で消した人です。新しく消えた順に並びます。
+                消し間違いなら「戻すよう頼む」を押すと、その人を名指しして Chiezo に確かめ直してもらいます（定時の巡回には影響しません）。
+              </p>
+              <%!-- **表にしない。** 理由は長い文なので、列に並べると横へはみ出す --%>
+              <ul class="removed-list">
+                <li :for={gone <- @relation[:removed]}>
+                  <% asked = focus_state(@relation, gone.name) %>
+                  <p class="removed-head">
+                    <strong>{gone.name}</strong>
+                    <span class="muted-note">{Tazuna.Jst.format(gone.removed_at)}</span>
+                  </p>
+                  <p class="removed-reason">{blank_dash(gone.reason)}</p>
+                  <p :if={asked && asked.state == :failed} class="warn-note">
+                    {focus_error(asked)}
+                  </p>
+                  <%= if @focus_sent == gone.name and (asked == nil or asked.state != :failed) do %>
+                    <p class="muted-note">頼みました</p>
+                  <% else %>
+                    <form phx-submit="restore_painter" class="removed-form">
+                      <input type="hidden" name="name" value={gone.name} />
+                      <input type="text" name="note" placeholder="補足（空でもよい）" />
+                      <button type="submit" phx-disable-with="頼んでいます…">戻すよう頼む</button>
+                    </form>
+                  <% end %>
+                </li>
+              </ul>
+            </details>
+
             <%!-- **どちらも Chiezo が持っているもの**なので、1 つにまとめる。
                  機械で引いたものと AI が書いたものの線引きが、この図でいちばん大事なところ --%>
             <details :if={@view == "painters"} class="news-prompt">

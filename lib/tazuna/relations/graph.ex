@@ -376,6 +376,9 @@ defmodule Tazuna.Relations.Graph do
       # AI がまだ目を通していない人の数（凡例と絞り込みに使う）
       unreviewed: Enum.count(marked, & &1[:unreviewed?]),
       edges: edges,
+      # **消えた画家。** 図には出さないが、消し間違いを戻す頼みごとは
+      # ここからしか出せない（名簿から消えると、押せる丸が無くなる）
+      removed: removed_of(docs),
       ticks: ticks(laid.nodes),
       bands: laid.bands,
       # 色の凡例に使う（様式・人数・色相）。**図に出ているものだけ**を数える
@@ -395,6 +398,7 @@ defmodule Tazuna.Relations.Graph do
     do: %{
       nodes: [],
       edges: [],
+      removed: [],
       ticks: [],
       bands: [],
       styles: [],
@@ -730,6 +734,34 @@ defmodule Tazuna.Relations.Graph do
   end
 
   defp to_node(_doc), do: []
+
+  # 消えた画家（名前・消した理由・いつ）。**新しく消えた順** —— 見直したいのは
+  # たいてい直近の回が消したもの
+  defp removed_of(docs) do
+    docs
+    |> Enum.flat_map(fn
+      %{"title" => title} = doc when is_binary(title) ->
+        tags = tags_of(doc)
+        extra = if is_map(doc["extra"]), do: doc["extra"], else: %{}
+
+        if @kind_tag in tags and Tazuna.Chiezo.removed_tag() in tags do
+          [
+            %{
+              name: String.trim(title),
+              reason: to_string(extra["removed_reason"] || ""),
+              removed_at: to_string(extra["removed_at"] || "")
+            }
+          ]
+        else
+          []
+        end
+
+      _doc ->
+        []
+    end)
+    |> Enum.uniq_by(& &1.name)
+    |> Enum.sort_by(& &1.removed_at, :desc)
+  end
 
   # 月次ページビュー（bot 除外）に、AI が付けた倍率を掛けたもの。
   # **持っていない画家もいる**ので、無ければ 0 —— 図が出ないより、丸が小さいほうがまし

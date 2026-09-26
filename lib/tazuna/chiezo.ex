@@ -51,6 +51,12 @@ defmodule Tazuna.Chiezo do
   """
   def removed_tag, do: "_chiezo_removed"
 
+  @doc """
+  消えたものを戻す印。**戻るのは AI がこの印を付けて返したときだけ**です
+  （消えた印を外して返しても戻りません）。頼む指示文から名指しするために置きます。
+  """
+  def restore_tag, do: "_chiezo_restore"
+
   @doc "AI がまだ目を通していないものの印（機械で入ったばかりのもの）。"
   def unreviewed_tag, do: "_chiezo_unreviewed"
 

@@ -589,6 +589,15 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .partition-table { width: 100%; border-collapse: collapse; margin-top: .6rem; font-size: .82rem; }
 .partition-table th, .partition-table td { border-bottom: 1px solid #eef0f7; padding: .3rem .5rem; text-align: left; }
 .partition-table button { padding: .2rem .6rem; border: 1px solid #dcdff0; border-radius: .5rem; background: #fff; color: #4338a8; font-size: .78rem; white-space: nowrap; }
+/* 消えた画家。理由が長い文なので、表にせず 1 人ずつ縦に積む */
+.removed-list { list-style: none; margin: .6rem 0 0; padding: 0; font-size: .82rem; }
+.removed-list li { border-bottom: 1px solid #eef0f7; padding: .5rem 0; min-width: 0; }
+.removed-list p { margin: 0; }
+.removed-head { display: flex; flex-wrap: wrap; gap: .2rem .6rem; align-items: baseline; }
+.removed-reason { margin-top: .2rem !important; color: #4b5068; overflow-wrap: anywhere; }
+.removed-form { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .4rem; }
+.removed-form input[type=text] { flex: 1 1 12rem; min-width: 0; padding: .2rem .4rem; font-size: .8rem; }
+.removed-form button { padding: .2rem .6rem; border: 1px solid #dcdff0; border-radius: .5rem; background: #fff; color: #4338a8; font-size: .78rem; white-space: nowrap; }
 
 /* 記事に付く絵。**無いほうが多い**ので、あるときだけ場所を取る */
 .news-thumb { width: 92px; height: 69px; object-fit: cover; border-radius: .5rem; flex: none; background: #f1f2f8; }

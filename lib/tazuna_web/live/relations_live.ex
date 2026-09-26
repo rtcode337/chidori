@@ -190,6 +190,19 @@ defmodule TazunaWeb.RelationsLive do
     {:noreply, assign(socket, focus_sent: name)}
   end
 
+  # 消えた画家を「戻して」と頼む。**名指しの割り込み**なので、消えた状態の
+  # 中身と消した理由が必ず AI に見せられる
+  def handle_event("restore_painter", %{"name" => name} = params, socket) do
+    reason =
+      Enum.find_value(socket.assigns.relation[:removed] || [], "", fn
+        %{name: ^name, reason: reason} -> reason
+        _other -> nil
+      end)
+
+    Relations.focus_painter(socket.assigns.view, name, restore_note(name, reason, params["note"]))
+    {:noreply, assign(socket, focus_sent: name)}
+  end
+
   def handle_event("show_node", %{"name" => name}, socket) do
     node = Enum.find(socket.assigns.relation.nodes, &(&1.name == name))
 
@@ -370,6 +383,30 @@ defmodule TazunaWeb.RelationsLive do
     case String.trim(note || "") do
       "" -> "#{name}について、影響を受けた画家と代表作を詳しく調べて埋めてください。"
       written -> "#{name}について。#{written}"
+    end
+  end
+
+  @doc """
+  消えた画家を戻すよう頼む指示文。**必ず画家の名前で始めます**。
+
+  **何をしてほしいかを全部書きます。** 割り込みは「次の指示にだけ従って」と
+  前置きされるので、区画を見て、とだけ書くと消したものの見直しには手を付けない
+  （実際、消し間違いが載っていたのにそのまま残った）。戻す印の名前も書く ——
+  消えた印を外して返しても戻らない。
+  """
+  def restore_note(name, reason, note) do
+    why = if String.trim(reason || "") == "", do: "", else: "「#{String.trim(reason)}」という理由で"
+
+    base =
+      "#{name}について。この画家は#{why}消えています。確かめて、消し間違いなら" <>
+        "tags に \"#{Tazuna.Chiezo.restore_tag()}\" を入れて同じ見出しで返して戻し、" <>
+        "年代（西暦の「生年-没年」。生年が分からなければ推し量った年に「頃」を付ける）と" <>
+        "地域のタグを直してください。いま付いているほかのタグは残してください。" <>
+        "消したのが正しければ、何も返さなくて構いません。"
+
+    case String.trim(note || "") do
+      "" -> base
+      written -> base <> "補足: " <> written
     end
   end
 
@@ -634,8 +671,12 @@ defmodule TazunaWeb.RelationsLive do
       {"", true} ->
         "#{key} の区画を先にざっと見てください。まだ目を通していない画家が残っています。"
 
+      # **いつもの整理の手順を全部書く。** 割り込みは「次の指示にだけ従って」と
+      # 前置きされるので、「調べて」とだけ書くと空欄埋めと漏れ探ししかしない
+      # （下に並ぶ「消したもの」の消し間違いが、載っていても戻らなかった）
       {"", false} ->
-        "#{key} の区画を先に調べてください。"
+        "#{key} の区画を、いつもの整理と同じ手順で先に見てください" <>
+          "（漏れを足す・内容を磨く・要らないものを消す・消したものに消し間違いが無いか見直す）。"
 
       {written, _rough} ->
         "#{key} の区画について。#{written}"

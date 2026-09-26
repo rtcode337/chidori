@@ -71,6 +71,29 @@ defmodule Tazuna.Relations.GraphTest do
       assert graph.nodes == []
     end
 
+    test "消えたものは、理由と日時つきで別に並べる（新しく消えた順）" do
+      # 図に丸が無いと、消し間違いを戻す頼みごとを出す口が無い
+      gone = fn name, at ->
+        %{
+          "title" => name,
+          "tags" => ["画家", "_chiezo_removed"],
+          "extra" => %{"removed_reason" => "#{name}の理由", "removed_at" => at}
+        }
+      end
+
+      graph =
+        Graph.from_docs([
+          painter("生きている人", ["年代:1860-1920"]),
+          gone.("前に消えた人", "2026-09-20T00:00:00+00:00"),
+          gone.("あとで消えた人", "2026-09-26T00:00:00+00:00")
+        ])
+
+      assert Enum.map(graph.removed, & &1.name) == ["あとで消えた人", "前に消えた人"]
+      assert hd(graph.removed).reason == "あとで消えた人の理由"
+      assert Enum.map(graph.nodes, & &1.name) == ["生きている人"]
+      assert Graph.empty().removed == []
+    end
+
     test "未レビューだけ・レビュー済みだけに絞れる" do
       graph =
         Graph.from_docs([

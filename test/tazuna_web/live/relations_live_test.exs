@@ -425,6 +425,72 @@ defmodule TazunaWeb.RelationsLiveTest do
   # **収集の状態は 1 つのプロセスに溜まる。** 押した時刻も覚えているので、
   # 前のテストが押していると次のテストが「少し待ってから」で弾かれる（並びで
   # 結果が変わる）。押すテストは、まっさらな状態から始める
+  describe "消えた画家" do
+    setup do
+      System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+      test_pid = self()
+
+      docs = [
+        %{"title" => "残っている画家", "body" => "説明", "tags" => ["画家", "年代:1860-1920"]},
+        %{
+          "title" => "消された画家",
+          "body" => "説明",
+          "tags" => ["画家", "年代:21世紀", "_chiezo_removed"],
+          "extra" => %{"removed_reason" => "区画に入らない", "removed_at" => "2026-09-26T15:19:39+00:00"}
+        }
+      ]
+
+      Tazuna.HttpStub.stub(fn
+        %{method: :post, url: url, body: body} ->
+          send(test_pid, {:posted, url, Jason.decode!(body)})
+          Tazuna.HttpStub.ok("{}")
+
+        %{url: "http://chiezo.test:7010/v1/ingest/status"} ->
+          Tazuna.HttpStub.ok(~s({"running":false}))
+
+        %{url: "http://chiezo.test:7010/v1/ai/backends"} ->
+          Tazuna.HttpStub.ok(~s({"backends":[]}))
+
+        %{url: url} ->
+          if String.contains?(url, "/filter?") do
+            Tazuna.HttpStub.ok(Jason.encode!(%{"results" => docs, "total" => 2}))
+          else
+            Tazuna.HttpStub.ok(Jason.encode!(%{"collections" => []}))
+          end
+      end)
+
+      assert wait_until(fn -> Tazuna.Relations.current("painters").status != :loading end)
+      Tazuna.Relations.refresh("painters")
+
+      assert wait_until(fn ->
+               relation = Tazuna.Relations.current("painters")
+               settled?(relation) and Enum.any?(relation[:removed] || [], &(&1.name == "消された画家"))
+             end)
+
+      :ok
+    end
+
+    test "理由つきで並び、名指しで戻すよう頼める", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      open_settings(live)
+
+      html = render(live)
+      assert html =~ "消えた画家（1）"
+      assert html =~ "区画に入らない"
+
+      live
+      |> element(~s|form[phx-submit="restore_painter"]|)
+      |> render_submit(%{"name" => "消された画家", "note" => ""})
+
+      assert_receive {:posted, url, body}, 2_000
+      assert url =~ "/focus"
+      assert body["titles"] == ["消された画家"]
+      assert body["note"] =~ "_chiezo_restore"
+      assert body["note"] =~ "区画に入らない"
+    end
+  end
+
   defp restart_relations do
     :ok = Supervisor.terminate_child(Tazuna.Supervisor, Tazuna.Relations)
     {:ok, _pid} = Supervisor.restart_child(Tazuna.Supervisor, Tazuna.Relations)
@@ -1324,6 +1390,22 @@ defmodule TazunaWeb.RelationsLiveTest do
       # 指示文だけを読んだ人には、どこ宛てか分からない
       assert RelationsLive.partition_note("日本|1900-1910", nil) =~ "日本|1900-1910"
       assert RelationsLive.partition_note("日本|1900-1910", "年代を埋めて") =~ "年代を埋めて"
+    end
+
+    test "整理の既定の頼みごとは、いつもの手順を全部書く" do
+      # 割り込みは「次の指示にだけ従って」と前置きされる。「調べて」だけだと、
+      # 消したものの見直しに手を付けない
+      note = RelationsLive.partition_note("日本|1900-1910", "")
+      assert note =~ ~r/^日本\|1900-1910 の区画を/
+      assert note =~ "消し間違いが無いか見直す"
+    end
+
+    test "消えた画家を戻す頼みごとは、名前・理由・戻す印を書く" do
+      note = RelationsLive.restore_note("消えた人", "範囲に入らない", "")
+      assert note =~ ~r/^消えた人について。/
+      assert note =~ "「範囲に入らない」という理由で"
+      assert note =~ "_chiezo_restore"
+      assert RelationsLive.restore_note("消えた人", "", "年代は 1980 頃") =~ "補足: 年代は 1980 頃"
     end
   end
 
