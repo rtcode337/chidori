@@ -84,6 +84,22 @@ defmodule Tazuna.Datasets do
   """
   def plan(%{collection: name} = dataset), do: SurveyPlans.get(name, default_origin(dataset))
 
+  @doc """
+  決めた時刻に起こしてよいか。**起点を持つ対象は起点が決まっていること**
+  （食事処）。起点を持たない対象（技術書）は、いつでもよい。
+  """
+  def ready_to_survey?(dataset, plan) do
+    not uses_origin?(dataset) or SurveyPlan.placed?(plan)
+  end
+
+  @doc "起点を持つ対象か（区画を起点から広げる）。"
+  def uses_origin?(%{module: module}) do
+    Code.ensure_loaded(module)
+    function_exported?(module, :default_origin, 0)
+  end
+
+  def uses_origin?(_dataset), do: false
+
   defp default_origin(%{module: module}) do
     if function_exported?(module, :default_origin, 0), do: module.default_origin()
   end

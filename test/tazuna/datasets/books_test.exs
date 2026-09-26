@@ -12,7 +12,7 @@ defmodule Tazuna.Datasets.BooksTest do
 
   describe "配信元" do
     setup do
-      %{feed: Books.feed_spec()}
+      %{feed: Books.feed_spec(Books.queries())}
     end
 
     test "人気順と新着順を両方引く", %{feed: feed} do
@@ -24,15 +24,15 @@ defmodule Tazuna.Datasets.BooksTest do
       assert Enum.any?(urls, &(&1 =~ "sort=recent"))
     end
 
-    test "人気順はページを繰る", %{feed: feed} do
-      # 1 ページ 40 件。立ち上げの 1 周で過去を拾うため
-      pages =
-        feed.urls
-        |> Enum.filter(&(&1.url =~ "sort=popular"))
-        |> Enum.map(&(URI.parse(&1.url).query |> URI.decode_query() |> Map.get("page")))
-        |> Enum.uniq()
+    test "どの検索文で入ったかを印にする", %{feed: feed} do
+      # 次の回に、検索文ごとに何件入ったかを数えて AI に見せるため
+      [first | _] = Books.queries()
+      assert Enum.any?(feed.urls, &(("検索:" <> first) in &1.tags))
+    end
 
-      assert length(pages) > 1
+    test "検索文 1 つにつき 2 本（人気順と新着順の 1 ページずつ）", %{feed: feed} do
+      # 同じ検索文を何ページも繰り直しても、同じ記事が返るだけ
+      assert length(feed.urls) == 2 * length(Books.queries())
     end
 
     test "語ごとに引く", %{feed: feed} do
@@ -64,7 +64,7 @@ defmodule Tazuna.Datasets.BooksTest do
     end
 
     test "勧めていない本は入れさせない" do
-      assert Books.read_prompt() =~ "勧めている本だけ"
+      assert Books.read_prompt() =~ "勧めている本・参考にした本だけ"
     end
 
     test "開けなかった記事は触らせない" do
@@ -72,17 +72,16 @@ defmodule Tazuna.Datasets.BooksTest do
       assert Books.read_prompt() =~ "開けなかった記事は触らないでください"
     end
 
-    test "手元に無い記事も探させる" do
-      # 社内ブログ・海外の記事・発表資料は配信元からは入ってこない
-      prompt = Books.read_prompt()
+    test "自分で探しに行かせない（記事を広げるのは検索文のほう）" do
+      # 同じ有名な記事を毎回見つけ直しては URL で弾かれ、枠を食うだけだった
+      refute Books.read_prompt() =~ "手元に無い記事を探す"
+    end
 
-      assert prompt =~ "手元に無い記事を探す"
-      assert prompt =~ "社内ブログ"
+    test "検索の印は消させない" do
+      assert Books.read_prompt() =~ "「検索:」で始まるタグは消さずに残してください"
     end
 
     test "読ませるのは、まだ読んでいない記事だけ" do
-      # 全部を渡していた頃は、読み終えた記事も開けなかった記事も毎回開き直していた。
-      # 記事は溜まり続けるので、一覧（{names}）も渡さない（同じ記事は URL で弾かれる）
       prompt = Books.read_prompt()
 
       assert prompt =~ "{unreviewed}"
@@ -90,8 +89,8 @@ defmodule Tazuna.Datasets.BooksTest do
       refute prompt =~ "{current}"
     end
 
-    test "宣伝は入れさせない" do
-      assert Books.read_prompt() =~ "宣伝と本の紹介ページは入れないでください"
+    test "宣伝と本を挙げていない記事は外させる" do
+      assert Books.read_prompt() =~ "宣伝と本の紹介ページ"
     end
   end
 

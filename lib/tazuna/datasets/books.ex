@@ -20,6 +20,7 @@ defmodule Tazuna.Datasets.Books do
   """
 
   alias Tazuna.Chiezo
+  alias Tazuna.Datasets.BookQueries
   alias Tazuna.SweepNames
 
   @collection "tazuna_book_posts"
@@ -30,16 +31,13 @@ defmodule Tazuna.Datasets.Books do
   # 勧めている本のタグの頭。**数える側（本棚）はこの頭だけを拾います**
   @book_tag "本"
 
-  # 探す語。**はてなの検索を配信元として使います**（RSS で返ります）。
-  # 語を増やすと拾える範囲も増えますが、**関係の薄い記事も混ざります**
+  # 最初の回の検索文。**2 回目からは AI が考えます**（`Tazuna.Datasets.BookQueries`）——
+  # 同じ検索文で引き直しても同じ記事が返るだけなので、回ごとに差し替える
   @queries ["技術書", "エンジニア 本 おすすめ", "プログラマ 読むべき 本", "読んでよかった 技術書"]
 
-  # 人気順で繰るページ数。**立ち上げの 1 周で過去を拾うため** ——
-  # 2 周目からは同じ記事が返るだけなので、重複として弾かれます
-  @popular_pages 3
-
-  # 機械収集の回の間隔。AI を呼ばないので短くてよい
-  @pick_minutes 180
+  # 機械収集の回の間隔。**Chiezo の時計では回さない**（tazuna が決めた時刻に、
+  # 検索文を差し替えてから起こす）ので、使われない。Chiezo が値を要るので置く
+  @pick_minutes 1440
 
   # 整理の回の間隔。**記事を開くので web を開ける**（配信元は要約しか配らない）
   @read_minutes 720
@@ -123,6 +121,9 @@ defmodule Tazuna.Datasets.Books do
       # **この収集から作る収集**（画面に別の口として出します）
       derived: Tazuna.Datasets.Bookshelf,
       survey_sweep: SweepNames.tidy(),
+      # **tazuna が決めた時刻に起こす巡回**（`Tazuna.Datasets.SurveyScheduler`）。
+      # 起こす前に検索文を AI に考えさせて差し替える（`before_survey/1`）
+      survey_plan_sweep: SweepNames.machine(),
       partition_sweeps: []
     }
   end
@@ -143,20 +144,41 @@ defmodule Tazuna.Datasets.Books do
   end
 
   @doc """
-  配信元。**はてなブックマークの検索**を RSS で引きます。
+  配信元。**はてなブックマークの検索**を RSS で引きます（検索文 1 つにつき、
+  人気順と新着順の 1 ページずつ）。**どの検索文で入ったかを印にします**
+  （「#{BookQueries.query_tag()}:<検索文>」）—— 次の回に、検索文ごとに何件入ったかを
+  数えて AI に見せるため。
 
-  **人気順と新着順を両方書きます** —— 人気順は過去（定番の根拠）、
-  新着順はこれから出る記事。1 つの収集で両方を束ねられます。
+  検索文は、いま配信元に載っている組（AI が考えたもの）。まだ無ければ最初の組。
   """
-  def feed_spec do
-    popular =
-      for q <- @queries,
-          page <- 1..@popular_pages,
-          do: %{url: search_url(q, "popular", page), tags: ["はてな"]}
+  def feed_spec(queries \\ nil) do
+    queries = queries || current_queries()
 
-    recent = for q <- @queries, do: %{url: search_url(q, "recent", 1), tags: ["はてな"]}
+    urls =
+      for q <- queries, sort <- ["popular", "recent"] do
+        %{url: search_url(q, sort, 1), tags: ["はてな", BookQueries.query_tag() <> ":" <> q]}
+      end
 
-    %{urls: popular ++ recent, since: "always", limit: 200}
+    %{urls: urls, since: "always", limit: 200}
+  end
+
+  @doc "いま配信元に載っている検索文。まだ無ければ最初の組。"
+  def current_queries do
+    case BookQueries.current(collection()) do
+      [] -> @queries
+      queries -> queries
+    end
+  end
+
+  @doc """
+  決めた時刻の回の頭にすること（`Tazuna.Datasets.Survey.run/3` が呼ぶ）。
+  **検索文を AI に考えさせ、配信元を書き換えてから**機械収集を起こす ——
+  同じ検索文のまま起こしても、同じ記事が返るだけです。
+  """
+  def before_survey(base) do
+    with {:ok, queries} <- BookQueries.refresh(base, collection(), @queries) do
+      Chiezo.patch(base, collection(), %{feed: feed_spec(queries)})
+    end
   end
 
   defp search_url(query, sort, page) do
@@ -172,57 +194,58 @@ defmodule Tazuna.Datasets.Books do
   """
   def sweeps do
     [
+      # **Chiezo の時計では回さない**（止めておき、tazuna が決めた時刻に起こす）
       %{
         name: SweepNames.machine(),
         interval_minutes: @pick_minutes,
         use_feed: true,
-        only_new: true
+        only_new: true,
+        enabled: false
       },
       %{name: SweepNames.tidy(), interval_minutes: @read_minutes, web: true, prompt: :read}
     ]
   end
 
   @doc """
-  整理の回の依頼文。**手元の記事を開いて、勧めている本をタグにします。**
-  ついでに、**手元に無い記事**も探させます。
+  整理の回の依頼文。**手元の記事を開いて、挙げている本をタグにします。**
 
   **読ませるのは、まだ目を通していない記事だけ**（`{unreviewed}`）。全部を渡して
   いた頃は、読み終えた記事も開けなかった記事も毎回開き直していました ——
-  溜まるほど 1 回が重くなります。**探しに行く仕事には何も渡しません** ——
-  同じ記事は Chiezo が URL で弾くので、持っている記事の一覧は要りません
-  （記事は溜まり続けるので、一覧を渡すといずれ入り切らなくなります）。
+  溜まるほど 1 回が重くなります。
+
+  **自分で探しに行く仕事は頼みません。** 頼んでいた頃は、同じ有名な記事を毎回
+  見つけ直しては URL で弾かれることがあり、枠を食うだけでした。記事を広げるのは
+  回ごとに AI が考える検索文のほう（`Tazuna.Datasets.BookQueries`）。
   """
   def read_prompt do
     """
-    技術書を勧めている記事を溜めています。**やってほしいことは 2 つ**です。
+    技術書を勧めている記事・技術書を参考文献として挙げている記事を溜めています。
+    **新しく入った記事を読んで、挙げている本をタグにしてください。**
 
-    **1. 新しく入った記事を読んで、勧めている本をタグにする。**
     次に並んでいるのは、**まだ誰も読んでいない記事だけ**です（読み終えた記事は
     並びません。ここに載せたものは、読めても読めなくても次からは並びません）。
 
     {unreviewed}
 
-    記事を開いて、**その記事が勧めている本**を
+    記事を開いて、**その記事が勧めている本・参考文献として挙げている本**を
     「#{@book_tag}:<書名>」のタグで並べてください（1 本の記事に何冊でも）。
 
     - **書名は邦題があれば邦題**で、**版や巻の数字は入れない**でください
       （「リーダブルコード」であって「リーダブルコード 第 2 版」ではない）。
       **ここが数える鍵**なので、表記が割れると同じ本が別々に数えられます
-    - **勧めている本だけ**です。「読んでいない」「合わなかった」と書かれている本は
-      入れないでください
+    - **勧めている本・参考にした本だけ**です。「読んでいない」「合わなかった」と
+      書かれている本は入れないでください
     - body には**何の記事か**を 1〜2 行（「新人向けの推薦リスト」「設計の本を 5 冊」）
     - **開けなかった記事は触らないでください**（当て推量で本を並べると、
       根拠の無い数になります）
+    - **本を 1 冊も挙げていない記事・宣伝と本の紹介ページ**（出版社の告知や書店の
+      ページ）は、tags に "#{Chiezo.tombstone_tag()}" だけを入れて返してください
+      （墓標。body になぜ外すかを 1 行）
 
-    **2. 手元に無い記事を探す。** 「技術書を勧めている記事」で、まだ手元に無いものを
-    探して足してください ——
-    **社内ブログ・海外の記事・カンファレンスの発表資料**は、配信元からは入ってきません。
-    足すときは `title`（記事の見出し）・`url`・`body`・上のタグを書いてください。
+    **「#{BookQueries.query_tag()}:」で始まるタグは消さずに残してください**（どの検索で
+    入った記事かの印で、次の検索文を考えるのに使います）。
 
-    **宣伝と本の紹介ページは入れないでください。** 出版社の告知や書店のページは、
-    誰かが勧めた記事ではありません。
-
-    **触ったものと足すものだけ返してください。** 触れなかったものはそのまま残ります。
+    **触ったものだけ返してください。** 触れなかったものはそのまま残ります。
     """
   end
 

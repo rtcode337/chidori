@@ -79,6 +79,7 @@ defmodule TazunaWeb.DatasetsLive do
        # 起点と情報収集の時刻（tazuna が持つ）。起点の候補は探したときだけ引く
        plan: nil,
        plan_form: nil,
+       queries: [],
        places: nil,
        place_query: "",
        # 起点を Chiezo へ送れなかったときだけ出す一言
@@ -471,10 +472,21 @@ defmodule TazunaWeb.DatasetsLive do
   # 起点と情報収集の時刻を読む（tazuna が持つものなので、DB から。起点の既定つき）
   defp assign_plan(socket, %{survey_plan_sweep: sweep} = dataset) when is_binary(sweep) do
     plan = Datasets.plan(dataset)
-    assign(socket, plan: plan, plan_form: to_form(SurveyPlan.changeset(plan, %{})))
+
+    assign(socket,
+      plan: plan,
+      plan_form: to_form(SurveyPlan.changeset(plan, %{})),
+      queries: queries_of(dataset)
+    )
   end
 
-  defp assign_plan(socket, _dataset), do: assign(socket, plan: nil, plan_form: nil)
+  defp assign_plan(socket, _dataset), do: assign(socket, plan: nil, plan_form: nil, queries: [])
+
+  # 回ごとに AI が考える検索文（技術書だけ）。**新しい順に 3 回ぶん**
+  defp queries_of(%{module: Tazuna.Datasets.Books, collection: name}),
+    do: Tazuna.Datasets.BookQueries.history(name, Tazuna.Datasets.BookQueries.per_run() * 3)
+
+  defp queries_of(_dataset), do: []
 
   # この収集から作る収集を持つ対象だけ読む
   defp read_derived(socket, %{derived: derived} = dataset) when not is_nil(derived) do

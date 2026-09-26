@@ -281,7 +281,11 @@
       <%!-- **起点。** ざっと見るも情報収集も、ここから近い順に区画を広げる。
            **Chiezo の収集の起点にも同じものを送る**（区画を選ぶのは Chiezo）。
            区画の地図のすぐ下に置く —— どこから広がっているかを地図と並べて読むため --%>
-      <section :if={@plan} class="survey-plan" aria-label="起点">
+      <section
+        :if={@plan && Tazuna.Datasets.uses_origin?(@dataset)}
+        class="survey-plan"
+        aria-label="起点"
+      >
         <h3>起点</h3>
         <p class="muted-note">
           「ざっと見る」も「情報収集」も、この起点から近い順に区画を広げます（決めていなければ東京駅）。
@@ -388,12 +392,20 @@
            時計では走らせず、決めた時刻に tazuna が起こす（見る区画は Chiezo が選ぶ）。
            **巡回の表のすぐ下に置く** —— 表の「時計なし・頼まれたとき」が、いつ頼まれる
            のかをすぐ下で読めるように --%>
-      <section :if={@plan} class="survey-plan" aria-label="情報収集の時刻">
-        <h3>情報収集の時刻</h3>
-        <p class="muted-note">
+      <section :if={@plan} class="survey-plan" aria-label={"#{@dataset.survey_plan_sweep}の時刻"}>
+        <h3>{@dataset.survey_plan_sweep}の時刻</h3>
+        <p :if={Tazuna.Datasets.uses_origin?(@dataset)} class="muted-note">
           決めた時刻に tazuna が情報収集を 1 回起こします。見る区画は Chiezo が選びます
           （その巡回で見た古い順、同じなら起点に近い順）。
           Chiezo が取り込み中なら、次の予定の時刻まで空くのを待って頼みます。
+        </p>
+        <%!-- **検索文を変えずに引き直しても、同じ記事が返るだけ**なので、回ごとに
+             AI に新しい検索文を考えさせてから引く（`Tazuna.Datasets.BookQueries`） --%>
+        <p :if={!Tazuna.Datasets.uses_origin?(@dataset)} class="muted-note">
+          決めた時刻に tazuna が、<strong>AI に新しい検索文を考えさせてから</strong>機械収集を 1 回起こします
+          （同じ検索文で引き直しても、同じ記事が返るだけなので）。
+          AI には、これまでの検索文と、それぞれで入った記事の数を見せます。
+          Chiezo が取り込み中なら、空いてから流れます。
         </p>
 
         <dl class="collect-facts">
@@ -424,9 +436,23 @@
         </.form>
         <p :for={{message, _opts} <- @plan_form[:run_at].errors} class="warn-note">{message}</p>
 
+        <details :if={@queries != []} class="search-queries">
+          <summary>これまでの検索文（新しい順）</summary>
+          <ul>
+            <li :for={row <- @queries}>
+              {row.query}
+              <span class="muted-note">
+                {if is_integer(row.found), do: "#{row.found} 件", else: "まだ数えていない"}・{Tazuna.Jst.format(
+                  row.used_at
+                )}
+              </span>
+            </li>
+          </ul>
+        </details>
+
         <div class="button-row">
           <button
-            :if={SurveyPlan.placed?(@plan)}
+            :if={Tazuna.Datasets.ready_to_survey?(@dataset, @plan)}
             type="button"
             phx-click="survey_now"
             disabled={@surveying}

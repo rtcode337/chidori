@@ -69,7 +69,7 @@ defmodule Tazuna.Datasets.SurveyScheduler do
       Enum.find_value(Datasets.defined(), fn dataset ->
         with sweep when is_binary(sweep) <- dataset[:survey_plan_sweep],
              plan = Datasets.plan(dataset),
-             true <- SurveyPlan.placed?(plan),
+             true <- Datasets.ready_to_survey?(dataset, plan),
              %DateTime{} = at <- due(plan, now) do
           {dataset, plan, at}
         else
