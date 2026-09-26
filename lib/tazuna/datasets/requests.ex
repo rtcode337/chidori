@@ -3,7 +3,7 @@ defmodule Tazuna.Datasets.Requests do
   travel-log から届いた「修正・追加の依頼」を、**その場所を含む区画の情報収集**として
   Chiezo に頼むところ。
 
-  travel-log の管理画面の「テキストで表示」をそのまま貼る前提です
+  travel-log の管理画面の「渡すテキスト」をそのまま貼る前提です
   （`- [修正] 名前 (緯度,経度): 理由` / `- [追加] (緯度,経度): 理由`）。
   **座標から区画を引く** —— 追加の依頼は名前を持たないので場所は座標でしか言えず、
   名前だけでは同名の店を取り違えます。
@@ -183,7 +183,7 @@ defmodule Tazuna.Datasets.Requests do
 
   @doc "見積もりの段で断った理由の言い方（Chiezo が断った理由は画面の側が言う）。"
   def error_text(:no_points),
-    do: "座標が見つかりませんでした。travel-log の「テキストで表示」をそのまま貼ってください。"
+    do: "座標が見つかりませんでした。travel-log の「渡すテキスト」をそのまま貼ってください。"
 
   def error_text(:no_partition),
     do: "どの座標も、いまの区画のどれにも入りませんでした（区画の外の場所です）。"
