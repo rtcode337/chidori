@@ -14,6 +14,7 @@ defmodule TazunaWeb.PartitionMap do
   attr :map, :map, required: true, doc: "`Tazuna.Datasets.Map.build/1` が返すもの"
   attr :sweeps, :list, default: [], doc: "区画を回る巡回の名前（回る順）"
   attr :picked, :string, default: nil, doc: "いま選んでいる区画の鍵"
+  attr :origin_label, :string, default: nil, doc: "起点の名前（ピンに添える）"
 
   def partition_map(assigns) do
     ~H"""
@@ -63,6 +64,22 @@ defmodule TazunaWeb.PartitionMap do
           >
             <title>{rect.key}（{rect.count} 件{if rect.by, do: "・#{rect.by} 済み", else: ""}）</title>
           </rect>
+
+          <%!-- 起点のピン。**区画の上に立てる**（ここから放射状に回ることが地図で読める）。
+               **拡大しても同じ大きさに見せる** —— 図と一緒に大きくなると、寄ったときに
+               区画を覆い隠す（`partition_map.js` が倍率で割り戻す）。押す口ではない --%>
+          <g
+            :if={@map.origin}
+            class="origin-pin"
+            data-pin
+            data-x={@map.origin.x}
+            data-y={@map.origin.y}
+            transform={"translate(#{@map.origin.x} #{@map.origin.y})"}
+          >
+            <title>起点{if @origin_label, do: "：#{@origin_label}", else: ""}</title>
+            <path d="M0 0 C-4 -6 -7 -9.5 -7 -14 A7 7 0 1 1 7 -14 C7 -9.5 4 -6 0 0 Z" />
+            <circle cx="0" cy="-14" r="2.6" />
+          </g>
         </svg>
       </div>
       <p class="muted-note map-hint">

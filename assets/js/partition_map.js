@@ -1,6 +1,6 @@
 // 区画の地図の操作。**共通の仕組み**（`./pan_zoom`）に、この図だけの事情を足したもの。
 //
-// 足しているのは倍率の幅と、境目を出す近さの 2 つだけです。
+// 足しているのは倍率の幅と、境目を出す近さと、起点のピンの大きさの 3 つです。
 import {panZoom} from "./pan_zoom"
 
 // **深く寄れるようにする。** 区画は件数が揃うように切られているので、
@@ -17,8 +17,21 @@ const MIN_SCALE = 0.2
 // 覆って白く飛びます。寄ったときだけなら、画面に出るのは数十区画です
 const CLOSE_AT = 4
 
+// 起点のピンを、画面の上で何倍に見せるか（図の 1 単位 = 画面 1px のときの大きさが 1）。
+// **倍率で割り戻して、寄っても引いても同じ大きさに見せる**
+const PIN_PX = 1.6
+
 export default panZoom({
   minScale: MIN_SCALE,
   maxScale: MAX_SCALE,
   closeAt: CLOSE_AT,
+
+  // 起点のピンを、倍率で割り戻した大きさに置き直す
+  painted() {
+    const pin = this.svg && this.svg.querySelector("[data-pin]")
+    const ppu = this.view && this.view.ppu
+    if (!pin || !(ppu > 0)) { return }
+    const scale = PIN_PX / ppu
+    pin.setAttribute("transform", `translate(${pin.dataset.x} ${pin.dataset.y}) scale(${scale})`)
+  },
 })

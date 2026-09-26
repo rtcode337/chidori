@@ -548,6 +548,12 @@ defmodule TazunaWeb.DatasetsLive do
     end
   end
 
+  @doc "区画の地図に立てる起点（`{緯度, 経度}`。決まっていなければ nil）。"
+  def origin_of(%SurveyPlan{lat: lat, lon: lon}) when is_number(lat) and is_number(lon),
+    do: {lat, lon}
+
+  def origin_of(_plan), do: nil
+
   defp defines?(module, name, arity) do
     Code.ensure_loaded?(module) and function_exported?(module, name, arity)
   end

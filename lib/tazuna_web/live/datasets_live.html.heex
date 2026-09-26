@@ -99,9 +99,10 @@
       </div>
 
       <.partition_map
-        map={Tazuna.Datasets.Map.build(rows)}
+        map={Tazuna.Datasets.Map.build(rows, origin: origin_of(@plan))}
         sweeps={@dataset.partition_sweeps}
         picked={@picked}
+        origin_label={@plan && @plan.place}
       />
 
       <% picked = picked_row(rows, @picked) %>

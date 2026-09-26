@@ -309,6 +309,9 @@ defmodule TazunaWeb.DatasetsLiveTest do
       # 情報収集だけ（情報収集が済んでいれば緑）
       assert html =~ ~r|<rect[^>]*is-done[^>]*phx-value-key="43.0,141.3/43.1,141.4"|
       assert html =~ "薄い黄色が「ざっと見る」まで、薄い緑が「情報収集」まで見終わった区画"
+      # 起点にピンが立つ（決めていなければ東京駅）
+      assert html =~ ~s(class="origin-pin")
+      assert html =~ "起点：東京駅"
       assert html =~ "ざっと見る 済み"
     end
 

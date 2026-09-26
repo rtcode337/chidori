@@ -120,6 +120,10 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .place-candidates li { display: flex; align-items: baseline; gap: .35rem; }
 /* 区画の表。**数と時刻とボタンは折り返さない**（「ま/だ」と割れると読めない）。
    幅は区画の名前の列が引き受ける */
+/* 起点のピン。**区画の色と取り違えない赤**で、白い縁で区画から浮かせる。押す口ではない */
+.origin-pin { pointer-events: none; }
+.origin-pin path { fill: #e0433a; stroke: #fff; stroke-width: 1.2; }
+.origin-pin circle { fill: #fff; }
 .partition-table th, .partition-table td { white-space: nowrap; }
 .partition-table td:first-child { white-space: normal; }
 /* **ボタンだけの行は右に寄せる**（設定欄）。左に置くと説明文の続きに見え、

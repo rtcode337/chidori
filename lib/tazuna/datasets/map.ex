@@ -52,12 +52,12 @@ defmodule Tazuna.Datasets.Map do
   読めない鍵は落とします —— 座標で切っていない収集（区画が名前で切られているもの）
   では、地図にする意味がありません。
   """
-  def build(rows) do
+  def build(rows, opts \\ []) do
     boxes = rows |> Enum.map(&with_box/1) |> Enum.reject(&is_nil/1)
 
     case bounds(boxes) do
       nil ->
-        %{rects: [], coast: [], width: @width, height: 0, visited: 0}
+        %{rects: [], coast: [], width: @width, height: 0, visited: 0, origin: nil}
 
       {south, west, north, east} ->
         scale = @width / max(east - west, 1.0e-9)
@@ -71,10 +71,18 @@ defmodule Tazuna.Datasets.Map do
           coast: coast(west, top, scale),
           width: @width,
           height: Float.round(height, 1),
-          visited: Enum.count(boxes, &(stage(&1) > 0))
+          visited: Enum.count(boxes, &(stage(&1) > 0)),
+          # 起点のピン。**区画と同じ置き方で投影する**（別々に置くとずれて重なる）
+          origin: origin(opts[:origin], west, top, scale)
         }
     end
   end
+
+  # 起点（`{緯度, 経度}`）を図の座標へ。渡されなければ nil（ピンを立てない）
+  defp origin({lat, lon}, west, top, scale) when is_number(lat) and is_number(lon),
+    do: %{x: round1((lon - west) * scale), y: round1((top - mercator(lat)) * scale)}
+
+  defp origin(_none, _west, _top, _scale), do: nil
 
   @doc "図の幅（画面はこの座標系で描きます）。"
   def width, do: @width
