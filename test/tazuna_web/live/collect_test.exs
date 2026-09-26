@@ -71,6 +71,32 @@ defmodule TazunaWeb.CollectTest do
       assert [%{interval: "手で回す"}] =
                Collect.sweep_rows(%{collection: collection(%{sweeps: [sweep]})})
     end
+
+    test "機械で引く回には相手を選ばせないが、検索文を考える回には選ばせる" do
+      # 検索文を考える回は、引くのは機械でも、その前に巡回の相手に検索文を考えさせる
+      base = %{
+        name: "機械収集",
+        backend: nil,
+        model: nil,
+        interval_minutes: 60,
+        use_feed: true,
+        enabled: true,
+        partitions_visited: 0,
+        next_run_at: nil,
+        last_run_at: nil,
+        last_status: nil,
+        last_error: nil
+      }
+
+      thinks = Map.put(base, :prompt, "これまで:\n{queries}")
+      plain = Map.put(base, :prompt, "{cursor}")
+
+      assert [%{mechanical: false}] =
+               Collect.sweep_rows(%{collection: collection(%{sweeps: [thinks]})})
+
+      assert [%{mechanical: true}] =
+               Collect.sweep_rows(%{collection: collection(%{sweeps: [plain]})})
+    end
   end
 
   describe "区画の見終わり具合" do

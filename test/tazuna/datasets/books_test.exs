@@ -12,7 +12,7 @@ defmodule Tazuna.Datasets.BooksTest do
 
   describe "配信元" do
     setup do
-      %{feed: Books.feed_spec(Books.queries())}
+      %{feed: Books.feed_spec()}
     end
 
     test "人気順と新着順を両方引く", %{feed: feed} do
@@ -24,21 +24,24 @@ defmodule Tazuna.Datasets.BooksTest do
       assert Enum.any?(urls, &(&1 =~ "sort=recent"))
     end
 
-    test "どの検索文で入ったかを印にする", %{feed: feed} do
-      # 次の回に、検索文ごとに何件入ったかを数えて AI に見せるため
-      [first | _] = Books.queries()
-      assert Enum.any?(feed.urls, &(("検索:" <> first) in &1.tags))
+    test "検索文は差し込み口にして、Chiezo が回ごとに入れる", %{feed: feed} do
+      # 同じ検索文で引き直しても同じ記事が返るだけ。展開と控えは Chiezo の仕事
+      for one <- feed.urls, do: assert(one.url =~ "{query}")
+      assert feed.queries == Books.queries()
+      assert feed.query_tag == Books.query_tag()
+      # 1 つにつき 2 本なので、Chiezo の上限（20 本）に収まる数
+      assert feed.per_run * length(feed.urls) <= 20
     end
 
-    test "検索文 1 つにつき 2 本（人気順と新着順の 1 ページずつ）", %{feed: feed} do
-      # 同じ検索文を何ページも繰り直しても、同じ記事が返るだけ
-      assert length(feed.urls) == 2 * length(Books.queries())
+    test "本文ではなく見出しを探す", %{feed: feed} do
+      # 本文検索は語をどこかに含む記事をゆるく拾い、163 件のうち本を勧めていたのは 5 件だった
+      for one <- feed.urls, do: assert(one.url =~ "target=title")
     end
 
-    test "語ごとに引く", %{feed: feed} do
-      # 語を増やすと拾える範囲も増えるが、関係の薄い記事も混ざる
-      assert length(Books.queries()) >= 3
-      assert length(feed.urls) >= length(Books.queries())
+    test "使った検索文も、日が経てばまた使える", %{feed: feed} do
+      # 二度と使えない形にすると、記事が増えたあとに同じ切り口で拾い直せない
+      assert feed.reuse_days > 0
+      assert Books.queries_prompt() =~ "#{feed.reuse_days} 日より前に使った検索文は、また使えます"
     end
 
     test "http(s) だけ", %{feed: feed} do
@@ -105,9 +108,22 @@ defmodule Tazuna.Datasets.BooksTest do
       assert attrs.kind == "stock"
     end
 
-    test "機械収集の回は AI を呼ばない", %{sweeps: sweeps} do
+    test "機械収集の回は、検索文を AI に考えさせてから機械で引く", %{sweeps: sweeps} do
+      # 依頼文に `{queries}` があると、Chiezo がその巡回の相手に考えさせる
       assert sweeps["機械収集"].use_feed
+      assert sweeps["機械収集"].prompt =~ "{queries}"
       refute Map.get(sweeps["機械収集"], :web)
+      # Chiezo の時計で回す（tazuna は起こさない）
+      assert Map.get(sweeps["機械収集"], :enabled, true)
+      refute Map.has_key?(Books.definition(), :survey_plan_sweep)
+    end
+
+    test "検索文を考える相手も、画面で選んだものを載せる" do
+      attrs = Books.attrs(%{"機械収集" => %{backend: "antigravity", model: nil}})
+      pick = Enum.find(attrs.sweeps, &(&1.name == "機械収集"))
+
+      assert pick.backend == "antigravity"
+      assert pick.prompt =~ "{queries}"
     end
 
     test "整理の回は web を開ける", %{sweeps: sweeps} do

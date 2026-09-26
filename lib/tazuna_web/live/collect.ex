@@ -192,8 +192,11 @@ defmodule TazunaWeb.Collect do
       # **機械で引く回は相手を選ばせない。** 選んでも何も起きない —— その回は AI を
       # 呼ばずに返すので、相手もモデルも読まれない。
       # **選べるのに効かない欄は「設定したつもり」を作る**
+      # **例外は検索文を考える回**（依頼文に `{queries}` を書いた機械で引く回）——
+      # 引くのは機械だが、その前に検索文をその巡回の相手に考えさせる
       mechanical:
-        sweep[:use_extract] == true or sweep[:use_feed] == true or sweep[:by_hand] == true,
+        sweep[:use_extract] == true or sweep[:by_hand] == true or
+          (sweep[:use_feed] == true and not thinks_queries?(sweep)),
       # **走らない回に「いますぐ」と出さない。** 予定を持っていないだけの回と、
       # 先の回の一周を待っている回は、どちらも予定が空 —— 区別せずに出すと、
       # 3 日動かないものを「いますぐ」と読んで待ち続けることになる。
@@ -211,6 +214,11 @@ defmodule TazunaWeb.Collect do
       last: last_text(sweep)
     }
   end
+
+  @doc "検索文を AI に考えさせてから引く回か（Chiezo の `{queries}` の差し込み口）。"
+  def thinks_queries?(sweep),
+    do:
+      sweep[:use_feed] == true and String.contains?(to_string(sweep[:prompt] || ""), "{queries}")
 
   defp last_text(%{last_run_at: nil}), do: "まだ"
 

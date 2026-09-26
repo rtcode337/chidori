@@ -402,15 +402,6 @@
           （その巡回で見た古い順、同じなら起点に近い順）。
           Chiezo が取り込み中なら、次の予定の時刻まで空くのを待って頼みます。
         </p>
-        <%!-- **検索文を変えずに引き直しても、同じ記事が返るだけ**なので、回ごとに
-             AI に新しい検索文を考えさせてから引く（`Tazuna.Datasets.BookQueries`） --%>
-        <p :if={!Tazuna.Datasets.uses_origin?(@dataset)} class="muted-note">
-          決めた時刻に tazuna が、<strong>AI に新しい検索文を考えさせてから</strong>機械収集を 1 回起こします
-          （同じ検索文で引き直しても、同じ記事が返るだけなので）。
-          AI には、これまでの検索文と、それぞれで入った記事の数を見せます。
-          Chiezo が取り込み中なら、空いてから流れます。
-        </p>
-
         <dl class="collect-facts">
           <div>
             <dt>次に頼む</dt>
@@ -438,20 +429,6 @@
           <button type="submit">時刻を保存</button>
         </.form>
         <p :for={{message, _opts} <- @plan_form[:run_at].errors} class="warn-note">{message}</p>
-
-        <details :if={@queries != []} class="search-queries">
-          <summary>これまでの検索文（新しい順）</summary>
-          <ul>
-            <li :for={row <- @queries}>
-              {row.query}
-              <span class="muted-note">
-                {if is_integer(row.found), do: "#{row.found} 件", else: "まだ数えていない"}・{Tazuna.Jst.format(
-                  row.used_at
-                )}
-              </span>
-            </li>
-          </ul>
-        </details>
 
         <div class="button-row">
           <button

@@ -32,23 +32,7 @@ defmodule Tazuna.Datasets.Survey do
 
     with {:ok, base} <- Datasets.base_url(),
          true <- Datasets.ready_to_survey?(dataset, plan) || {:error, :no_place},
-         :ok <- before_survey(dataset, base),
          :ok <- Chiezo.when_free(fn -> Chiezo.run(base, name, sweep: sweep) end, deadline) do
-      :ok
-    end
-  end
-
-  # 対象ごとの下ごしらえ（技術書なら、検索文を差し替える）。持たなければ何もしない
-  defp before_survey(%{module: module}, base) do
-    Code.ensure_loaded(module)
-
-    if function_exported?(module, :before_survey, 1) do
-      case module.before_survey(base) do
-        :ok -> :ok
-        {:ok, _} -> :ok
-        {:error, _reason} = error -> error
-      end
-    else
       :ok
     end
   end
@@ -65,7 +49,6 @@ defmodule Tazuna.Datasets.Survey do
 
   @doc "頼めなかった理由の言い方。"
   def error_text(:no_place), do: "起点がまだ決まっていません。"
-  def error_text(:no_new_queries), do: "AI が新しい検索文を出せませんでした（出したものが全部使用済み）。"
   def error_text(:not_requested), do: "まだ収集を依頼していません。"
   def error_text(:collection_disabled), do: "この収集は Chiezo 側で止まっています。"
 

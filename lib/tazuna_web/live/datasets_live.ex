@@ -79,7 +79,6 @@ defmodule TazunaWeb.DatasetsLive do
        # 起点と情報収集の時刻（tazuna が持つ）。起点の候補は探したときだけ引く
        plan: nil,
        plan_form: nil,
-       queries: [],
        # 区画の地図の地名検索（打った語・候補・寄った場所の印）
        map_query: "",
        map_places: nil,
@@ -527,18 +526,11 @@ defmodule TazunaWeb.DatasetsLive do
 
     assign(socket,
       plan: plan,
-      plan_form: to_form(SurveyPlan.changeset(plan, %{})),
-      queries: queries_of(dataset)
+      plan_form: to_form(SurveyPlan.changeset(plan, %{}))
     )
   end
 
-  defp assign_plan(socket, _dataset), do: assign(socket, plan: nil, plan_form: nil, queries: [])
-
-  # 回ごとに AI が考える検索文（技術書だけ）。**新しい順に 3 回ぶん**
-  defp queries_of(%{module: Tazuna.Datasets.Books, collection: name}),
-    do: Tazuna.Datasets.BookQueries.history(name, Tazuna.Datasets.BookQueries.per_run() * 3)
-
-  defp queries_of(_dataset), do: []
+  defp assign_plan(socket, _dataset), do: assign(socket, plan: nil, plan_form: nil)
 
   # この収集から作る収集を持つ対象だけ読む
   defp read_derived(socket, %{derived: derived} = dataset) when not is_nil(derived) do
