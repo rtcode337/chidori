@@ -407,13 +407,51 @@ defmodule Tazuna.RelationsTest do
       |> Enum.filter(&Map.has_key?(&1, :pattern))
       |> Map.new(&{&1.pattern, &1.format})
 
+    # **地域を作る規則を、作るタグで探す。** 年代の規則にも「世紀」を見るものがある
     region =
-      Enum.find(formats, fn {pattern, _format} -> pattern =~ "世紀" end)
+      Enum.find(formats, fn {pattern, format} ->
+        pattern =~ "世紀" and String.starts_with?(format, "地域:")
+      end)
       |> elem(0)
       |> Regex.compile!()
 
     assert Regex.run(region, "20世紀日本の女性画家") == ["20世紀日本の女性画家", "日本"]
     assert Regex.run(region, "19世紀フランスの画家") == ["19世紀フランスの画家", "フランス"]
+  end
+
+  test "年代は区画を切れる数の形で作り、手掛かりの確かな順に 1 本だけ" do
+    # **区画は年代のタグで最初に出てくる数で決まる。** 「18世紀」は 18 年、
+    # 「江戸時代」は数が無く年代不明に落ちるので、数の形にそろえる
+    [both | rest] = Relations.years_rules()
+
+    assert both.patterns == ["^(\\d{3,4})年生$", "^(\\d{3,4})年没$"]
+    assert both.format == "年代:{1}-{2}"
+    # 1 本目は止める側ではない(fallback を持たない)
+    assert both |> Map.keys() |> Enum.sort() == [:format, :patterns]
+
+    # 2 本目からは、前が作っていれば作らない(当たった全部が足されないように)
+    assert Enum.all?(rest, & &1.fallback)
+    formats = Enum.map(rest, & &1.format)
+    assert "年代:{1}-" in formats
+    assert "年代:不詳-{1}" in formats
+
+    # 世紀は、その世紀の頭を生年の目安にする。古い世紀から並べる
+    century = Enum.find(rest, &(&1.pattern =~ "^18世紀"))
+    assert century.format == "年代:1700頃-1800頃"
+    assert Regex.match?(Regex.compile!(century.pattern), "18世紀日本の女性画家")
+    idx = &Enum.find_index(rest, fn rule -> rule.pattern =~ "^#{&1}世紀" end)
+    assert idx.(17) < idx.(18)
+
+    # 抽出の指定にそのまま入っている
+    assert Enum.all?(Relations.years_rules(), &(&1 in Relations.painters_extract().tags))
+  end
+
+  test "依頼文は、年代を数の形で書かせる" do
+    prompt = Relations.painters_prompt()
+
+    assert prompt =~ "必ず西暦の数で"
+    assert prompt =~ "年代:1840-1926"
+    assert prompt =~ "「18世紀」「江戸時代」のような書き方がいま付いていたら、この形に直してください"
   end
 
   test "知らない理由でも、何が起きたかは画面に出す" do
