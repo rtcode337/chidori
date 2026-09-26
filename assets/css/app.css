@@ -821,3 +821,7 @@ body.digest-open { overflow: hidden; }
 .search-queries { margin: .6rem 0; font-size: .85rem; }
 .search-queries ul { margin: .3rem 0 0; padding-left: 1.2rem; }
 .search-queries .muted-note { margin-left: .4rem; }
+/* 地名で探して寄った場所の印（起点のピンとは色を変える） */
+.find-pin { pointer-events: none; }
+.find-pin path { fill: #2f6fdb; stroke: #fff; stroke-width: 1.2; }
+.find-pin circle { fill: #fff; }

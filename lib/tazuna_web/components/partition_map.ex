@@ -15,6 +15,9 @@ defmodule TazunaWeb.PartitionMap do
   attr :sweeps, :list, default: [], doc: "区画を回る巡回の名前（回る順）"
   attr :picked, :string, default: nil, doc: "いま選んでいる区画の鍵"
   attr :origin_label, :string, default: nil, doc: "起点の名前（ピンに添える）"
+  attr :find_query, :string, default: "", doc: "地名の検索窓に打っている語"
+  attr :find_places, :any, default: nil, doc: "地名の候補（`Tazuna.Chiezo.places/2` の結果）"
+  attr :marker, :map, default: nil, doc: "探して寄った場所（`%{x, y, label}`）"
 
   def partition_map(assigns) do
     ~H"""
@@ -30,6 +33,58 @@ defmodule TazunaWeb.PartitionMap do
       <%!-- **操作は関連図と同じ**（引きずって移動、Ctrl+ホイールで拡大縮小、
            指 2 本でつまむ）—— 図ごとに操作が違うと、画面を移るたびに覚え直すことになる --%>
       <div class="map-canvas" id="partition-canvas" phx-hook="PartitionMap">
+        <%!-- **地名で探して寄る口**（関連図・トピックの図と同じく左上）。探すのは
+             起点と同じ地図辞典。候補を選ぶとその場所へ寄って印を立てる --%>
+        <div class="relation-find">
+          <form
+            id="map-search"
+            class="relation-search"
+            phx-submit="search_map_place"
+            phx-change="search_map_place"
+            autocomplete="off"
+          >
+            <input
+              type="search"
+              name="q"
+              value={@find_query}
+              placeholder="地名で探す"
+              aria-label="地名で探す"
+              phx-debounce="400"
+            />
+            <button
+              :if={@find_query != ""}
+              type="button"
+              phx-click="clear_map_search"
+              aria-label="検索をやめる"
+            >
+              ×
+            </button>
+            <%= case @find_places do %>
+              <% {:ok, [_ | _] = places} -> %>
+                <ul class="relation-matches">
+                  <li :for={{place, index} <- Enum.with_index(places)}>
+                    <button type="button" phx-click="focus_map_place" phx-value-index={index}>
+                      {place.name}
+                      <span class="match-years">{place_note(place)}</span>
+                    </button>
+                  </li>
+                </ul>
+              <% {:ok, []} -> %>
+                <ul class="relation-matches">
+                  <li class="muted-note">見つかりませんでした</li>
+                </ul>
+              <% :loading -> %>
+                <ul class="relation-matches">
+                  <li class="muted-note">探しています…</li>
+                </ul>
+              <% {:error, _reason} -> %>
+                <ul class="relation-matches">
+                  <li class="muted-note">地名を引けませんでした</li>
+                </ul>
+              <% _none -> %>
+            <% end %>
+          </form>
+        </div>
         <div class="map-tools">
           <button type="button" data-zoom="in" aria-label="拡大">＋</button>
           <button type="button" data-zoom="out" aria-label="縮小">−</button>
@@ -80,6 +135,20 @@ defmodule TazunaWeb.PartitionMap do
             <path d="M0 0 C-4 -6 -7 -9.5 -7 -14 A7 7 0 1 1 7 -14 C7 -9.5 4 -6 0 0 Z" />
             <circle cx="0" cy="-14" r="2.6" />
           </g>
+
+          <%!-- **探して寄った場所の印**（起点のピンとは色を変える）。押す口ではない --%>
+          <g
+            :if={@marker}
+            class="find-pin"
+            data-pin
+            data-x={@marker.x}
+            data-y={@marker.y}
+            transform={"translate(#{@marker.x} #{@marker.y})"}
+          >
+            <title>{@marker.label}</title>
+            <path d="M0 0 C-4 -6 -7 -9.5 -7 -14 A7 7 0 1 1 7 -14 C7 -9.5 4 -6 0 0 Z" />
+            <circle cx="0" cy="-14" r="2.6" />
+          </g>
         </svg>
       </div>
       <p class="muted-note map-hint">
@@ -88,6 +157,11 @@ defmodule TazunaWeb.PartitionMap do
       </p>
     </section>
     """
+  end
+
+  # 候補の添え書き（行政区・種別）。同じ名前の別の場所を見分けるため
+  defp place_note(place) do
+    [place[:area], place[:feature]] |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join("・")
   end
 
   # 区画の色。**最後に回る巡回まで見た区画は薄い緑、それより前の巡回だけが

@@ -21,17 +21,28 @@ const CLOSE_AT = 4
 // **倍率で割り戻して、寄っても引いても同じ大きさに見せる**
 const PIN_PX = 1.6
 
+// 地名で探した場所へ寄るときの倍率（市区町村が見分けられるくらい）
+const FOCUS_SCALE = 30
+
 export default panZoom({
+  skip: "[data-zoom], .relation-find",
   minScale: MIN_SCALE,
   maxScale: MAX_SCALE,
   closeAt: CLOSE_AT,
 
-  // 起点のピンを、倍率で割り戻した大きさに置き直す
+  // **地名で探した場所へ寄る**（サーバーが図の座標に直して送る）。
+  // 寄る倍率は下限だけ決める（既に深く寄っていれば、そのまま）
+  started() {
+    this.handleEvent("map_focus", ({x, y}) => this.centerOn(x, y, FOCUS_SCALE))
+  },
+
+  // ピン（起点と、探して寄った場所）を、倍率で割り戻した大きさに置き直す
   painted() {
-    const pin = this.svg && this.svg.querySelector("[data-pin]")
     const ppu = this.view && this.view.ppu
-    if (!pin || !(ppu > 0)) { return }
+    if (!this.svg || !(ppu > 0)) { return }
     const scale = PIN_PX / ppu
-    pin.setAttribute("transform", `translate(${pin.dataset.x} ${pin.dataset.y}) scale(${scale})`)
+    this.svg.querySelectorAll("[data-pin]").forEach(pin => {
+      pin.setAttribute("transform", `translate(${pin.dataset.x} ${pin.dataset.y}) scale(${scale})`)
+    })
   },
 })

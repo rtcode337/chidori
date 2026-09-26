@@ -80,6 +80,10 @@ defmodule TazunaWeb.DatasetsLive do
        plan: nil,
        plan_form: nil,
        queries: [],
+       # 区画の地図の地名検索（打った語・候補・寄った場所の印）
+       map_query: "",
+       map_places: nil,
+       map_marker: nil,
        places: nil,
        place_query: "",
        # 起点を Chiezo へ送れなかったときだけ出す一言
@@ -217,6 +221,48 @@ defmodule TazunaWeb.DatasetsLive do
     picked = if socket.assigns.picked == key, do: nil, else: key
 
     {:noreply, assign(socket, picked: picked, asked: nil)}
+  end
+
+  # **地図の上で地名を探す**（起点と同じ地図辞典）。候補を出すだけで、図はまだ動かさない
+  def handle_event("search_map_place", %{"q" => q}, socket) do
+    q = String.trim(q || "")
+
+    cond do
+      q == "" ->
+        {:noreply, assign(socket, map_query: "", map_places: nil)}
+
+      q == socket.assigns.map_query ->
+        {:noreply, socket}
+
+      base = Chiezo.base_url() ->
+        {:noreply,
+         socket
+         |> assign(map_query: q, map_places: :loading)
+         |> start_async(:map_places, fn -> Chiezo.places(base, q) end)}
+
+      true ->
+        {:noreply, assign(socket, map_query: q, map_places: {:error, :chiezo_not_configured})}
+    end
+  end
+
+  def handle_event("clear_map_search", _params, socket),
+    do: {:noreply, assign(socket, map_query: "", map_places: nil, map_marker: nil)}
+
+  # 候補を選んだら、その場所へ寄って印を立てる。**寄せるのは画面の側**
+  # （器の大きさは向こうしか知らない）。図の座標へ直すのは、区画と同じ投影で
+  def handle_event("focus_map_place", %{"index" => index}, socket) do
+    with {:ok, places} <- socket.assigns.map_places,
+         {i, ""} <- Integer.parse(index),
+         %{lat: lat, lon: lon} = place <- Enum.at(places, i),
+         rows = partition_rows(socket.assigns.state, socket.assigns.dataset.partition_sweeps),
+         %{x: x, y: y} <- Tazuna.Datasets.Map.xy(Tazuna.Datasets.Map.build(rows), lat, lon) do
+      {:noreply,
+       socket
+       |> assign(map_places: nil, map_marker: %{x: x, y: y, label: place.name})
+       |> push_event("map_focus", %{x: x, y: y})}
+    else
+      _other -> {:noreply, socket}
+    end
   end
 
   def handle_event("unpick_partition", _params, socket),
@@ -438,6 +484,12 @@ defmodule TazunaWeb.DatasetsLive do
     do: {:noreply, assign(socket, asking: false, asked: {:error, :collection_crashed})}
 
   def handle_async(:places, {:ok, result}, socket), do: {:noreply, assign(socket, places: result)}
+
+  def handle_async(:map_places, {:ok, result}, socket),
+    do: {:noreply, assign(socket, map_places: result)}
+
+  def handle_async(:map_places, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, map_places: {:error, :chiezo_unavailable})}
 
   def handle_async(:places, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, places: {:error, :chiezo_unavailable})}

@@ -198,6 +198,9 @@
         sweeps={@dataset.partition_sweeps}
         picked={@picked}
         origin_label={@plan && @plan.place}
+        find_query={@map_query}
+        find_places={@map_places}
+        marker={@map_marker}
       />
 
       <% picked = picked_row(rows, @picked) %>

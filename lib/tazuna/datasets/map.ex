@@ -57,7 +57,7 @@ defmodule Tazuna.Datasets.Map do
 
     case bounds(boxes) do
       nil ->
-        %{rects: [], coast: [], width: @width, height: 0, visited: 0, origin: nil}
+        %{rects: [], coast: [], width: @width, height: 0, visited: 0, origin: nil, frame: nil}
 
       {south, west, north, east} ->
         scale = @width / max(east - west, 1.0e-9)
@@ -73,7 +73,9 @@ defmodule Tazuna.Datasets.Map do
           height: Float.round(height, 1),
           visited: Enum.count(boxes, &(stage(&1) > 0)),
           # 起点のピン。**区画と同じ置き方で投影する**（別々に置くとずれて重なる）
-          origin: origin(opts[:origin], west, top, scale)
+          origin: origin(opts[:origin], west, top, scale),
+          # 緯度経度を図の座標へ直すための枠（`xy/3`。地名で探した場所へ寄せるのに使う）
+          frame: %{west: west, top: top, scale: scale}
         }
     end
   end
@@ -83,6 +85,16 @@ defmodule Tazuna.Datasets.Map do
     do: %{x: round1((lon - west) * scale), y: round1((top - mercator(lat)) * scale)}
 
   defp origin(_none, _west, _top, _scale), do: nil
+
+  @doc """
+  緯度経度を、その図の座標へ。**区画と同じ置き方で投影する**（ずれると、探した場所と
+  違うところへ寄る）。図が無ければ nil。
+  """
+  def xy(%{frame: %{west: west, top: top, scale: scale}}, lat, lon)
+      when is_number(lat) and is_number(lon),
+      do: origin({lat, lon}, west, top, scale)
+
+  def xy(_map, _lat, _lon), do: nil
 
   @doc "図の幅（画面はこの座標系で描きます）。"
   def width, do: @width

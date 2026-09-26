@@ -18,6 +18,21 @@ defmodule Tazuna.Datasets.MapTest do
     assert [%{key: "35.0,135.0/36.0,136.0", x: +0.0, y: +0.0}] = rects
   end
 
+  test "緯度経度を、区画と同じ投影で図の座標へ直す" do
+    # 地名で探した場所へ寄るのに使う。区画と別の置き方をすると、違うところへ寄る
+    map = PartitionMap.build([row("35.0,135.0/36.0,136.0"), row("34.0,136.0/35.0,137.0")])
+    [north_west, south_east] = map.rects
+
+    assert PartitionMap.xy(map, 36.0, 135.0) == %{x: north_west.x, y: north_west.y}
+
+    # 図の座標は 0.1 単位に丸めてある
+    %{x: x, y: y} = PartitionMap.xy(map, 34.0, 137.0)
+    assert_in_delta x, south_east.x + south_east.width, 0.1
+    assert_in_delta y, south_east.y + south_east.height, 0.1
+
+    assert PartitionMap.xy(PartitionMap.build([]), 35.0, 135.0) == nil
+  end
+
   test "西と北が左上" do
     # 緯度は上が大きい（画面の y は下が大きい）ので、そのまま使うと南北が逆さになる
     map = PartitionMap.build([row("35.0,135.0/36.0,136.0"), row("34.0,136.0/35.0,137.0")])

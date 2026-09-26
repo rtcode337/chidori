@@ -345,6 +345,49 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert html =~ "ざっと見る 済み"
     end
 
+    test "地図の上で地名を探すと、その場所へ寄って印を立てる", %{conn: conn} do
+      collection = @collection
+
+      Tazuna.HttpStub.stub(fn %{url: url} ->
+        cond do
+          String.contains?(url, "/v1/osm_japan/search?") ->
+            Tazuna.HttpStub.ok(Jason.encode!(%{"results" => [%{"title" => "札幌駅 (node:1)"}]}))
+
+          String.contains?(url, "/v1/osm_japan/doc?") ->
+            Tazuna.HttpStub.ok(
+              Jason.encode!(%{
+                "title" => "札幌駅 (node:1)",
+                "extra" => %{"lat" => 43.05, "lon" => 141.35, "area" => "北海道"}
+              })
+            )
+
+          String.ends_with?(url, "/v1/collect") ->
+            Tazuna.HttpStub.ok(Jason.encode!(%{"collections" => [collection]}))
+
+          String.contains?(url, "/v1/collect/") ->
+            Tazuna.HttpStub.ok(Jason.encode!(collection))
+
+          true ->
+            Tazuna.HttpStub.ok(~s({"backends":[],"sources":[],"changes":[]}))
+        end
+      end)
+
+      {live, _html} = shown(conn)
+
+      live |> element("#map-search") |> render_change(%{"q" => "札幌"})
+      html = render_async(live)
+      assert html =~ ~s(phx-click="focus_map_place")
+      assert html =~ "札幌駅"
+
+      html = live |> element(~s([phx-click="focus_map_place"])) |> render_click()
+
+      # 図へ「ここへ寄って」を送り、探した場所に印を立てる（区画と同じ投影で）
+      assert_push_event(live, "map_focus", %{x: x, y: y})
+      assert html =~ ~s(class="find-pin")
+      assert html =~ ~s(data-x="#{x}")
+      assert html =~ ~s(data-y="#{y}")
+    end
+
     test "地図で押した区画から、その場で頼める", %{conn: conn} do
       {live, _html} = shown(conn)
 
