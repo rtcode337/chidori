@@ -615,8 +615,9 @@
         <%!-- **travel-log からの依頼**（travel-log が読む収集だけ）。管理画面の
            「修正・追加の依頼」のテキストを貼ると、座標を含む区画の情報収集に、
            そのテキストを補足として載せて頼む。割り込みと違ってふつうの回として走るので、
-           書かれていない足りないものも探しに行く --%>
-        <details :if={@state.collection && @dataset.reader == "travel-log"} class="ask-more">
+           書かれていない足りないものも探しに行く。**開いた状態で出す** ——
+           この節に来るのはたいてい依頼を貼るためで、畳んであると 1 手余計にかかる --%>
+        <details :if={@state.collection && @dataset.reader == "travel-log"} class="ask-more" open>
           <summary>travel-log からの依頼</summary>
           <form phx-submit="travel_log_request">
             <p>
@@ -652,7 +653,8 @@
 
         <%!-- **依頼と、その結果を並べる。** 結果は Chiezo の変更履歴から、頼んだ後に
            同じ区画を見た回を引き当てたもの。見出しを押すと、Chiezo の画面で
-           その 1 件の「直す前との違い」が開く --%>
+           その 1 件の「直す前との違い」が開く。**結果はどれも畳んで出す** ——
+           開いて置くと、足した・直した見出しの一覧が依頼の欄の下を長く埋める --%>
         <section
           :if={@dataset.reader == "travel-log" and @request_results != []}
           class="request-results"
@@ -662,11 +664,7 @@
             <h3>依頼の結果</h3>
             <button type="button" phx-click="reload_request_results">読み直す</button>
           </header>
-          <details
-            :for={{entry, index} <- Enum.with_index(@request_results)}
-            class="request-result"
-            open={index == 0}
-          >
+          <details :for={entry <- @request_results} class="request-result">
             <summary>
               <span class="request-when">{Jst.format(entry.log.requested_at)}</span>
               <span class="request-scope">
