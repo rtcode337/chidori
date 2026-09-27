@@ -25,6 +25,7 @@ defmodule TazunaWeb.NewsLive do
   alias Tazuna.Digest.Scheduler
   alias Tazuna.Jst
   alias Tazuna.News
+  alias Tazuna.News.Events
   alias Tazuna.News.Interests
   alias Tazuna.Notify
   alias Tazuna.Notify.Setting
@@ -67,7 +68,14 @@ defmodule TazunaWeb.NewsLive do
         digest_section: nil,
         # 本文を取り直したまとめ（見出し → まとめ）。**最初から本文を持つのは先頭の
         # 1 件だけ**なので、前後を開いたときに引いて覚える
-        digest_full: %{}
+        digest_full: %{},
+        # 開催日のカレンダー（持つ話題だけ。`Tazuna.Topics.calendar?/1`）。
+        # 見ている月の 1 日・その月のイベント（読み込み中は `:loading`）・
+        # 押した日・絞っている開催地
+        cal_month: nil,
+        cal_events: nil,
+        cal_day: nil,
+        cal_places: []
       )
 
     socket =
@@ -113,10 +121,32 @@ defmodule TazunaWeb.NewsLive do
         picked_theme: nil,
         theme_articles: nil,
         theme_query: "",
-        article_sort: :importance
+        article_sort: :importance,
+        cal_month: Events.this_month(),
+        cal_events: nil,
+        cal_day: nil,
+        cal_places: []
       )
 
-    {:noreply, load_themes(socket)}
+    {:noreply, socket |> load_themes() |> load_calendar()}
+  end
+
+  # 開催日のカレンダーは**その月のぶんだけ**引く（`Tazuna.News.Events.fetch_month/3`）。
+  # 記事の一覧とは別に読むので、読めなくても記事は出る
+  defp load_calendar(socket) do
+    topic = socket.assigns.topic
+    base = News.chiezo_base_url()
+    month = socket.assigns.cal_month
+
+    if connected?(socket) and topic != nil and Topics.calendar?(topic) and base do
+      socket
+      |> assign(cal_events: :loading)
+      |> start_async({:calendar, month}, fn ->
+        Events.fetch_month(base, topic.collection, month)
+      end)
+    else
+      socket
+    end
   end
 
   # トピックの網は**記事とは別の収集**なので、別に読みに行く（読めなくても記事は出る）。
@@ -242,6 +272,41 @@ defmodule TazunaWeb.NewsLive do
   end
 
   # ---- トピックの網（記事とは別の収集）--------------------------------------
+
+  # カレンダーの月を送る（`by` は -1 / 1）。押した日は月が変われば外す
+  def handle_event("cal_shift", %{"by" => by}, socket) do
+    month = Events.shift_month(socket.assigns.cal_month, String.to_integer(by))
+    {:noreply, socket |> assign(cal_month: month, cal_day: nil) |> load_calendar()}
+  end
+
+  def handle_event("cal_today", _params, socket),
+    do:
+      {:noreply,
+       socket |> assign(cal_month: Events.this_month(), cal_day: nil) |> load_calendar()}
+
+  # 日を押すと、その日のイベントを下に並べる。**同じ日をもう一度押すと閉じる**
+  def handle_event("cal_day", %{"date" => date}, socket) do
+    case Date.from_iso8601(date) do
+      {:ok, day} ->
+        {:noreply, assign(socket, cal_day: if(socket.assigns.cal_day == day, do: nil, else: day))}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  # 開催地で絞る（押すたびに入れる・外す。何も選んでいなければ全部）
+  def handle_event("cal_place", %{"place" => place}, socket) do
+    picked = socket.assigns.cal_places
+
+    picked =
+      if place in picked, do: List.delete(picked, place), else: picked ++ [place]
+
+    {:noreply, assign(socket, cal_places: picked)}
+  end
+
+  def handle_event("cal_all_places", _params, socket),
+    do: {:noreply, assign(socket, cal_places: [])}
 
   def handle_event("pick_theme_sweep", params, socket) do
     {:noreply, assign(socket, theme_picks: sweep_choices(params))}
@@ -530,6 +595,22 @@ defmodule TazunaWeb.NewsLive do
   # 起きなかったことは黙って捨てない。押した人には確かめようがない
   def handle_async(:ask, _result, socket),
     do: {:noreply, assign(socket, asking: false, article_asked: {:error, :unknown})}
+
+  # **見ている月の答えだけ受け取る**（月を続けて送ると、前の月の答えが後から届く）
+  def handle_async({:calendar, month}, result, socket) do
+    if month == socket.assigns.cal_month do
+      events =
+        case result do
+          {:ok, {:ok, list}} -> {:ok, list}
+          {:ok, {:error, reason}} -> {:error, reason}
+          _exit -> {:error, :chiezo_unavailable}
+        end
+
+      {:noreply, assign(socket, cal_events: events)}
+    else
+      {:noreply, socket}
+    end
+  end
 
   def handle_async(:themes, {:ok, state}, socket) when is_map(state),
     do: {:noreply, assign(socket, themes: state)}
@@ -980,6 +1061,59 @@ defmodule TazunaWeb.NewsLive do
   @doc "トピックの収集の、押す口の文字。何が起きるのかまで出します。"
   def theme_collect_label(%{collection: nil}), do: "収集を依頼する"
   def theme_collect_label(_state), do: "収集の設定を更新"
+
+  # ---- 開催日のカレンダー --------------------------------------------------
+
+  @weekdays ~w(月 火 水 木 金 土 日)
+
+  # マスに名前を出す数。**それより多い日は件数に畳む**（マスが縦に伸びて月が読めなくなる）
+  @cal_names 3
+
+  @doc "カレンダーの見出し（「2026年10月」）。"
+  def cal_title(%Date{year: year, month: month}), do: "#{year}年#{month}月"
+  def cal_title(_month), do: ""
+
+  @doc "日付の呼び名（「10月25日（土）」）。"
+  def day_label(%Date{} = date),
+    do: "#{date.month}月#{date.day}日（#{Enum.at(@weekdays, Date.day_of_week(date) - 1)}）"
+
+  @doc "カレンダーが読めなかったときの一言。"
+  def cal_error({:error, :chiezo_not_configured}), do: "Chiezo の場所が設定されていません。"
+
+  def cal_error({:error, {:chiezo_status, 404}}),
+    do: "まだイベントが溜まっていません（収集を依頼して、整理が一度回るとここに並びます）。"
+
+  def cal_error(_error), do: "カレンダーを読めませんでした（Chiezo に繋がらないかもしれません）。"
+
+  @doc """
+  マスに名前を出すイベント。**注目度が中以上のものだけ**、高い順に数件 ——
+  低いものまで並べると、勉強会の多い日はマスが埋まって注目のものが埋もれる。
+  """
+  def cal_prominent(events) do
+    events
+    |> Enum.filter(&(&1.attention in [:high, :mid]))
+    |> Enum.take(@cal_names)
+  end
+
+  @doc "マスに名前を出さなかった件数。"
+  def cal_rest(events), do: length(events) - length(cal_prominent(events))
+
+  @doc "注目度の呼び名。"
+  def attention_label(:high), do: "高"
+  def attention_label(:mid), do: "中"
+  def attention_label(:low), do: "低"
+  def attention_label(_attention), do: ""
+
+  @doc "1 件の開催の事実（時刻・会期・開催地）を 1 行で。"
+  def event_facts(entry) do
+    [
+      entry.time && "#{entry.time} から",
+      entry.end_date && entry.end_date != entry.date && "#{day_label(entry.end_date)} まで",
+      if(entry.places == [], do: "開催地は不明", else: Enum.join(entry.places, "・"))
+    ]
+    |> Enum.filter(&is_binary/1)
+    |> Enum.join(" / ")
+  end
 
   @doc false
   # 断られた理由。**数字だけ出しても、押した人には次に何をすればよいか分からない**

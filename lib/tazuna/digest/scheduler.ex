@@ -64,7 +64,10 @@ defmodule Tazuna.Digest.Scheduler do
   end
 
   defp start_due(state) do
-    case Enum.find_value(Topics.list(), &due(&1, DateTime.utc_now())) do
+    # **要約を作らない話題は見ない**（要約の回を持たないので、起こしても断られる）
+    case Topics.list()
+         |> Enum.filter(&Topics.digest?/1)
+         |> Enum.find_value(&due(&1, DateTime.utc_now())) do
       nil ->
         state
 

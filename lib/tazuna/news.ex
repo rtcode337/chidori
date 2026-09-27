@@ -588,13 +588,16 @@ defmodule Tazuna.News do
         # **流れ。** 時とともに増えるものを追っていて、直近だけが対象 ——
         # 古いものは順に要らなくなるので、Chiezo に期限で落としてもらう
         # （落とさないと、この収集は永久に増え続ける）。
-        # **終わったら要らなくなる話題は網羅にする**（`ages_out?`）——
-        # 日付では落とせないので、整理の回に落とさせる
-        kind: if(Topics.ages_out?(topic), do: "flow", else: "stock"),
+        # **終わったら要らなくなる話題も流れ**（技術イベントは、これから開かれるものを
+        # 次々と集めていく）。ただし**期限は外す**（`keep_days: 0`）—— Chiezo の期限は
+        # 配信日で数えるので、半年先のイベントを募集が出た日から 30 日で落とすことになる。
+        # 終わったものは整理の回に落とさせる（`ages_out?`）
+        kind: "flow",
         feed: feed_spec(topic),
         sweeps: with_choices(sweeps(topic), choices),
         requested_by: "tazuna"
-      },
+      }
+      |> Map.merge(if(Topics.ages_out?(topic), do: %{}, else: %{keep_days: 0})),
       # 収集ぜんたいの相手。**巡回に書いてなければここへ落ちる**（Chiezo 側の決まり）。
       # 名指ししないものは送らない —— null を送ると「指定しない」と同じだが、
       # 依頼の本文に空の項目が並ぶと、何を決めて何を任せたのかが読めない
@@ -629,7 +632,18 @@ defmodule Tazuna.News do
         name: @focus_sweep,
         interval_minutes: every(topic, :refine, @refine_minutes),
         prompt: refine_prompt(topic)
-      },
+      }
+    ] ++ digest_sweeps(topic)
+  end
+
+  # 要約の回。**要約を作らない話題には置かない**（`Tazuna.Topics.digest?/1`）——
+  # 置いたままだと、時刻を決めた拍子に読まれない要約を作らせて枠を食う
+  defp digest_sweeps(topic) do
+    if Tazuna.Topics.digest?(topic), do: main_digest_sweeps(topic), else: []
+  end
+
+  defp main_digest_sweeps(topic) do
+    [
       %{
         name: Tazuna.SweepNames.digest(),
         # **時計を持たせない**（`on_demand`）。起こすのは tazuna の側で、

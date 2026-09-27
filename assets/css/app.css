@@ -758,6 +758,46 @@ body.digest-open { overflow: hidden; }
 .article-sort { display: flex; gap: .35rem; margin: 0 0 .7rem; }
 .article-sort button { padding: .25rem .7rem; font-size: .8rem; border-radius: 999px; }
 .article-sort button.selected { background: #eef0ff; border-color: #8b84d6; color: #4338a8; font-weight: 700; }
+/* 開催日のカレンダー(技術イベント)。**注目度の高いものを色で目立たせる** ——
+   マスには中以上だけ名前を出し、低いものは件数だけにする */
+.event-calendar { margin: 1.5rem 0 2rem; }
+.event-calendar-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .4rem .8rem; }
+.event-calendar-nav { display: flex; align-items: center; gap: .4rem; }
+.event-calendar-nav button { padding: .2rem .7rem; font-size: .85rem; }
+.event-places { display: flex; flex-wrap: wrap; gap: .35rem; margin: .5rem 0 .6rem; }
+.event-places button { padding: .2rem .7rem; font-size: .8rem; border-radius: 999px; }
+.event-places button.selected { background: #eef0ff; border-color: #8b84d6; color: #4338a8; font-weight: 700; }
+.event-grid { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.event-grid th { padding: .3rem 0; color: #6b7089; font-size: .78rem; font-weight: 700; text-align: center; }
+.event-grid th:first-child { color: #c2410c; }
+.event-grid th:last-child { color: #1d4ed8; }
+.event-grid td { height: 5.6rem; padding: 0; border: 1px solid #e6e8ef; vertical-align: top; }
+.event-grid td.is-outside { background: #f8f9fc; }
+.event-grid td.is-outside .event-day-num { color: #b3b7c8; }
+.event-grid td.is-today .event-day-num { display: inline-block; min-width: 1.5em; border-radius: 999px; background: #6254d6; color: #fff; text-align: center; }
+.event-grid td.is-picked { box-shadow: inset 0 0 0 2px #6254d6; }
+.event-day { display: flex; flex-direction: column; gap: .15rem; width: 100%; height: 100%; padding: .2rem; border: 0; border-radius: 0; background: none; text-align: left; overflow: hidden; }
+.event-day:disabled { cursor: default; opacity: 1; }
+.event-day-num { align-self: flex-start; font-size: .78rem; font-weight: 700; color: #3a3f58; }
+/* 1 件の札。**高は色を塗って太字**、中は枠だけ、低は地味に */
+.event-chip { display: block; padding: 0 .3rem; border: 1px solid transparent; border-radius: .3rem; font-size: .7rem; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.event-calendar p .event-chip { display: inline-block; }
+.event-chip.is-high { background: #fde2e2; border-color: #f19a9a; color: #9f1239; font-weight: 700; }
+.event-chip.is-mid { background: #fff; border-color: #c9c5f0; color: #4338a8; }
+.event-chip.is-low { background: #f3f4f8; color: #5b6076; }
+.event-more { font-size: .68rem; color: #6b7089; }
+.event-day-list { margin-top: 1rem; }
+.event-day-list h3 { margin: 0 0 .5rem; font-size: 1rem; }
+.event-day-list ul { margin: 0; padding: 0; list-style: none; }
+.event-item { padding: .55rem 0; border-bottom: 1px solid #eef0f7; min-width: 0; }
+.event-item-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .5rem; overflow-wrap: anywhere; }
+.event-item-head .event-chip { display: inline-block; }
+.event-item.is-high .event-item-head a, .event-item.is-high .event-item-head strong { font-weight: 700; }
+.event-item-facts { margin: .2rem 0 0; color: #4b5068; font-size: .82rem; }
+@media (max-width: 640px) {
+  .event-grid td { height: 4.2rem; }
+  .event-chip { font-size: .62rem; padding: 0 .15rem; }
+}
 .topic-edges text { fill: #9aa3b5; font-size: 11px; }
 .topic-nodes rect { fill: #eef2ff; stroke: #818cf8; stroke-width: 2; }
 /* 名前は札の中。**字の大きさは図の側が 1 つずつ決める**(直近の記事の数) */

@@ -41,6 +41,24 @@ defmodule Tazuna.TopicsTest do
       assert events.interest =~ "海外"
     end
 
+    test "技術ニュースの右隣に並ぶ" do
+      assert Enum.map(Topics.list(), & &1.name) == ["一般ニュース", "技術ニュース", "技術イベント", "映画"]
+    end
+
+    test "要約は作らず、開催日のカレンダーを出す", %{events: events} do
+      refute Topics.digest?(events)
+      assert Topics.calendar?(events)
+      assert Topics.digest?(Topics.get("tazuna_tech"))
+      refute Topics.calendar?(Topics.get("tazuna_tech"))
+    end
+
+    test "カレンダーに要るタグを、並んだイベント全部に付けさせる", %{events: events} do
+      assert events.note =~ ~s("開催日:<YYYY-MM-DD>")
+      assert events.note =~ ~s("開催地:オンライン")
+      assert events.note =~ ~s("注目度:高")
+      assert events.note =~ "全部"
+    end
+
     test "日付では古くならない", %{events: events} do
       # 半年先のイベントを 30 日の期限で落とすと、いちばん要るときに消える。
       # 古さは「終わったかどうか」だけ
@@ -55,7 +73,7 @@ defmodule Tazuna.TopicsTest do
     test "行けるかどうかを決められる項目を書かせる", %{events: events} do
       # 開催日と場所が無いと、読む人は何も決められない
       assert events.note =~ "開催日"
-      assert events.note =~ "場所"
+      assert events.note =~ "開催地"
       assert events.note =~ "申込先の URL"
     end
 

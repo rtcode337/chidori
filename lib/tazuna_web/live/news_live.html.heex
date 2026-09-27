@@ -37,6 +37,139 @@
       </p>
     </section>
 
+    <%!-- 開催日のカレンダー（技術イベント）。**記事の一覧より先に出す** ——
+         イベントは読み物ではなく「いつ・どこで・行く価値があるか」で選ぶもの。
+         注目度の高いものを色付きで上に並べ、低いものは件数だけに畳む
+         （connpass の新着は 1 日に数十件入るので、全部並べるとマスが埋まる） --%>
+    <section
+      :if={@topic && Tazuna.Topics.calendar?(@topic)}
+      class="event-calendar"
+      aria-label="開催日のカレンダー"
+    >
+      <header class="event-calendar-head">
+        <h2 class="news-section-title">開催日のカレンダー</h2>
+        <div class="event-calendar-nav">
+          <button type="button" phx-click="cal_shift" phx-value-by="-1" aria-label="前の月">
+            ‹
+          </button>
+          <strong>{cal_title(@cal_month)}</strong>
+          <button type="button" phx-click="cal_shift" phx-value-by="1" aria-label="次の月">
+            ›
+          </button>
+          <button type="button" phx-click="cal_today">今月</button>
+        </div>
+      </header>
+
+      <p :if={@cal_events in [nil, :loading]} class="muted-note">読み込んでいます…</p>
+      <p :if={match?({:error, _}, @cal_events)} class="muted-note">
+        {cal_error(@cal_events)}
+      </p>
+
+      <%= if match?({:ok, _}, @cal_events) do %>
+        <% {:ok, all} = @cal_events %>
+        <% shown = Events.only_places(all, @cal_places) %>
+        <div
+          :if={Events.places_of(all) != []}
+          class="event-places"
+          role="group"
+          aria-label="開催地で絞る"
+        >
+          <button
+            type="button"
+            phx-click="cal_all_places"
+            class={@cal_places == [] && "selected"}
+            aria-pressed={to_string(@cal_places == [])}
+          >
+            すべて
+          </button>
+          <button
+            :for={place <- Events.places_of(all)}
+            type="button"
+            phx-click="cal_place"
+            phx-value-place={place}
+            class={place in @cal_places && "selected"}
+            aria-pressed={to_string(place in @cal_places)}
+          >
+            {place}
+          </button>
+        </div>
+        <p class="muted-note">
+          この月に {length(shown)} 件。<span class="event-chip is-high">注目度 高</span>
+          <span class="event-chip is-mid">中</span> を並べ、低いものは件数だけ出します。日を押すと、その日のイベントが全部並びます。
+        </p>
+
+        <table class="event-grid">
+          <thead>
+            <tr>
+              <th :for={name <- ~w(日 月 火 水 木 金 土)} scope="col">{name}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={week <- Events.weeks(@cal_month, shown)}>
+              <td
+                :for={cell <- week}
+                class={[
+                  !cell.in_month && "is-outside",
+                  cell.date == Tazuna.Jst.today() && "is-today",
+                  cell.date == @cal_day && "is-picked"
+                ]}
+              >
+                <button
+                  type="button"
+                  class="event-day"
+                  phx-click="cal_day"
+                  phx-value-date={Date.to_iso8601(cell.date)}
+                  disabled={cell.events == []}
+                  aria-pressed={to_string(cell.date == @cal_day)}
+                  aria-label={"#{cell.date.month}月#{cell.date.day}日 #{length(cell.events)} 件"}
+                >
+                  <span class="event-day-num">{cell.date.day}</span>
+                  <span
+                    :for={entry <- cal_prominent(cell.events)}
+                    class={["event-chip", "is-#{entry.attention}"]}
+                  >
+                    {entry.title}
+                  </span>
+                  <span :if={cal_rest(cell.events) > 0} class="event-more">
+                    {if cal_prominent(cell.events) == [], do: "", else: "ほか "}{cal_rest(
+                      cell.events
+                    )} 件
+                  </span>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <section
+          :if={@cal_day}
+          class="event-day-list"
+          aria-label={"#{day_label(@cal_day)} のイベント"}
+        >
+          <h3>{day_label(@cal_day)} のイベント</h3>
+          <ul>
+            <li
+              :for={entry <- Events.sort(Enum.filter(shown, &(&1.date == @cal_day)))}
+              class={["event-item", "is-#{entry.attention}"]}
+            >
+              <div class="event-item-head">
+                <span :if={entry.attention} class={["event-chip", "is-#{entry.attention}"]}>
+                  注目度 {attention_label(entry.attention)}
+                </span>
+                <a :if={entry.url} href={entry.url} target="_blank" rel="noreferrer">
+                  {entry.title}
+                </a>
+                <strong :if={!entry.url}>{entry.title}</strong>
+              </div>
+              <p class="event-item-facts">
+                {event_facts(entry)}
+              </p>
+            </li>
+          </ul>
+        </section>
+      <% end %>
+    </section>
+
     <%!-- まとめ。**記事の一覧より先に出す** —— 溜まったものをそのまま並べても
          読めないので、何が起きたかを先に言う（通知へ流れるのは、この中の要旨） --%>
     <section :if={@news.digests != []} class="news-digest" aria-label="要約">
@@ -346,7 +479,7 @@
            （試しに別のトピックへ流す、しばらく止める）なので、環境変数だけだと
            変えるたびに立て直しが要る。**畳まない** —— 時刻も宛先も、いまどうなって
            いるかを開かずに読めることのほうが大事 --%>
-      <section class="settings-block">
+      <section :if={Tazuna.Topics.digest?(@topic)} class="settings-block">
         <h3>通知の設定</h3>
         <p :if={notify_note(@topic)} class="muted-note">{notify_note(@topic)}</p>
 

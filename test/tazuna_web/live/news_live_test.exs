@@ -22,6 +22,17 @@ defmodule TazunaWeb.NewsLiveTest do
     assert html =~ "集めるのは Chiezo です"
   end
 
+  test "技術イベントは開催日のカレンダーを出し、要約と通知の設定は出さない", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/news?view=tazuna_events")
+
+    assert html =~ "開催日のカレンダー"
+    refute html =~ "通知の設定"
+
+    {:ok, _live, html} = live(conn, ~p"/news?view=tazuna_tech")
+    refute html =~ "開催日のカレンダー"
+    assert html =~ "通知の設定"
+  end
+
   test "トップページは一般ニュース", %{conn: conn} do
     # 入口のためだけの頁は置かない。開いてすぐ読むものがいちばん上にあればよい
     {:ok, _live, html} = live(conn, ~p"/")

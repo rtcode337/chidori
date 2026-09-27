@@ -233,10 +233,15 @@ defmodule Tazuna.NewsTest do
       # （落とさないと、この収集は永久に増え続ける）
       assert payload["kind"] == "flow"
 
-      # **終わったら要らなくなる話題は網羅にする。** 半年先のイベントを 30 日の
-      # 期限で落とすと、いちばん要るときに消える
-      events = Tazuna.Topics.get("tazuna_events")
-      assert News.attrs("tazuna_events", events)[:kind] == "stock"
+      # 期限は Chiezo の既定のまま（送らない）
+      refute Map.has_key?(payload, "keep_days")
+
+      # **技術イベントも流れ**（これから開かれるものを次々と集めていく）。
+      # ただし期限は外す —— Chiezo の期限は配信日で数えるので、半年先のイベントを
+      # 募集が出た日から 30 日で落とすことになる。終わったものは整理が落とす
+      events = News.attrs("tazuna_events", Tazuna.Topics.get("tazuna_events"))
+      assert events[:kind] == "flow"
+      assert events[:keep_days] == 0
 
       # 巡回は仕事ごとに分ける（集める・漏れを探す・読んで印を付ける・まとめる）
       assert Enum.map(payload["sweeps"], & &1["name"]) ==
@@ -493,6 +498,12 @@ defmodule Tazuna.NewsTest do
     test "配信元を持たない話題は、AI に集めさせる" do
       names = %{name: "何か", interest: "何か", feeds: []} |> News.sweeps() |> Enum.map(& &1.name)
       assert names == ["集める", "整理", "要約"]
+    end
+
+    test "要約を作らない話題には、要約の回を置かない" do
+      # 技術イベントは開催日のカレンダーで選ぶもので、要約は読まれない
+      names = defined_topic("tazuna_events") |> News.sweeps() |> Enum.map(& &1.name)
+      assert names == ["機械収集", "整理"]
     end
 
     test "一般ニュースはトピックの網を育てない" do
