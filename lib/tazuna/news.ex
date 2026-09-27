@@ -605,7 +605,7 @@ defmodule Tazuna.News do
       %{
         name: name,
         description: description(topic),
-        prompt: prompt(topic),
+        prompt: collection_prompt(topic),
         interval_minutes: @collect_minutes,
         # **育てる側で置く。** 溜めるだけなら足すほうでよいが、この収集は
         # 重要度やタグを後から付け直す（それができるのは育てる側だけ）
@@ -629,6 +629,15 @@ defmodule Tazuna.News do
     )
   end
 
+  # 収集ぜんたいの依頼文（巡回に書いていなければここへ落ちる）。作品を育てる話題では
+  # 先を探す回の文 —— 記事を集める文を置くと、名指ししない回が記事を溜め始める
+  defp collection_prompt(topic) do
+    case Topics.works(topic) do
+      nil -> prompt(topic)
+      works -> works.survey_prompt(interest_of(topic))
+    end
+  end
+
   @doc """
   その話題の巡回。**引き方の違う仕事を、別の時計で回します**。
 
@@ -650,6 +659,35 @@ defmodule Tazuna.News do
   （`focus_sweep/0`）—— 落とす力と印を付け直す力を持つのはその回だけだからです。
   """
   def sweeps(topic) do
+    case Topics.works(topic) do
+      nil -> article_sweeps(topic)
+      works -> work_sweeps(topic, works)
+    end
+  end
+
+  # 1 件 = 1 作品の話題（映画。`Tazuna.Topics` の `works`）。**配信元も集める回も
+  # 持たない** —— 記事を溜めると単位が記事に戻る。先を探して足す回と、今あるものを
+  # 育てる回だけで回す。整理は**先を探す回が 1 回走るまで待つ**（空の収集を相手に走らない）
+  defp work_sweeps(topic, works) do
+    survey = %{
+      name: Tazuna.SweepNames.survey(),
+      interval_minutes: works.survey_minutes(),
+      only_new: true,
+      prompt: works.survey_prompt(interest_of(topic))
+    }
+
+    [
+      survey,
+      %{
+        name: @focus_sweep,
+        after: survey.name,
+        interval_minutes: every(topic, :refine, works.refine_minutes()),
+        prompt: refine_prompt(topic)
+      }
+    ] ++ digest_sweeps(topic)
+  end
+
+  defp article_sweeps(topic) do
     [
       intake(topic),
       %{
@@ -957,8 +995,14 @@ defmodule Tazuna.News do
   end
 
   # 記事一覧の窓（`@window_hours`）。**新着の口が読めなければ、収集の見本で代える**
-  # （古い並びでも、何も出ないよりよい）。はてブ数はここで載せる（`Tazuna.News.Hatena`）
+  # （古い並びでも、何も出ないよりよい）。はてブ数はここで載せる（`Tazuna.News.Hatena`）。
+  # **記事一覧を出さない話題では引かない**（映画は 1 件が作品で、並べるのは別の口。
+  # 公式サイトの URL のはてブ数を外へ聞きに行っても使い道が無い）
   defp window(base, name, fallback) do
+    if Topics.articles?(Topics.get(name)), do: article_window(base, name, fallback), else: []
+  end
+
+  defp article_window(base, name, fallback) do
     candidates =
       case get(
              base <>
@@ -1171,6 +1215,13 @@ defmodule Tazuna.News do
   混ざるほうが害が大きい）。
   """
   def refine_prompt(topic) do
+    case Topics.works(topic) do
+      nil -> article_refine_prompt(topic)
+      works -> works.refine_prompt(interest_of(topic))
+    end
+  end
+
+  defp article_refine_prompt(topic) do
     """
     前回から新しく入ったものを読んで、**印を付け直し、要らないものを落とし、
     そのうえで足りないものを足してください**。

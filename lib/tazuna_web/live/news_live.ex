@@ -27,6 +27,7 @@ defmodule TazunaWeb.NewsLive do
   alias Tazuna.News
   alias Tazuna.News.Events
   alias Tazuna.News.Interests
+  alias Tazuna.News.Movies
   alias Tazuna.Notify
   alias Tazuna.Notify.Setting
   alias Tazuna.Notify.Settings
@@ -75,7 +76,10 @@ defmodule TazunaWeb.NewsLive do
         cal_month: nil,
         cal_events: nil,
         cal_day: nil,
-        cal_places: []
+        cal_places: [],
+        # 注目作の一覧（作品を育てる話題だけ。`Tazuna.Topics.works/1`）。
+        # 読み込み中は `:loading`、読めたら `{:ok, [entry]}`
+        works: nil
       )
 
     socket =
@@ -125,10 +129,11 @@ defmodule TazunaWeb.NewsLive do
         cal_month: Events.this_month(),
         cal_events: nil,
         cal_day: nil,
-        cal_places: []
+        cal_places: [],
+        works: nil
       )
 
-    {:noreply, socket |> load_themes() |> load_calendar()}
+    {:noreply, socket |> load_themes() |> load_calendar() |> load_works()}
   end
 
   # 開催日のカレンダーは**その月のぶんだけ**引く（`Tazuna.News.Events.fetch_month/3`）。
@@ -142,7 +147,26 @@ defmodule TazunaWeb.NewsLive do
       socket
       |> assign(cal_events: :loading)
       |> start_async({:calendar, month}, fn ->
-        Events.fetch_month(base, topic.collection, month)
+        Events.fetch_month(base, topic.collection, month, Topics.date_tag(topic))
+      end)
+    else
+      socket
+    end
+  end
+
+  # 注目作の一覧（映画）。**注目度が中以上のものだけ**をタグで引く —— 溜まっている
+  # 作品を全部読みに行かない（並べるのも、読む人が観るかを決めたい作品だけ）
+  defp load_works(socket) do
+    topic = socket.assigns.topic
+    base = News.chiezo_base_url()
+
+    if connected?(socket) and topic != nil and Topics.works(topic) != nil and base do
+      tags = Enum.map_join(["高", "中"], ",", &"#{Events.attention_tag()}:#{&1}")
+
+      socket
+      |> assign(works: :loading)
+      |> start_async({:works, topic.collection}, fn ->
+        Events.fetch_tagged(base, topic.collection, tags, Topics.date_tag(topic))
       end)
     else
       socket
@@ -638,6 +662,22 @@ defmodule TazunaWeb.NewsLive do
     end
   end
 
+  # **見ている話題の答えだけ受け取る**（タブを続けて切り替えると、前の話題の答えが後から届く）
+  def handle_async({:works, collection}, result, socket) do
+    if socket.assigns.topic && socket.assigns.topic.collection == collection do
+      works =
+        case result do
+          {:ok, {:ok, list}} -> {:ok, list}
+          {:ok, {:error, reason}} -> {:error, reason}
+          _exit -> {:error, :chiezo_unavailable}
+        end
+
+      {:noreply, assign(socket, works: works)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_async(:themes, {:ok, state}, socket) when is_map(state),
     do: {:noreply, assign(socket, themes: state)}
 
@@ -774,6 +814,38 @@ defmodule TazunaWeb.NewsLive do
       </p>
     </div>
     """
+  end
+
+  @doc """
+  作品 1 本の中身（公開日・上映形式・配信開始の 1 行と、本文の全部）。
+  **本文は切らずに出します** —— 口コミは本文の末尾にあるので、頭だけで切ると
+  いちばん見たいところが落ちる。出どころの URL はリンクにします。
+  """
+  attr :entry, :map, required: true
+
+  def work_detail(assigns) do
+    ~H"""
+    <p class="event-item-facts">{work_facts(@entry)}</p>
+    <div class="event-item-detail">
+      <p :for={line <- Movies.body_lines(@entry)}>
+        <%= for part <- link_parts(line) do %>
+          <a :if={match?({:url, _}, part)} href={elem(part, 1)} target="_blank" rel="noreferrer">
+            {elem(part, 1)}
+          </a>
+          <span :if={match?({:text, _}, part)}>{elem(part, 1)}</span>
+        <% end %>
+      </p>
+    </div>
+    """
+  end
+
+  @doc "1 行を、地の文と URL に分けます（URL はリンクにするため）。"
+  def link_parts(line) do
+    ~r{https?://[^\s　、。）)」]+}u
+    |> Regex.split(line, include_captures: true, trim: true)
+    |> Enum.map(fn part ->
+      if String.match?(part, ~r{\Ahttps?://}), do: {:url, part}, else: {:text, part}
+    end)
   end
 
   @doc "記事 1 件の札（記事一覧と、トピックから引いた記事で同じもの）。"
@@ -1120,7 +1192,7 @@ defmodule TazunaWeb.NewsLive do
   def cal_error({:error, :chiezo_not_configured}), do: "Chiezo の場所が設定されていません。"
 
   def cal_error({:error, {:chiezo_status, 404}}),
-    do: "まだイベントが溜まっていません（収集を依頼して、整理が一度回るとここに並びます）。"
+    do: "まだ何も溜まっていません（収集を依頼して、整理が一度回るとここに並びます）。"
 
   def cal_error(_error), do: "カレンダーを読めませんでした（Chiezo に繋がらないかもしれません）。"
 
@@ -1158,6 +1230,52 @@ defmodule TazunaWeb.NewsLive do
   def attention_label(:mid), do: "中"
   def attention_label(:low), do: "低"
   def attention_label(_attention), do: ""
+
+  # 注目作の一覧で、公開から何日前までを「公開中」として残すか。**整理の回が
+  # 落とすのと同じ長さ**（それより前のものは、落とし損ねていても並べない）
+  @works_recent_days 60
+
+  @doc """
+  注目作の一覧の並び。**公開中（新しい順）とこれから（近い順）に分けます** ——
+  公開中のものは口コミで観るかを決め、これからのものは公開日で予定を立てるので、
+  読み方が違います。
+  """
+  def works_groups(entries, today \\ Tazuna.Jst.today()) do
+    from = Date.add(today, -@works_recent_days)
+
+    {showing, coming} =
+      entries
+      |> Enum.filter(&(Date.compare(&1.date, from) != :lt))
+      |> Enum.split_with(&(Date.compare(&1.date, today) != :gt))
+
+    [
+      {"公開中", Enum.sort_by(showing, &{rank(&1.attention), -Date.to_gregorian_days(&1.date)})},
+      {"これから公開", Enum.sort_by(coming, & &1.date, Date)}
+    ]
+    |> Enum.reject(fn {_label, list} -> list == [] end)
+  end
+
+  # 公開中は注目度の高い順、同じなら公開の新しい順
+  defp rank(:high), do: 0
+  defp rank(:mid), do: 1
+  defp rank(_attention), do: 2
+
+  @doc "作品の事実（公開日・上映形式・配信開始）を 1 行で。"
+  def work_facts(entry) do
+    [
+      "#{day_label(entry.date)} 公開",
+      case Movies.formats(entry) do
+        [] -> nil
+        formats -> Enum.join(formats, "・")
+      end,
+      case Movies.streaming(entry) do
+        nil -> nil
+        date -> "#{date.month}月#{date.day}日から配信"
+      end
+    ]
+    |> Enum.filter(&is_binary/1)
+    |> Enum.join(" / ")
+  end
 
   @doc "1 件の開催の事実（時刻・会期・開催地）を 1 行で。"
   def event_facts(entry) do

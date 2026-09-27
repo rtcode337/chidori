@@ -214,24 +214,33 @@ defmodule Tazuna.News.Events do
   @doc """
   1 件を、カレンダーに並べる形にします。記事の形（`Tazuna.News`）でも、
   Chiezo の生の 1 件（`"title"` / `"tags"` / `"extra"` / `"opening"`）でも受けます。
+
+  `date_tag` は日付を読むタグの頭（技術イベントは `開催日`、映画は `公開日`）。
   """
-  def entry(%{"title" => title} = doc) do
+  def entry(doc, date_tag \\ @date_tag)
+
+  def entry(%{"title" => title} = doc, date_tag) do
     extra = if is_map(doc["extra"]), do: doc["extra"], else: %{}
 
-    entry(%{
-      title: title,
-      tags: Enum.map(doc["tags"] || [], &to_string/1),
-      url: extra["url"],
-      summary: doc["opening"]
-    })
+    entry(
+      %{
+        title: title,
+        tags: Enum.map(doc["tags"] || [], &to_string/1),
+        url: extra["url"],
+        summary: doc["opening"]
+      },
+      date_tag
+    )
   end
 
-  def entry(%{title: title, tags: tags} = article) do
+  def entry(%{title: title, tags: tags} = article, date_tag) do
     summary = Map.get(article, :summary) || ""
-    date = tag_date(tags, @date_tag) || body_date(summary)
+    date = tag_date(tags, date_tag) || body_date(summary)
 
     %{
       title: title,
+      # 話題ごとのタグ（映画の上映形式・配信開始など）を後から読めるように持っておく
+      tags: tags,
       url: safe_url(Map.get(article, :url)),
       summary: summary,
       date: date,
@@ -245,37 +254,46 @@ defmodule Tazuna.News.Events do
   @doc """
   その月の日付ぶんの `開催日:` タグ（カンマ区切り）。Chiezo の `filter` にそのまま渡します。
   """
-  def month_tags(%Date{} = first) do
+  def month_tags(%Date{} = first, date_tag \\ @date_tag) do
     first
     |> days_of_month()
-    |> Enum.map_join(",", &"#{@date_tag}:#{Date.to_iso8601(&1)}")
+    |> Enum.map_join(",", &"#{date_tag}:#{Date.to_iso8601(&1)}")
   end
 
   @doc """
   その月のイベントを Chiezo から引きます。`{:ok, [entry]}` か `{:error, 理由}`。
   """
-  def fetch_month(base, collection, %Date{} = first) do
-    fetch(base, collection, month_tags(first), 0, [])
+  def fetch_month(base, collection, %Date{} = first, date_tag \\ @date_tag) do
+    fetch_tagged(base, collection, month_tags(first, date_tag), date_tag)
   end
 
-  defp fetch(base, collection, tags, offset, acc) do
+  @doc """
+  タグ（カンマ区切りで「どれか」）の付いたものを全部引き、日付の読めたものだけ返します。
+  映画の注目作の一覧（`注目度:高,注目度:中`）に使います。
+  """
+  def fetch_tagged(base, collection, tags, date_tag \\ @date_tag) do
+    fetch(base, collection, tags, date_tag, 0, [])
+  end
+
+  defp fetch(base, collection, tags, date_tag, offset, acc) do
     case Chiezo.spot_docs(base, collection, tags, offset, @page_limit) do
       {:ok, %{docs: []}} ->
-        {:ok, finish(acc)}
+        {:ok, finish(acc, date_tag)}
 
       {:ok, %{total: total, docs: docs}} ->
         got = acc ++ docs
 
         if length(got) >= total,
-          do: {:ok, finish(got)},
-          else: fetch(base, collection, tags, length(got), got)
+          do: {:ok, finish(got, date_tag)},
+          else: fetch(base, collection, tags, date_tag, length(got), got)
 
       {:error, reason} ->
         {:error, reason}
     end
   end
 
-  defp finish(docs), do: docs |> Enum.map(&entry/1) |> Enum.reject(&is_nil(&1.date))
+  defp finish(docs, date_tag),
+    do: docs |> Enum.map(&entry(&1, date_tag)) |> Enum.reject(&is_nil(&1.date))
 
   @doc "今日（JST）を含む月の 1 日。"
   def this_month do

@@ -44,10 +44,10 @@
     <section
       :if={@topic && Tazuna.Topics.calendar?(@topic)}
       class="event-calendar"
-      aria-label="開催日のカレンダー"
+      aria-label={"#{Tazuna.Topics.date_tag(@topic)}のカレンダー"}
     >
       <header class="event-calendar-head">
-        <h2 class="news-section-title">開催日のカレンダー</h2>
+        <h2 class="news-section-title">{Tazuna.Topics.date_tag(@topic)}のカレンダー</h2>
         <div class="event-calendar-nav">
           <button type="button" phx-click="cal_shift" phx-value-by="-1" aria-label="前の月">
             ‹
@@ -109,7 +109,8 @@
         </div>
         <p class="muted-note">
           この月に {length(shown)} 件。<span class="event-chip is-high">注目度 高</span>
-          <span class="event-chip is-mid">中</span> を並べ、低いものは件数だけ出します。日を押すと、その日のイベントが全部並びます。
+          <span class="event-chip is-mid">中</span>
+          を並べ、低いものは件数だけ出します。日を押すと、その日の{Tazuna.Topics.item_word(@topic)}が全部並びます。
         </p>
 
         <table class="event-grid">
@@ -166,9 +167,9 @@
         <section
           :if={@cal_day}
           class="event-day-list"
-          aria-label={"#{day_label(@cal_day)} のイベント"}
+          aria-label={"#{day_label(@cal_day)} の#{Tazuna.Topics.item_word(@topic)}"}
         >
-          <h3>{day_label(@cal_day)} のイベント</h3>
+          <h3>{day_label(@cal_day)} の{Tazuna.Topics.item_word(@topic)}</h3>
           <ul>
             <li
               :for={entry <- Events.sort(Enum.filter(shown, &(&1.date == @cal_day)))}
@@ -183,14 +184,53 @@
                 </a>
                 <strong :if={!entry.url}>{entry.title}</strong>
               </div>
-              <p class="event-item-facts">
-                <span :if={Events.abroad?(entry)} class="event-abroad-mark">海外</span>
-                {event_facts(entry)}
-              </p>
-              <%!-- **説明は開いたまま出す**（行くかどうかを、ページを開かずに決められるように） --%>
-              <p :if={Events.description(entry) != ""} class="event-item-detail">
-                {Events.description(entry)}
-              </p>
+              <%= if Tazuna.Topics.works(@topic) do %>
+                <.work_detail entry={entry} />
+              <% else %>
+                <p class="event-item-facts">
+                  <span :if={Events.abroad?(entry)} class="event-abroad-mark">海外</span>
+                  {event_facts(entry)}
+                </p>
+                <%!-- **説明は開いたまま出す**（行くかどうかを、ページを開かずに決められるように） --%>
+                <p :if={Events.description(entry) != ""} class="event-item-detail">
+                  {Events.description(entry)}
+                </p>
+              <% end %>
+            </li>
+          </ul>
+        </section>
+      <% end %>
+    </section>
+
+    <%!-- 注目作（映画）。**公開中とこれからに分ける** —— 公開中のものは口コミで
+         観るかを決め、これからのものは公開日で予定を立てる --%>
+    <section
+      :if={@topic && Tazuna.Topics.works(@topic)}
+      class="event-calendar works-list"
+      aria-label="注目作"
+    >
+      <h2 class="news-section-title">注目作</h2>
+      <p :if={@works in [nil, :loading]} class="muted-note">読み込んでいます…</p>
+      <p :if={match?({:error, _}, @works)} class="muted-note">{cal_error(@works)}</p>
+      <%= if match?({:ok, _}, @works) do %>
+        <% {:ok, all} = @works %>
+        <p :if={works_groups(all) == []} class="muted-note">
+          注目度が中以上の作品はまだありません（情報収集と整理が回ると並びます）。
+        </p>
+        <section :for={{label, list} <- works_groups(all)} class="event-day-list">
+          <h3>{label}（{length(list)} 本）</h3>
+          <ul>
+            <li :for={entry <- list} class={["event-item", "is-#{entry.attention}"]}>
+              <div class="event-item-head">
+                <span :if={entry.attention} class={["event-chip", "is-#{entry.attention}"]}>
+                  注目度 {attention_label(entry.attention)}
+                </span>
+                <a :if={entry.url} href={entry.url} target="_blank" rel="noreferrer">
+                  {entry.title}
+                </a>
+                <strong :if={!entry.url}>{entry.title}</strong>
+              </div>
+              <.work_detail entry={entry} />
             </li>
           </ul>
         </section>
@@ -367,6 +407,7 @@
     <%!-- **並び替えで閉じない**（開いているかはブラウザが持つ。描き直しで open を
          外されると、押した並び替えのたびに一覧が畳まれる） --%>
     <details
+      :if={Tazuna.Topics.articles?(@topic)}
       id="news-articles"
       class="news-articles"
       phx-mounted={Phoenix.LiveView.JS.ignore_attributes(["open"])}

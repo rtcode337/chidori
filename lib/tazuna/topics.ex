@@ -30,6 +30,9 @@ defmodule Tazuna.Topics do
   `note` は**その話題ならではの頼みごと**で、整理の回の依頼文に足されます。
   関心（何を集めるか）とは別物です —— あちらは「何が読む価値があるか」、
   こちらは「1 件ごとに何を書き足すか」。
+
+  `works` は**1 件 = 1 作品として育てる話題**の作り方（映画。`Tazuna.News.Movies`）。
+  書くと記事を溜めず、巡回も依頼文もそのモジュールが決めます。
   """
   def defined do
     [
@@ -146,31 +149,27 @@ defmodule Tazuna.Topics do
         name: "映画",
         collection: "tazuna_movies",
         interest:
-          "いま話題の映画。公開が決まった作品・公開中の作品と、その評判・興行成績。" <>
-            "観るかどうかの判断が変わるもの(公開日と上映形式、配信の開始、評価の割れ方、" <>
-            "受賞、続編や打ち切りの決定)を優先する",
-        # **更新の速さが違う。** 映画は 1 日で情勢がひっくり返る話題ではないので、
-        # 短い間隔で回しても同じものを読み直すだけになる（枠も無駄に食う）
-        every: %{feed: 360, refine: 720},
-        feeds: [
-          %{url: "https://natalie.mu/eiga/feed/news", tags: ["ニュース"]},
-          %{url: "https://cinema.ne.jp/feed/", tags: ["記事"]},
-          %{url: "https://www.banger.jp/feed/", tags: ["記事"]}
-        ],
-        # 話題ならではの頼みごと。**整理の回に足す** —— 評判も興行収入も配信元には
-        # 載っていないので、外を当たる力を持つ回でなければ足せない
-        note: """
-        この話題では、1 件ごとに次のことも足してください。
-
-        - **評判**（口コミの傾向）と**興行成績**が分かれば body に足す。数字は
-          **いつ時点のものか**と一緒に書き、**出どころの URL を残す**（url か body に）
-        - **口コミの本文は写さないでください。** 傾向を自分の言葉で書きます
-          （「賛否が割れている」「映像を評価する声が多い」）—— 写すと転載になるうえ、
-          1 人の感想は作品の評判ではありません
-        - **結末や仕掛けは書かないでください。** 読む人はまだ観ていません
-        - 公開日・配信開始日・上映形式（IMAX など）は**決まっているものだけ**。
-          予定は予定と分かるように書いてください
-        """
+          "日本の映画館でこれから公開される映画と、公開中の映画。" <>
+            "観るかどうかの判断が変わるもの(公開日と上映形式、注目の度合い、" <>
+            "公開後の口コミの傾向と興行成績、配信の開始)を優先する",
+        # **1 件 = 1 作品**（`Tazuna.News.Movies`）。記事を溜めると、同じ作品の記事が
+        # 何本も並び、公開日も注目度も口コミも作品ごとにまとまらない。
+        # 配信元は持たず、公開予定を探す回（情報収集）と、注目度と口コミを育てる回
+        # （整理）だけで回す
+        works: Tazuna.News.Movies,
+        feeds: [],
+        # **公開日のカレンダーを出す**（技術イベントと同じ仕組みで、日付のタグが違う）
+        calendar: true,
+        date_tag: Tazuna.News.Movies.date_tag(),
+        item_word: "公開作",
+        # **日付では落とさない**（3 か月先の作品を、足した日から 30 日で落とすことになる）。
+        # 公開から時間が経ったものは整理の回に落とさせる
+        ages_out: false,
+        # **要約は作りません。** 見たいのは公開日と注目作で、定時にまとめて知らせる
+        # ほど日々動く話題ではない
+        digest: false,
+        # **記事一覧は出しません**（1 件が記事ではなく作品なので）。代わりに注目作を並べる
+        articles: false
       }
     ]
   end
@@ -203,6 +202,25 @@ defmodule Tazuna.Topics do
   @doc "開催日のカレンダーを出す話題か（`Tazuna.News.Events`）。"
   def calendar?(%{calendar: true}), do: true
   def calendar?(_topic), do: false
+
+  @doc "カレンダーの日付を読むタグの頭（既定は技術イベントの `開催日`）。"
+  def date_tag(%{date_tag: tag}) when is_binary(tag), do: tag
+  def date_tag(_topic), do: Tazuna.News.Events.date_tag()
+
+  @doc "カレンダーに並ぶものの呼び名（「その日の〜」。既定は「イベント」）。"
+  def item_word(%{item_word: word}) when is_binary(word), do: word
+  def item_word(_topic), do: "イベント"
+
+  @doc """
+  1 件 = 1 作品として育てる話題なら、その作り方のモジュール（`Tazuna.News.Movies`）。
+  記事を溜める話題では nil。
+  """
+  def works(%{works: module}) when is_atom(module) and module != nil, do: module
+  def works(_topic), do: nil
+
+  @doc "記事の一覧を出す話題か。**既定は出す**（作品を育てる話題では出さない）。"
+  def articles?(%{articles: false}), do: false
+  def articles?(_topic), do: true
 
   @doc "話題の一覧（定義の順）。そのままタブの並びになります。"
   def list, do: defined()

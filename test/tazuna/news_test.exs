@@ -728,25 +728,39 @@ defmodule Tazuna.NewsTest do
     test "動きの遅い話題は、間隔を長くできる" do
       # 1 日で情勢がひっくり返らない話題を短い間隔で回しても、同じものを読み直す
       # だけで枠を食う。**話題が書いていればそちらを使う**
-      movies = defined_topic("tazuna_movies") |> News.sweeps() |> Map.new(&{&1.name, &1})
+      events = defined_topic("tazuna_events") |> News.sweeps() |> Map.new(&{&1.name, &1})
       tech = defined_topic("tazuna_tech") |> News.sweeps() |> Map.new(&{&1.name, &1})
 
-      assert movies["機械収集"].interval_minutes > tech["機械収集"].interval_minutes
-      assert movies["整理"].interval_minutes > tech["整理"].interval_minutes
+      assert events["整理"].interval_minutes > tech["整理"].interval_minutes
     end
 
     test "その話題ならではの頼みごとは、整理の回に足す" do
-      # 評判も興行成績も配信元には載っていない。外を当たる力を持つ回でなければ足せない
-      prompt = News.refine_prompt(defined_topic("tazuna_movies"))
+      prompt = News.refine_prompt(defined_topic("tazuna_events"))
 
-      assert prompt =~ "興行成績"
-
-      # 口コミの本文は写させない（転載になるうえ、1 人の感想は作品の評判ではない）
-      assert prompt =~ "口コミの本文は写さないでください"
-      assert prompt =~ "結末や仕掛けは書かないでください"
+      assert prompt =~ Tazuna.News.Events.refine_note() |> String.split("\n") |> hd()
 
       # 持たない話題には足さない
-      refute News.refine_prompt(defined_topic("tazuna_tech")) =~ "口コミ"
+      refute News.refine_prompt(defined_topic("tazuna_tech")) =~ "開催日"
+    end
+
+    test "作品を育てる話題は、先を探す回と整理の回だけで回す" do
+      # 記事を集める回を置くと、単位が記事に戻る
+      sweeps = defined_topic("tazuna_movies") |> News.sweeps()
+      by_name = Map.new(sweeps, &{&1.name, &1})
+
+      assert Enum.map(sweeps, & &1.name) == ["情報収集", "整理"]
+      assert by_name["情報収集"].only_new
+      # 空の収集を相手に整理が走らないように
+      assert by_name["整理"].after == "情報収集"
+      assert by_name["整理"].prompt =~ "{current}"
+      assert by_name["情報収集"].prompt =~ "{names}"
+
+      attrs = News.attrs("tazuna_movies", defined_topic("tazuna_movies"))
+      assert attrs.feed == nil
+      assert attrs.keep_days == 0
+
+      # 名指ししない回が記事を集め始めないように、収集ぜんたいの文も作品を探す文
+      assert attrs.prompt == by_name["情報収集"].prompt
     end
 
     test "要旨は、1 行目と箇条書きに分けて書かせる" do

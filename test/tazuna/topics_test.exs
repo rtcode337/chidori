@@ -93,12 +93,32 @@ defmodule Tazuna.TopicsTest do
     refute Topics.ages_out?(%{name: "何か", ages_out: false})
   end
 
-  test "映画の話題が入っている" do
-    movies = Topics.get("tazuna_movies")
+  describe "映画" do
+    setup do
+      %{movies: Topics.get("tazuna_movies")}
+    end
 
-    assert movies.name == "映画"
-    # 公開情報は機械で引き、評判と興行成績は整理の回が足す
-    assert length(movies.feeds) >= 3
-    assert movies.interest =~ "公開"
+    test "1 件 = 1 作品として育てる", %{movies: movies} do
+      # 記事を溜めると、同じ作品の記事が何本も並び、作品ごとにまとまらない
+      assert movies.name == "映画"
+      assert Topics.works(movies) == Tazuna.News.Movies
+      assert movies.feeds == []
+      refute Topics.articles?(movies)
+      assert Topics.articles?(Topics.get("tazuna_tech"))
+    end
+
+    test "要約は作らず、公開日のカレンダーを出す", %{movies: movies} do
+      refute Topics.digest?(movies)
+      assert Topics.calendar?(movies)
+      assert Topics.date_tag(movies) == "公開日"
+      assert Topics.item_word(movies) == "公開作"
+      # 技術イベントは今までどおり
+      assert Topics.date_tag(Topics.get("tazuna_events")) == "開催日"
+    end
+
+    test "日付では古くならない", %{movies: movies} do
+      # 3 か月先の作品を、足した日から 30 日で落とすことになる
+      refute Topics.ages_out?(movies)
+    end
   end
 end

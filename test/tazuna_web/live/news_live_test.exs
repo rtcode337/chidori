@@ -101,6 +101,44 @@ defmodule TazunaWeb.NewsLiveTest do
              "送っています…"
   end
 
+  describe "注目作の一覧" do
+    alias TazunaWeb.NewsLive
+
+    defp work(title, date, attention), do: %{title: title, date: date, attention: attention}
+
+    test "公開中とこれからに分け、公開から時間が経ったものは並べない" do
+      today = ~D[2026-10-01]
+
+      groups =
+        NewsLive.works_groups(
+          [
+            work("古い", ~D[2026-07-01], :high),
+            work("公開中・中", ~D[2026-09-20], :mid),
+            work("公開中・高", ~D[2026-09-01], :high),
+            work("今日", ~D[2026-10-01], :mid),
+            work("来月", ~D[2026-11-05], :mid),
+            work("来週", ~D[2026-10-08], :high)
+          ],
+          today
+        )
+
+      assert [{"公開中", showing}, {"これから公開", coming}] = groups
+      # 公開中は注目度の高い順、同じなら新しい順
+      assert Enum.map(showing, & &1.title) == ["公開中・高", "今日", "公開中・中"]
+      # これからは公開の近い順
+      assert Enum.map(coming, & &1.title) == ["来週", "来月"]
+    end
+
+    test "本文の URL はリンクにする" do
+      assert NewsLive.link_parts("出どころ: https://example.com/a、https://example.com/b") == [
+               {:text, "出どころ: "},
+               {:url, "https://example.com/a"},
+               {:text, "、"},
+               {:url, "https://example.com/b"}
+             ]
+    end
+  end
+
   describe "Chiezo の収集の枠" do
     @collection %{
       "name" => "tazuna_news",
