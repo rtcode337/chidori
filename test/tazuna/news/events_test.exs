@@ -88,6 +88,54 @@ defmodule Tazuna.News.EventsTest do
     assert length(Events.only_places(entries, ["東京都"])) == 2
   end
 
+  describe "国内と海外" do
+    test "都道府県なら国内、オンラインはオンライン、それ以外は海外" do
+      assert Events.region("東京都") == :japan
+      assert Events.region("北海道") == :japan
+      assert Events.region("オンライン") == :online
+      assert Events.region("アメリカ") == :abroad
+    end
+
+    test "マスに添える呼び名は短く、2 つまで" do
+      assert Events.short_places(%{places: ["東京都", "オンライン"]}) == "東京・オンライン"
+      assert Events.short_places(%{places: ["北海道"]}) == "北海道"
+      assert Events.short_places(%{places: ["アメリカ", "オンライン", "東京都"]}) == "アメリカ・オンライン"
+    end
+
+    test "国内の会場があれば海外とは言わない" do
+      assert Events.abroad?(%{places: ["アメリカ"]})
+      assert Events.abroad?(%{places: ["アメリカ", "オンライン"]})
+      refute Events.abroad?(%{places: ["アメリカ", "東京都"]})
+      refute Events.abroad?(%{places: []})
+    end
+
+    test "開催地はオンライン・国内・海外の順に並び、国内・海外でまとめて絞れる" do
+      entries = [
+        %{places: ["アメリカ"]},
+        %{places: ["アメリカ"]},
+        %{places: ["大阪府"]},
+        %{places: ["オンライン"]}
+      ]
+
+      assert Events.places_of(entries) == ["オンライン", "大阪府", "アメリカ"]
+      assert length(Events.only_places(entries, [Events.abroad()])) == 2
+      assert Events.only_places(entries, [Events.japan()]) == [%{places: ["大阪府"]}]
+    end
+  end
+
+  test "説明は本文の頭から、日時と場所の行とタグを落として短く" do
+    summary =
+      "開催日時: 2026/10/25 13:30 ～ 15:30<br />開催場所: オンライン<br /><br /><h2>概要</h2> " <>
+        "<p><a href=\"https://example.test\">Python Boot Camp</a>から生まれた会です。</p> <p>A &amp; B</p>"
+
+    assert Events.description(%{summary: summary}) == "概要 Python Boot Campから生まれた会です。 A & B"
+
+    assert Events.description(%{summary: String.duplicate("あ", 300)}) ==
+             String.duplicate("あ", 200) <> "…"
+
+    assert Events.description(%{summary: nil}) == ""
+  end
+
   test "先を探す回は、興味トピックの分野のイベントも大きさを問わず探させる" do
     prompt = Events.look_ahead_prompt("技術のイベント", ["LLM", "Rust"])
 

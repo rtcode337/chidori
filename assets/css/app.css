@@ -786,14 +786,24 @@ body.digest-open { overflow: hidden; }
 .event-chip.is-mid { background: #fff; border-color: #c9c5f0; color: #4338a8; }
 .event-chip.is-low { background: #f3f4f8; color: #5b6076; }
 .event-more { font-size: .68rem; color: #6b7089; }
+/* 開催地。**札の頭に太字で**(どこで開かれるかで行けるかが決まる) */
+.event-where { margin-right: .25em; font-weight: 700; }
+/* 海外は色を変えて見分ける(破線の枠と青み) */
+.event-chip.is-abroad { border-style: dashed; }
+.event-chip.is-abroad .event-where { color: #0369a1; }
+.event-places button.is-abroad { border-style: dashed; }
+.event-places .event-place-group { font-weight: 700; }
+.event-abroad-mark { display: inline-block; margin-right: .4em; padding: 0 .35em; border: 1px dashed #0369a1; border-radius: .3rem; color: #0369a1; font-size: .75rem; font-weight: 700; }
 .event-day-list { margin-top: 1rem; }
 .event-day-list h3 { margin: 0 0 .5rem; font-size: 1rem; }
 .event-day-list ul { margin: 0; padding: 0; list-style: none; }
 .event-item { padding: .55rem 0; border-bottom: 1px solid #eef0f7; min-width: 0; }
 .event-item-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .5rem; overflow-wrap: anywhere; }
 .event-item-head .event-chip { display: inline-block; }
-.event-item.is-high .event-item-head a, .event-item.is-high .event-item-head strong { font-weight: 700; }
 .event-item-facts { margin: .2rem 0 0; color: #4b5068; font-size: .82rem; }
+.event-item.is-high .event-item-head a, .event-item.is-high .event-item-head strong { font-weight: 700; }
+/* 説明。**開いたまま出す**(ページを開かずに行くかどうかを決められるように) */
+.event-item-detail { margin: .35rem 0 0; padding: .4rem .7rem; border-left: 3px solid #d9dcea; background: #f8f9fc; color: #3a3f58; font-size: .85rem; overflow-wrap: anywhere; }
 @media (max-width: 640px) {
   .event-grid td { height: 4.2rem; }
   .event-chip { font-size: .62rem; padding: 0 .15rem; }

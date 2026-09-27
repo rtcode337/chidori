@@ -82,12 +82,26 @@
           >
             すべて
           </button>
+          <%!-- 国内か海外かで「行けるか」の読み方がまるで違うので、まとめて選べる口を置く --%>
+          <button
+            :for={group <- cal_groups(all)}
+            type="button"
+            phx-click="cal_place"
+            phx-value-place={group}
+            class={["event-place-group", group in @cal_places && "selected"]}
+            aria-pressed={to_string(group in @cal_places)}
+          >
+            {group}
+          </button>
           <button
             :for={place <- Events.places_of(all)}
             type="button"
             phx-click="cal_place"
             phx-value-place={place}
-            class={place in @cal_places && "selected"}
+            class={[
+              place in @cal_places && "selected",
+              Events.region(place) == :abroad && "is-abroad"
+            ]}
             aria-pressed={to_string(place in @cal_places)}
           >
             {place}
@@ -124,10 +138,18 @@
                   aria-label={"#{cell.date.month}月#{cell.date.day}日 #{length(cell.events)} 件"}
                 >
                   <span class="event-day-num">{cell.date.day}</span>
+                  <%!-- **開催地を先に出す**（どこで開かれるかで行けるかが決まる）。
+                       海外は色を変えて「海外」と添える --%>
                   <span
                     :for={entry <- cal_prominent(cell.events)}
-                    class={["event-chip", "is-#{entry.attention}"]}
+                    class={[
+                      "event-chip",
+                      "is-#{entry.attention}",
+                      Events.abroad?(entry) && "is-abroad"
+                    ]}
+                    title={"#{entry.title}（#{cal_where(entry)}）"}
                   >
+                    <span :if={entry.places != []} class="event-where">{cal_where(entry)}</span>
                     {entry.title}
                   </span>
                   <span :if={cal_rest(cell.events) > 0} class="event-more">
@@ -162,7 +184,12 @@
                 <strong :if={!entry.url}>{entry.title}</strong>
               </div>
               <p class="event-item-facts">
+                <span :if={Events.abroad?(entry)} class="event-abroad-mark">海外</span>
                 {event_facts(entry)}
+              </p>
+              <%!-- **説明は開いたまま出す**（行くかどうかを、ページを開かずに決められるように） --%>
+              <p :if={Events.description(entry) != ""} class="event-item-detail">
+                {Events.description(entry)}
               </p>
             </li>
           </ul>

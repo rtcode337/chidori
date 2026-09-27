@@ -1115,6 +1115,22 @@ defmodule TazunaWeb.NewsLive do
     |> Enum.take(@cal_names)
   end
 
+  @doc "マスの札に添える開催地（海外は「海外」を頭に）。"
+  def cal_where(entry) do
+    if Events.abroad?(entry),
+      do: "海外 " <> Events.short_places(entry),
+      else: Events.short_places(entry)
+  end
+
+  @doc "開催地のまとめて選ぶ口（その月に国内・海外の両方があるときだけ出す）。"
+  def cal_groups(entries) do
+    regions = entries |> Enum.flat_map(& &1.places) |> Enum.map(&Events.region/1) |> MapSet.new()
+
+    if MapSet.member?(regions, :japan) and MapSet.member?(regions, :abroad),
+      do: [Events.japan(), Events.abroad()],
+      else: []
+  end
+
   @doc "マスに名前を出さなかった件数。"
   def cal_rest(events), do: length(events) - length(cal_prominent(events))
 

@@ -42,6 +42,18 @@ defmodule Tazuna.News.Events do
   # 毎日探しても同じものを見つけ直すだけで枠を食う
   @look_ahead_minutes 7 * 24 * 60
 
+  # 都道府県。**開催地がこのどれでもなければ海外**（整理の回には、海外は国名で
+  # 書かせている）。国内か海外かで「行けるか」の読み方がまるで違うので、画面で分ける
+  @prefectures ~w(北海道 青森県 岩手県 宮城県 秋田県 山形県 福島県 茨城県 栃木県 群馬県
+                 埼玉県 千葉県 東京都 神奈川県 新潟県 富山県 石川県 福井県 山梨県 長野県
+                 岐阜県 静岡県 愛知県 三重県 滋賀県 京都府 大阪府 兵庫県 奈良県 和歌山県
+                 鳥取県 島根県 岡山県 広島県 山口県 徳島県 香川県 愛媛県 高知県 福岡県
+                 佐賀県 長崎県 熊本県 大分県 宮崎県 鹿児島県 沖縄県)
+
+  # 開催地の絞り込みで、まとめて選ぶ口（都道府県・国名ではない特別な値）
+  @japan "国内"
+  @abroad "海外"
+
   # 都道府県の書き出し（本文の「開催場所:」から拾う）
   @prefecture ~r/^(北海道|東京都|(?:京都|大阪)府|.{2,3}県)/u
 
@@ -302,22 +314,105 @@ defmodule Tazuna.News.Events do
   def sort(entries), do: Enum.sort_by(entries, &{-rank(&1.attention), &1.title})
 
   @doc """
-  出てくる開催地（多い順）。**オンラインは先頭に**（どこからでも行けるので、
-  場所で絞る人もまず残したい）。
+  出てくる開催地。**オンラインを先頭に**（どこからでも行けるので、場所で絞る人も
+  まず残したい）、次に国内、最後に海外（それぞれ多い順）。
   """
   def places_of(entries) do
     entries
     |> Enum.flat_map(& &1.places)
     |> Enum.frequencies()
-    |> Enum.sort_by(fn {place, count} -> {place != @online, -count, place} end)
+    # オンライン → 国内（多い順）→ 海外（多い順）
+    |> Enum.sort_by(fn {place, count} ->
+      {Map.fetch!(%{online: 0, japan: 1, abroad: 2}, region(place)), -count, place}
+    end)
     |> Enum.map(&elem(&1, 0))
   end
 
-  @doc "開催地で絞ります。**何も選んでいなければ全部**。開催地の分からないものは絞ると外れます。"
+  @doc """
+  開催地で絞ります。**何も選んでいなければ全部**。開催地の分からないものは絞ると外れます。
+  「国内」「海外」を選ぶと、都道府県すべて・国内とオンライン以外すべてに当たります。
+  """
   def only_places(entries, []), do: entries
 
   def only_places(entries, picked) do
-    Enum.filter(entries, fn entry -> Enum.any?(entry.places, &(&1 in picked)) end)
+    Enum.filter(entries, fn entry ->
+      Enum.any?(entry.places, fn place ->
+        place in picked or (@japan in picked and region(place) == :japan) or
+          (@abroad in picked and region(place) == :abroad)
+      end)
+    end)
+  end
+
+  @doc "開催地の絞り込みで、国内をまとめて選ぶ値。"
+  def japan, do: @japan
+
+  @doc "開催地の絞り込みで、海外をまとめて選ぶ値。"
+  def abroad, do: @abroad
+
+  @doc "開催地が国内（`:japan`）・海外（`:abroad`）・オンライン（`:online`）のどれか。"
+  def region(@online), do: :online
+  def region(place) when place in @prefectures, do: :japan
+  def region(_place), do: :abroad
+
+  @doc "海外で開かれるイベントか（国内の会場もあれば国内として扱う）。"
+  def abroad?(%{places: places}) do
+    Enum.any?(places, &(region(&1) == :abroad)) and
+      not Enum.any?(places, &(region(&1) == :japan))
+  end
+
+  @doc """
+  マスに添える開催地の短い呼び名（「東京」「大阪」「オンライン」「アメリカ」）。
+  都道府県は末尾の都・府・県を落とす（北海道はそのまま）。**2 つまで**
+  （会場とオンラインの両方、くらいまでがマスに収まる）。
+  """
+  def short_places(%{places: places}) do
+    places |> Enum.take(2) |> Enum.map_join("・", &short_place/1)
+  end
+
+  defp short_place("北海道"), do: "北海道"
+
+  defp short_place(place) do
+    if region(place) == :japan, do: String.replace(place, ~r/[都府県]$/u, ""), else: place
+  end
+
+  # 説明に出す長さ。**読むかどうかを決める 2〜3 行**（全文は申込ページにある）
+  @description_chars 200
+
+  @doc """
+  1 件の簡単な説明（日を押した一覧で、それぞれの下に出す）。
+
+  **本文の頭を地の文にして使います。** connpass の本文は HTML のまま入っていて、
+  頭に「開催日時:」「開催場所:」の行がある —— 日時と場所は一覧に別に出しているので
+  落とし、タグを外して空白を詰め、#{@description_chars} 字で切ります。
+  AI が書き直した本文（外から足したもの）はそのまま地の文なので、同じ扱いで通ります。
+  """
+  def description(%{summary: summary}) when is_binary(summary) do
+    text =
+      summary
+      |> String.replace(~r/<br\s*\/?>|<\/p>|<\/h\d>|<\/li>/iu, "\n")
+      |> String.replace(~r/<[^>]*>/u, "")
+      |> unescape()
+      |> String.split("\n")
+      |> Enum.reject(&String.match?(&1, ~r/^\s*(開催日時|開催場所)[:：]/u))
+      |> Enum.join(" ")
+      |> String.replace(~r/\s+/u, " ")
+      |> String.trim()
+
+    if String.length(text) > @description_chars,
+      do: String.slice(text, 0, @description_chars) <> "…",
+      else: text
+  end
+
+  def description(_entry), do: ""
+
+  defp unescape(text) do
+    text
+    |> String.replace("&nbsp;", " ")
+    |> String.replace("&lt;", "<")
+    |> String.replace("&gt;", ">")
+    |> String.replace("&quot;", "\"")
+    |> String.replace("&#39;", "'")
+    |> String.replace("&amp;", "&")
   end
 
   defp rank(:high), do: 3
