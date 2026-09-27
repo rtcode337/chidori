@@ -647,7 +647,8 @@ defmodule TazunaWeb.NewsLiveTest do
       # 押せる口だけあって中身が育たないのは、設定し忘れに見える
       stub_themes([@news_collection], [])
 
-      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news")
+      # （一般ニュースも網を持つようになったので、持たない技術イベントで見る）
+      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_events")
       html = render_async(live, 2_000)
 
       refute html =~ "トピックの収集"

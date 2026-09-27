@@ -590,9 +590,31 @@ defmodule Tazuna.NewsTest do
       assert tech =~ "話題になっている論文"
     end
 
-    test "一般ニュースはトピックの網を育てない" do
-      refute Tazuna.Topics.themes?(defined_topic("tazuna_news"))
+    test "一般ニュースも技術ニュースと同じくトピックの網を育てる" do
+      # 記事が毎日まとまった数で流れてくる話題なので、網にでき、興味トピックも選べる
+      assert Tazuna.Topics.themes?(defined_topic("tazuna_news"))
       assert Tazuna.Topics.themes?(defined_topic("tazuna_tech"))
+    end
+
+    test "一般ニュースの整理は、ニュースの出どころと人気枠で頼む" do
+      # 共通の文は技術向け（論文・テックブログ・Qiita）で、ニュースには合わない
+      news = News.refine_prompt(defined_topic("tazuna_news"))
+      tech = News.refine_prompt(defined_topic("tazuna_tech"))
+
+      assert news =~ "官公庁・自治体"
+      assert news =~ "各社のトップや速報"
+      refute news =~ "話題になっている論文"
+      refute news =~ "Qiita"
+      assert tech =~ "Qiita の人気"
+    end
+
+    test "トピックの網の例も話題ごと" do
+      # 一般ニュースの網に「AI」「インフラ」を例に出すと、分野がそちらへ引っ張られる
+      news = Tazuna.Themes.tidy_prompt(defined_topic("tazuna_news"))
+
+      assert news =~ "分野:政治"
+      refute news =~ "分野:インフラ"
+      assert Tazuna.Themes.tidy_prompt(defined_topic("tazuna_tech")) =~ "分野:インフラ"
     end
 
     test "割り込みは整理の回に乗せる" do
@@ -665,7 +687,7 @@ defmodule Tazuna.NewsTest do
             News.refine_prompt(defined_topic("tazuna_tech"))
           ] do
         assert prompt =~ "固有名"
-        assert prompt =~ "製品・サービス・技術・組織"
+        assert prompt =~ "人・組織・製品・サービス・技術"
       end
     end
 

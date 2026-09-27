@@ -174,6 +174,22 @@ defmodule Tazuna.Themes do
   畳むと片方が消え、外した語は二度と戻ってきません。迷ったものは触らせずに
   次の回へ送ります。
   """
+  # 依頼文の例。**話題が書いていればそちら**（`Tazuna.Topics` の `theme_examples`）——
+  # 一般ニュースの網に「AI」「インフラ」を例に出すと、分野がそちらへ引っ張られる
+  defp field_examples(topic) do
+    topic
+    |> theme_examples(:fields, ["AI", "セキュリティ", "インフラ"])
+    |> Enum.map_join("、", &(@field_prefix <> &1))
+  end
+
+  defp parent_example(topic) do
+    {child, parent} = theme_examples(topic, :parent, {"AIエージェント", "AI"})
+    "「#{child}」の親は「#{parent}」"
+  end
+
+  defp theme_examples(topic, key, default),
+    do: topic |> Map.get(:theme_examples, %{}) |> Map.get(key, default)
+
   def tidy_prompt(topic) do
     """
     {names}
@@ -200,7 +216,7 @@ defmodule Tazuna.Themes do
     **粒度が違うだけの語は畳まないでください** —— それは次の親子です。
 
     **2. 親子を決める。** より広い語が手元にあるなら "#{@parent_prefix}<広いほうの名前>" を
-    1 つだけ付けてください（例: 「AIエージェント」の親は「AI」）。**上に並んでいる
+    1 つだけ付けてください（例: #{parent_example(topic)}）。**上に並んでいる
     名前だけ**を指してください —— 無い名前を指すと、図では線の先が空になります。
 
     **3. 話題でない語を外す。** 媒体や配信元の名前、種別、読む人の行動、
@@ -220,9 +236,8 @@ defmodule Tazuna.Themes do
       **本文は上に出していない**ので、いまの説明を読みたいときは `doc` で引けます
     - tags:
       - "#{@theme_tag}" は**そのまま残してください**（図に出す目印です）
-      - "#{@field_prefix}<分野>" を 1 つ（例: #{@field_prefix}AI、#{@field_prefix}セキュリティ、
-        #{@field_prefix}インフラ。**分野は増やしすぎないでください** —— 色が分かれすぎると
-        図が読めません）
+      - "#{@field_prefix}<分野>" を 1 つ（例: #{field_examples(topic)}。
+        **分野は増やしすぎないでください** —— 色が分かれすぎると図が読めません）
       - 親と言い換えは上のとおり
 
     **触らないものは返さないでください。** 返さなかったものはそのまま残ります。
