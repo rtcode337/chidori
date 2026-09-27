@@ -242,7 +242,7 @@ defmodule TazunaWeb.NewsLiveTest do
       assert tag =~ "news-articles"
       refute tag =~ ~r/\sopen(\s|>|=)/
       assert tag =~ "ignore_attrs"
-      assert html =~ "記事一覧（2 件）"
+      assert html =~ "記事一覧（直近 3 日・2 件）"
     end
 
     test "まとめは記事の一覧に混ぜない", %{conn: conn} do

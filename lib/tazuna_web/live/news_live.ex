@@ -430,6 +430,12 @@ defmodule TazunaWeb.NewsLive do
   def handle_event("sort_articles", %{"by" => "interest"}, socket),
     do: {:noreply, assign(socket, article_sort: :interest)}
 
+  def handle_event("sort_articles", %{"by" => "newest"}, socket),
+    do: {:noreply, assign(socket, article_sort: :newest)}
+
+  def handle_event("sort_articles", %{"by" => "bookmarks"}, socket),
+    do: {:noreply, assign(socket, article_sort: :bookmarks)}
+
   def handle_event("sort_articles", _params, socket),
     do: {:noreply, assign(socket, article_sort: :importance)}
 
@@ -717,6 +723,13 @@ defmodule TazunaWeb.NewsLive do
   def sorted_articles(%{articles: articles}, :interest),
     do: Enum.sort_by(articles, &{-(&1[:interest] || -1), -&1.importance})
 
+  # 新しい順は、読み込んだときの並び（公開の新しい順。`News.in_window/2`）のまま
+  def sorted_articles(%{articles: articles}, :newest), do: articles
+
+  # **反応の多い順**（はてブ数の実数）。数の無い記事は後ろ、同じ数なら重要度順
+  def sorted_articles(%{articles: articles}, :bookmarks),
+    do: Enum.sort_by(articles, &{-(&1[:bookmarks] || -1), -&1.importance})
+
   def sorted_articles(%{articles: articles}, _sort), do: Enum.sort_by(articles, &(-&1.importance))
 
   def sorted_articles(_news, _sort), do: []
@@ -784,7 +797,10 @@ defmodule TazunaWeb.NewsLive do
       <div>
         <%!-- 反応の大きさ・興味の近さは重要度と別の軸なので、印の隣ではなく日付の並びに置く --%>
         <p class="news-source">
-          {@article.collected_at}<span :if={buzz_text(@article)}>・{buzz_text(@article)}</span><span
+          {@article.collected_at}<span
+            :if={is_integer(@article[:bookmarks]) and @article[:bookmarks] > 0}
+            class="bookmark-count"
+          >・{@article[:bookmarks]} users</span><span :if={buzz_text(@article)}>・{buzz_text(@article)}</span><span
             :if={interest_text(@article)}
             class="interest-score"
           >・{interest_text(@article)}</span>

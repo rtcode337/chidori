@@ -61,6 +61,29 @@ defmodule Tazuna.NewsTest do
     })
   end
 
+  describe "記事一覧の窓" do
+    defp dated(title, at), do: %{title: title, at: at}
+
+    test "公開の新しい順に並べ、直近 72 時間を残す（薄ければ新しい順に 20 件まで埋める）" do
+      now = ~U[2026-09-27 12:00:00Z]
+
+      fresh =
+        for i <- 1..25,
+            do: dated("新しい#{i}", DateTime.add(now, -i * 3600, :second) |> DateTime.to_iso8601())
+
+      old = [dated("古い", "2026-09-01"), dated("日付なし", nil)]
+
+      window = News.in_window(Enum.shuffle(old ++ fresh), now)
+      assert length(window) == 25
+      assert hd(window).title == "新しい1"
+      refute Enum.any?(window, &(&1.title in ["古い", "日付なし"]))
+
+      # 窓が薄いときは、古いものでも新しい順に 20 件までは出す
+      thin = News.in_window(old ++ Enum.take(fresh, 3), now)
+      assert Enum.map(thin, & &1.title) == ["新しい1", "新しい2", "新しい3", "古い", "日付なし"]
+    end
+  end
+
   describe "to_articles/1" do
     test "見出しと要約と、原文へのリンクを組み立てる" do
       assert [article] = News.to_articles([recent("静かな話題")])
@@ -127,18 +150,28 @@ defmodule Tazuna.NewsTest do
         %{method: :get, url: "http://chiezo.test:7010/v1/tazuna_news/filter?" <> _query} ->
           HttpStub.ok(Jason.encode!(%{"results" => []}))
 
+        # 記事一覧の窓は新着の口から（公開の新しい順に並べ直す）
+        %{method: :get, url: "http://chiezo.test:7010/v1/tazuna_news/recent?" <> _query} ->
+          HttpStub.ok(Jason.encode!(%{"docs" => [recent("地震の続報")]}))
+
+        # 反応の実数（はてブ数）
+        %{method: :get, url: "https://bookmark.hatenaapis.com/count/entries?" <> query} ->
+          assert query =~ "url=https%3A%2F%2Fexample.com%2F1"
+          HttpStub.ok(~s({"https://example.com/1": 12}))
+
         %{method: :get, url: url} ->
           assert url =~ "/v1/collect/tazuna_news"
-          HttpStub.ok(detail_body([recent("地震の続報")]))
+          HttpStub.ok(detail_body([recent("見本の 1 件")]))
       end)
 
+      Tazuna.News.Hatena.clear()
       name = start_news()
       News.subscribe()
       News.refresh(name)
 
       assert_receive {:news_updated, %{status: :loading}}, 1_000
       assert_receive {:news_updated, %{status: :ready} = news}, 2_000
-      assert [%{title: "地震の続報", importance: 2}] = news.articles
+      assert [%{title: "地震の続報", importance: 2, bookmarks: 12}] = news.articles
       assert news.collection.enabled
       # 溜まった件数はソース表から埋める（定義には入っていない）
       assert news.collection.docs == 42

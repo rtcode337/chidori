@@ -94,6 +94,16 @@ defmodule Tazuna.News do
   @interest_digest_tag "興味のまとめ"
   @interest_digest_sweep Tazuna.SweepNames.interest_digest()
 
+  # 記事一覧の窓。**公開の新しい順**に、直近 `@window_hours` 時間に出たものを並べる。
+  # 収集の見本（`?samples=`）は `updated_at` の新しい順で、整理が触るたびに進む ——
+  # そのまま並べると一覧は「直近の整理で AI が触った順」になり、いつ出た記事かと
+  # 関係が無くなっていた。候補は新着の口から多めに取り（`@window_candidates`）、
+  # 窓が薄いときは新しい順に `@window_min` 件までは埋める
+  @window_hours 72
+  @window_min 20
+  @window_max 80
+  @window_candidates 200
+
   # トピックから引く記事の上限（語 1 つあたり）。**見に行く画面なので、全部は要らない**
   @tagged_limit 60
 
@@ -539,7 +549,7 @@ defmodule Tazuna.News do
             {:ok,
              %{
                collection: collection,
-               articles: to_articles(detail["recent"]),
+               articles: window(base, name, detail["recent"]),
                digests: digests(base, name, detail["recent"]),
                interest_digests: interest_digests(base, name)
              }}
@@ -933,6 +943,59 @@ defmodule Tazuna.News do
     end
   end
 
+  # 記事一覧の窓（`@window_hours`）。**新着の口が読めなければ、収集の見本で代える**
+  # （古い並びでも、何も出ないよりよい）。はてブ数はここで載せる（`Tazuna.News.Hatena`）
+  defp window(base, name, fallback) do
+    candidates =
+      case get(
+             base <>
+               "/v1/" <>
+               name <>
+               "/recent?limit=#{@window_candidates}&fields=title,tags,extra,opening,updated_at"
+           ) do
+        {:ok, %{status: 200, body: body}} ->
+          case Jason.decode(body) do
+            {:ok, %{"docs" => docs}} when is_list(docs) -> docs
+            _ -> fallback
+          end
+
+        _ ->
+          fallback
+      end
+
+    candidates |> to_articles() |> in_window() |> Tazuna.News.Hatena.with_counts()
+  end
+
+  @doc false
+  # 公開の新しい順に並べ、直近 `@window_hours` 時間のものを残す（薄ければ新しい順に
+  # `@window_min` 件までは埋め、`@window_max` 件で切る）
+  def in_window(articles, now \\ DateTime.utc_now()) do
+    sorted = Enum.sort_by(articles, &published_at/1, {:desc, DateTime})
+    cutoff = DateTime.add(now, -@window_hours * 3600, :second)
+    recent = Enum.take_while(sorted, &(DateTime.compare(published_at(&1), cutoff) != :lt))
+
+    if length(recent) >= @window_min,
+      do: Enum.take(recent, @window_max),
+      else: Enum.take(sorted, @window_min)
+  end
+
+  # 公開日時。**日付だけのもの**（`2026-09-25`）はその日の 0 時（UTC）として読む。
+  # 読めなければいちばん古い扱い（窓の外へ）
+  defp published_at(%{at: at}) when is_binary(at) do
+    case DateTime.from_iso8601(at) do
+      {:ok, dt, _offset} ->
+        dt
+
+      _ ->
+        case Date.from_iso8601(String.slice(at, 0, 10)) do
+          {:ok, date} -> DateTime.new!(date, ~T[00:00:00], "Etc/UTC")
+          _ -> ~U[1970-01-01 00:00:00Z]
+        end
+    end
+  end
+
+  defp published_at(_article), do: ~U[1970-01-01 00:00:00Z]
+
   @doc false
   # 溜まっているものを画面の並びにする。新しい順は Chiezo が付けたまま保つ。
   #
@@ -996,6 +1059,10 @@ defmodule Tazuna.News do
               # 人に見せる日時なので JST に直す（届くのは UTC の文字列）
               collected_at:
                 Jst.format(extra["published_at"] || item["updated_at"] || extra["collected_at"]),
+              # 並べるための生の日時（**公開が先**。無ければ取り込んだ日時）
+              at: extra["published_at"] || extra["collected_at"] || item["updated_at"],
+              # はてブ数（`Tazuna.News.Hatena`。記事一覧の窓で載せる）
+              bookmarks: nil,
               importance: importance,
               reason: reason,
               # **どれだけ反応されているか**（整理の回が付ける。無いこともある）
