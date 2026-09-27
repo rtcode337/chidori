@@ -95,4 +95,17 @@ defmodule Tazuna.Datasets.RequestsTest do
     assert Requests.plan("- [追加] (26.2,127.68)", partitions([@tokyo])) ==
              {:error, :no_partition}
   end
+
+  test "依頼の前置きは、閉店の報告を先に、確かめられなくても消させる" do
+    # 情報収集の主な仕事は「足りない店を足す」で、依頼は後ろに足されるだけだった。
+    # web で閉店を確かめられない小さな店が「確かめられなかった」として残っていた
+    preface = Requests.preface()
+
+    assert preface =~ "足りない店を探すより先に"
+    assert preface =~ "営業していると\n  確かめられない限り、墓標で消して"
+    assert preface =~ "残す理由になりません"
+    assert preface =~ "戻さないでください"
+    # 書き出すときに落としている見分けの番号
+    assert preface =~ "「 (数字)」が落ちている"
+  end
 end
