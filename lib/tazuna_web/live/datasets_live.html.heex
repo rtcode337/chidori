@@ -568,17 +568,6 @@
               <pre>{text}</pre>
             </div>
           </details>
-
-          <%!-- **1 回だけの調べ直し。** 整理の回はまだ調べていない本しか見ないので、
-             それより前に目を通した本の ISBN と話題は、ここからしか埋まらない --%>
-          <div :if={match?({:ok, [_ | _]}, @shelf)} class="button-row">
-            <button type="button" phx-click="backfill_shelf" disabled={@backfilled == :asking}>
-              {if @backfilled == :asking, do: "頼んでいます…", else: "本棚の本を 1 回調べ直す（ISBN・話題）"}
-            </button>
-          </div>
-          <p :if={@backfilled not in [nil, :asking]} class="muted-note" aria-live="polite">
-            {ask_message(@backfilled)}
-          </p>
         </section>
 
         <details :if={rows != []} class="partition-list">

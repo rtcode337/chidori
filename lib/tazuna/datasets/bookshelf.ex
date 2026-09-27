@@ -42,13 +42,15 @@ defmodule Tazuna.Datasets.Bookshelf do
 
   # ISBN のタグの頭（`ISBN:9784873115658`）。**脇書きと同じ番号をタグにも付ける** ——
   # 整理の回が全冊を見る差し込み口（`{names}`）は見出しとタグしか見せないので、
-  # タグに無いと「ISBN がまだ無い本」を選べない
+  # タグに無いと、同じ本を畳むときに版を見分ける手がかりが無い
   @isbn_tag "ISBN"
-  # 調べて確かめられなかった印。**付いた本は整理のたびには調べ直さない**
+  # 調べて確かめられなかった印（番号の代わりに付ける）
   @isbn_unknown "不明"
-  # 整理の 1 回で調べ残し（分野・ISBN の無い本）を埋める冊数の上限
-  # （web で 1 冊ずつ確かめるので、枠を見て絞る）
-  @isbn_per_run 20
+  # 整理の 1 回に Chiezo が渡す、まだ調べていない本の数（`unreviewed_per_run`）。
+  # **数を決めるのは Chiezo で、AI には渡した本を全部調べさせる** —— 1 冊ごとに
+  # web で確かめるので、一度に 160 冊あまりを渡した回は 18 冊で手が止まった。
+  # 渡さなかった本は次の回に回る
+  @tidy_per_run 20
 
   # 定番に上げる下限（勧めている記事の数）。**3 は「たまたま」を外せる数**
   @classic_sources 3
@@ -101,8 +103,8 @@ defmodule Tazuna.Datasets.Bookshelf do
   @doc "ISBN のタグの頭。"
   def isbn_tag, do: @isbn_tag
 
-  @doc "整理の 1 回で調べ残しを埋める冊数の上限。"
-  def isbn_per_run, do: @isbn_per_run
+  @doc "整理の 1 回に渡す、まだ調べていない本の数。"
+  def tidy_per_run, do: @tidy_per_run
 
   @doc "定番に上げる下限（勧めている記事の数）。"
   def classic_sources, do: @classic_sources
@@ -170,7 +172,12 @@ defmodule Tazuna.Datasets.Bookshelf do
         use_extract: true,
         only_new: true
       },
-      %{name: SweepNames.tidy(), interval_minutes: @tidy_minutes, prompt: :tidy}
+      %{
+        name: SweepNames.tidy(),
+        interval_minutes: @tidy_minutes,
+        prompt: :tidy,
+        unreviewed_per_run: @tidy_per_run
+      }
     ]
   end
 
@@ -205,19 +212,11 @@ defmodule Tazuna.Datasets.Bookshelf do
     **技術書でない語を外す。** 「入門書」「名著」のような**本の名前でないもの**、
     雑誌、資格の問題集は本棚に置きません（同じく墓標で）。
 
-    **調べ残しを埋める。** 上の一覧から、次のどちらかに当たる本を上から
-    **#{@isbn_per_run} 冊まで**選んでください。
+    ## B. まだ調べていない本を調べる
 
-    - 「#{@field_tag}:」のタグが**まだ無い本** —— 下の B の 1〜4 を**すべて**調べて返す
-      （説明の body も書く）
-    - 「#{@field_tag}:」はあるが、「#{@isbn_tag}:」で始まるタグが**まだ無い本** ——
-      「4. ISBN を調べる」だけでよい（body は返さなくて構いません。今のまま残ります）。
-      「#{@isbn_tag}:#{@isbn_unknown}」の付いた本は選ばない
-
-    ## B. 新しく入った本を調べる
-
-    次に並んでいるのは、**まだ誰も調べていない本だけ**です（調べ終えた本は並びません。
-    ここに載せたものは、調べがついてもつかなくても次からは並びません）。
+    次に並んでいるのは、**まだ誰も調べていない本のうち、古いほうから
+    #{@tidy_per_run} 冊まで**です（残りは次の回に並びます）。**並んだ本はすべて**
+    調べて返してください。調べがついてもつかなくても、次からは並びません。
 
     {unreviewed}
 
@@ -311,40 +310,6 @@ defmodule Tazuna.Datasets.Bookshelf do
 
   @doc "巡回ごとの依頼文（画面に出すため。機械収集の回は AI を呼ばないので持たない）。"
   def prompts, do: [{SweepNames.tidy(), tidy_prompt()}]
-
-  @doc """
-  いま本棚にある本の、**分野・タグ・説明・ISBN を埋め直す 1 回だけの依頼文**。
-
-  整理の回は**まだ調べていない本だけ**を見るので、仕組みを入れる前に目を通して
-  しまった本（ISBN の欄が無かった頃の本）には、もう回ってきません。
-  それを埋めるための割り込みです。
-  """
-  def backfill_prompt do
-    tidy_prompt()
-    |> String.replace("{unreviewed}", "{current}")
-    |> String.replace(
-      "次に並んでいるのは、**まだ誰も調べていない本だけ**です（調べ終えた本は並びません。\n" <>
-        "ここに載せたものは、調べがついてもつかなくても次からは並びません）。",
-      "**今回だけ、本棚の本を全部並べます。** 分野・タグ・説明・ISBN のうち、" <>
-        "**まだ無いものだけ**を埋めてください（あるものはそのまま）。"
-    )
-  end
-
-  @doc """
-  いま本棚にある本を、**1 回だけ全部調べ直させます**（割り込み。`backfill_prompt/0`）。
-  名指しした本だけが差し込まれるので、並べている本の見出しを全部渡します。
-  """
-  def backfill(base, titles) when is_list(titles) do
-    Chiezo.focus(
-      base,
-      collection(),
-      "本棚の本の分野・タグ・説明・ISBN のうち、まだ無いものを埋めてください",
-      titles,
-      SweepNames.tidy(),
-      nil,
-      backfill_prompt()
-    )
-  end
 
   @doc "Chiezo へ送る収集の設定ぜんぶ。"
   def attrs(choices \\ %{}) do

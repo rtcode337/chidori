@@ -62,8 +62,6 @@ defmodule TazunaWeb.DatasetsLive do
        book_asked: nil,
        # 興味トピックに近い本だけを並べるか
        shelf_near_only: false,
-       # 本棚の調べ直し（割り込み）を頼んだ結果
-       backfilled: nil,
        asking: false,
        asked: nil,
        # travel-log からの依頼。頼んでいる間は見積もり（何区画で頼むか）を持つ
@@ -303,24 +301,6 @@ defmodule TazunaWeb.DatasetsLive do
   def handle_event("toggle_shelf_near", _params, socket),
     do: {:noreply, assign(socket, shelf_near_only: !socket.assigns.shelf_near_only)}
 
-  # **本棚の本を 1 回だけ全部調べ直させる。** 整理の回はまだ調べていない本しか見ないので、
-  # 仕組みを入れる前に目を通した本の ISBN と話題は、これでしか埋まらない
-  def handle_event("backfill_shelf", _params, socket) do
-    titles =
-      case socket.assigns.shelf do
-        {:ok, books} when is_list(books) -> Enum.map(books, & &1.title)
-        _none -> []
-      end
-
-    {:noreply,
-     socket
-     |> assign(backfilled: :asking)
-     |> start_async(:backfill, fn ->
-       with {:ok, base} <- Datasets.base_url(),
-            do: Tazuna.Datasets.Bookshelf.backfill(base, titles)
-     end)}
-  end
-
   # **本を押すと詳細を開く**（ほかの画面の詳細と同じくモーダル）。勧めている記事は
   # 開いたときに初めて引く（前に引いたものは覚えておく）
   def handle_event("open_book", %{"title" => title}, socket) do
@@ -453,12 +433,6 @@ defmodule TazunaWeb.DatasetsLive do
     ShelfCache.put(socket.assigns.view, result, now)
     {:noreply, assign(socket, shelf: result, shelf_checked_at: now, shelf_loading: false)}
   end
-
-  def handle_async(:backfill, {:ok, result}, socket),
-    do: {:noreply, assign(socket, backfilled: result)}
-
-  def handle_async(:backfill, {:exit, _reason}, socket),
-    do: {:noreply, assign(socket, backfilled: {:error, :collection_crashed})}
 
   def handle_async({:book_posts, title}, {:ok, result}, socket),
     do: {:noreply, assign(socket, book_posts: Map.put(socket.assigns.book_posts, title, result))}

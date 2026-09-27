@@ -148,13 +148,14 @@ defmodule Tazuna.Datasets.BookshelfTest do
                "9784873115658"
     end
 
-    test "整理のたびに、分野か ISBN のまだ無い本を上限まで調べさせる" do
-      # まだ調べていない本しか渡さないので、一度で調べきれなかった本は二度と回ってこなかった
-      # （164 冊を渡した回で AI が先頭の 18 冊だけ返し、残りは説明も分野も無いまま残った）
+    test "整理の 1 回に渡す冊数は Chiezo が決め、渡した本は全部調べさせる" do
+      # 一度に全部を渡していた頃は、164 冊を渡した回で AI が先頭の 18 冊だけ返した
+      tidy = Enum.find(Bookshelf.sweeps(), &(&1[:prompt] == :tidy))
+      assert tidy.unreviewed_per_run == Bookshelf.tidy_per_run()
+
       prompt = Bookshelf.tidy_prompt()
-      assert prompt =~ "「分野:」のタグが**まだ無い本**"
-      assert prompt =~ "「ISBN:」で始まるタグが**まだ無い本**"
-      assert prompt =~ "#{Bookshelf.isbn_per_run()} 冊まで"
+      assert prompt =~ "#{Bookshelf.tidy_per_run()} 冊まで"
+      assert prompt =~ "**並んだ本はすべて**"
       # 確かめられなかった本は印を付けて、毎回は調べ直さない
       assert prompt =~ "ISBN:不明"
       # 返すと丸ごと置き換わるので、分野や話題のタグを残させる
@@ -167,13 +168,6 @@ defmodule Tazuna.Datasets.BookshelfTest do
       assert prompt =~ "{unreviewed}"
       assert prompt =~ "{names}"
       refute prompt =~ "{current}"
-    end
-
-    test "1 回だけの調べ直しは、全部を並べて、無いものだけ埋めさせる" do
-      prompt = Bookshelf.backfill_prompt()
-      assert prompt =~ "{current}"
-      refute prompt =~ "{unreviewed}"
-      assert prompt =~ "まだ無いものだけ"
     end
 
     test "タグは数を決めずに付けさせる（技術ニュースのトピックに縛らない）" do
