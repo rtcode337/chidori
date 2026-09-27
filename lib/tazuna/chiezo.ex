@@ -11,7 +11,7 @@ defmodule Tazuna.Chiezo do
 
   alias Tazuna.Http
 
-  @user_agent "tazuna/0.1 (+https://github.com/rtcode337/tazuna)"
+  @user_agent "tazuna"
   @timeout 15_000
   @connect_timeout 5_000
   # 1 回に引ける上限（Chiezo 側の決まり。これより大きいと 422 で断られる）

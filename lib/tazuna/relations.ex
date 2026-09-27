@@ -42,7 +42,7 @@ defmodule Tazuna.Relations do
   # （@page_size と掛けた数が実質の上限になる）。無限に回ると、向こうの応答が
   # 壊れたときに終われなくなる
   @max_pages 40
-  @user_agent "tazuna/0.1 (+https://github.com/rtcode337/tazuna)"
+  @user_agent "tazuna"
 
   # 回る先の割り方。**見出しの順に 25 人ずつ**で、300 区画ほどになる
   # （日本語版 Wikipedia の「〜の画家」は 323 カテゴリ・のべ 14,735 記事）。

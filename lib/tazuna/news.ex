@@ -30,7 +30,7 @@ defmodule Tazuna.News do
   alias Tazuna.News.Interests
   alias Tazuna.News.Report
 
-  @user_agent "tazuna/0.1 (+https://github.com/rtcode337/tazuna)"
+  @user_agent "tazuna"
 
   # Chiezo は LAN 内なので短くてよい。ただし「いま集めさせる」は AI が動くので長い
   @request_timeout 15_000

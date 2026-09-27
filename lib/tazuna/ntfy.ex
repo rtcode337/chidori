@@ -27,7 +27,7 @@ defmodule Tazuna.Ntfy do
   # そこが空なら何も飛びません —— 場所の既定を持っても、その性質は変わりません
   @public_base_url "https://ntfy.sh"
 
-  @user_agent "tazuna/0.1 (+https://github.com/rtcode337/tazuna)"
+  @user_agent "tazuna"
   @timeout 10_000
   @connect_timeout 5_000
 
