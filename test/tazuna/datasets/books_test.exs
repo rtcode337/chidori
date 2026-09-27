@@ -15,6 +15,12 @@ defmodule Tazuna.Datasets.BooksTest do
       %{feed: Books.feed_spec()}
     end
 
+    test "人気順は 3 ページまで引く", %{feed: feed} do
+      # 定番の推薦記事は 2〜3 ページ目に集まっている
+      pages = for one <- feed.urls, one.url =~ "sort=popular", do: one.url
+      assert Enum.any?(pages, &(&1 =~ "page=3"))
+    end
+
     test "人気順と新着順を両方引く", %{feed: feed} do
       # 定番の根拠は何年も前の記事にある —— 新着だけを追っても永遠に届かない
       # （実測で、人気順なら 2022〜2024 年の記事がブクマ 1,000 超えの順に出る）
@@ -29,8 +35,10 @@ defmodule Tazuna.Datasets.BooksTest do
       for one <- feed.urls, do: assert(one.url =~ "{query}")
       assert feed.queries == Books.queries()
       assert feed.query_tag == Books.query_tag()
-      # 1 つにつき 2 本なので、Chiezo の上限（20 本）に収まる数
-      assert feed.per_run * length(feed.urls) <= 20
+      # 1 つにつき 4 本なので、Chiezo の上限（40 本）に収まる数
+      assert feed.per_run * length(feed.urls) <= 40
+      # 受け取る数を Chiezo の天井の手前で切らない（1 本 40 件まで入る）
+      assert feed.limit >= feed.per_run * length(feed.urls) * 40
     end
 
     test "本文ではなく見出しを探す", %{feed: feed} do

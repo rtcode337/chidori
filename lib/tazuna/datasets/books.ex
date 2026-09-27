@@ -35,9 +35,13 @@ defmodule Tazuna.Datasets.Books do
   # （機械収集の巡回の依頼文に `{queries}` を書くと、その巡回の相手が考える）
   @queries ["技術書", "エンジニア 本 おすすめ", "プログラマ 読むべき 本", "読んでよかった 技術書"]
 
-  # 1 回に使う検索文の数。**1 つにつき配信元を 2 本使う**（人気順と新着順）ので、
-  # Chiezo の上限（20 本）に収まる数
+  # 1 回に使う検索文の数。**1 つにつき配信元を 4 本使う**（人気順 3 ページと新着順）ので、
+  # Chiezo の上限（40 本）に収まる数
   @per_run 8
+
+  # 人気順を何ページまで引くか。**定番の推薦記事は 2〜3 ページ目に集まっている** ——
+  # 1 ページ目だけでは 98 件入っても、2 本以上の記事に出てくる本が 2 冊しか無かった
+  @popular_pages 3
 
   # 記事に付く、どの検索文で入ったかの印の頭（Chiezo が付けて、数える）
   @query_tag "検索"
@@ -155,7 +159,7 @@ defmodule Tazuna.Datasets.Books do
 
   @doc """
   配信元。**はてなブックマークの見出し検索**を RSS で引きます（検索文 1 つにつき、
-  人気順と新着順の 1 ページずつ）。URL の `{query}` に、回ごとの検索文が入ります
+  人気順 3 ページと新着順 1 ページ）。URL の `{query}` に、回ごとの検索文が入ります
   （展開するのは Chiezo）。入った記事には「#{@query_tag}:<検索文>」の印が付き、
   次の回に検索文ごとの件数を数えて AI に見せます。
 
@@ -166,20 +170,24 @@ defmodule Tazuna.Datasets.Books do
   """
   def feed_spec do
     %{
-      urls: for(sort <- ["popular", "recent"], do: %{url: search_url(sort), tags: ["はてな"]}),
+      urls:
+        for(page <- 1..@popular_pages, do: %{url: search_url("popular", page), tags: ["はてな"]}) ++
+          [%{url: search_url("recent", 1), tags: ["はてな"]}],
       queries: @queries,
       query_tag: @query_tag,
       per_run: @per_run,
       reuse_days: @reuse_days,
       since: "always",
-      limit: 200
+      # 32 本 × 1 本 40 件まで。**Chiezo の天井（1,600）の手前で切らない** ——
+      # 切ると 1 本あたり数件しか残らず、ページを深く引いた意味が消える
+      limit: 1600
     }
   end
 
   # `{query}` は Chiezo が符号化して入れるので、ここでは差し込み口のまま置く
-  defp search_url(sort) do
+  defp search_url(sort, page) do
     "https://b.hatena.ne.jp/q/{query}?" <>
-      URI.encode_query(%{"mode" => "rss", "target" => "title", "sort" => sort, "page" => 1})
+      URI.encode_query(%{"mode" => "rss", "target" => "title", "sort" => sort, "page" => page})
   end
 
   @doc """
