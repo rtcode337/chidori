@@ -140,6 +140,11 @@ defmodule Tazuna.Datasets.BooksTest do
       assert sweeps["整理"].prompt =~ "記事を開いて"
     end
 
+    test "整理は、機械収集が 1 回走るまで待つ" do
+      read = Enum.find(Books.sweeps(), &(&1.name == "整理"))
+      assert read.after == "機械収集"
+    end
+
     test "画面で選んだ相手を載せる" do
       attrs = Books.attrs(%{"整理" => %{backend: "codex", model: "gpt-6-sol-high"}})
       read = Enum.find(attrs.sweeps, &(&1.name == "整理"))

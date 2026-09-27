@@ -152,6 +152,8 @@ defmodule Tazuna.Datasets.BookshelfTest do
       # 一度に全部を渡していた頃は、164 冊を渡した回で AI が先頭の 18 冊だけ返した
       tidy = Enum.find(Bookshelf.sweeps(), &(&1[:prompt] == :tidy))
       assert tidy.unreviewed_per_run == Bookshelf.tidy_per_run()
+      # 有効にした直後に、空の本棚を整理させない
+      assert tidy.after == "機械収集"
 
       # 20 冊ずつなので、勧めている記事の多い本（機械が数えた extra.docs）から仕上げる
       assert tidy.unreviewed_by == "docs"

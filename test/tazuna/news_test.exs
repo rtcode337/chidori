@@ -500,6 +500,15 @@ defmodule Tazuna.NewsTest do
       assert names == ["集める", "整理", "要約"]
     end
 
+    test "整理は、溜める回が 1 回走るまで待つ" do
+      # 有効にした直後は両方が「いますぐ」になり、ワーカーを経由する整理が
+      # 機械収集より先に届くと、空の収集を相手に整理が走る
+      refine = &Enum.find(News.sweeps(&1), fn sweep -> sweep.name == "整理" end)
+
+      assert refine.(defined_topic("tazuna_tech")).after == "機械収集"
+      assert refine.(%{name: "何か", interest: "何か", feeds: []}).after == "集める"
+    end
+
     test "要約を作らない話題には、要約の回を置かない" do
       # 技術イベントは開催日のカレンダーで選ぶもので、要約は読まれない
       names = defined_topic("tazuna_events") |> News.sweeps() |> Enum.map(& &1.name)

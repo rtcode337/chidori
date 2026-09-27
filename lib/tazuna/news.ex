@@ -630,6 +630,10 @@ defmodule Tazuna.News do
       intake(topic),
       %{
         name: @focus_sweep,
+        # **溜める回が 1 回走るまで待つ**（`after`）。巡回はそれぞれ別の時計で動くので、
+        # 有効にした直後は両方が「いますぐ」になり、整理が空の収集を相手に走ることがある
+        # （ワーカーを経由する整理が、機械収集より先に取り込みへ届く）
+        after: intake(topic).name,
         interval_minutes: every(topic, :refine, @refine_minutes),
         prompt: refine_prompt(topic)
       }

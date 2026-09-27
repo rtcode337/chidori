@@ -175,8 +175,11 @@ defmodule Tazuna.Datasets.Bookshelf do
         use_extract: true,
         only_new: true
       },
+      # **機械収集が 1 回走るまで待つ**（`after`）。巡回はそれぞれ別の時計で動くので、
+      # 有効にした直後は両方が「いますぐ」になり、整理が空の本棚を相手に走ることがある
       %{
         name: SweepNames.tidy(),
+        after: SweepNames.machine(),
         interval_minutes: @tidy_minutes,
         prompt: :tidy,
         unreviewed_per_run: @tidy_per_run,

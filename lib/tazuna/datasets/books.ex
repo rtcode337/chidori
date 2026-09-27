@@ -205,7 +205,14 @@ defmodule Tazuna.Datasets.Books do
         only_new: true,
         prompt: :queries
       },
-      %{name: SweepNames.tidy(), interval_minutes: @read_minutes, web: true, prompt: :read}
+      # **機械収集が 1 回走るまで待つ**（`after`。有効にした直後に、空の収集を読ませない）
+      %{
+        name: SweepNames.tidy(),
+        after: SweepNames.machine(),
+        interval_minutes: @read_minutes,
+        web: true,
+        prompt: :read
+      }
     ]
   end
 
