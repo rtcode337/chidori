@@ -742,4 +742,18 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "興味の近い順"
     end
   end
+
+  describe "トピックの収集の依頼文" do
+    test "Chiezo が持っているものを先に出し、まだ無ければ送る予定の内容を出す" do
+      topic = List.first(Tazuna.Topics.list())
+
+      assert TazunaWeb.NewsLive.theme_prompt_text(%{collection: %{prompt: "持っている"}}, topic) ==
+               "持っている"
+
+      assert TazunaWeb.NewsLive.theme_prompt_text(%{collection: nil}, topic) ==
+               Tazuna.Themes.tidy_prompt(topic)
+
+      assert TazunaWeb.NewsLive.theme_prompt_note(%{collection: nil}) =~ "収集を依頼する"
+    end
+  end
 end

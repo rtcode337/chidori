@@ -792,6 +792,22 @@ defmodule TazunaWeb.NewsLive do
   def prompt_note(_news),
     do: "いま Chiezo が持っている内容です。直すのは Chiezo の管理画面の「集める」から。"
 
+  @doc """
+  トピックの収集の整理の回の依頼文。**Chiezo が持っているものを先に出します**
+  （まだ依頼していなければ、送る予定の内容）。
+  """
+  def theme_prompt_text(%{collection: %{prompt: prompt}}, _topic)
+      when is_binary(prompt) and prompt != "",
+      do: prompt
+
+  def theme_prompt_text(_themes, topic), do: Themes.tidy_prompt(topic)
+
+  def theme_prompt_note(%{collection: c}) when is_map(c),
+    do: "いま Chiezo が持っている内容です。直すのは Chiezo の管理画面の「集める」から。"
+
+  def theme_prompt_note(_themes),
+    do: "この節の「収集を依頼する」を押すと、この内容で Chiezo に頼みます。"
+
   @doc "いまの通知先。フォームに載せます。"
   def notify_setting(nil), do: Settings.changeset("")
   def notify_setting(%{collection: collection}), do: Settings.changeset(collection)

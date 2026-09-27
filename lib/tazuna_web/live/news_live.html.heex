@@ -281,6 +281,65 @@
         <p :if={@news.collection && @news.collection.url} class="muted-note">
           <a href={@news.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
         </p>
+
+        <%!-- AI に何を頼んでいるかは、押す前にも後にも読めるようにする。
+             畳んでおくのは、ふだんは読みたいのが結果のほうだから --%>
+        <details class="news-prompt">
+          <summary>Chiezo への依頼文</summary>
+          <p class="news-prompt-note">{prompt_note(@news)}</p>
+          <pre>{prompt_text(@news, @topic)}</pre>
+          <div :for={{name, text} <- sweep_prompts(@topic)}>
+            <h3>{name}</h3>
+            <pre>{text}</pre>
+          </div>
+        </details>
+      </section>
+
+      <%!-- トピックの収集。**記事とは別の収集**（記事は 30 日で落ちるが、
+           トピックは期限では落とさない）。持つ話題にだけ出す --%>
+      <section :if={Tazuna.Topics.themes?(@topic)} class="settings-block">
+        <h3>トピックの収集</h3>
+        <p aria-live="polite">{theme_note(@themes)}</p>
+
+        <dl :if={@themes.collection} class="collect-facts">
+          <div :for={{label, value} <- collection_facts(@themes)}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        </dl>
+
+        <form id="theme-collect-form" phx-submit="collect_themes" phx-change="pick_theme_sweep">
+          <.sweep_table state={@themes} picks={@theme_picks} backends={@backends} />
+          <p class="muted-note">
+            <strong>語を拾うのは機械、精査するのが AI です。</strong> 記事に付いたタグがそのままトピックになり、件数と一緒に出てくる語も Chiezo が
+            数えます（機械収集の回は AI を呼びません）。AI の回は、言い換えを畳む・親子を決める・
+            話題でない語を外す・説明を書く、の 4 つだけです。
+          </p>
+          <div class="button-row">
+            <button type="submit" phx-disable-with="送っています…">{theme_collect_label(
+              @themes
+            )}</button>
+          </div>
+        </form>
+
+        <%!-- **押す口は増やさない。** 読み直しの口は置かず、開き直したときと
+             設定を送り直したときに読む（記事のほうと同じ形） --%>
+        <div :if={@themes.collection} class="button-row">
+          <button type="button" phx-click="pick_themes" phx-disable-with="頼んでいます…">
+            いま拾う
+          </button>
+        </div>
+
+        <p :if={@themes.collection && @themes.collection.url} class="muted-note">
+          <a href={@themes.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
+        </p>
+
+        <%!-- 整理の回に何を頼んでいるか。機械収集の回は AI を呼ばないので依頼文を持たない --%>
+        <details class="news-prompt">
+          <summary>Chiezo への依頼文（整理）</summary>
+          <p class="news-prompt-note">{theme_prompt_note(@themes)}</p>
+          <pre>{theme_prompt_text(@themes, @topic)}</pre>
+        </details>
       </section>
 
       <%!-- 通知先。**画面から直せるようにする** —— 宛先は運用しながら決めるもの
@@ -368,58 +427,6 @@
           </button>
         </div>
       </section>
-
-      <%!-- トピックの収集。**記事とは別の収集**（記事は 30 日で落ちるが、
-           トピックは期限では落とさない）。持つ話題にだけ出す --%>
-      <section :if={Tazuna.Topics.themes?(@topic)} class="settings-block">
-        <h3>トピックの収集</h3>
-        <p aria-live="polite">{theme_note(@themes)}</p>
-
-        <dl :if={@themes.collection} class="collect-facts">
-          <div :for={{label, value} <- collection_facts(@themes)}>
-            <dt>{label}</dt>
-            <dd>{value}</dd>
-          </div>
-        </dl>
-
-        <form id="theme-collect-form" phx-submit="collect_themes" phx-change="pick_theme_sweep">
-          <.sweep_table state={@themes} picks={@theme_picks} backends={@backends} />
-          <p class="muted-note">
-            <strong>語を拾うのは機械、精査するのが AI です。</strong> 記事に付いたタグがそのままトピックになり、件数と一緒に出てくる語も Chiezo が
-            数えます（機械収集の回は AI を呼びません）。AI の回は、言い換えを畳む・親子を決める・
-            話題でない語を外す・説明を書く、の 4 つだけです。
-          </p>
-          <div class="button-row">
-            <button type="submit" phx-disable-with="送っています…">{theme_collect_label(
-              @themes
-            )}</button>
-          </div>
-        </form>
-
-        <%!-- **押す口は増やさない。** 読み直しの口は置かず、開き直したときと
-             設定を送り直したときに読む（記事のほうと同じ形） --%>
-        <div :if={@themes.collection} class="button-row">
-          <button type="button" phx-click="pick_themes" phx-disable-with="頼んでいます…">
-            いま拾う
-          </button>
-        </div>
-
-        <p :if={@themes.collection && @themes.collection.url} class="muted-note">
-          <a href={@themes.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
-        </p>
-      </section>
-
-      <%!-- AI に何を頼んでいるかは、押す前にも後にも読めるようにする。
-           畳んでおくのは、ふだんは読みたいのが結果のほうだから --%>
-      <details class="news-prompt">
-        <summary>Chiezo への依頼文</summary>
-        <p class="news-prompt-note">{prompt_note(@news)}</p>
-        <pre>{prompt_text(@news, @topic)}</pre>
-        <div :for={{name, text} <- sweep_prompts(@topic)}>
-          <h3>{name}</h3>
-          <pre>{text}</pre>
-        </div>
-      </details>
     </section>
 
     <footer>
