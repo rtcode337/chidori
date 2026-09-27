@@ -26,6 +26,7 @@ defmodule Tazuna.News do
   alias Tazuna.Chiezo
   alias Tazuna.Http
   alias Tazuna.Jst
+  alias Tazuna.News.Events
   alias Tazuna.News.Interests
   alias Tazuna.News.Report
 
@@ -637,8 +638,24 @@ defmodule Tazuna.News do
         interval_minutes: every(topic, :refine, @refine_minutes),
         prompt: refine_prompt(topic)
       }
-    ] ++ digest_sweeps(topic)
+    ] ++ digest_sweeps(topic) ++ look_ahead_sweeps(topic)
   end
+
+  # 先の月を探す回（技術イベント。`Tazuna.Topics` の `look_ahead`）。巡回の名前は
+  # 「情報収集」—— 食事処と同じく、足りないものを外から探して足す仕事。
+  # **足すだけ**（今あるものは整理が見る）
+  defp look_ahead_sweeps(%{look_ahead: true} = topic) do
+    [
+      %{
+        name: Tazuna.SweepNames.survey(),
+        interval_minutes: Events.look_ahead_minutes(),
+        only_new: true,
+        prompt: Events.look_ahead_prompt(interest_of(topic), interests_of(topic))
+      }
+    ]
+  end
+
+  defp look_ahead_sweeps(_topic), do: []
 
   # 要約の回。**要約を作らない話題には置かない**（`Tazuna.Topics.digest?/1`）——
   # 置いたままだと、時刻を決めた拍子に読まれない要約を作らせて枠を食う
@@ -1102,23 +1119,7 @@ defmodule Tazuna.News do
     あれは要約の回が書いた読み物で、記事ではありません —— 同じ出来事に触れているので
     重複に見えますが、落とすと**画面と通知からまとめが消えます**（実際に消えました）。
 
-    **2. 上に無いものを探して足す。**
-    決まった配信元だけを見ていると、そこに載らないものは永遠に入りません。
-    **上に並んでいない出どころ**を当たってください。たとえば次のようなところです。
-
-    - 公式の発表・一次情報（リリースノート、公式ブログ、脆弱性の告知）
-    - **企業のテックブログや個人のブログで、いま話題になっているもの**
-    - 海外で話題になっていて、日本語ではまだ広まっていないもの
-    - **話題になっている論文**（機械学習や分散システムなど、作る人の判断が変わるもの）
-
-    **論文は、この回が見に行かなければ 1 件も入りません。** 配信元は論文を配らないので、
-    毎回かならず当たってください。話題になっているものが無ければ 0 件で構いませんが、
-    **探さずに 0 件にしないでください**。
-
-    **ニュースだけではありません。** 種別（#{kinds()}）のどれでも構いません ——
-    配信元から機械的に入るのは決まった媒体のぶんだけなので、
-    記事も論文もここでしか入りません。
-    **確信が持てるものだけ**を挙げてください。
+    #{outside_of(topic)}
 
     **足す前に、その記事が既に入っていないか URL で確かめてください。**
     見出しでは確かめられません —— 同じ記事が配信元ごとに違う見出しで流れてきますし
@@ -1199,6 +1200,35 @@ defmodule Tazuna.News do
   # 手元の名前を使わせる
   defp collection_of(%{collection: name}) when is_binary(name) and name != "", do: name
   defp collection_of(_topic), do: "この収集の名前"
+
+  # 整理の回の「上に無いものを探して足す」。**話題が書いていればそちら**
+  # （`Tazuna.Topics` の `outside`）—— 探す先は話題で違う（技術イベントに
+  # 論文を探させても何も入らない）
+  defp outside_of(%{outside: text}) when is_binary(text) and text != "",
+    do: String.trim_trailing(text)
+
+  defp outside_of(_topic) do
+    """
+    **2. 上に無いものを探して足す。**
+    決まった配信元だけを見ていると、そこに載らないものは永遠に入りません。
+    **上に並んでいない出どころ**を当たってください。たとえば次のようなところです。
+
+    - 公式の発表・一次情報（リリースノート、公式ブログ、脆弱性の告知）
+    - **企業のテックブログや個人のブログで、いま話題になっているもの**
+    - 海外で話題になっていて、日本語ではまだ広まっていないもの
+    - **話題になっている論文**（機械学習や分散システムなど、作る人の判断が変わるもの）
+
+    **論文は、この回が見に行かなければ 1 件も入りません。** 配信元は論文を配らないので、
+    毎回かならず当たってください。話題になっているものが無ければ 0 件で構いませんが、
+    **探さずに 0 件にしないでください**。
+
+    **ニュースだけではありません。** 種別（#{kinds()}）のどれでも構いません ——
+    配信元から機械的に入るのは決まった媒体のぶんだけなので、
+    記事も論文もここでしか入りません。
+    **確信が持てるものだけ**を挙げてください。
+    """
+    |> String.trim_trailing()
+  end
 
   # その話題ならではの頼みごと（`Tazuna.Topics` の `note`）。
   # **関心とは別物** —— あちらは「何が読む価値があるか」、こちらは

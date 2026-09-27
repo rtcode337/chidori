@@ -512,7 +512,37 @@ defmodule Tazuna.NewsTest do
     test "要約を作らない話題には、要約の回を置かない" do
       # 技術イベントは開催日のカレンダーで選ぶもので、要約は読まれない
       names = defined_topic("tazuna_events") |> News.sweeps() |> Enum.map(& &1.name)
-      assert names == ["機械収集", "整理"]
+      assert names == ["機械収集", "整理", "情報収集"]
+    end
+
+    test "技術イベントは週に 1 回、先の月を探して足す" do
+      # connpass の新着は募集が出たものしか流れてこないので、カレンダーが来月で止まる
+      sweep = defined_topic("tazuna_events") |> News.sweeps() |> Enum.find(&(&1.name == "情報収集"))
+
+      assert sweep.interval_minutes == 7 * 24 * 60
+      assert sweep.only_new
+
+      # 今日の日付と、いま入っている見出しを見せる（同じものを足し直させない）
+      assert sweep.prompt =~ "{now}"
+      assert sweep.prompt =~ "{names}"
+      assert sweep.prompt =~ "6 か月先まで"
+      assert sweep.prompt =~ "月ごとに探して"
+      # タグの決まりは整理と同じ文
+      assert sweep.prompt =~ Tazuna.News.Events.tag_rules()
+      assert Tazuna.News.Events.refine_note() =~ Tazuna.News.Events.tag_rules()
+
+      # ほかの話題には置かない
+      refute "情報収集" in (defined_topic("tazuna_tech") |> News.sweeps() |> Enum.map(& &1.name))
+    end
+
+    test "技術イベントの整理は、論文ではなく connpass の外のイベントを探させる" do
+      events = News.refine_prompt(defined_topic("tazuna_events"))
+      tech = News.refine_prompt(defined_topic("tazuna_tech"))
+
+      assert events =~ "上に無いイベントを探して足す"
+      assert events =~ "Doorkeeper"
+      refute events =~ "話題になっている論文"
+      assert tech =~ "話題になっている論文"
     end
 
     test "一般ニュースはトピックの網を育てない" do

@@ -24,4 +24,13 @@ defmodule Tazuna.News.InterestsTest do
 
     assert %{interests: ["LLM"]} = Interests.attach(%{collection: "tazuna_tech"})
   end
+
+  test "ほかの話題の興味トピックを使う話題には、そちらを載せる" do
+    # 技術イベントには興味トピックを選ぶ図が無いので、技術ニュースのものを使う
+    Interests.toggle("tazuna_tech", "LLM")
+
+    events = Tazuna.Topics.get("tazuna_events")
+    assert events.interests_from == "tazuna_tech"
+    assert %{interests: ["LLM"]} = Interests.attach(events)
+  end
 end

@@ -415,6 +415,8 @@ defmodule TazunaWeb.NewsLive do
           current_choices(socket.assigns.news.collection)
         )
 
+        push_followers(topic)
+
         {:noreply, put_flash(socket, :info, "興味トピックを変えて、整理と要約の依頼文を Chiezo へ送り直しました。")}
       else
         {:noreply, socket}
@@ -559,6 +561,24 @@ defmodule TazunaWeb.NewsLive do
 
       %{name: theme.name, docs: theme.docs, alias: alias_hit}
     end)
+  end
+
+  # **この話題の興味トピックを使う話題も送り直す**（技術イベントは技術ニュースのものを
+  # 使う。`Tazuna.Topics` の `interests_from`）。送り直さないと、先の月を探す回が
+  # 古い興味トピックのまま探し続ける。**読めている話題だけ** —— 巡回ごとに選んである
+  # 相手は Chiezo から読んだものを引き継ぐので、読めていないと選んだ相手を消してしまう
+  defp push_followers(topic) do
+    for other <- Topics.list(), other[:interests_from] == topic.collection do
+      server = News.server(other.collection)
+
+      case News.current(server) do
+        %{collection: %{} = collection} ->
+          News.push_settings(server, other, current_choices(collection))
+
+        _not_read ->
+          :skip
+      end
+    end
   end
 
   @doc """

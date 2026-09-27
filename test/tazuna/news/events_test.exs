@@ -87,4 +87,13 @@ defmodule Tazuna.News.EventsTest do
     assert length(Events.only_places(entries, [])) == 4
     assert length(Events.only_places(entries, ["東京都"])) == 2
   end
+
+  test "先を探す回は、興味トピックの分野のイベントも大きさを問わず探させる" do
+    prompt = Events.look_ahead_prompt("技術のイベント", ["LLM", "Rust"])
+
+    assert prompt =~ "「LLM」、「Rust」"
+    assert prompt =~ "大きさを問いません"
+    # 選んでいなければ足さない
+    refute Events.look_ahead_prompt("技術のイベント", []) =~ "興味トピック"
+  end
 end

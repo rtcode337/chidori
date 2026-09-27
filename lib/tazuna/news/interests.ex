@@ -51,6 +51,9 @@ defmodule Tazuna.News.Interests do
   話題に興味トピックを載せます（`:interests`）。**依頼文を組む直前に呼びます** ——
   依頼文を組む関数そのものは DB を読みません（そのほうが、何を送るかを確かめやすい）。
   """
+  def attach(%{interests_from: from} = topic) when is_binary(from),
+    do: Map.put(topic, :interests, list(from))
+
   def attach(%{collection: collection} = topic) when is_binary(collection),
     do: Map.put(topic, :interests, list(collection))
 

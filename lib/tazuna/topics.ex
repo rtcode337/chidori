@@ -114,7 +114,16 @@ defmodule Tazuna.Topics do
         feeds: [
           %{url: "https://connpass.com/explore/ja.atom", tags: ["勉強会"]}
         ],
-        note: Tazuna.News.Events.refine_note()
+        note: Tazuna.News.Events.refine_note(),
+        # **外を当たる先も話題で違う**（整理の「上に無いものを探して足す」）。
+        # 話題に共通の文は論文やテックブログを探させるので、イベントには合わない
+        outside: Tazuna.News.Events.outside(),
+        # **興味トピックは技術ニュースのものを使う**（このタブには興味トピックを選ぶ
+        # 図が無い）。先の月を探す回が、その分野のイベントも探しに行く
+        interests_from: "tazuna_tech",
+        # **先の月を探す回を置く**（巡回「情報収集」。週に 1 回）。connpass の新着は
+        # 募集が出たものしか流れてこないので、そのままではカレンダーが来月で止まる
+        look_ahead: true
       },
       %{
         name: "映画",
