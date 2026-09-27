@@ -43,7 +43,13 @@
            Chiezo の側は数時間に 1 度しか動かない。いつのものを見ているかを出して、
            取り直すかは読む人に決めてもらう --%>
       <p class="relation-checked">
-        <span class="muted-note">{checked_text(@relation)}</span>
+        <span class="muted-note">
+          <%= if at = @relation[:checked_at] do %>
+            最後に取得: <strong>{Jst.format(at)}（{Jst.ago(at)}）</strong>
+          <% else %>
+            まだ取得していません
+          <% end %>
+        </span>
         <%!-- **取り直しの最中も印を出す。** 読むのは `status` が :loading のあいだで、
              収集の途中経過（`step`）だけを見ていた頃は、取得中もボタンが押せるままで
              押したのかどうかが分からなかった --%>

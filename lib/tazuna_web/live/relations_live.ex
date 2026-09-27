@@ -548,8 +548,6 @@ defmodule TazunaWeb.RelationsLive do
   @doc """
   いつ読んだか。**開くたびに取り直さない**ので、いま見ているものの古さが読めないと困ります。
   """
-  def checked_text(%{checked_at: at}) when at != nil, do: "最後に取得: #{Jst.format(at)}"
-  def checked_text(_relation), do: "まだ取得していません"
 
   @doc """
   図を取り直している最中か（読んでいる・収集の途中経過が届いている、のどちらか）。

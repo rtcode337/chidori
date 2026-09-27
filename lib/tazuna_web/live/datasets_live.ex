@@ -24,6 +24,7 @@ defmodule TazunaWeb.DatasetsLive do
   alias Tazuna.Chiezo
   alias Tazuna.Datasets
   alias Tazuna.Datasets.Requests
+  alias Tazuna.Datasets.ShelfCache
   alias Tazuna.Datasets.Survey
   alias Tazuna.Datasets.SurveyPlan
   alias Tazuna.Datasets.SurveyPlans
@@ -90,7 +91,12 @@ defmodule TazunaWeb.DatasetsLive do
        place_query: "",
        # 起点を Chiezo へ送れなかったときだけ出す一言
        origin_note: nil,
-       surveying: false
+       surveying: false,
+       # 設定欄を開いているか。**開いたときに初めて Chiezo から読む**（関連図と同じ）
+       settings_open: false,
+       # 本棚を最後に Chiezo から読んだ時刻（覚え書きのもの）
+       shelf_checked_at: nil,
+       shelf_loading: false
      )
      |> assign(state: empty_state(), derived_state: empty_state())}
   end
@@ -99,6 +105,7 @@ defmodule TazunaWeb.DatasetsLive do
   def handle_params(params, _uri, socket) do
     key = Datasets.valid_key(params["view"])
     dataset = Datasets.get(key)
+    cached = if dataset[:derived], do: ShelfCache.get(key)
 
     socket =
       socket
@@ -107,24 +114,34 @@ defmodule TazunaWeb.DatasetsLive do
         state: empty_state(),
         derived_state: empty_state(),
         derived_picks: %{},
-        shelf: nil
+        # **本棚は覚え書きから出す**（開くたびには Chiezo へ取りに行かない）
+        shelf: cached && cached.shelf,
+        shelf_checked_at: cached && cached.checked_at,
+        # 対象を切り替えたら設定は閉じる（別の収集のもの。開けば読み直す）
+        settings_open: false
       )
       |> assign_plan(dataset)
       |> assign(places: nil, place_query: "")
 
-    # **開いたら読みに行く。** 読むのは Chiezo に置いた収集の状態だけで、
-    # 何も作りません —— 開いただけで向こうに収集ができるのは驚きが大きい
+    # **開いただけでは Chiezo と話さない。** 本棚は覚え書きを出し、設定は開いたときに
+    # 読む。**まだ 1 度も本棚を読んでいないときだけ**取りに行く（関連図の図と同じ）
     {:noreply,
-     if connected?(socket) do
-       socket
-       |> assign(state: %{empty_state() | status: :loading})
-       |> start_async(:read, fn -> Datasets.read(dataset) end)
-       |> read_derived(dataset)
-       |> start_async(:backends, &Datasets.backends/0)
-       |> load_request_results()
+     if (connected?(socket) and dataset[:derived]) && cached == nil do
+       read_shelf(socket, dataset)
      else
        socket
      end}
+  end
+
+  # 設定欄を開く・閉じる。**開いたときに Chiezo から読む** —— 設定は見たいときだけ
+  # 見るもので、本棚を見に来るたびに収集の状態・巡回・相手の一覧まで運ぶ理由が無い。
+  # **開くたびに読み直す**（閉じているあいだに Chiezo の側が進んでいる）
+  def handle_event("toggle_settings", _params, socket) do
+    if socket.assigns.settings_open do
+      {:noreply, assign(socket, settings_open: false)}
+    else
+      {:noreply, socket |> assign(settings_open: true) |> load_settings()}
+    end
   end
 
   # ---- 起点と情報収集の時刻 ------------------------------------------------
@@ -207,14 +224,13 @@ defmodule TazunaWeb.DatasetsLive do
   def handle_event("pick_sweep", params, socket),
     do: {:noreply, assign(socket, picks: sweep_choices(params))}
 
+  # 「最新の情報を取得」。本棚を読み直し、**設定欄を開いていれば設定も**読み直す
   def handle_event("reload", _params, socket) do
     dataset = socket.assigns.dataset
 
-    {:noreply,
-     socket
-     |> assign(state: %{socket.assigns.state | status: :loading})
-     |> start_async(:read, fn -> Datasets.read(dataset) end)
-     |> read_derived(dataset)}
+    socket = if dataset[:derived], do: read_shelf(socket, dataset), else: socket
+
+    {:noreply, if(socket.assigns.settings_open, do: load_settings(socket), else: socket)}
   end
 
   # **地図で区画を選ぶ。** ここでは頼みません —— 押した先に何があるのか
@@ -432,7 +448,11 @@ defmodule TazunaWeb.DatasetsLive do
   def handle_async(:read_derived, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, derived_state: crashed(socket.assigns.derived_state))}
 
-  def handle_async(:shelf, {:ok, result}, socket), do: {:noreply, assign(socket, shelf: result)}
+  def handle_async(:shelf, {:ok, result}, socket) do
+    now = DateTime.utc_now()
+    ShelfCache.put(socket.assigns.view, result, now)
+    {:noreply, assign(socket, shelf: result, shelf_checked_at: now, shelf_loading: false)}
+  end
 
   def handle_async(:backfill, {:ok, result}, socket),
     do: {:noreply, assign(socket, backfilled: result)}
@@ -451,7 +471,7 @@ defmodule TazunaWeb.DatasetsLive do
        )}
 
   def handle_async(:shelf, {:exit, _reason}, socket),
-    do: {:noreply, assign(socket, shelf: {:error, :collection_crashed})}
+    do: {:noreply, assign(socket, shelf: {:error, :collection_crashed}, shelf_loading: false)}
 
   def handle_async(:push_derived, {:ok, {pushed, read}}, socket) do
     state = %{applied(socket.assigns.derived_state, read) | pushing: false}
@@ -538,10 +558,28 @@ defmodule TazunaWeb.DatasetsLive do
     socket
     |> assign(derived_state: %{empty_state() | status: :loading})
     |> start_async(:read_derived, fn -> Datasets.read_derived(dataset) end)
-    |> start_async(:shelf, fn -> Datasets.shelf(dataset) end)
   end
 
   defp read_derived(socket, _dataset), do: socket
+
+  # 本棚を Chiezo から読む（読めたら覚え書きにも残す）
+  defp read_shelf(socket, dataset) do
+    socket
+    |> assign(shelf_loading: true)
+    |> start_async(:shelf, fn -> Datasets.shelf(dataset) end)
+  end
+
+  # 設定欄に出すものを Chiezo から読む（収集の状態・本棚の収集の状態・相手・依頼の結果）
+  defp load_settings(socket) do
+    dataset = socket.assigns.dataset
+
+    socket
+    |> assign(state: %{socket.assigns.state | status: :loading})
+    |> start_async(:read, fn -> Datasets.read(dataset) end)
+    |> read_derived(dataset)
+    |> start_async(:backends, &Datasets.backends/0)
+    |> load_request_results()
+  end
 
   @doc "次に頼む予定（JST の文字列）。時刻を書いていなければ nil。"
   def next_survey(%SurveyPlan{} = plan), do: plan |> SurveyScheduler.next() |> Jst.format()
@@ -595,8 +633,17 @@ defmodule TazunaWeb.DatasetsLive do
   @doc """
   いつ読んだか。**開くたびに取り直さない**ので、いま見ているものの古さが読めないと困ります。
   """
-  def checked_text(%{checked_at: at}) when at != nil, do: "最後に取得: #{Jst.format(at)}"
-  def checked_text(_state), do: "まだ取得していません"
+  @doc """
+  いつ Chiezo から読んだか（本棚と設定の、新しいほう）。まだ読んでいなければ nil。
+  """
+  def checked_at(assigns) do
+    [assigns[:shelf_checked_at], assigns.state[:checked_at]]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max(DateTime, fn -> nil end)
+  end
+
+  @doc "取り直している最中か（本棚か設定のどちらか）。"
+  def reloading?(assigns), do: assigns[:shelf_loading] == true or assigns.state.status == :loading
 
   @doc """
   いまの状態を1文で言う。**断られた理由はそのまま出します**。

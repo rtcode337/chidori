@@ -46,7 +46,8 @@ defmodule Tazuna.Datasets.Bookshelf do
   @isbn_tag "ISBN"
   # 調べて確かめられなかった印。**付いた本は整理のたびには調べ直さない**
   @isbn_unknown "不明"
-  # 整理の 1 回で ISBN を埋める冊数の上限（web で 1 冊ずつ確かめるので、枠を見て絞る）
+  # 整理の 1 回で調べ残し（分野・ISBN の無い本）を埋める冊数の上限
+  # （web で 1 冊ずつ確かめるので、枠を見て絞る）
   @isbn_per_run 20
 
   # 定番に上げる下限（勧めている記事の数）。**3 は「たまたま」を外せる数**
@@ -100,7 +101,7 @@ defmodule Tazuna.Datasets.Bookshelf do
   @doc "ISBN のタグの頭。"
   def isbn_tag, do: @isbn_tag
 
-  @doc "整理の 1 回で ISBN を埋める冊数の上限。"
+  @doc "整理の 1 回で調べ残しを埋める冊数の上限。"
   def isbn_per_run, do: @isbn_per_run
 
   @doc "定番に上げる下限（勧めている記事の数）。"
@@ -204,10 +205,14 @@ defmodule Tazuna.Datasets.Bookshelf do
     **技術書でない語を外す。** 「入門書」「名著」のような**本の名前でないもの**、
     雑誌、資格の問題集は本棚に置きません（同じく墓標で）。
 
-    **ISBN の埋め残しを調べる。** 上の一覧で「#{@isbn_tag}:」で始まるタグが**まだ無い本**を、
-    上から **#{@isbn_per_run} 冊まで**選び、下の「4. ISBN を調べる」と同じやり方で ISBN を
-    付けてください（「#{@isbn_tag}:#{@isbn_unknown}」の付いた本は選ばない）。
-    ISBN のほかに触る必要はありません。
+    **調べ残しを埋める。** 上の一覧から、次のどちらかに当たる本を上から
+    **#{@isbn_per_run} 冊まで**選んでください。
+
+    - 「#{@field_tag}:」のタグが**まだ無い本** —— 下の B の 1〜4 を**すべて**調べて返す
+      （説明の body も書く）
+    - 「#{@field_tag}:」はあるが、「#{@isbn_tag}:」で始まるタグが**まだ無い本** ——
+      「4. ISBN を調べる」だけでよい（body は返さなくて構いません。今のまま残ります）。
+      「#{@isbn_tag}:#{@isbn_unknown}」の付いた本は選ばない
 
     ## B. 新しく入った本を調べる
 

@@ -24,6 +24,8 @@ defmodule Tazuna.Application do
         {Registry, keys: :unique, name: Tazuna.News.Registry},
         {DynamicSupervisor, name: Tazuna.News.Supervisor, strategy: :one_for_one},
         Tazuna.Relations,
+        # 読んだ本棚の覚え書き（データ収集の画面を開くたびに Chiezo へ取りに行かない）
+        Tazuna.Datasets.ShelfCache,
         # 代表作の絵の覚え書き（置き場を持つだけ。引くのは押した人のプロセス）
         Tazuna.Artwork
       ] ++

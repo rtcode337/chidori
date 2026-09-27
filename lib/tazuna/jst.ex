@@ -37,6 +37,22 @@ defmodule Tazuna.Jst do
   def format(other), do: other
 
   @doc """
+  いまからどれだけ前か（「3 時間前」）。**読む人がいつのものかを量るための一言**で、
+  細かさは要らない —— 1 分未満は「たった今」、1 時間未満は分、2 日未満は時間、
+  それより前は日で言う。先の時刻（時計のずれ）は「たった今」にする。
+  """
+  def ago(%DateTime{} = at, now \\ DateTime.utc_now()) do
+    seconds = max(DateTime.diff(now, at, :second), 0)
+
+    cond do
+      seconds < 60 -> "たった今"
+      seconds < 3600 -> "#{div(seconds, 60)} 分前"
+      seconds < 48 * 3600 -> "#{div(seconds, 3600)} 時間前"
+      true -> "#{div(seconds, 86_400)} 日前"
+    end
+  end
+
+  @doc """
   日本時間での「今日」。
 
   **実行環境のローカル日付に頼りません** —— UTC で動くコンテナでは、

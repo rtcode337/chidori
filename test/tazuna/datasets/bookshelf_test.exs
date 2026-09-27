@@ -148,9 +148,11 @@ defmodule Tazuna.Datasets.BookshelfTest do
                "9784873115658"
     end
 
-    test "整理のたびに、ISBN のまだ無い本を上限まで調べさせる" do
-      # まだ調べていない本しか渡さないので、一度で ISBN が取れなかった本は二度と回ってこなかった
+    test "整理のたびに、分野か ISBN のまだ無い本を上限まで調べさせる" do
+      # まだ調べていない本しか渡さないので、一度で調べきれなかった本は二度と回ってこなかった
+      # （164 冊を渡した回で AI が先頭の 18 冊だけ返し、残りは説明も分野も無いまま残った）
       prompt = Bookshelf.tidy_prompt()
+      assert prompt =~ "「分野:」のタグが**まだ無い本**"
       assert prompt =~ "「ISBN:」で始まるタグが**まだ無い本**"
       assert prompt =~ "#{Bookshelf.isbn_per_run()} 冊まで"
       # 確かめられなかった本は印を付けて、毎回は調べ直さない
