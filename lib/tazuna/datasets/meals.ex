@@ -200,11 +200,49 @@ defmodule Tazuna.Datasets.Meals do
     {"japanese_restaurant", "和食"}
   ]
 
+  # 店の特徴（「特徴:ランチ営業」）。**travel-log のカテゴリになる**ので、
+  # 語彙は tazuna が持つ —— AI に決めさせると表記が割れて、絞り込みが効かなくなる。
+  # 並びがそのまま travel-log の絞り込みの並びになる
+  @features ~w(ランチ営業 深夜営業 ゆっくりできる 1人で入りやすい 個室あり 子連れ歓迎 予約がおすすめ)
+
+  # 営業時間から機械で読み取れる特徴（`Tazuna.Datasets.OpeningHours`）
+  @hours_features [lunch: "ランチ営業", late: "深夜営業"]
+
   @doc "この収集の目印のタグ。**travel-log はこれで 1 件を拾います**。"
   def kind_tag, do: "食事処"
 
   @doc "ジャンル。**先頭が travel-log のシリーズ**で、残りはカテゴリに回せます。"
   def genre_tag, do: "ジャンル"
+
+  @doc "特徴のタグの頭。**travel-log のカテゴリ**になります。"
+  def feature_tag, do: "特徴"
+
+  @doc "特徴の語彙（並びが travel-log の絞り込みの並びになります）。"
+  def features, do: @features
+
+  @doc """
+  1 軒の特徴（travel-log のカテゴリ）。**AI が付けたタグと、営業時間から機械で
+  読み取れるもの**を合わせ、語彙の並びで返します。語彙に無い語は落とします。
+
+  営業時間を持っているのは地図辞典（OSM）の店の一部だけなので、機械で付くのは
+  そこまでです。残りは AI が調べて付けます。
+  """
+  def categories(tags, extra) do
+    from_tags =
+      for tag <- tags,
+          is_binary(tag),
+          String.starts_with?(tag, feature_tag() <> ":"),
+          do: String.replace_prefix(tag, feature_tag() <> ":", "")
+
+    from_hours =
+      extra
+      |> Map.get("opening_hours")
+      |> Tazuna.Datasets.OpeningHours.features()
+      |> Enum.map(&@hours_features[&1])
+
+    have = MapSet.new(from_tags ++ from_hours)
+    Enum.filter(@features, &MapSet.member?(have, &1))
+  end
 
   @doc "都道府県。travel-log の `region` に当たります。"
   def area_tag, do: "地域"
@@ -287,7 +325,11 @@ defmodule Tazuna.Datasets.Meals do
         stored: "タグ「#{genre_tag()}:…」の先頭",
         who: "辞典のカテゴリ（抜けているものを AI が足す）"
       },
-      %{field: "カテゴリ（categories）", stored: "タグ「#{genre_tag()}:…」の 2 つめ以降", who: "同上"},
+      %{
+        field: "カテゴリ（categories）",
+        stored: "タグ「#{feature_tag()}:…」と extra.opening_hours",
+        who: "営業時間から機械で（ランチ営業・深夜営業）、残りは AI"
+      },
       %{
         field: "ランク（rank）",
         stored: "タグ「#{rank_tag()}:A〜E」",
@@ -300,6 +342,7 @@ defmodule Tazuna.Datasets.Meals do
         who: "辞典と AI"
       },
       %{field: "連絡先・公式サイト", stored: "extra.phone / extra.website", who: "地図辞典が優先"},
+      %{field: "営業時間（説明に添える）", stored: "extra.opening_hours", who: "地図辞典（一部の店だけ）"},
       %{field: "出典", stored: "extra.url", who: "百科事典の記事、無ければ AI"},
       %{
         field: "（どの辞典から来たか）",
@@ -379,8 +422,10 @@ defmodule Tazuna.Datasets.Meals do
       provides: ~w(extra),
       body: "opening",
       # `area` は都道府県。**travel-log の地域が機械で決まる**
+      # `opening_hours` は**ランチ営業・深夜営業を機械で読み取る**ため（`categories/2`）。
+      # 持っているのは地図辞典の飲食店の 1 割ほど
       # `wikidata` は使っていません（上と同じ理由で運びません）
-      extra: ~w(lat lon area address website phone),
+      extra: ~w(lat lon area address website phone opening_hours),
       tags: [%{const: kind_tag()}, %{const: @source_tags[:osm]}]
     }
   end
@@ -637,7 +682,7 @@ defmodule Tazuna.Datasets.Meals do
     **2. 並んでいるものを精査する。** 座標が所在地と食い違っていれば**直し**、
     閉店したもの・食べに行く先でないものは墓標で消し（tags に
     "#{Chiezo.tombstone_tag()}" を入れ、body に理由を1行）、
-    説明・ジャンル・地域・ランクの空いているところを埋めてください。
+    説明・ジャンル・地域・ランク・特徴の空いているところを埋めてください。
 
     #{move_by_fixing()}
     #{eat_in_rule()}
@@ -734,6 +779,11 @@ defmodule Tazuna.Datasets.Meals do
         **空いているものは必ず埋めてください** —— travel-log の `region` に当たり、
         ここが無いスポットは地図に置けません。名簿の元の店舗辞典は、日本では
         この欄がほとんど空のまま入ってきます
+      - "#{feature_tag()}:<特徴>" —— **その店の特徴**。travel-log の絞り込みになります。
+        **次の語から選んでください**（新しい語は作らない）:
+        #{Enum.join(@features, " / ")}。
+        **調べて確かめられたものだけ**付けてください —— 付いていないことは
+        「分からない」の意味で、付けた印は「そうだ」と読まれます
       - "#{rank_tag()}:<A〜E>" —— **どれくらい知られているか**。
         A=全国から人が来る、B=その県を代表する、C=その市区町村で知られる、
         D=地元で親しまれている、E=それ以外。**地図の丸の大きさになります**ので、

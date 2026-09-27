@@ -57,7 +57,8 @@ defmodule Tazuna.Datasets.MealsTest do
 
     test "travel-log が読む事実は、元の 1 件からそのまま運ぶ", %{by_source: by_source} do
       # 読む側が 1 件ずつ辞典を引き直さずに済むように
-      for key <- ~w(lat lon address website phone) do
+      # 営業時間はランチ営業・深夜営業を機械で読み取るのに使う
+      for key <- ~w(lat lon address website phone opening_hours) do
         assert key in by_source["osm_japan"].extra
       end
 
@@ -352,6 +353,16 @@ defmodule Tazuna.Datasets.MealsTest do
         assert prompt =~ Meals.genre_tag()
         assert prompt =~ Meals.area_tag()
         assert prompt =~ Meals.rank_tag()
+        assert prompt =~ Meals.feature_tag()
+      end
+    end
+
+    test "特徴は語彙から選ばせ、確かめられたものだけ付けさせる" do
+      # 表記が割れると travel-log の絞り込みが効かない。付いた印は「そうだ」と読まれる
+      for prompt <- [Meals.scan_prompt(), Meals.survey_prompt()] do
+        for feature <- Meals.features(), do: assert(prompt =~ feature)
+        assert prompt =~ "新しい語は作らない"
+        assert prompt =~ "確かめられたものだけ"
       end
     end
 

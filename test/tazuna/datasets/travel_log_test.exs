@@ -34,12 +34,27 @@ defmodule Tazuna.Datasets.TravelLogTest do
       assert row["rank"] == "C"
     end
 
-    test "シリーズはジャンルの先頭、残りはカテゴリへ回す" do
-      # 地図の見た目を決めるのは 1 つだけ。残りは絞り込みに使えるほうが無駄がない
+    test "シリーズはジャンルの先頭、カテゴリは店の特徴" do
+      # ジャンルの 2 つめ以降を回していた頃は、粗いジャンルの重複（寿司屋の「和食」）
+      # ばかりで絞り込みの軸にならなかった
       row = TravelLog.row(doc(%{}), dataset())
 
       assert row["series"] == "和食"
-      assert row["categories"] == "定食"
+      assert row["categories"] == ""
+
+      tags = ["食事処", "ジャンル:和食", "地域:東京都", "特徴:個室あり", "特徴:ゆっくりできる", "特徴:眺めがいい"]
+
+      extra = %{
+        "lat" => 35.6,
+        "lon" => 139.7,
+        "opening_hours" => "Mo-Fr 11:00-14:00; Sa 17:00-23:00"
+      }
+
+      row = TravelLog.row(doc(%{"tags" => tags, "extra" => extra}), dataset())
+
+      # 語彙の並びで、語彙に無い語は落とす。営業時間から読めるものは機械で足す
+      assert row["categories"] == "ランチ営業|深夜営業|ゆっくりできる|個室あり"
+      assert row["description"] =~ "営業時間: Mo-Fr 11:00-14:00; Sa 17:00-23:00"
     end
 
     test "鍵は Chiezo の doc_id" do
@@ -156,6 +171,14 @@ defmodule Tazuna.Datasets.TravelLogTest do
       assert Enum.map(series, & &1["series"]) == ["和食", "カフェ"]
       assert Enum.all?(series, &String.starts_with?(&1["color"], "#"))
       assert Enum.map(series, & &1["label"]) == ["和食", "カフ"]
+    end
+
+    test "カテゴリの並びは語彙のまま渡し、シリーズには混ぜない" do
+      rows = [%{"series" => "和食", "categories" => "ランチ営業"}]
+      json = Jason.decode!(TravelLog.settings_json("meals", "食事処", rows, ["ランチ営業", "深夜営業"]))
+
+      assert Enum.map(json["series"], & &1["series"]) == ["和食"]
+      assert json["categories"] == ["ランチ営業", "深夜営業"]
     end
 
     test "キーと呼び名は、そのまま travel-log の種別になる" do

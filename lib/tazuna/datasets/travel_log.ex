@@ -16,7 +16,7 @@ defmodule Tazuna.Datasets.TravelLog do
   ## 中身
 
   ```
-  <キー>/settings.json   スポット種別の設定（名前・シリーズ一覧）
+  <キー>/settings.json   スポット種別の設定（名前・シリーズ一覧・カテゴリの並び）
   <キー>/spots.csv       スポット（name,lat,lng,region,rank,series,categories,description,key）
   <キー>/excluded_candidates/exclude.txt   消えたスポットの key（1 行に 1 つ。無ければ入れない）
   ```
@@ -80,7 +80,7 @@ defmodule Tazuna.Datasets.TravelLog do
 
       files =
         [
-          {~c"#{key}/settings.json", settings_json(key, name, rows)},
+          {~c"#{key}/settings.json", settings_json(key, name, rows, category_order(module))},
           {~c"#{key}/spots.csv", csv(rows)}
         ] ++
           if excluded == [],
@@ -103,6 +103,11 @@ defmodule Tazuna.Datasets.TravelLog do
       {:error, reason} -> {:error, reason}
       false -> {:error, :not_exportable}
     end
+  end
+
+  # 収集が語彙を持っていれば、その並び（無ければ渡さない）
+  defp category_order(module) do
+    if function_exported?(module, :features, 0), do: module.features(), else: nil
   end
 
   # 全ページ。**件数は 1 ページ目が教えてくれる**ので、何周するかはそこで決まる
@@ -161,8 +166,11 @@ defmodule Tazuna.Datasets.TravelLog do
   @doc """
   1 件をスポットの行にします。**足りないものは作りません**（座標か地域が無ければ nil）。
 
-  シリーズはジャンルの先頭、残りはカテゴリへ回します —— 地図の見た目を決めるのは
-  1 つだけで、残りは絞り込みに使えるほうが無駄がないためです。
+  シリーズはジャンルの先頭です（地図の見た目を決めるのは 1 つだけ）。
+  **カテゴリは店の特徴**（ランチ営業・ゆっくりできる…）で、収集が `categories/2` で
+  決めます。ジャンルの 2 つめ以降を回していた頃は、中身が粗いジャンルの重複
+  （寿司屋の「和食」）ばかりで、絞り込みの軸になっていませんでした。
+  `categories/2` を持たない収集は、今までどおりジャンルの 2 つめ以降を回します。
   """
   def row(doc, %{module: module, collection: collection}) do
     tags = Map.get(doc, "tags") || []
@@ -184,11 +192,17 @@ defmodule Tazuna.Datasets.TravelLog do
         "rank" => tags |> tagged(module.rank_tag()) |> List.first() || "",
         "series" => List.first(genres) || "",
         # カテゴリはパイプ区切りの 1 列（CSV の区切りと衝突しないため）
-        "categories" => genres |> Enum.drop(1) |> Enum.join("|"),
+        "categories" => categories(module, tags, extra, genres) |> Enum.join("|"),
         "description" => description(doc, tags, extra, collection, module),
         "key" => to_string(Map.get(doc, "doc_id"))
       }
     end
+  end
+
+  defp categories(module, tags, extra, genres) do
+    if function_exported?(module, :categories, 2),
+      do: module.categories(tags, extra),
+      else: Enum.drop(genres, 1)
   end
 
   # 説明文。**出どころを必ず添える** —— 辞典ごとにライセンスが違う（OpenStreetMap は
@@ -201,12 +215,22 @@ defmodule Tazuna.Datasets.TravelLog do
 
     [
       clean(Map.get(doc, "opening")),
+      hours(extra),
       "出典: #{if from == [], do: "不明", else: Enum.join(from, " / ")}" <>
         "（tazuna の収集「#{collection}」から書き出し）",
       link(extra)
     ]
     |> Enum.reject(&(&1 == ""))
     |> Enum.join("\n")
+  end
+
+  # 営業時間は地図辞典の書き方のまま添える（`Mo-Fr 11:00-15:00` のような形）。
+  # **言い換えない** —— 祝日や例外の書き方まで読み替えると、違う時間を書くことになる
+  defp hours(extra) do
+    case clean(Map.get(extra, "opening_hours")) do
+      "" -> ""
+      text -> "営業時間: " <> text
+    end
   end
 
   defp source_label("OSM"), do: "OpenStreetMap"
@@ -253,11 +277,15 @@ defmodule Tazuna.Datasets.TravelLog do
 
   見た目（2 文字のラベルと色）もここで決めます。決めないと travel-log 側で
   全部が同じ灰色のピンになり、地図で見分けられません。
+
+  **カテゴリの並びも渡します**（`categories`。収集が語彙を持っていれば、その並び）。
+  travel-log はこれを絞り込みの並びに使います。カテゴリは見た目に効かないので、
+  シリーズの一覧には混ぜません。
   """
-  def settings_json(key, name, rows) do
+  def settings_json(key, name, rows, categories \\ nil) do
     series =
       rows
-      |> Enum.flat_map(fn row -> String.split(row["series"] <> "|" <> row["categories"], "|") end)
+      |> Enum.map(& &1["series"])
       |> Enum.reject(&(&1 == ""))
       |> Enum.frequencies()
       |> Enum.sort_by(fn {series, count} -> {-count, series} end)
@@ -277,7 +305,10 @@ defmodule Tazuna.Datasets.TravelLog do
         # ランクは A〜E が入るので使う。公開するかどうかは向こうで決める（既定は非公開）
         settings: %{rank_enabled: true},
         series: series
-      },
+      }
+      |> then(fn json ->
+        if is_list(categories), do: Map.put(json, :categories, categories), else: json
+      end),
       pretty: true
     )
   end
