@@ -445,12 +445,14 @@
 
       <%!-- **この収集から作る収集**（本棚・話題の網）。**親の下に置く** ——
            別のタブにすると、何から作られたものかが読めなくなる --%>
+      <%!-- **囲まずに上に線を引くだけ**（ほかの節と同じ形）。設定の枠の中でさらに
+           囲むと、枠の中に枠が入り、どこまでが 1 つの設定なのか読みにくい --%>
       <section
         :if={@dataset[:derived]}
-        class="collect-panel"
+        class="settings-block derived-block"
         aria-label="この収集から作るもの"
       >
-        <h2>{@dataset.derived.name()}</h2>
+        <h3>{@dataset.derived.name()}</h3>
         <p>
           上の収集に付いた<strong>タグから機械で作ります</strong>。
           数えるのは Chiezo で、<strong>AI がやるのは整えるところだけ</strong>です

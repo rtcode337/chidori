@@ -178,6 +178,9 @@ article p:last-child { color: #475569; line-height: 1.7; }
 /* 最初の節は線を引かない(枠の縁とすぐ重なる) */
 .settings-block:first-of-type { margin-top: .8rem; border-top: 0; padding-top: 0; }
 .settings-block > h3 { margin: 0 0 .5rem; font-size: .95rem; color: #332c75; }
+/* この収集から作る収集（本棚）。**常に上に線を引く** —— 枠の中で最初の section に
+   なることがあり（技術書のタブ）、そのままだと first-of-type で線が消えて親と地続きに見える */
+.settings-block.derived-block { margin-top: 1.2rem; border-top: 1px solid #dedcf5; padding-top: 1rem; }
 .settings-panel > p, .settings-block > p { margin: .25rem 0; color: #616a82; font-size: .85rem; line-height: 1.7; }
 .settings-panel button { border: 0; background: #554bc0; color: #fff; }
 .settings-panel button:disabled { cursor: wait; opacity: .65; }
