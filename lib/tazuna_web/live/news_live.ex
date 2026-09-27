@@ -147,7 +147,10 @@ defmodule TazunaWeb.NewsLive do
       socket
       |> assign(cal_events: :loading)
       |> start_async({:calendar, month}, fn ->
-        Events.fetch_month(base, topic.collection, month, Topics.date_tag(topic))
+        Events.fetch_month(base, topic.collection, month,
+          date_tag: Topics.date_tag(topic),
+          body: Topics.works(topic) != nil
+        )
       end)
     else
       socket
@@ -166,7 +169,10 @@ defmodule TazunaWeb.NewsLive do
       socket
       |> assign(works: :loading)
       |> start_async({:works, topic.collection}, fn ->
-        Events.fetch_tagged(base, topic.collection, tags, Topics.date_tag(topic))
+        Events.fetch_tagged(base, topic.collection, tags,
+          date_tag: Topics.date_tag(topic),
+          body: true
+        )
       end)
     else
       socket
@@ -1259,6 +1265,15 @@ defmodule TazunaWeb.NewsLive do
   defp rank(:high), do: 0
   defp rank(:mid), do: 1
   defp rank(_attention), do: 2
+
+  @doc """
+  一覧に添える絵の場所。**Chiezo が縮めて持っているものを先に使う**（`thumb`。
+  見る人のブラウザが知らない外のサイトへつながないため）。無ければ配信元が
+  配っている絵（技術イベントの告知サイトのもの）。どちらも無ければ nil。
+  """
+  def entry_thumb(%{thumb: thumb}) when is_binary(thumb), do: News.chiezo_url(thumb)
+  def entry_thumb(%{image: image}) when is_binary(image), do: image
+  def entry_thumb(_entry), do: nil
 
   @doc "作品の事実（公開日・上映形式・配信開始）を 1 行で。"
   def work_facts(entry) do

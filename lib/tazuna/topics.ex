@@ -33,6 +33,10 @@ defmodule Tazuna.Topics do
 
   `works` は**1 件 = 1 作品として育てる話題**の作り方（映画。`Tazuna.News.Movies`）。
   書くと記事を溜めず、巡回も依頼文もそのモジュールが決めます。
+
+  `thumbs` は**絵を Chiezo に縮めて持たせる**指定（Chiezo の収集の `thumbs` へそのまま渡す）。
+  `true` なら AI が返した絵だけ、`%{pages_from: [ホスト]}` ならそのホストのページの
+  `og:image` も拾わせます。
   """
   def defined do
     [
@@ -143,7 +147,11 @@ defmodule Tazuna.Topics do
         interests_from: "tazuna_tech",
         # **先の月を探す回を置く**（巡回「情報収集」。1 日に 1 回、1 か月ずつ）。connpass の新着は
         # 募集が出たものしか流れてこないので、そのままではカレンダーが来月で止まる
-        look_ahead: true
+        look_ahead: true,
+        # **絵を Chiezo に縮めて持たせる。** connpass は配信に絵を載せないので、イベントの
+        # ページの og:image を Chiezo に拾わせる（名指ししたホストだけ）。外から足した
+        # イベントは AI が返す絵から。TECH PLAY は配信の絵をそのまま使う
+        thumbs: %{pages_from: ["connpass.com"]}
       },
       %{
         name: "映画",
@@ -169,7 +177,10 @@ defmodule Tazuna.Topics do
         # ほど日々動く話題ではない
         digest: false,
         # **記事一覧は出しません**（1 件が記事ではなく作品なので）。代わりに注目作を並べる
-        articles: false
+        articles: false,
+        # **ポスターを Chiezo に縮めて持たせる**（AI が公式サイトの絵の URL を返す）。
+        # 画面が公式サイトの絵をそのまま指すと、見る人のブラウザが外へつなぎに行く
+        thumbs: true
       }
     ]
   end

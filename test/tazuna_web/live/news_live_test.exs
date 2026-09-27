@@ -129,6 +129,14 @@ defmodule TazunaWeb.NewsLiveTest do
       assert Enum.map(coming, & &1.title) == ["来週", "来月"]
     end
 
+    test "絵は Chiezo が縮めたものを先に使う" do
+      # 見る人のブラウザが知らない外のサイトへつながないため
+      assert NewsLive.entry_thumb(%{thumb: nil, image: "https://example.com/a.png"}) ==
+               "https://example.com/a.png"
+
+      assert NewsLive.entry_thumb(%{thumb: nil, image: nil}) == nil
+    end
+
     test "本文の URL はリンクにする" do
       assert NewsLive.link_parts("出どころ: https://example.com/a、https://example.com/b") == [
                {:text, "出どころ: "},

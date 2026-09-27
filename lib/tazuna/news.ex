@@ -621,7 +621,9 @@ defmodule Tazuna.News do
         sweeps: with_choices(sweeps(topic), choices),
         requested_by: "tazuna"
       }
-      |> Map.merge(if(Topics.ages_out?(topic), do: %{}, else: %{keep_days: 0})),
+      |> Map.merge(if(Topics.ages_out?(topic), do: %{}, else: %{keep_days: 0}))
+      # **絵は Chiezo に縮めて持たせる**（書いた話題だけ。`Tazuna.Topics` の `thumbs`）
+      |> Map.merge(if(thumbs = Map.get(topic || %{}, :thumbs), do: %{thumbs: thumbs}, else: %{})),
       # 収集ぜんたいの相手。**巡回に書いてなければここへ落ちる**（Chiezo 側の決まり）。
       # 名指ししないものは送らない —— null を送ると「指定しない」と同じだが、
       # 依頼の本文に空の項目が並ぶと、何を決めて何を任せたのかが読めない

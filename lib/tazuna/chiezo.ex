@@ -141,7 +141,12 @@ defmodule Tazuna.Chiezo do
         "tag" => tag,
         "limit" => limit,
         "offset" => offset,
-        "fields" => "doc_id,title,tags,extra,opening"
+        # **本文は名指ししたときだけ**（冒頭は 240 字で切れているので、全文が要る画面がある）
+        "fields" =>
+          if(opts[:body],
+            do: "doc_id,title,tags,extra,opening,body",
+            else: "doc_id,title,tags,extra,opening"
+          )
       }
       |> then(fn q ->
         if opts[:include_removed], do: Map.put(q, "include_removed", "true"), else: q

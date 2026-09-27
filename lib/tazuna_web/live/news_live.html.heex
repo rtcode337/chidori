@@ -175,6 +175,13 @@
               :for={entry <- Events.sort(Enum.filter(shown, &(&1.date == @cal_day)))}
               class={["event-item", "is-#{entry.attention}"]}
             >
+              <img
+                :if={entry_thumb(entry)}
+                class="event-thumb"
+                src={entry_thumb(entry)}
+                alt=""
+                loading="lazy"
+              />
               <div class="event-item-head">
                 <span :if={entry.attention} class={["event-chip", "is-#{entry.attention}"]}>
                   注目度 {attention_label(entry.attention)}
@@ -221,6 +228,13 @@
           <h3>{label}（{length(list)} 本）</h3>
           <ul>
             <li :for={entry <- list} class={["event-item", "is-#{entry.attention}"]}>
+              <img
+                :if={entry_thumb(entry)}
+                class="event-thumb"
+                src={entry_thumb(entry)}
+                alt=""
+                loading="lazy"
+              />
               <div class="event-item-head">
                 <span :if={entry.attention} class={["event-chip", "is-#{entry.attention}"]}>
                   注目度 {attention_label(entry.attention)}

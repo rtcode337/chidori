@@ -797,7 +797,9 @@ body.digest-open { overflow: hidden; }
 .event-day-list { margin-top: 1rem; }
 .event-day-list h3 { margin: 0 0 .5rem; font-size: 1rem; }
 .event-day-list ul { margin: 0; padding: 0; list-style: none; }
-.event-item { padding: .55rem 0; border-bottom: 1px solid #eef0f7; min-width: 0; }
+.event-item { padding: .55rem 0; border-bottom: 1px solid #eef0f7; min-width: 0; display: flow-root; }
+/* 絵は右に小さく（ポスターは縦長。説明の読みを邪魔しない大きさ） */
+.event-thumb { float: right; width: 96px; max-height: 136px; object-fit: cover; margin: 0 0 .3rem .6rem; border-radius: 4px; background: #eef0f7; }
 .event-item-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .5rem; overflow-wrap: anywhere; }
 .event-item-head .event-chip { display: inline-block; }
 .event-item-facts { margin: .2rem 0 0; color: #4b5068; font-size: .82rem; }

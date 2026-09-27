@@ -38,6 +38,11 @@ defmodule Tazuna.News.MoviesTest do
       assert prompt =~ ~s(初めての回など）は「公開中」)
     end
 
+    test "ポスターの画像の URL も返させる", %{prompt: prompt} do
+      # Chiezo が 1 回だけ取って縮めて持つ（画面が公式サイトの絵を直に指さないように）
+      assert prompt =~ "- image: ポスターかキービジュアルの画像の URL"
+    end
+
     test "1 館だけの作品までは追わない", %{prompt: prompt} do
       assert prompt =~ "全国規模で公開される作品と、小規模でも話題になっている作品"
     end
@@ -81,6 +86,28 @@ defmodule Tazuna.News.MoviesTest do
     end
   end
 
+  test "Chiezo が縮めた絵は、その形の場所だけ通す" do
+    thumb = "/v1/thumbs/" <> String.duplicate("a", 40) <> ".webp"
+
+    doc = fn extra -> %{"title" => "作品A", "tags" => ["公開日:2026-10-16"], "extra" => extra} end
+
+    assert Events.entry(doc.(%{"thumb" => thumb}), "公開日").thumb == thumb
+    # 外を指すものは混ぜない（画面が Chiezo の URL に繋いで出すため）
+    assert Events.entry(doc.(%{"thumb" => "https://example.com/a.webp"}), "公開日").thumb == nil
+    assert Events.entry(doc.(%{"thumb" => "/v1/thumbs/../x.webp"}), "公開日").thumb == nil
+  end
+
+  test "本文を引いたときは本文を使う" do
+    # 冒頭は 240 字で切れていて、口コミは本文の末尾にある
+    entry =
+      Events.entry(
+        %{"title" => "作品A", "tags" => [], "opening" => "頭", "body" => "頭\n口コミ: 好評"},
+        "公開日"
+      )
+
+    assert entry.summary == "頭\n口コミ: 好評"
+  end
+
   test "公開日のタグでカレンダーに並ぶ" do
     entry =
       Events.entry(
@@ -94,6 +121,7 @@ defmodule Tazuna.News.MoviesTest do
       )
 
     assert entry.date == ~D[2026-10-16]
+    assert entry.thumb == nil
     assert entry.attention == :high
     assert Movies.formats(entry) == ["IMAX"]
     assert Movies.streaming(entry) == ~D[2027-01-10]

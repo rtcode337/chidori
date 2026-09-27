@@ -209,6 +209,8 @@ defmodule Tazuna.News.Events do
       同じイベントの別の回は別の 1 件です）
     - body: 1〜2 行。何のイベントで、どういう人に向くか。申込の締切や参加費が分かれば 1 行
     - url: 公式サイトか申込ページ（**必ず入れる**）
+    - image: イベントの画像の URL（公式サイトか申込ページの og:image。
+      **ページではなく画像そのものの URL**。分からなければ入れない）
     - tags: 次のとおり
 
     #{tag_rules()}
@@ -236,6 +238,9 @@ defmodule Tazuna.News.Events do
   Chiezo の生の 1 件（`"title"` / `"tags"` / `"extra"` / `"opening"`）でも受けます。
 
   `date_tag` は日付を読むタグの頭（技術イベントは `開催日`、映画は `公開日`）。
+
+  **絵は 2 つ持ちます** —— Chiezo が縮めて持っているもの（`thumb`。Chiezo の中の
+  相対パス）と、配信元が配っている絵（`image`）。画面は `thumb` を先に使います。
   """
   def entry(doc, date_tag \\ @date_tag)
 
@@ -247,7 +252,10 @@ defmodule Tazuna.News.Events do
         title: title,
         tags: Enum.map(doc["tags"] || [], &to_string/1),
         url: extra["url"],
-        summary: doc["opening"]
+        # 本文を引いたときは本文（冒頭は 240 字で切れている）
+        summary: doc["body"] || doc["opening"],
+        thumb: thumb_path(extra["thumb"]),
+        image: safe_url(extra["image"])
       },
       date_tag
     )
@@ -261,6 +269,8 @@ defmodule Tazuna.News.Events do
       title: title,
       # 話題ごとのタグ（映画の上映形式・配信開始など）を後から読めるように持っておく
       tags: tags,
+      thumb: Map.get(article, :thumb),
+      image: Map.get(article, :image),
       url: safe_url(Map.get(article, :url)),
       summary: summary,
       date: date,
@@ -283,20 +293,26 @@ defmodule Tazuna.News.Events do
   @doc """
   その月のイベントを Chiezo から引きます。`{:ok, [entry]}` か `{:error, 理由}`。
   """
-  def fetch_month(base, collection, %Date{} = first, date_tag \\ @date_tag) do
-    fetch_tagged(base, collection, month_tags(first, date_tag), date_tag)
+  def fetch_month(base, collection, %Date{} = first, opts \\ []) do
+    date_tag = Keyword.get(opts, :date_tag, @date_tag)
+    fetch_tagged(base, collection, month_tags(first, date_tag), opts)
   end
 
   @doc """
   タグ（カンマ区切りで「どれか」）の付いたものを全部引き、日付の読めたものだけ返します。
   映画の注目作の一覧（`注目度:高,注目度:中`）に使います。
+
+  `opts`: `date_tag`（日付を読むタグの頭）、`body`（本文ごと引くか。映画は口コミが
+  本文の末尾にあるので要る）。
   """
-  def fetch_tagged(base, collection, tags, date_tag \\ @date_tag) do
-    fetch(base, collection, tags, date_tag, 0, [])
+  def fetch_tagged(base, collection, tags, opts \\ []) do
+    fetch(base, collection, tags, opts, 0, [])
   end
 
-  defp fetch(base, collection, tags, date_tag, offset, acc) do
-    case Chiezo.spot_docs(base, collection, tags, offset, @page_limit) do
+  defp fetch(base, collection, tags, opts, offset, acc) do
+    date_tag = Keyword.get(opts, :date_tag, @date_tag)
+
+    case Chiezo.spot_docs(base, collection, tags, offset, @page_limit, body: opts[:body]) do
       {:ok, %{docs: []}} ->
         {:ok, finish(acc, date_tag)}
 
@@ -305,7 +321,7 @@ defmodule Tazuna.News.Events do
 
         if length(got) >= total,
           do: {:ok, finish(got, date_tag)},
-          else: fetch(base, collection, tags, date_tag, length(got), got)
+          else: fetch(base, collection, tags, opts, length(got), got)
 
       {:error, reason} ->
         {:error, reason}
@@ -541,4 +557,12 @@ defmodule Tazuna.News.Events do
   end
 
   defp safe_url(_url), do: nil
+
+  # Chiezo が配るサムネイルの場所（Chiezo の中の相対パス）。**その形のものだけ通す**
+  # （画面が Chiezo の URL に繋いで出すので、外を指すものを混ぜない）
+  defp thumb_path("/v1/thumbs/" <> name = path) do
+    if name =~ ~r/\A[0-9a-f]{40}\.webp\z/, do: path, else: nil
+  end
+
+  defp thumb_path(_path), do: nil
 end
