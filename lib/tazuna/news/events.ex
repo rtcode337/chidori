@@ -101,7 +101,7 @@ defmodule Tazuna.News.Events do
   def tag_rules do
     """
     - "#{@date_tag}:<YYYY-MM-DD>" —— **開催日（初日）を必ず 1 つ**。日本時間の日付で。
-      connpass のものは本文の「開催日時:」に書いてあります
+      connpass のものは本文の「開催日時:」、TECH PLAY のものは「日時:」に書いてあります
     - "#{@end_tag}:<YYYY-MM-DD>" —— **連日のときだけ**、最終日を
     - "#{@place_tag}:<都道府県>" / "#{@place_tag}:#{@online}" —— **開催地を必ず**。
       会場のある都道府県を「東京都」「大阪府」の形で。オンラインなら "#{@place_tag}:#{@online}"、
@@ -393,7 +393,7 @@ defmodule Tazuna.News.Events do
       |> String.replace(~r/<[^>]*>/u, "")
       |> unescape()
       |> String.split("\n")
-      |> Enum.reject(&String.match?(&1, ~r/^\s*(開催日時|開催場所)[:：]/u))
+      |> Enum.reject(&String.match?(&1, ~r/^\s*(開催日時|開催場所|日時|会場)[:：]/u))
       |> Enum.join(" ")
       |> String.replace(~r/\s+/u, " ")
       |> String.trim()
@@ -435,7 +435,7 @@ defmodule Tazuna.News.Events do
   end
 
   defp body_date(text) do
-    case Regex.run(~r/開催日時[:：]\s*(\d{4})\/(\d{1,2})\/(\d{1,2})/u, text) do
+    case Regex.run(~r/(?:開催)?日時[:：]\s*(\d{4})\/(\d{1,2})\/(\d{1,2})/u, text) do
       [_, y, m, d] ->
         case Date.new(String.to_integer(y), String.to_integer(m), String.to_integer(d)) do
           {:ok, date} -> date
@@ -449,7 +449,10 @@ defmodule Tazuna.News.Events do
 
   # 始まりの時刻（本文の「開催日時:」から。無ければ nil）
   defp body_time(text) do
-    case Regex.run(~r/開催日時[:：]\s*\d{4}\/\d{1,2}\/\d{1,2}\s+(\d{1,2}:\d{2})/u, text) do
+    case Regex.run(
+           ~r/(?:開催)?日時[:：]\s*\d{4}\/\d{1,2}\/\d{1,2}(?:\s*\([^)]*\))?\s+(\d{1,2}:\d{2})/u,
+           text
+         ) do
       [_, time] -> time
       _ -> nil
     end

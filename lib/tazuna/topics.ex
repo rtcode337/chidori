@@ -88,7 +88,22 @@ defmodule Tazuna.Topics do
           %{url: "https://codezine.jp/rss/new/20/index.xml", tags: ["ニュース"]},
           %{url: "https://zenn.dev/feed", tags: ["記事"]},
           %{url: "https://qiita.com/popular-items/feed", tags: ["記事"]},
-          %{url: "https://b.hatena.ne.jp/hotentry/it.rss", tags: ["記事"]}
+          %{url: "https://b.hatena.ne.jp/hotentry/it.rss", tags: ["記事"]},
+          # **話題の論文**（Hugging Face の Daily Papers。投稿と upvote で選ばれたもの）。
+          # RSS を配っていないので、JSON の読み方を書いて Chiezo に引かせる。
+          # 整理の回に論文を探させるだけでは、入り方が回によって安定しなかった
+          %{
+            url: "https://huggingface.co/api/daily_papers?limit=50",
+            tags: ["論文"],
+            json: %{
+              title: "paper.title",
+              url: "https://arxiv.org/abs/{paper.id}",
+              summary: "paper.summary",
+              at: "publishedAt",
+              subjects: "paper.ai_keywords",
+              from: "Hugging Face Daily Papers"
+            }
+          }
         ]
       },
       %{
@@ -112,7 +127,9 @@ defmodule Tazuna.Topics do
         # 配信元は毎時見てよい(新しい募集が絶えず立つ)。整えるのは半日に 1 度で足りる
         every: %{feed: 60, refine: 720},
         feeds: [
-          %{url: "https://connpass.com/explore/ja.atom", tags: ["勉強会"]}
+          %{url: "https://connpass.com/explore/ja.atom", tags: ["勉強会"]},
+          # connpass 以外の告知（キー無しの RSS）。本文の頭に「日時:」がある
+          %{url: "https://rss.techplay.jp/event/w3c-rss-format/rss.xml", tags: ["勉強会"]}
         ],
         note: Tazuna.News.Events.refine_note(),
         # **外を当たる先も話題で違う**（整理の「上に無いものを探して足す」）。
