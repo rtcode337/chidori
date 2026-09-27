@@ -548,18 +548,24 @@ defmodule Tazuna.NewsTest do
       assert names == ["機械収集", "整理", "情報収集"]
     end
 
-    test "技術イベントは週に 1 回、先の月を探して足す" do
+    test "技術イベントは 1 日に 1 回、先の月を 1 か月ずつ探して足す" do
       # connpass の新着は募集が出たものしか流れてこないので、カレンダーが来月で止まる
       sweep = defined_topic("tazuna_events") |> News.sweeps() |> Enum.find(&(&1.name == "情報収集"))
 
-      assert sweep.interval_minutes == 7 * 24 * 60
+      assert sweep.interval_minutes == 24 * 60
       assert sweep.only_new
 
       # 今日の日付と、いま入っている見出しを見せる（同じものを足し直させない）
       assert sweep.prompt =~ "{now}"
       assert sweep.prompt =~ "{names}"
       assert sweep.prompt =~ "6 か月先まで"
-      assert sweep.prompt =~ "月ごとに探して"
+
+      # 6 か月ぶんを 1 回で頼むと途中で打ち切られる。今回の月はカーソルで渡し、次を返させる
+      assert sweep.prompt =~ "今回探すのは「{cursor}」に開かれるものだけです"
+      assert sweep.prompt =~ "next_cursor には、今回の次の月の名前"
+      assert Tazuna.News.Events.segments() == ~w(今月 来月 2か月先 3か月先 4か月先 5か月先 6か月先)
+      # 整理の回はカーソルを動かさない（動かすと次に探す月が飛ぶ）
+      assert Tazuna.News.Events.refine_note() =~ "next_cursor は返さないでください"
       # タグの決まりは整理と同じ文
       assert sweep.prompt =~ Tazuna.News.Events.tag_rules()
       assert Tazuna.News.Events.refine_note() =~ Tazuna.News.Events.tag_rules()
