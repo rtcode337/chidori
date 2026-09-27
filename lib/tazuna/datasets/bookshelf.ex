@@ -51,6 +51,9 @@ defmodule Tazuna.Datasets.Bookshelf do
   # web で確かめるので、一度に 160 冊あまりを渡した回は 18 冊で手が止まった。
   # 渡さなかった本は次の回に回る
   @tidy_per_run 20
+  # 整理に渡す順（`unreviewed_by`）。**勧めている記事の多い本から**調べさせる ——
+  # 20 冊ずつしか渡さないので、読む人の目に触れやすい本を先に仕上げる
+  @tidy_order "docs"
 
   # 定番に上げる下限（勧めている記事の数）。**3 は「たまたま」を外せる数**
   @classic_sources 3
@@ -176,7 +179,8 @@ defmodule Tazuna.Datasets.Bookshelf do
         name: SweepNames.tidy(),
         interval_minutes: @tidy_minutes,
         prompt: :tidy,
-        unreviewed_per_run: @tidy_per_run
+        unreviewed_per_run: @tidy_per_run,
+        unreviewed_by: @tidy_order
       }
     ]
   end
@@ -214,7 +218,7 @@ defmodule Tazuna.Datasets.Bookshelf do
 
     ## B. まだ調べていない本を調べる
 
-    次に並んでいるのは、**まだ誰も調べていない本のうち、古いほうから
+    次に並んでいるのは、**まだ誰も調べていない本のうち、勧めている記事の多い本から
     #{@tidy_per_run} 冊まで**です（残りは次の回に並びます）。**並んだ本はすべて**
     調べて返してください。調べがついてもつかなくても、次からは並びません。
 

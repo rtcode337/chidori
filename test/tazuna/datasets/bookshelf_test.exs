@@ -153,6 +153,9 @@ defmodule Tazuna.Datasets.BookshelfTest do
       tidy = Enum.find(Bookshelf.sweeps(), &(&1[:prompt] == :tidy))
       assert tidy.unreviewed_per_run == Bookshelf.tidy_per_run()
 
+      # 20 冊ずつなので、勧めている記事の多い本（機械が数えた extra.docs）から仕上げる
+      assert tidy.unreviewed_by == "docs"
+
       prompt = Bookshelf.tidy_prompt()
       assert prompt =~ "#{Bookshelf.tidy_per_run()} 冊まで"
       assert prompt =~ "**並んだ本はすべて**"
