@@ -139,6 +139,26 @@ defmodule Tazuna.Datasets.BookshelfTest do
       assert Bookshelf.tidy_prompt() =~ ~s("isbn")
     end
 
+    test "ISBN はタグからも読む（脇書きが先）" do
+      # 全冊を見る差し込み口は見出しとタグしか見せないので、番号をタグにも付けさせている
+      assert book("本:x", %{}, ["技術書", "ISBN:9784873115658"]).isbn == "9784873115658"
+      assert book("本:x", %{}, ["技術書", "ISBN:不明"]).isbn == nil
+
+      assert book("本:x", %{"isbn" => "9784873115658"}, ["技術書", "ISBN:9784297146221"]).isbn ==
+               "9784873115658"
+    end
+
+    test "整理のたびに、ISBN のまだ無い本を上限まで調べさせる" do
+      # まだ調べていない本しか渡さないので、一度で ISBN が取れなかった本は二度と回ってこなかった
+      prompt = Bookshelf.tidy_prompt()
+      assert prompt =~ "「ISBN:」で始まるタグが**まだ無い本**"
+      assert prompt =~ "#{Bookshelf.isbn_per_run()} 冊まで"
+      # 確かめられなかった本は印を付けて、毎回は調べ直さない
+      assert prompt =~ "ISBN:不明"
+      # 返すと丸ごと置き換わるので、分野や話題のタグを残させる
+      assert prompt =~ "いま付いているタグをすべて残したうえで"
+    end
+
     test "調べるのは、まだ調べていない本だけ（畳むのは書名の一覧で）" do
       # 全部を渡していた頃は、調べ終えた本も見つからなかった本も毎回調べ直していた
       prompt = Bookshelf.tidy_prompt()

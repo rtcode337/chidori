@@ -40,6 +40,15 @@ defmodule Tazuna.Datasets.Bookshelf do
   @classic_tag "定番"
   @candidate_tag "候補"
 
+  # ISBN のタグの頭（`ISBN:9784873115658`）。**脇書きと同じ番号をタグにも付ける** ——
+  # 整理の回が全冊を見る差し込み口（`{names}`）は見出しとタグしか見せないので、
+  # タグに無いと「ISBN がまだ無い本」を選べない
+  @isbn_tag "ISBN"
+  # 調べて確かめられなかった印。**付いた本は整理のたびには調べ直さない**
+  @isbn_unknown "不明"
+  # 整理の 1 回で ISBN を埋める冊数の上限（web で 1 冊ずつ確かめるので、枠を見て絞る）
+  @isbn_per_run 20
+
   # 定番に上げる下限（勧めている記事の数）。**3 は「たまたま」を外せる数**
   @classic_sources 3
 
@@ -87,6 +96,12 @@ defmodule Tazuna.Datasets.Bookshelf do
 
   @doc "候補の印。"
   def candidate_tag, do: @candidate_tag
+
+  @doc "ISBN のタグの頭。"
+  def isbn_tag, do: @isbn_tag
+
+  @doc "整理の 1 回で ISBN を埋める冊数の上限。"
+  def isbn_per_run, do: @isbn_per_run
 
   @doc "定番に上げる下限（勧めている記事の数）。"
   def classic_sources, do: @classic_sources
@@ -189,6 +204,11 @@ defmodule Tazuna.Datasets.Bookshelf do
     **技術書でない語を外す。** 「入門書」「名著」のような**本の名前でないもの**、
     雑誌、資格の問題集は本棚に置きません（同じく墓標で）。
 
+    **ISBN の埋め残しを調べる。** 上の一覧で「#{@isbn_tag}:」で始まるタグが**まだ無い本**を、
+    上から **#{@isbn_per_run} 冊まで**選び、下の「4. ISBN を調べる」と同じやり方で ISBN を
+    付けてください（「#{@isbn_tag}:#{@isbn_unknown}」の付いた本は選ばない）。
+    ISBN のほかに触る必要はありません。
+
     ## B. 新しく入った本を調べる
 
     次に並んでいるのは、**まだ誰も調べていない本だけ**です（調べ終えた本は並びません。
@@ -196,6 +216,23 @@ defmodule Tazuna.Datasets.Bookshelf do
 
     {unreviewed}
 
+    #{book_checks()}
+
+    **印は数で決まります**（あなたは書かなくて構いません）——
+    「#{@classic_tag}」は #{@classic_sources} 本以上の記事が挙げている本、
+    「#{@candidate_tag}」はそれ未満です。
+
+    **迷ったものは触らないでください。** 間違って畳んだ本は、記事の側から
+    もう一度上がってくるまで戻りません。
+
+    **触ったものだけ返してください。** 触れなかったものはそのまま残ります。
+    """
+  end
+
+  # 1 冊ずつ確かめること（分野・タグ・説明・ISBN）。**整理の回と、1 冊を名指しして
+  # 調べ直す回で同じ文を使う** —— 片方だけ直すと、同じ本の調べ方が回によって変わる
+  defp book_checks do
+    """
     1 冊ずつ、次を書いてください。
 
     **1. 分野を付ける。** 「#{@field_tag}:<分野>」を、当てはまるものすべて。
@@ -213,21 +250,62 @@ defmodule Tazuna.Datasets.Bookshelf do
     「名著です」ではなく、**読むかどうかを決められること**を書いてください。
     原書名・著者・出た年が分かれば 1 行足してください。
 
-    **4. ISBN を調べる。** 脇書き（extra）の "isbn" に、**いま手に入る日本語版の
-    ISBN-13**（ハイフンなし）を書いてください。邦訳が無い本は原書のもの。
-    **調べて確かめられたときだけ**書き、分からなければ書かないでください ——
+    **4. ISBN を調べる。** **いま手に入る日本語版の ISBN-13**（ハイフンなし）を、
+    脇書き（extra）の "isbn" と、タグ「#{@isbn_tag}:<13 桁>」の両方に書いてください。
+    邦訳が無い本は原書のもの。**調べて確かめられたときだけ**書いてください ——
     表紙の画像はこの番号から引くので、違う番号だと別の本の表紙が出ます。
+    調べても確かめられなかったら、タグ「#{@isbn_tag}:#{@isbn_unknown}」だけを付けてください
+    （次からは調べ直しません）。
 
-    **印は数で決まります**（あなたは書かなくて構いません）——
-    「#{@classic_tag}」は #{@classic_sources} 本以上の記事が挙げている本、
-    「#{@candidate_tag}」はそれ未満です。
+    **返すときは、いま付いているタグをすべて残したうえで足してください** ——
+    返した内容で丸ごと置き換わるので、書かなかったタグ（分野・話題など）は消えます。
+    """
+    |> String.trim_trailing()
+  end
 
-    **迷ったものは触らないでください。** 間違って畳んだ本は、記事の側から
-    もう一度上がってくるまで戻りません。
+  @doc """
+  **1 冊を名指しして調べ直させる**ときの依頼文（本の詳細から頼む割り込み）。
 
-    **触ったものだけ返してください。** 触れなかったものはそのまま残ります。
+  整理の回の依頼文は**まだ調べていない本**しか並べない（`{unreviewed}`）ので、
+  そのまま使うと、調べ終えた本を名指ししても何も並ばない。名指しした 1 冊を
+  `{current}` で見せ、書いてあることを確かめ直させる。
+  """
+  def focus_prompt do
+    """
+    技術書の本棚の 1 冊を調べ直します。**1 冊 1 文書**で、見出しは「本:<書名>」です。
+
+    **返すときは、いまの見出しを一字も変えずに使ってください**（「本:」も付けたまま）。
+    **数は機械が数えています**（その本を挙げている記事の本数）。書き換えないでください。
+
+    {current}
+
+    **いま書いてあることを確かめ、違っていれば直し、無いものは埋めてください。**
+    #{book_checks()}
+
+    **確かめられなかったものは触らないでください。** 技術書でないと分かったとき・
+    ほかの本と同じ本だと分かったときだけ、墓標を付けてください（tags に
+    "#{Chiezo.tombstone_tag()}" を入れ、body に理由を 1 行）。
     """
   end
+
+  @doc """
+  **この本を詳しく調べて**、を Chiezo に頼みます（本棚の整理の回として、1 回だけ）。
+  `note` は読む人が書き添えた一言（空でもよい）。
+  """
+  def focus_book(base, title, note) when is_binary(title) do
+    name = title |> String.replace_prefix(Books.book_tag() <> ":", "") |> String.trim()
+
+    written =
+      case String.trim(note || "") do
+        "" -> "#{name}について、分野・タグ・説明・ISBN を確かめ、違っていれば直し、無いものは埋めてください。"
+        text -> "#{name}について、分野・タグ・説明・ISBN を確かめてください。補足: #{text}"
+      end
+
+    Chiezo.focus(base, collection(), written, [title], SweepNames.tidy(), nil, focus_prompt())
+  end
+
+  @doc "巡回ごとの依頼文（画面に出すため。機械収集の回は AI を呼ばないので持たない）。"
+  def prompts, do: [{SweepNames.tidy(), tidy_prompt()}]
 
   @doc """
   いま本棚にある本の、**分野・タグ・説明・ISBN を埋め直す 1 回だけの依頼文**。
@@ -386,7 +464,15 @@ defmodule Tazuna.Datasets.Bookshelf do
     tags = for tag <- result["tags"] || [], is_binary(tag), do: tag
     extra = if is_map(result["extra"]), do: result["extra"], else: %{}
     docs = counted(extra["docs"])
-    isbn = isbn13(extra["isbn"])
+    # **脇書きが先、無ければタグ**（どちらも同じ番号を書かせている）
+    isbn =
+      isbn13(extra["isbn"]) ||
+        Enum.find_value(tags, fn tag ->
+          case tag do
+            "#{@isbn_tag}:" <> number -> isbn13(number)
+            _other -> nil
+          end
+        end)
 
     %{
       title: title,

@@ -178,9 +178,9 @@ article p:last-child { color: #475569; line-height: 1.7; }
 /* 最初の節は線を引かない(枠の縁とすぐ重なる) */
 .settings-block:first-of-type { margin-top: .8rem; border-top: 0; padding-top: 0; }
 .settings-block > h3 { margin: 0 0 .5rem; font-size: .95rem; color: #332c75; }
-/* この収集から作る収集（本棚）。**常に上に線を引く** —— 枠の中で最初の section に
-   なることがあり（技術書のタブ）、そのままだと first-of-type で線が消えて親と地続きに見える */
-.settings-block.derived-block { margin-top: 1.2rem; border-top: 1px solid #dedcf5; padding-top: 1rem; }
+/* 上に線を引く節（本棚・読む人に渡す中身）。**常に線を引く** —— 枠の中で最初の section に
+   なることがあり（技術書のタブ）、そのままだと first-of-type で線が消えて前の節と地続きに見える */
+.settings-block.lined-block { margin-top: 1.2rem; border-top: 1px solid #dedcf5; padding-top: 1rem; }
 .settings-panel > p, .settings-block > p { margin: .25rem 0; color: #616a82; font-size: .85rem; line-height: 1.7; }
 .settings-panel button { border: 0; background: #554bc0; color: #fff; }
 .settings-panel button:disabled { cursor: wait; opacity: .65; }
@@ -800,14 +800,23 @@ body.digest-open { overflow: hidden; }
 .bookshelf h2 { margin-bottom: .3rem; font-size: 1.05rem; color: #332c75; }
 .book-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); gap: .75rem; margin: .75rem 0 0; padding: 0; list-style: none; }
 .book-card { display: flex; gap: .8rem; padding: .75rem; border: 1px solid #e2e5ef; border-radius: .8rem; background: #fff; min-width: 0; }
-.book-cover { flex: 0 0 4rem; width: 4rem; height: 5.6rem; border-radius: .3rem; background: #eef0f6; overflow: hidden; }
+.book-cover { flex: 0 0 4rem; width: 4rem; height: 5.6rem; padding: 0; border: 0; border-radius: .3rem; background: #eef0f6; overflow: hidden; cursor: pointer; }
 .book-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .book-cover img.is-missing { visibility: hidden; }
 .book-body { min-width: 0; }
 .book-body p { margin: 0 0 .25rem; overflow-wrap: anywhere; }
 .book-title { font-weight: 700; color: #1d2433; }
+/* 書名は押せる（詳細が開く）。見た目は文字のまま、押せることは下線で示す */
+.book-name { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+/* 本の詳細。表紙を左に小さく置き、書いてあることを右に並べる */
+.book-detail { width: min(40rem, 100%); }
+.book-detail h3 { margin: 1rem 0 .3rem; font-size: .9rem; color: #332c75; }
+.book-detail-body { display: flex; gap: 1rem; align-items: flex-start; margin-top: .6rem; }
+.book-detail-cover { flex: 0 0 6rem; }
+.book-detail-cover img { width: 6rem; max-height: none; margin: 0; border-radius: .3rem; }
+.book-detail-cover img.is-missing { visibility: hidden; }
 .book-badge { display: inline-block; margin-left: .3rem; padding: 0 .45rem; border-radius: 999px; background: #332c75; color: #fff; font-size: .7rem; font-weight: 600; vertical-align: middle; }
-.book-score { display: block; margin: 0 0 .25rem; padding: 0; border: 0; background: none; color: #332c75; font-size: .85rem; text-align: left; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.book-score { display: block; margin: 0 0 .25rem; color: #332c75; font-size: .85rem; }
 .book-posts { margin: 0 0 .4rem; padding-left: 1.1rem; font-size: .8rem; line-height: 1.5; }
 .book-posts li { margin-bottom: .2rem; overflow-wrap: anywhere; }
 .book-posts .muted-note { margin-left: .3rem; }

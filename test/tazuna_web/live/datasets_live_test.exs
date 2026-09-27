@@ -10,9 +10,11 @@ defmodule TazunaWeb.DatasetsLiveTest do
     :ok
   end
 
-  test "データ収集のページを表示する", %{conn: conn} do
+  test "データ収集のページを表示する（既定は技術書）", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/datasets")
+    assert html =~ "定番の技術書の設定"
 
+    {:ok, _live, html} = live(conn, ~p"/datasets?view=meals")
     assert html =~ "日本の食事処"
 
     # 集めるのは Chiezo で、どこに残り誰が読むのかを、設定の頭で読めること
@@ -23,7 +25,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
   test "travel-log 用の書き出しを、リンクと分かる形で出す", %{conn: conn} do
     # ブラウザから Chiezo を直接読ませない代わりの道。押すと降ってくるだけなので、
     # リンクと分かる見た目のまま、周りの注記より一段強く出す
-    {:ok, _live, html} = live(conn, ~p"/datasets")
+    {:ok, _live, html} = live(conn, ~p"/datasets?view=meals")
 
     assert html =~ ~p"/datasets/meals/travel-log.zip"
     assert html =~ "download-link"
@@ -51,13 +53,13 @@ defmodule TazunaWeb.DatasetsLiveTest do
     # `?view=` は人が触れるところなので、書き換えられても画面が壊れない
     {:ok, _live, html} = live(conn, ~p"/datasets?view=%2E%2E%2F")
 
-    assert html =~ "日本の食事処"
+    assert html =~ "定番の技術書の設定"
   end
 
   test "溜まったものは、この画面には出さない", %{conn: conn} do
     # 読むのは travel-log。同じものを 2 つの画面で見せると、
     # どちらが本当の状態なのか読めなくなる
-    {:ok, _live, html} = live(conn, ~p"/datasets")
+    {:ok, _live, html} = live(conn, ~p"/datasets?view=meals")
 
     assert html =~ "travel-log に渡す中身"
     refute html =~ "relation-canvas"
@@ -78,7 +80,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
   test "機械で引くところと AI が書くところの線引きが読める", %{conn: conn} do
     # どちらが入れた値かが読めないと、地図辞典の間違いを AI のせいにしてしまう
-    {:ok, _live, html} = live(conn, ~p"/datasets")
+    {:ok, _live, html} = live(conn, ~p"/datasets?view=meals")
 
     assert html =~ "抽出の指定"
     assert html =~ "overture_japan"
@@ -196,7 +198,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
     end
 
     defp shown(conn) do
-      {:ok, live, _html} = live(conn, ~p"/datasets")
+      {:ok, live, _html} = live(conn, ~p"/datasets?view=meals")
       {live, render_async(live)}
     end
 
@@ -550,7 +552,8 @@ defmodule TazunaWeb.DatasetsLiveTest do
           send(test_pid, {:patched, url, Jason.decode!(body)})
           Tazuna.HttpStub.ok(~s({}))
 
-        %{method: :post, url: _url} ->
+        %{method: :post, url: url, body: body} ->
+          send(test_pid, {:posted, url, Jason.decode!(body)})
           Tazuna.HttpStub.ok(~s({}))
 
         %{method: :get, url: _other} ->
@@ -592,19 +595,63 @@ defmodule TazunaWeb.DatasetsLiveTest do
       refute shelf =~ "リーダブルコード"
     end
 
-    test "数を押すと、勧めている記事へのリンクが開く", %{conn: conn} do
+    test "本を押すと詳細が開き、勧めている記事へのリンクが出る", %{conn: conn} do
       {:ok, live, _html} = live(conn, ~p"/datasets?view=books")
       render_async(live)
 
       refute render(live) =~ "https://example.com/a"
 
       live
-      |> element(~s(button[phx-value-title="本:リーダブルコード"]))
+      |> element(~s(button.book-name[phx-value-title="本:リーダブルコード"]))
       |> render_click()
 
       html = render_async(live)
+      assert html =~ ~s(role="dialog")
       assert html =~ ~s(href="https://example.com/a")
       assert html =~ "おすすめの本 10 冊"
+      assert html =~ "ISBN 9784873115658"
+
+      refute live |> element(~s(button[phx-click="close_book"])) |> render_click() =~
+               ~s(role="dialog")
+    end
+
+    test "詳細から、その本だけを本棚の整理の回に調べ直してもらえる", %{conn: conn} do
+      # 「いま頼む」はどの収集に頼むのか読めなかった。本を見ながら、その本について頼む
+      {:ok, live, _html} = live(conn, ~p"/datasets?view=books")
+      render_async(live)
+
+      live
+      |> element(~s(button.book-name[phx-value-title="本:リーダブルコード"]))
+      |> render_click()
+
+      live
+      |> element("#book-ask")
+      |> render_submit(%{"title" => "本:リーダブルコード", "note" => "表紙が違う"})
+
+      assert render_async(live) =~ "Chiezo に頼みました"
+      assert_receive {:posted, url, body}, 2_000
+      assert url =~ "/v1/collect/tazuna_books/focus"
+      assert body["titles"] == ["本:リーダブルコード"]
+      assert body["sweep"] == "整理"
+      assert body["note"] =~ "リーダブルコードについて"
+      assert body["note"] =~ "補足: 表紙が違う"
+      # 調べ終えた本でも並ぶように、名指しした 1 冊を {current} で見せる
+      assert body["prompt"] =~ "{current}"
+      refute body["prompt"] =~ "{unreviewed}"
+    end
+
+    test "「いま頼む」の欄は出さず、依頼文は収集ごとの節に出す", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/datasets?view=books")
+      html = render_async(live)
+
+      refute html =~ "いま頼む（割り込み）"
+      [before_shelf, shelf] = String.split(html, "本棚（定番の技術書）", parts: 2)
+      assert before_shelf =~ "Chiezo への依頼文"
+      assert shelf =~ "Chiezo への依頼文"
+      assert shelf =~ "抽出の指定（記事のタグを機械で数える条件）"
+      # 読む人に渡す中身は、設定の枠の一番下
+      [_, tail] = String.split(shelf, "Chiezo への依頼文", parts: 2)
+      assert tail =~ "読む人 に渡す中身"
     end
 
     test "巡回ごとに相手を選んで送れる", %{conn: conn} do
@@ -688,7 +735,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
     end
 
     test "地名で探して起点を決め、時刻を保存する", %{conn: conn} do
-      {:ok, live, html} = live(conn, ~p"/datasets")
+      {:ok, live, html} = live(conn, ~p"/datasets?view=meals")
       assert html =~ ~s(aria-label="起点")
       assert html =~ ~s(aria-label="情報収集の時刻")
       # 並びは 起点 → Chiezo の収集 → 情報収集の時刻（地図は起点の上）
@@ -727,7 +774,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
     end
 
     test "読めない時刻は保存せず、理由を出す", %{conn: conn} do
-      {:ok, live, _html} = live(conn, ~p"/datasets")
+      {:ok, live, _html} = live(conn, ~p"/datasets?view=meals")
 
       html =
         live

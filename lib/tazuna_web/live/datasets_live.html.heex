@@ -69,62 +69,39 @@
       </p>
       <ol class="book-list">
         <li :for={book <- books} class={["book-card", book.near != [] && "is-near"]}>
-          <a
-            :if={book.page_url}
-            href={book.page_url}
-            target="_blank"
-            rel="noreferrer"
-            class="book-cover"
+          <%!-- **本を押すと詳細が開く**（ほかの画面の詳細と同じくモーダル）。
+               表紙も押せる —— 目に入るのは表紙のほうが先 --%>
+          <button
+            type="button"
+            class={["book-cover", !book.cover_url && "is-empty"]}
+            phx-click="open_book"
+            phx-value-title={book.title}
+            aria-label={"#{book.name} の詳細を開く"}
           >
             <%!-- 表紙の無い本は 404 が返る。**壊れた画像の印を出さず、枠だけ残す** --%>
             <img
+              :if={book.cover_url}
               src={book.cover_url}
               alt=""
               loading="lazy"
               onerror="this.classList.add('is-missing')"
             />
-          </a>
-          <span :if={!book.page_url} class="book-cover is-empty" aria-hidden="true"></span>
+          </button>
           <div class="book-body">
             <p class="book-title">
-              {book.name}
+              <button
+                type="button"
+                class="book-name"
+                phx-click="open_book"
+                phx-value-title={book.title}
+              >
+                {book.name}
+              </button>
               <span :if={book.classic} class="book-badge">定番</span>
             </p>
-            <%!-- **数を押すと、勧めている記事が開く。** 数だけでは「誰がどう勧めたか」が
-                 読めない。引くのは開いたときだけ --%>
-            <% open = MapSet.member?(@opened_books, book.title) %>
-            <button
-              type="button"
-              class="book-score"
-              phx-click="toggle_book_posts"
-              phx-value-title={book.title}
-              aria-expanded={to_string(open)}
-            >
+            <p class="book-score">
               記事 {book.docs} 本が勧めている<span :if={book.recent > 0}>（直近 {book.recent} 本）</span>
-              <span aria-hidden="true">{if open, do: "▴", else: "▾"}</span>
-            </button>
-            <%= if open do %>
-              <%= case @book_posts[book.title] do %>
-                <% {:ok, [_ | _] = posts} -> %>
-                  <ul class="book-posts">
-                    <li :for={post <- posts}>
-                      <a :if={post.url} href={post.url} target="_blank" rel="noreferrer">
-                        {post.title}
-                      </a>
-                      <span :if={!post.url}>{post.title}</span>
-                      <span :if={post.published_at != ""} class="muted-note">
-                        {String.slice(post.published_at, 0, 10)}
-                      </span>
-                    </li>
-                  </ul>
-                <% {:ok, []} -> %>
-                  <p class="muted-note">記事が見つかりませんでした。</p>
-                <% {:error, reason} -> %>
-                  <p class="muted-note">{reason_text(reason)}</p>
-                <% _loading -> %>
-                  <p class="muted-note">記事を読んでいます…</p>
-              <% end %>
-            <% end %>
+            </p>
             <p :if={book.near != []} class="book-near">★ 興味: {Enum.join(book.near, "・")}</p>
             <p :if={book.fields != []} class="book-fields">{Enum.join(book.fields, "・")}</p>
             <p :if={book.topics != []} class="book-topics">
@@ -391,6 +368,47 @@
         <a href={@state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
       </p>
 
+      <%!-- **依頼文は「Chiezo の収集」のためのもの**なので、その節の中に置く --%>
+      <%!-- **機械で引いたものと AI が書いたものの線引きが、ここでいちばん大事なところ**。
+           どちらも Chiezo が持っているものなので、1 つにまとめて出す --%>
+      <details class="news-prompt">
+        <summary>Chiezo への依頼文</summary>
+
+        <%!-- 抽出の指定と区画の割り方は、**持つ対象だけ**（技術書はどちらも持たない） --%>
+        <% extract = extract_text(assigns) %>
+        <% partition = partition_text(assigns) %>
+        <%= if extract do %>
+          <h3>抽出の指定（辞典から機械的に引く条件）</h3>
+          <p class="news-prompt-note">
+            名前・座標・住所・電話・サイト・ジャンル・紹介文は、この指定で辞典から引いています。 <strong>AI は関わりません</strong>（決まった結果が出ます）。 <strong>何本かに分けて書いてあれば、書いた順が優先の順</strong>です ——
+            <code>provides</code>
+            はその辞典が<strong>勝ちにいく項目</strong>で、
+            そこに書いていない項目は、どの辞典も埋めなかったときだけ使われます。
+          </p>
+          <pre>{extract}</pre>
+        <% end %>
+
+        <%= if partition do %>
+          <h3>区画の割り方</h3>
+          <p class="news-prompt-note">
+            巡回はここで割った区画を 1 つずつ回ります。<strong>母集団は集めたもの自身</strong>なので、
+            座標が直れば区画も追随し、育ちすぎた区画・空になった区画は Chiezo が割り直します。
+          </p>
+          <pre>{partition}</pre>
+        <% end %>
+
+        <h3>指示文（AI に頼んでいる内容）</h3>
+        <p :if={extract} class="news-prompt-note">
+          AI が書くのは<strong>辞典に書いていないこと</strong>だけです ——
+          まだ開いているか、食べに行く価値があるか、どんな店か。
+          どこを見るかは Chiezo が区画で渡すので、指示文には書いてありません。
+        </p>
+        <div :for={{name, text} <- sweep_prompts(assigns)}>
+          <h3>{name}</h3>
+          <pre>{text}</pre>
+        </div>
+      </details>
+
       <%!-- **情報収集の時刻。** 情報収集は 1 区画に何分もかかる仕事なので、Chiezo の
            時計では走らせず、決めた時刻に tazuna が起こす（見る区画は Chiezo が選ぶ）。
            **巡回の表のすぐ下に置く** —— 表の「時計なし・頼まれたとき」が、いつ頼まれる
@@ -449,7 +467,7 @@
            囲むと、枠の中に枠が入り、どこまでが 1 つの設定なのか読みにくい --%>
       <section
         :if={@dataset[:derived]}
-        class="settings-block derived-block"
+        class="settings-block lined-block"
         aria-label="この収集から作るもの"
       >
         <h3>{@dataset.derived.name()}</h3>
@@ -494,6 +512,23 @@
         <p :if={@derived_state.collection && @derived_state.collection.url} class="muted-note">
           <a href={@derived_state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
         </p>
+
+        <%!-- 本棚の収集に何を頼んでいるか（親の収集と同じ形）。機械収集の回は AI を呼ばず、
+             記事のタグを数えるだけなので、その指定を出す --%>
+        <details class="news-prompt">
+          <summary>Chiezo への依頼文</summary>
+          <%= if extract = derived_extract(@dataset) do %>
+            <h3>抽出の指定（記事のタグを機械で数える条件）</h3>
+            <p class="news-prompt-note">
+              上の収集の記事に付いた「本:」のタグを数えます。<strong>AI は関わりません</strong>。
+            </p>
+            <pre>{extract}</pre>
+          <% end %>
+          <div :for={{name, text} <- derived_prompts(@dataset)}>
+            <h3>{name}</h3>
+            <pre>{text}</pre>
+          </div>
+        </details>
 
         <%!-- **1 回だけの調べ直し。** 整理の回はまだ調べていない本しか見ないので、
              それより前に目を通した本の ISBN と話題は、ここからしか埋まらない --%>
@@ -665,101 +700,120 @@
         </details>
       </section>
 
-      <%!-- **この場で 1 回だけ頼める。** 定時の巡回は決まった仕事しかしないので、
-           「この店が閉店している」のような頼みごとの行き先がここにしかない
-           （travel-log が読む収集は、上の「travel-log からの依頼」がこの役を引き受ける） --%>
-      <details :if={@state.collection && @dataset.reader != "travel-log"} class="ask-more">
-        <summary>いま頼む（割り込み）</summary>
-        <form phx-submit="ask">
-          <p>
-            <label>
-              頼みたいこと<br />
-              <textarea
-                name="note"
-                rows="3"
-                placeholder="例: 駅前の区画に、うどんの名店が抜けていないか見てほしい"
-              ></textarea>
-            </label>
-          </p>
+      <%!-- **何が溜まるのかを、使う側の項目で書く。** ここで「どの項目がどこから
+           来るか」が読めないと、足りない項目に気づけない。**読む相手も単位も対象ごとに
+           違う**ので、文面は定義の側が持つ --%>
+      <section class="settings-block lined-block" aria-label={"#{@dataset.reader} に渡す中身"}>
+        <h3>{@dataset.reader} に渡す中身</h3>
+        <p>
+          {@dataset.unit}で溜まります。{@dataset.reader}は <strong>タグ「{@dataset.module.kind_tag()}」</strong>で拾い、次の項目を読みます。
+        </p>
+        <table class="sweep-table">
+          <thead>
+            <tr>
+              <th>項目</th>
+              <th>収集の中身</th>
+              <th>誰が入れるか</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={row <- field_rows(@dataset)}>
+              <td>{row.field}</td>
+              <td>{row.stored}</td>
+              <td>{row.who}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p :if={@dataset[:note]} class="muted-note">{@dataset[:note]}</p>
+      </section>
+    </section>
+
+    <%!-- **本の詳細**（ほかの画面の詳細と同じくモーダル）。勧めている記事と、その本について
+       Chiezo へ頼む口（本棚の整理の回への割り込み）を置く —— 頼みごとは本を見ながら
+       思いつくので、設定の欄に離して置くと、どの本の話か書き直すことになる --%>
+    <% book = opened_book(assigns) %>
+    <div :if={book} class="artwork-backdrop" phx-window-keydown="close_book" phx-key="Escape">
+      <section
+        class="artwork book-detail"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="book-detail-title"
+        phx-click-away="close_book"
+      >
+        <div class="artwork-head">
+          <strong id="book-detail-title">
+            {book.name} <span :if={book.classic} class="book-badge">定番</span>
+          </strong>
+          <button type="button" phx-click="close_book">閉じる</button>
+        </div>
+        <div class="book-detail-body">
+          <span :if={book.cover_url} class="book-detail-cover">
+            <img src={book.cover_url} alt="" onerror="this.classList.add('is-missing')" />
+          </span>
+          <div>
+            <p class="book-score">
+              記事 {book.docs} 本が勧めている<span :if={book.recent > 0}>（直近 {book.recent} 本）</span>
+            </p>
+            <p :if={book.near != []} class="book-near">★ 興味: {Enum.join(book.near, "・")}</p>
+            <p :if={book.fields != []} class="book-fields">{Enum.join(book.fields, "・")}</p>
+            <p :if={book.topics != []} class="book-topics">
+              <span :for={topic <- book.topics} class="book-topic">{topic}</span>
+            </p>
+            <p :if={book.note != ""} class="book-note">{book.note}</p>
+            <p :if={book.page_url} class="muted-note">
+              ISBN {book.isbn}・<a href={book.page_url} target="_blank" rel="noreferrer">版元ドットコムで見る ↗</a>
+            </p>
+            <p :if={!book.page_url} class="muted-note">
+              ISBN はまだ分かっていません（本棚の整理の回が調べると、表紙も出ます）。
+            </p>
+          </div>
+        </div>
+
+        <h3>勧めている記事</h3>
+        <%= case @book_posts[book.title] do %>
+          <% {:ok, [_ | _] = posts} -> %>
+            <ul class="book-posts">
+              <li :for={post <- posts}>
+                <a :if={post.url} href={post.url} target="_blank" rel="noreferrer">{post.title}</a>
+                <span :if={!post.url}>{post.title}</span>
+                <span :if={post.published_at != ""} class="muted-note">
+                  {String.slice(post.published_at, 0, 10)}
+                </span>
+              </li>
+            </ul>
+          <% {:ok, []} -> %>
+            <p class="muted-note">記事が見つかりませんでした。</p>
+          <% {:error, reason} -> %>
+            <p class="muted-note">{reason_text(reason)}</p>
+          <% _loading -> %>
+            <p class="muted-note">記事を読んでいます…</p>
+        <% end %>
+
+        <form id="book-ask" phx-submit="ask_book" class="article-ask">
+          <input type="hidden" name="title" value={book.title} />
+          <label>
+            この本を Chiezo に調べ直してもらう<br />
+            <textarea
+              name="note"
+              rows="3"
+              placeholder="例: 表紙が別の本になっている / 分野が違う / 第 2 版が出ている"
+            ></textarea>
+          </label>
           <p class="muted-note">
-            定時の巡回とは別に 1 回だけ走ります（進み具合にも次の予定にも触りません）。
-            走るのは「{@dataset.survey_sweep}」の設定と依頼文です。
+            本棚の収集（{@dataset.derived && @dataset.derived.collection()}）の「整理」の回として、
+            この本だけを 1 回調べ直します（分野・タグ・説明・ISBN を確かめ、違っていれば直す）。
+            定時の巡回の進み具合にも次の予定にも触りません。書き添えたことは補足として渡します。
           </p>
           <div class="button-row">
-            <button type="submit" disabled={@asking} phx-disable-with="頼んでいます…">
+            <button type="submit" disabled={@book_asking} phx-disable-with="頼んでいます…">
               Chiezo に頼む
             </button>
           </div>
+          <p :if={ask_message(@book_asked)} class="muted-note" aria-live="polite">
+            {ask_message(@book_asked)}
+          </p>
         </form>
-      </details>
-      <p :if={ask_message(@asked)} class="muted-note" aria-live="polite">{ask_message(@asked)}</p>
-
-      <%!-- **機械で引いたものと AI が書いたものの線引きが、ここでいちばん大事なところ**。
-           どちらも Chiezo が持っているものなので、1 つにまとめて出す --%>
-      <details class="news-prompt">
-        <summary>Chiezo への依頼文</summary>
-
-        <%!-- 抽出の指定と区画の割り方は、**持つ対象だけ**（技術書はどちらも持たない） --%>
-        <% extract = extract_text(assigns) %>
-        <% partition = partition_text(assigns) %>
-        <%= if extract do %>
-          <h3>抽出の指定（辞典から機械的に引く条件）</h3>
-          <p class="news-prompt-note">
-            名前・座標・住所・電話・サイト・ジャンル・紹介文は、この指定で辞典から引いています。 <strong>AI は関わりません</strong>（決まった結果が出ます）。 <strong>何本かに分けて書いてあれば、書いた順が優先の順</strong>です ——
-            <code>provides</code>
-            はその辞典が<strong>勝ちにいく項目</strong>で、
-            そこに書いていない項目は、どの辞典も埋めなかったときだけ使われます。
-          </p>
-          <pre>{extract}</pre>
-        <% end %>
-
-        <%= if partition do %>
-          <h3>区画の割り方</h3>
-          <p class="news-prompt-note">
-            巡回はここで割った区画を 1 つずつ回ります。<strong>母集団は集めたもの自身</strong>なので、
-            座標が直れば区画も追随し、育ちすぎた区画・空になった区画は Chiezo が割り直します。
-          </p>
-          <pre>{partition}</pre>
-        <% end %>
-
-        <h3>指示文（AI に頼んでいる内容）</h3>
-        <p class="news-prompt-note">
-          AI が書くのは<strong>辞典に書いていないこと</strong>だけです ——
-          まだ開いているか、食べに行く価値があるか、どんな店か。
-          どこを見るかは Chiezo が区画で渡すので、指示文には書いてありません。
-        </p>
-        <div :for={{name, text} <- sweep_prompts(assigns)}>
-          <h3>{name}</h3>
-          <pre>{text}</pre>
-        </div>
-      </details>
-    </section>
-
-    <%!-- **何が溜まるのかを、使う側の項目で書く。** ここで「どの項目がどこから
-         来るか」が読めないと、足りない項目に気づけない。**読む相手も単位も対象ごとに
-         違う**ので、文面は定義の側が持つ --%>
-    <section class="collect-panel" aria-label={"#{@dataset.reader} に渡す中身"}>
-      <h2>{@dataset.reader} に渡す中身</h2>
-      <p>
-        {@dataset.unit}で溜まります。{@dataset.reader}は <strong>タグ「{@dataset.module.kind_tag()}」</strong>で拾い、次の項目を読みます。
-      </p>
-      <table class="sweep-table">
-        <thead>
-          <tr>
-            <th>項目</th>
-            <th>収集の中身</th>
-            <th>誰が入れるか</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr :for={row <- field_rows(@dataset)}>
-            <td>{row.field}</td>
-            <td>{row.stored}</td>
-            <td>{row.who}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p :if={@dataset[:note]} class="muted-note">{@dataset[:note]}</p>
-    </section>
+      </section>
+    </div>
   </div>
 </main>

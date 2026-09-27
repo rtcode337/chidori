@@ -55,7 +55,10 @@ defmodule TazunaWeb.DatasetsLive do
        shelf: nil,
        # 本ごとの「勧めている記事」。**開いたものだけ引く**（79 冊ぶんを先に引かない）
        book_posts: %{},
-       opened_books: MapSet.new(),
+       # 詳細を開いている本（見出し）。本を押すとモーダルで開く
+       opened_book: nil,
+       book_asking: false,
+       book_asked: nil,
        # 興味トピックに近い本だけを並べるか
        shelf_near_only: false,
        # 本棚の調べ直し（割り込み）を頼んだ結果
@@ -302,29 +305,36 @@ defmodule TazunaWeb.DatasetsLive do
      end)}
   end
 
-  # **勧めている記事を開く・閉じる。** 引くのは初めて開いたときだけ
-  def handle_event("toggle_book_posts", %{"title" => title}, socket) do
-    opened = socket.assigns.opened_books
+  # **本を押すと詳細を開く**（ほかの画面の詳細と同じくモーダル）。勧めている記事は
+  # 開いたときに初めて引く（前に引いたものは覚えておく）
+  def handle_event("open_book", %{"title" => title}, socket) do
+    socket = assign(socket, opened_book: title, book_asked: nil)
 
-    cond do
-      MapSet.member?(opened, title) ->
-        {:noreply, assign(socket, opened_books: MapSet.delete(opened, title))}
-
-      Map.has_key?(socket.assigns.book_posts, title) ->
-        {:noreply, assign(socket, opened_books: MapSet.put(opened, title))}
-
-      true ->
-        {:noreply,
-         socket
-         |> assign(
-           opened_books: MapSet.put(opened, title),
-           book_posts: Map.put(socket.assigns.book_posts, title, :loading)
-         )
-         |> start_async({:book_posts, title}, fn ->
-           with {:ok, base} <- Datasets.base_url(),
-                do: Tazuna.Datasets.Books.recommending(base, title)
-         end)}
+    if Map.has_key?(socket.assigns.book_posts, title) do
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       |> assign(book_posts: Map.put(socket.assigns.book_posts, title, :loading))
+       |> start_async({:book_posts, title}, fn ->
+         with {:ok, base} <- Datasets.base_url(),
+              do: Tazuna.Datasets.Books.recommending(base, title)
+       end)}
     end
+  end
+
+  def handle_event("close_book", _params, socket),
+    do: {:noreply, assign(socket, opened_book: nil, book_asked: nil)}
+
+  # **この本を詳しく調べて**、を本棚の整理の回へ割り込ませる（1 回だけ）
+  def handle_event("ask_book", %{"title" => title} = params, socket) do
+    {:noreply,
+     socket
+     |> assign(book_asking: true, book_asked: nil)
+     |> start_async(:ask_book, fn ->
+       with {:ok, base} <- Datasets.base_url(),
+            do: Tazuna.Datasets.Bookshelf.focus_book(base, title, params["note"])
+     end)}
   end
 
   # 選び直したら、その場で覚える（親の収集の `pick_sweep` と同じ理由）
@@ -390,21 +400,6 @@ defmodule TazunaWeb.DatasetsLive do
     do: {:noreply, load_request_results(socket)}
 
   # 定時の巡回とは別に、1 回だけ頼む
-  def handle_event("ask", %{"note" => note}, socket) do
-    dataset = socket.assigns.dataset
-
-    case String.trim(note || "") do
-      "" ->
-        {:noreply, socket}
-
-      written ->
-        {:noreply,
-         socket
-         |> assign(asking: true, asked: nil)
-         |> start_async(:ask, fn -> Datasets.focus(dataset, written) end)}
-    end
-  end
-
   @impl true
   def handle_async(:read, {:ok, result}, socket),
     do: {:noreply, assign(socket, state: applied(socket.assigns.state, result))}
@@ -475,6 +470,12 @@ defmodule TazunaWeb.DatasetsLive do
     do:
       {:noreply,
        assign(socket, derived_state: %{crashed(socket.assigns.derived_state) | pushing: false})}
+
+  def handle_async(:ask_book, {:ok, result}, socket),
+    do: {:noreply, assign(socket, book_asking: false, book_asked: result)}
+
+  def handle_async(:ask_book, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, book_asking: false, book_asked: {:error, :collection_crashed})}
 
   def handle_async(:ask, {:ok, result}, socket),
     do: {:noreply, assign(socket, asking: false, asked: result)}
@@ -822,4 +823,28 @@ defmodule TazunaWeb.DatasetsLive do
   # **まだ Chiezo に無い収集では、対象の側の雛形を出す。** 巡回の名前も文も
   # 対象ごとに違うので、ここで決め打つと対象を足すたびに画面が食い違う
   defp default_prompts(%{dataset: dataset}), do: dataset.module.prompts()
+
+  @doc "詳細を開いている本（本棚に無くなっていれば nil）。"
+  def opened_book(%{opened_book: title, shelf: {:ok, books}}) when is_binary(title),
+    do: Enum.find(books, &(&1.title == title))
+
+  def opened_book(_assigns), do: nil
+
+  @doc "この収集から作る収集（本棚）の、巡回ごとの依頼文。"
+  def derived_prompts(%{derived: derived}) when not is_nil(derived) do
+    Code.ensure_loaded(derived)
+    if function_exported?(derived, :prompts, 0), do: derived.prompts(), else: []
+  end
+
+  def derived_prompts(_dataset), do: []
+
+  @doc "この収集から作る収集の、機械で引く指定（JSON）。持たなければ nil。"
+  def derived_extract(%{derived: derived}) when not is_nil(derived) do
+    Code.ensure_loaded(derived)
+
+    if function_exported?(derived, :extract_spec, 0),
+      do: Jason.encode!(derived.extract_spec(), pretty: true)
+  end
+
+  def derived_extract(_dataset), do: nil
 end
