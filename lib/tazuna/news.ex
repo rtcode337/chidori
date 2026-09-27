@@ -122,6 +122,10 @@ defmodule Tazuna.News do
             checked_at: nil,
             reason: nil,
             task: nil,
+            # 押して送っている最中か。**開いたときの読み直しと区別する** ——
+            # どちらも読み込み中（`:loading`）なので、一緒にすると読むだけのときに
+            # 「送っています」と出る
+            pushing: false,
             last_run_at: nil
 
   @doc """
@@ -366,7 +370,14 @@ defmodule Tazuna.News do
             perform(command, base, name)
           end)
 
-        state = %{state | status: :loading, reason: nil, task: task}
+        state = %{
+          state
+          | status: :loading,
+            reason: nil,
+            task: task,
+            pushing: command != :refresh
+        }
+
         state = if command == :run, do: %{state | last_run_at: now_ms()}, else: state
 
         {:noreply, broadcast(state)}
@@ -401,14 +412,15 @@ defmodule Tazuna.News do
         interest_digests: Map.get(read, :interest_digests, []),
         checked_at: DateTime.utc_now(),
         reason: nil,
-        task: nil
+        task: nil,
+        pushing: false
     }
   end
 
   defp apply_result(state, {:error, reason}) do
     # 一度でも読めていれば、前に読めたものを消さずに残す
     status = if state.checked_at, do: :stale, else: :unavailable
-    %{state | status: status, reason: reason, task: nil}
+    %{state | status: status, reason: reason, task: nil, pushing: false}
   end
 
   defp throttled?(%__MODULE__{last_run_at: nil}), do: false
@@ -450,6 +462,7 @@ defmodule Tazuna.News do
       interest_digests: state.interest_digests,
       checked_at: state.checked_at,
       reason: state.reason,
+      pushing: state.pushing,
       configured: chiezo_base_url() != nil
     }
   end

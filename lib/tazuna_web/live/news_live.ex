@@ -1065,7 +1065,10 @@ defmodule TazunaWeb.NewsLive do
   押す口の文字。**何を待っているのかまで出します** ——
   「送っています…」だけだと、押せていないのと区別が付きません。
   """
-  def collect_label(%{status: :loading}), do: "送っています…"
+  def collect_label(%{status: :loading, pushing: true}), do: "送っています…"
+
+  # 開いたときの読み直し。何も送っていないので「送っています」とは出さない
+  def collect_label(%{status: :loading}), do: "読み込んでいます…"
   def collect_label(%{collection: nil}), do: "収集を依頼する"
   def collect_label(_news), do: "収集の設定を更新"
 

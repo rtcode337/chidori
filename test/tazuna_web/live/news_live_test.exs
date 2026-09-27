@@ -92,6 +92,15 @@ defmodule TazunaWeb.NewsLiveTest do
              "次の定時の回もここで止まります"
   end
 
+  test "開いたときの読み直しでは「送っています」と出さない" do
+    # どちらも読み込み中だが、読むだけのときは何も送っていない
+    assert TazunaWeb.NewsLive.collect_label(%{status: :loading, pushing: false}) ==
+             "読み込んでいます…"
+
+    assert TazunaWeb.NewsLive.collect_label(%{status: :loading, pushing: true}) ==
+             "送っています…"
+  end
+
   describe "Chiezo の収集の枠" do
     @collection %{
       "name" => "tazuna_news",
