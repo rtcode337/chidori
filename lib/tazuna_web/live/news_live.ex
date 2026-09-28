@@ -187,7 +187,8 @@ defmodule TazunaWeb.NewsLive do
     base = News.chiezo_base_url()
 
     if connected?(socket) and topic != nil and Topics.themes?(topic) and base do
-      start_async(socket, :themes, fn -> Themes.read(base, topic) end)
+      # **どの話題の網かを名前に入れる**（届いたときに、いま見ている話題か確かめる）
+      start_async(socket, {:themes, topic.collection}, fn -> Themes.read(base, topic) end)
     else
       socket
     end
@@ -684,11 +685,22 @@ defmodule TazunaWeb.NewsLive do
     end
   end
 
-  def handle_async(:themes, {:ok, state}, socket) when is_map(state),
-    do: {:noreply, assign(socket, themes: state)}
+  # **見ている話題の網だけ受け取る。** タブを続けて切り替えると、前の話題の網が
+  # 後から届く —— 受け取ると、網を持たない話題のページに別の話題の図が出る
+  def handle_async({:themes, collection}, {:ok, state}, socket) when is_map(state) do
+    case socket.assigns.topic do
+      %{collection: ^collection} = topic ->
+        if Topics.themes?(topic),
+          do: {:noreply, assign(socket, themes: state)},
+          else: {:noreply, socket}
+
+      _other ->
+        {:noreply, socket}
+    end
+  end
 
   # 読めなくても記事は読める（何が読めていないかは収集の枠に出る）
-  def handle_async(:themes, _result, socket), do: {:noreply, socket}
+  def handle_async({:themes, _collection}, _result, socket), do: {:noreply, socket}
 
   def handle_async(:backends, {:ok, list}, socket) when is_list(list),
     do: {:noreply, assign(socket, backends: list)}

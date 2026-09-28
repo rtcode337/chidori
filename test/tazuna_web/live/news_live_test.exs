@@ -654,6 +654,19 @@ defmodule TazunaWeb.NewsLiveTest do
       refute html =~ "トピックの収集"
     end
 
+    test "タブを切り替えても、前の話題の網は持ち込まない", %{conn: conn} do
+      # 前のタブで頼んだ読み込みが、切り替えた後に届くことがある。受け取ると、
+      # 網を持たない話題のページに別の話題の図が出る
+      stub_themes([@news_collection], [theme("React", ["分野:Web"])])
+
+      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_tech")
+      assert render_async(live, 2_000) =~ ~s(aria-label="トピックの網")
+
+      html = live |> render_patch(~p"/news?view=tazuna_events")
+      refute html =~ ~s(aria-label="トピックの網")
+      refute render_async(live, 2_000) =~ ~s(aria-label="トピックの網")
+    end
+
     # 札を押したときの記事と、興味トピックの PATCH を見る
     defp stub_picking(test_pid) do
       news =

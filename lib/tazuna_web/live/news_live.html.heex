@@ -342,6 +342,7 @@
          あったか」を文で言うのに対して、図は同じことを語のつながりで見せる。
          育てるのは Chiezo で、tazuna は依頼文を渡して読むだけ --%>
     <.topic_map
+      :if={@topic && Tazuna.Topics.themes?(@topic)}
       state={@themes}
       interests={@interests}
       picked={@picked_theme}
