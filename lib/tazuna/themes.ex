@@ -53,7 +53,8 @@ defmodule Tazuna.Themes do
   # 機械収集の回と、整理の回。**分けるのは仕事が違うから** —— 機械収集は機械が数える回で、
   # AI を呼ばないぶん短い間隔で回せる。整理は読んで判断する回
   @pick_minutes 60
-  @tidy_minutes 360
+  # 整理の回（どの収集も同じ。`Tazuna.SweepNames.tidy_minutes/0`）
+  @tidy_minutes Tazuna.SweepNames.tidy_minutes()
 
   # 語として拾う下限。**1 件しか付いていない語は、まだ話題かどうかも分からない**
   # （次の回に増えていれば入る）

@@ -83,7 +83,8 @@ defmodule Tazuna.Datasets.Bookshelf do
 
   # 機械収集の回と整理の回（AI）の間隔
   @pick_minutes 360
-  @tidy_minutes 1440
+  # 整理の回（どの収集も同じ。`Tazuna.SweepNames.tidy_minutes/0`）
+  @tidy_minutes SweepNames.tidy_minutes()
 
   @doc "1 冊ごとに必ず付く印。"
   def kind_tag, do: @kind_tag

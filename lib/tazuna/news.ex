@@ -61,9 +61,9 @@ defmodule Tazuna.News do
   @feed_minutes 60
   @collect_minutes 360
   # **整理は定時でも回す。** まとめの直前にもう 1 回起こすが、それだけにすると
-  # 落とす仕事も外を当たる仕事もまとめの回数ぶんしか走らない ——
-  # ニュースは新しさが落ちると意味が薄いので、間は空けすぎない
-  @refine_minutes 240
+  # 落とす仕事も外を当たる仕事もまとめの回数ぶんしか走らない。
+  # **間隔はどの収集も同じ**（`Tazuna.SweepNames.tidy_minutes/0`。話題ごとに変えない）
+  @refine_minutes Tazuna.SweepNames.tidy_minutes()
 
   # 割り込みを頼む先。**専用の 1 本は置かない** —— 頼みごとは「落として」
   # 「印を直して」がほとんどで、その力を持つのは整理の回だけ
@@ -686,7 +686,7 @@ defmodule Tazuna.News do
       %{
         name: @focus_sweep,
         after: survey.name,
-        interval_minutes: every(topic, :refine, works.refine_minutes()),
+        interval_minutes: @refine_minutes,
         prompt: refine_prompt(topic)
       }
     ] ++ digest_sweeps(topic)
@@ -701,7 +701,7 @@ defmodule Tazuna.News do
         # 有効にした直後は両方が「いますぐ」になり、整理が空の収集を相手に走ることがある
         # （ワーカーを経由する整理が、機械収集より先に取り込みへ届く）
         after: intake(topic).name,
-        interval_minutes: every(topic, :refine, @refine_minutes),
+        interval_minutes: @refine_minutes,
         prompt: refine_prompt(topic)
       }
     ] ++ digest_sweeps(topic) ++ look_ahead_sweeps(topic)

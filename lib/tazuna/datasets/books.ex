@@ -53,8 +53,9 @@ defmodule Tazuna.Datasets.Books do
   # 機械収集の回の間隔。**回るたびに AI が検索文を考える**ので、枠を見て空ける
   @pick_minutes 1440
 
-  # 整理の回の間隔。**記事を開くので web を開ける**（配信元は要約しか配らない）
-  @read_minutes 720
+  # 整理の回の間隔（どの収集も同じ。`Tazuna.SweepNames.tidy_minutes/0`）。
+  # **記事を開くので web を開ける**（配信元は要約しか配らない）
+  @read_minutes Tazuna.SweepNames.tidy_minutes()
 
   @doc "記事 1 本ごとに付く印。"
   def kind_tag, do: @kind_tag

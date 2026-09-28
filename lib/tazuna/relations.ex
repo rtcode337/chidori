@@ -87,7 +87,7 @@ defmodule Tazuna.Relations do
   # 20 日ほどで一周する。1 日 1 区画にしていた頃は一周に 400 日かかっていた
   # (手入れの回が一周しないなら、区画で割っている意味が無い)。
   # **一周の日数で決める**ので、区画が増えても 1 回あたりが自動で増える
-  @survey_minutes 360
+  @survey_minutes Tazuna.SweepNames.tidy_minutes()
   @survey_days 21
 
   # 名簿を機械で取り込み直す巡回。**週 1 で足りる** —— Wikipedia のカテゴリが

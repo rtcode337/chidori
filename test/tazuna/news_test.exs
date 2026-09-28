@@ -766,16 +766,33 @@ defmodule Tazuna.NewsTest do
 
       assert Map.get(sweeps["要約"], :on_demand)
       refute Map.get(sweeps["要約"], :interval_minutes)
-      assert sweeps["整理"].interval_minutes == 240
+      assert sweeps["整理"].interval_minutes == 360
     end
 
-    test "動きの遅い話題は、間隔を長くできる" do
-      # 1 日で情勢がひっくり返らない話題を短い間隔で回しても、同じものを読み直す
-      # だけで枠を食う。**話題が書いていればそちらを使う**
-      events = defined_topic("tazuna_events") |> News.sweeps() |> Map.new(&{&1.name, &1})
-      tech = defined_topic("tazuna_tech") |> News.sweeps() |> Map.new(&{&1.name, &1})
+    test "整理はどの収集も 6 時間ごと" do
+      # 収集ごとに散らばっていると、待ち行列が溜まったときに何がどれだけ積まれるのかが
+      # 読めない。話題の定義でも変えられない
+      for topic <- Tazuna.Topics.list(),
+          sweep <- News.sweeps(topic),
+          sweep.name == "整理" do
+        assert sweep.interval_minutes == 360, topic.name
+      end
 
-      assert events["整理"].interval_minutes > tech["整理"].interval_minutes
+      assert Tazuna.SweepNames.tidy_minutes() == 360
+
+      for sweep <-
+            Tazuna.Datasets.Books.sweeps() ++
+              Tazuna.Datasets.Bookshelf.sweeps() ++
+              Tazuna.Themes.sweeps(defined_topic("tazuna_tech")),
+          sweep.name == "整理" do
+        assert sweep.interval_minutes == 360
+      end
+    end
+
+    test "機械収集の間隔は、話題ごとに変えられる" do
+      # 配信元によって更新の速さが違う
+      events = defined_topic("tazuna_events") |> News.sweeps() |> Map.new(&{&1.name, &1})
+      assert events["機械収集"].interval_minutes == 60
     end
 
     test "その話題ならではの頼みごとは、整理の回に足す" do
