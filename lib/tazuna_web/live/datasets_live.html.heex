@@ -673,12 +673,30 @@
               <span class="request-scope">
                 座標 {entry.log.points} 件 → 区画 {length(entry.log.keys)} つ
               </span>
-              <span class={["request-state", entry.result && "has-result"]}>
+              <span class={[
+                "request-state",
+                entry.result && entry.unfinished == [] && "has-result",
+                entry.unfinished != [] && "is-partial"
+              ]}>
                 {request_state(entry)}
               </span>
             </summary>
 
             <%= if entry.result && entry.result.status == "ok" do %>
+              <%!-- **止まった理由と、見ていない区画を出す。** 件数だけ並べると、頼んだ区画が
+                   全部片付いたように読める。頼み直すには、同じテキストをもう一度貼る --%>
+              <div :if={entry.unfinished != []} class="request-partial">
+                <p>
+                  頼んだ {length(entry.log.keys)} 区画のうち {length(entry.unfinished)} 区画は見ていません。
+                  直したいところが残っていれば、同じテキストをもう一度貼って頼み直してください。
+                </p>
+                <p :if={entry.result.error != ""} class="muted-note">理由: {entry.result.error}</p>
+              </div>
+              <%!-- 最後まで見た回（見終えた区画を控えていない古い回も含む）でも、Chiezo が
+                   添え書きを残していれば出す（見送った区画・見られなかった件数など） --%>
+              <p :if={entry.unfinished == [] and entry.result.error != ""} class="muted-note">
+                Chiezo の控え: {entry.result.error}
+              </p>
               <p class="muted-note">
                 {Jst.format(entry.result.at)} に終わった回{if entry.result.backend,
                   do:

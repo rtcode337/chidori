@@ -152,6 +152,9 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .request-scope { color: #64748b; font-size: .85rem; }
 .request-state { color: #64748b; font-size: .85rem; }
 .request-state.has-result { color: #166534; font-weight: 700; }
+.request-state.is-partial { color: #b45309; font-weight: 700; }
+.request-partial { margin: .5rem 0; padding: .5rem .7rem; border-radius: .6rem; background: #fffbeb; border: 1px solid #fde68a; }
+.request-partial p { margin: .2rem 0; }
 .request-changes h4 { margin: .7rem 0 .3rem; font-size: .9rem; }
 .request-changes ul { margin: 0; padding-left: 1.2rem; }
 .request-changes li { margin: .15rem 0; overflow-wrap: anywhere; }

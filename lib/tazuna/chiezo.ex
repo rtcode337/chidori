@@ -451,6 +451,9 @@ defmodule Tazuna.Chiezo do
       status: row["status"],
       sweep: row["sweep"],
       scope: list_of(row["scope"]),
+      # **実際に見終えた区画**（`scope` は見る予定だった区画）。途中で止まった回も
+      # 状態は ok なので、見分けるにはこちらを読む。記録の無い古い Chiezo では nil
+      visited: if(is_list(row["visited"]), do: list_of(row["visited"])),
       added: row["added"] || 0,
       updated: row["updated"] || 0,
       removed: row["removed"] || 0,

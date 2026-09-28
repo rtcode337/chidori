@@ -224,6 +224,9 @@ defmodule Tazuna.Datasets.Requests do
 
   # 画面に並べる依頼の数
   @shown_logs 5
+  # 焼くところで落ちて戻した行が、もとの回からどこまで遅れて残るか。焼くのは集め終えた
+  # 直後なので数十分で足りるが、取り込みが混んでいる日を見込んで広めに取る
+  @rewind_window_s 3 * 60 * 60
 
   @doc """
   依頼を控えます（**頼む前に**。取り込みが空くのを最長 1 時間待つので、その間も
@@ -277,9 +280,48 @@ defmodule Tazuna.Datasets.Requests do
             MapSet.new(change.scope) == wanted
         end)
         |> Enum.min_by(& &1.at, DateTime, fn -> nil end)
+        |> rewound(changes)
 
-      %{log: log, result: result}
+      %{log: log, result: result, unfinished: unfinished(log, result)}
     end)
+  end
+
+  # **焼くところで落ちた回は、戻されている。** Chiezo は集め終えた時点で ok の行を
+  # 残し、焼くところで落ちたと分かると進み具合を戻して、**見ていた区画を名指しした
+  # 失敗の行をあとから足す**（ok の行は消えない）。ok の行だけを読むと、何も残らな
+  # かった回が「動いた」ことになる
+  defp rewound(%{status: "ok", at: at} = result, changes) do
+    seen = MapSet.new(Map.get(result, :visited) || result.scope)
+
+    changes
+    |> Enum.filter(fn change ->
+      change.status != "ok" and change.at != nil and
+        DateTime.compare(change.at, at) == :gt and
+        DateTime.diff(change.at, at) <= @rewind_window_s and
+        MapSet.size(seen) > 0 and MapSet.new(change.scope) == seen
+    end)
+    |> Enum.min_by(& &1.at, DateTime, fn -> result end)
+  end
+
+  defp rewound(result, _changes), do: result
+
+  @doc """
+  頼んだ区画のうち、**その回が見終えなかったもの**。途中で相手に繋がらなくなった回は
+  残りの区画を見送って ok で終わるので、見る予定の区画（`scope`）が揃っていても、
+  全部を見たとは限らない。見終えた区画を持たない古い Chiezo の行では空（分からない）。
+  """
+  def unfinished(_log, nil), do: []
+  def unfinished(_log, %{status: status}) when status != "ok", do: []
+
+  def unfinished(log, result) do
+    case Map.get(result, :visited) do
+      nil ->
+        []
+
+      visited ->
+        done = MapSet.new(visited)
+        Enum.reject(log.keys, &MapSet.member?(done, &1))
+    end
   end
 
   @doc """

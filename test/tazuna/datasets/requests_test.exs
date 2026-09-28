@@ -77,6 +77,47 @@ defmodule Tazuna.Datasets.RequestsTest do
       assert [%{result: %{at: ~U[2026-09-26 01:00:00Z]}}] = Requests.with_results([log], changes)
     end
 
+    test "途中で止まった回は、見ていない区画を返す" do
+      # 2 区画目で相手に繋がらなくなり、残りを見送って ok で終わった回
+      log = %RequestLog{keys: [@tokyo, @osaka], requested_at: ~U[2026-09-26 00:00:00Z]}
+      stopped = Map.put(change(~U[2026-09-26 01:00:00Z], [@tokyo, @osaka]), :visited, [@tokyo])
+
+      assert [%{result: %{at: ~U[2026-09-26 01:00:00Z]}, unfinished: [@osaka]}] =
+               Requests.with_results([log], [stopped])
+    end
+
+    test "全部を見終えた回は、見ていない区画が無い" do
+      log = %RequestLog{keys: [@tokyo, @osaka], requested_at: ~U[2026-09-26 00:00:00Z]}
+
+      done =
+        Map.put(change(~U[2026-09-26 01:00:00Z], [@tokyo, @osaka]), :visited, [@osaka, @tokyo])
+
+      assert [%{unfinished: []}] = Requests.with_results([log], [done])
+    end
+
+    test "見終えた区画を持たない古い行は、分からないとして扱う" do
+      log = %RequestLog{keys: [@tokyo], requested_at: ~U[2026-09-26 00:00:00Z]}
+      old = Map.put(change(~U[2026-09-26 01:00:00Z], [@tokyo]), :visited, nil)
+
+      assert [%{unfinished: []}] = Requests.with_results([log], [old])
+    end
+
+    test "焼くところで落ちて戻された回は、失敗として返す" do
+      # Chiezo は ok の行を残したまま、見ていた区画を名指しした失敗の行をあとから足す
+      log = %RequestLog{keys: [@tokyo, @osaka], requested_at: ~U[2026-09-26 00:00:00Z]}
+      ok = Map.put(change(~U[2026-09-26 01:00:00Z], [@tokyo, @osaka]), :visited, [@tokyo, @osaka])
+
+      failed = %{
+        at: ~U[2026-09-26 01:20:00Z],
+        scope: [@osaka, @tokyo],
+        status: "error",
+        error: "焼くところで落ちました"
+      }
+
+      assert [%{result: %{status: "error"}, unfinished: []}] =
+               Requests.with_results([log], [failed, ok])
+    end
+
     test "まだ回が終わっていなければ、結果は無い" do
       log = %RequestLog{keys: [@tokyo], requested_at: ~U[2026-09-26 00:00:00Z]}
 

@@ -790,6 +790,17 @@ defmodule TazunaWeb.DatasetsLive do
   def request_state(%{result: nil}),
     do: "Chiezo が受けました。回が終わると、ここに結果が出ます"
 
+  # **途中で止まった回は「動いた」と言わない。** 見終えた区画のぶんは直っているので
+  # 件数は添えるが、頼んだ区画の残りはまだ誰も見ていない
+  def request_state(%{
+        result: %{status: "ok"} = result,
+        unfinished: [_ | _] = unfinished,
+        log: log
+      }),
+      do:
+        "途中で止まりました（見終えたのは #{length(log.keys) - length(unfinished)} / #{length(log.keys)} 区画。" <>
+          "足した #{result.added} ・直した #{result.updated} ・消した #{result.removed}）"
+
   def request_state(%{result: %{status: "ok"} = result}),
     do: "足した #{result.added} ・直した #{result.updated} ・消した #{result.removed}"
 
