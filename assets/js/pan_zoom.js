@@ -263,6 +263,14 @@ const base = {
   // 全画面。**使えない端末がある** —— iOS の Safari は動画以外を全画面にできない
   // ので、そこでは器に class を足して画面いっぱいに広げる（見た目は同じになる）
   fullscreen() {
+    // **埋め込まれているときは、埋め込みの枠ごと画面いっぱいにする**（トップページの
+    // 関連図）。器だけを広げても、広がるのは埋め込みの枠の中まで —— スマホでは
+    // 本物の全画面が使えず、器を広げる代わりの手が枠の中で止まっていた
+    const frame = embeddingFrame()
+    if (frame) {
+      this.frameFullscreen(frame)
+      return
+    }
     if (document.fullscreenElement) {
       document.exitFullscreen()
       return
@@ -282,6 +290,27 @@ const base = {
   fauxFullscreen() {
     this.el.classList.add("faux-fullscreen")
     this.onFullscreen()
+  },
+
+  // 埋め込みの枠（親の画面の iframe）を画面いっぱいにする・戻す。器は枠の中で
+  // いっぱいに広げる。使える端末では親の画面で本物の全画面にもする。
+  // **器の印は <html> に付ける** —— 器そのものに付けると、LiveView が描き直す
+  // たびに消える（器の class は画面の側が持っている）
+  frameFullscreen(frame) {
+    const parentDoc = frame.ownerDocument
+    const root = document.documentElement
+    const on = frame.classList.contains("frame-fullscreen")
+    if (on) {
+      if (parentDoc.fullscreenElement === frame) parentDoc.exitFullscreen().catch(() => {})
+      frame.classList.remove("frame-fullscreen")
+      root.classList.remove("in-frame-fullscreen")
+    } else {
+      frame.classList.add("frame-fullscreen")
+      root.classList.add("in-frame-fullscreen")
+      if (frame.requestFullscreen) frame.requestFullscreen().catch(() => {})
+    }
+    // 大きさが変わってから測り直す
+    requestAnimationFrame(() => this.onFullscreen())
   },
 
   bind() {
@@ -393,6 +422,12 @@ const base = {
     this.el.addEventListener("pointercancel", this.onPointerUp, true)
     this.el.addEventListener("click", this.onClickCapture, true)
     document.addEventListener("fullscreenchange", this.onFullscreen)
+    // 親の画面が本物の全画面を抜けたとき（Esc など）は、器も戻す
+    this.onFrameExit = () => {
+      document.documentElement.classList.remove("in-frame-fullscreen")
+      this.onFullscreen()
+    }
+    window.addEventListener("tazuna:frame-fullscreen-exit", this.onFrameExit)
   },
 
   unbind() {
@@ -403,7 +438,17 @@ const base = {
     this.el.removeEventListener("pointercancel", this.onPointerUp, true)
     this.el.removeEventListener("click", this.onClickCapture, true)
     document.removeEventListener("fullscreenchange", this.onFullscreen)
+    window.removeEventListener("tazuna:frame-fullscreen-exit", this.onFrameExit)
   },
+}
+
+// 同じサイトの画面に埋め込まれていれば、その枠（iframe）。そうでなければ null
+const embeddingFrame = () => {
+  try {
+    return window.self !== window.top ? window.frameElement : null
+  } catch (_e) {
+    return null
+  }
 }
 
 // 図ごとの事情を足したフックを作る。**素のままでは使いません** ——

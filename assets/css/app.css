@@ -245,6 +245,8 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relation-canvas:fullscreen { height: 100vh; aspect-ratio: auto; border: 0; border-radius: 0; }
 /* 全画面が使えない端末（iOS の Safari は動画以外を全画面にできない）向けの代替。
    見た目は :fullscreen と同じにする */
+/* 埋め込みの枠ごと全画面にしているとき（`in-frame-fullscreen` は <html> に付く） */
+.in-frame-fullscreen .relation-canvas { position: fixed; inset: 0; z-index: 60; width: 100vw; height: 100dvh; aspect-ratio: auto; margin: 0; border: 0; border-radius: 0; }
 .relation-canvas.faux-fullscreen { position: fixed; inset: 0; z-index: 60; width: 100vw; height: 100dvh; aspect-ratio: auto; margin: 0; border: 0; border-radius: 0; }
 /* 指で触る画面では操作の口を大きく。**押せない大きさでは無いのと同じ** */
 @media (pointer: coarse) {
@@ -930,7 +932,17 @@ body.digest-open { overflow: hidden; }
 
 /* トップページ */
 .home-panel { margin-top: 1.2rem; }
-.home-embed { width: 100%; height: 80vh; border: 1px solid #d9dcea; border-radius: .7rem; background: white; }
+/* 高さは中身に合わせる（`AutoHeight`）。読み込むまでの仮の高さだけ持つ */
+/* 埋め込まれた関連図は画面の高さを取らない（枠を中身に合わせて縮められるように） */
+.relations-page.is-embed { min-height: 0; }
+.relations-page.is-embed > div { max-width: none; padding: 0 .5rem; }
+/* 関連図は**画面の幅いっぱい**に広げる（トップの器の幅の上限と余白の外まで）。
+   はみ出したぶんでページが横に揺れないよう、トップの器は横をはみ出させない */
+.home-page { overflow-x: clip; }
+.home-embed { margin-left: calc(50% - 50vw); max-width: none; }
+/* 全画面（埋め込みの中の「全画面」を押したとき）。枠ごと画面いっぱいにする */
+.home-embed.frame-fullscreen { position: fixed; inset: 0; z-index: 100; width: 100vw !important; height: 100dvh !important; margin: 0; background: #f6f7fb; }
+.home-embed { display: block; width: 100vw; height: 70vh; border: 0; overflow: hidden; background: transparent; }
 
 /* 技術書の上位（技術書の画面とトップページ）。**見比べやすいよう札を揃える** ——
    順位・表紙・書名・勧めている数・分野・説明（3 行まで）を同じ位置に */
@@ -952,7 +964,6 @@ body.digest-open { overflow: hidden; }
 .top-book-note { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: #3b4458; font-size: .85rem; line-height: 1.55; }
 @media (max-width: 40rem) {
   .collect-overview { display: block; overflow-x: auto; }
-  .home-embed { height: 70vh; }
 }
 
 /* つまんで並べ替える一覧（トップページに並べる枠） */
@@ -975,9 +986,9 @@ body.digest-open { overflow: hidden; }
 .top-book.is-openable:hover { border-color: #b9b3ee; }
 .top-book.is-opened { border-color: #6254d6; box-shadow: 0 0 0 1px #6254d6 inset; }
 .top-book-more { margin-left: .4rem; color: #4f46b9; font-weight: 700; white-space: nowrap; }
-.book-posts-panel { margin: 0 0 1.2rem; padding: .8rem 1rem; border: 1px solid #d9dcea; border-radius: .8rem; background: white; }
-.book-posts-panel header { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; }
-.book-posts-panel h3 { margin: 0; font-size: .95rem; color: #28235e; }
+/* 開いた札は横いっぱいに広げ、勧めている記事を札の中に並べる */
+.top-book.is-opened { grid-column: 1 / -1; }
+.top-book-posts { margin-top: .7rem; padding-top: .6rem; border-top: 1px dashed #d9dcea; cursor: auto; }
 .book-posts { margin: .5rem 0 0; padding-left: 1.2rem; display: grid; gap: .35rem; font-size: .88rem; }
 .book-posts .muted-note { margin-left: .4rem; }
 /* 埋め込まれた関連図は取得の行だけ（見出しと説明を落とす） */
@@ -988,3 +999,15 @@ body.digest-open { overflow: hidden; }
 .has-more-right { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.2rem), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 2.2rem), transparent); }
 .has-more-left { -webkit-mask-image: linear-gradient(to right, transparent, #000 2.2rem); mask-image: linear-gradient(to right, transparent, #000 2.2rem); }
 .has-more-left.has-more-right { -webkit-mask-image: linear-gradient(to right, transparent, #000 2.2rem, #000 calc(100% - 2.2rem), transparent); mask-image: linear-gradient(to right, transparent, #000 2.2rem, #000 calc(100% - 2.2rem), transparent); }
+
+/* 図の道具のアイコンのボタン（全画面）。字のボタンと同じ高さに揃え、真ん中に置く */
+.icon-button { display: inline-grid; place-items: center; min-width: 2.2rem; padding-left: .45rem; padding-right: .45rem; line-height: 1; }
+.icon-button svg { display: block; }
+
+/* 狭い画面では、検索欄を**右の道具の手前まで**に縮める（道具は 4 つで約 11rem。**元の幅の指定より後ろに置く** —— 前に置くと上書きされる。
+   決まった幅のままだと、スマホで拡大の口に重なっていた） */
+@media (max-width: 480px) {
+  .relation-search input { width: calc(100vw - 16.5rem); min-width: 6rem; }
+  .relation-tools { gap: .25rem; }
+  .relation-tools button { padding-left: .6rem; padding-right: .6rem; }
+}

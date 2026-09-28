@@ -35,13 +35,14 @@ import DigestSwipe from "./digest_swipe"
 import TopicMap from "./topic_map"
 import SortableList from "./sortable_list"
 import ScrollTabs from "./scroll_tabs"
+import AutoHeight from "./auto_height"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, PartitionMap, RelationMap, DownloadLink, DigestSwipe, TopicMap, SortableList, ScrollTabs},
+  hooks: {...colocatedHooks, PartitionMap, RelationMap, DownloadLink, DigestSwipe, TopicMap, SortableList, ScrollTabs, AutoHeight},
 })
 
 // Show progress bar on live navigation and form submits

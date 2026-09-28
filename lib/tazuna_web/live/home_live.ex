@@ -166,11 +166,6 @@ defmodule TazunaWeb.HomeLive do
     end
   end
 
-  @doc "書名（見出しの「本:」を落としたもの）。"
-  def book_name(title),
-    do:
-      title |> String.replace_prefix(Tazuna.Datasets.Books.book_tag() <> ":", "") |> String.trim()
-
   @impl true
   # **見ている話題の知らせだけ受け取る**（切り替えた直後に前の話題の結果が届くことがある）
   def handle_info({:news_updated, news}, socket) do

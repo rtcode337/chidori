@@ -47,7 +47,14 @@
 
     <%!-- 関連図は画面ごと埋め込む（操作も同じ。頭のメニューと設定は出さない） --%>
     <section :if={@panel && @panel.kind == :relations} class="home-panel" aria-label={@panel.name}>
+      <%!-- **高さは中身に合わせる**（`AutoHeight`）。決め打ちにすると枠の中にもう 1 つ
+           スクロールができて、ページのスクロールと二重になる --%>
       <iframe
+        id={"home-embed-#{@panel.view}"}
+        phx-hook="AutoHeight"
+        scrolling="no"
+        allowfullscreen
+        allow="fullscreen"
         class="home-embed"
         src={~p"/relations?view=#{@panel.view}&embed=1"}
         title={@panel.name}
@@ -100,30 +107,9 @@
         books={elem(@books, 1)}
         open_event="open_book"
         opened={@opened_book}
+        posts={@book_posts}
       />
 
-      <%!-- 押した本を勧めている記事。**札の下に開く**（新しい順。押し直すと閉じる） --%>
-      <section :if={@opened_book} class="book-posts-panel" aria-label="勧めている記事">
-        <header>
-          <h3>「{book_name(@opened_book)}」を勧めている記事</h3>
-          <button type="button" phx-click="open_book" phx-value-title={@opened_book}>閉じる</button>
-        </header>
-        <p :if={@book_posts in [nil, :loading]} class="muted-note">読み込んでいます…</p>
-        <p :if={match?({:error, _}, @book_posts)} class="muted-note">記事を読めませんでした。</p>
-        <%= if match?({:ok, _}, @book_posts) do %>
-          <% {:ok, posts} = @book_posts %>
-          <p :if={posts == []} class="muted-note">勧めている記事が見つかりませんでした。</p>
-          <ol :if={posts != []} class="book-posts">
-            <li :for={post <- posts}>
-              <a :if={post.url} href={post.url} target="_blank" rel="noreferrer">{post.title}</a>
-              <span :if={!post.url}>{post.title}</span>
-              <span :if={post.published_at != ""} class="muted-note">
-                {String.slice(post.published_at, 0, 10)}
-              </span>
-            </li>
-          </ol>
-        <% end %>
-      </section>
       <p :if={match?({:ok, _}, @books)}><a href={~p"/datasets?view=books"}>本棚をぜんぶ見る</a></p>
     </section>
   </div>

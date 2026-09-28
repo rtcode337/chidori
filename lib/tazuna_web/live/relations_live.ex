@@ -84,6 +84,42 @@ defmodule TazunaWeb.RelationsLive do
      |> assign(viewport: nil)}
   end
 
+  @doc """
+  「最後に取得」と「最新の情報を取得」の行。**関連図の画面では見出しの下、
+  トップページに埋め込んだときは図の下**に置く（`embed`）。
+  """
+  attr :relation, :map, required: true
+
+  def checked_line(assigns) do
+    ~H"""
+    <%!-- **開くたびには取りに行かない。** 8,000 人ぶんを読むので数秒かかるのに、
+       Chiezo の側は数時間に 1 度しか動かない。いつのものを見ているかを出して、
+       取り直すかは読む人に決めてもらう --%>
+    <p class="relation-checked">
+      <span class="muted-note">
+        <%= if at = @relation[:checked_at] do %>
+          最後に取得: <strong>{Jst.format(at)}（{Jst.ago(at)}）</strong>
+        <% else %>
+          まだ取得していません
+        <% end %>
+      </span>
+      <%!-- **取り直しの最中も印を出す。** 読むのは `status` が :loading のあいだで、
+         収集の途中経過（`step`）だけを見ていた頃は、取得中もボタンが押せるままで
+         押したのかどうかが分からなかった --%>
+      <% loading = reloading?(@relation) %>
+      <button
+        type="button"
+        phx-click="reload"
+        disabled={loading}
+        aria-busy={if loading, do: "true"}
+        class={if loading, do: "is-loading"}
+      >
+        {if loading, do: "取得しています…", else: "最新の情報を取得"}
+      </button>
+    </p>
+    """
+  end
+
   @impl true
   def handle_params(params, _uri, socket) do
     # **どれを最初に開くかは 1 か所で決める**（`Relations.valid_key/1`）——

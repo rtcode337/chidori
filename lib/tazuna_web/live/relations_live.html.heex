@@ -4,7 +4,10 @@
      ものを丸ごと入れ替えるので、途中で押されたことは黙って上書きされる ——
      押せたのに効かない、という形になる。`inert` で操作ごと止め、覆いで
      押せないことを見せる（見た目だけ止めても、タブ送りでは押せてしまう） --%>
-<main class={["relations-page", busy?(@relation) && "is-busy"]} inert={busy?(@relation) || nil}>
+<main
+  class={["relations-page", busy?(@relation) && "is-busy", @embed && "is-embed"]}
+  inert={busy?(@relation) || nil}
+>
   <div>
     <%!-- **トップページに埋め込まれたときは、頭のメニューとタブと設定を出さない**
          （`embed=1`。図と操作だけあればよく、トップの中にもう 1 つ画面の頭が並ぶと
@@ -36,38 +39,15 @@
       </.link>
     </nav>
 
-    <%!-- 埋め込まれたときは**取得の行と図だけ**（見出し・説明・図の下の節は出さない）。
-         トップページの中で読むのは図で、見方や設定は関連図の画面で読む --%>
-    <section class={["relations-intro", @embed && "is-embedded"]}>
-      <p :if={!@embed}>{@relation.eyebrow}</p>
-      <h1 :if={!@embed}>{@relation.title}</h1>
-      <p :if={!@embed}>{@relation.description}</p>
+    <%!-- 埋め込まれたときは**図と取得の行だけ**（見出し・説明・図の下の節は出さない）。
+         トップページの中で読むのは図で、見方や設定は関連図の画面で読む。
+         **取得の行は図の下へ**（埋め込みでは図が主役。上に置くと図が押し下がる） --%>
+    <section :if={!@embed} class="relations-intro">
+      <p>{@relation.eyebrow}</p>
+      <h1>{@relation.title}</h1>
+      <p>{@relation.description}</p>
 
-      <%!-- **開くたびには取りに行かない。** 8,000 人ぶんを読むので数秒かかるのに、
-           Chiezo の側は数時間に 1 度しか動かない。いつのものを見ているかを出して、
-           取り直すかは読む人に決めてもらう --%>
-      <p class="relation-checked">
-        <span class="muted-note">
-          <%= if at = @relation[:checked_at] do %>
-            最後に取得: <strong>{Jst.format(at)}（{Jst.ago(at)}）</strong>
-          <% else %>
-            まだ取得していません
-          <% end %>
-        </span>
-        <%!-- **取り直しの最中も印を出す。** 読むのは `status` が :loading のあいだで、
-             収集の途中経過（`step`）だけを見ていた頃は、取得中もボタンが押せるままで
-             押したのかどうかが分からなかった --%>
-        <% loading = reloading?(@relation) %>
-        <button
-          type="button"
-          phx-click="reload"
-          disabled={loading}
-          aria-busy={if loading, do: "true"}
-          class={if loading, do: "is-loading"}
-        >
-          {if loading, do: "取得しています…", else: "最新の情報を取得"}
-        </button>
-      </p>
+      <.checked_line relation={@relation} />
     </section>
 
     <%!-- 図は地図と同じ操作にする（押し広げ・引きずり）。**全画面はブラウザの
@@ -143,7 +123,7 @@
         <button type="button" data-zoom="in" aria-label="拡大">＋</button>
         <button type="button" data-zoom="out" aria-label="縮小">−</button>
         <button type="button" data-zoom="reset" aria-label="全体を表示">全体</button>
-        <button type="button" data-zoom="full" aria-label="全画面で見る">全画面</button>
+        <TazunaWeb.FullscreenButton.fullscreen_button />
       </div>
       <%!-- 案内は端末で変える。押しても全画面にならない PC に「押すと全画面」と
            書くと嘘になる（全画面はボタンからいつでも入れる） --%>
@@ -324,6 +304,10 @@
         <% end %>
       </svg>
     </section>
+
+    <div :if={@embed} class="relations-intro is-embedded">
+      <.checked_line relation={@relation} />
+    </div>
 
     <%!-- AI が目を通したかどうか。**薄い札が未レビュー**（機械で名簿に入っただけで、
          説明も影響元もまだ無いことが多い）。押すとその人たちだけになる --%>

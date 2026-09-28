@@ -92,7 +92,7 @@ defmodule TazunaWeb.TopicMap do
           <button type="button" data-zoom="in" aria-label="拡大">＋</button>
           <button type="button" data-zoom="out" aria-label="縮小">−</button>
           <button type="button" data-zoom="reset" aria-label="全体を表示">全体</button>
-          <button type="button" data-zoom="full" aria-label="全画面で見る">全画面</button>
+          <TazunaWeb.FullscreenButton.fullscreen_button />
         </div>
         <p class="relation-hint">
           <span class="only-touch">押すと全画面。指で動かし、2 本の指でつまんで拡大縮小。</span><span class="only-mouse">引きずって移動、Ctrl+ホイールで拡大縮小。</span>

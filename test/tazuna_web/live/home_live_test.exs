@@ -103,8 +103,10 @@ defmodule TazunaWeb.HomeLiveTest do
     live |> element(~s(li[phx-value-title="本:リーダブルコード"])) |> render_click()
     html = render_async(live, 2_000)
 
-    assert html =~ "「リーダブルコード」を勧めている記事"
-    assert html =~ ~s(href="https://example.com/post")
+    # 押した札の中に開く
+    [_before, card | _rest] = String.split(html, ~s(phx-value-title="本:リーダブルコード"))
+    assert card =~ "top-book-posts"
+    assert card =~ ~s(href="https://example.com/post")
   end
 
   test "埋め込んだ関連図は、取得の行と図だけ", %{conn: conn} do

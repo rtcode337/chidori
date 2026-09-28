@@ -20,8 +20,10 @@ defmodule TazunaWeb.TopBooks do
   # **押すとその本を勧めている記事をたどれる**（画面が受ける event の名前。`title` を渡す）。
   # 書名のリンクは本の頁へ行くので、たどる口は札そのものに置く
   attr :open_event, :string, default: nil
-  # いま開いている本（札に印を付ける）
+  # いま開いている本（札に印を付ける）と、その本を勧めている記事
+  # （nil / :loading / {:ok, 記事} / {:error, 理由}）。**開いた札の中に出す**
   attr :opened, :string, default: nil
+  attr :posts, :any, default: nil
 
   def top_books(assigns) do
     assigns = assign(assigns, shown: Enum.with_index(Enum.take(assigns.books, @count), 1))
@@ -77,6 +79,41 @@ defmodule TazunaWeb.TopBooks do
           </p>
           <%!-- **説明は 3 行まで**（上位の枠は一目で見比べるためのもの。全文は本棚で） --%>
           <p :if={book.note != ""} class="top-book-note">{book.note}</p>
+
+          <%!-- 勧めている記事。**押した札の中に開く**（札の下に離して出すと、どの本の
+               記事なのかを目で行き来して確かめることになる）。記事のリンクは札を
+               閉じないよう、押しても札まで伝えない --%>
+          <div
+            :if={@opened == book.title}
+            class="top-book-posts"
+            aria-label="勧めている記事"
+            onclick="event.stopPropagation()"
+          >
+            <p :if={@posts in [nil, :loading]} class="muted-note">読み込んでいます…</p>
+            <p :if={match?({:error, _}, @posts)} class="muted-note">記事を読めませんでした。</p>
+            <%= if match?({:ok, _}, @posts) do %>
+              <% {:ok, posts} = @posts %>
+              <p :if={posts == []} class="muted-note">勧めている記事が見つかりませんでした。</p>
+              <ol :if={posts != []} class="book-posts">
+                <li :for={post <- posts}>
+                  <a
+                    :if={post.url}
+                    href={post.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onclick="event.stopPropagation()"
+                  >
+                    {post.title}
+                  </a>
+                  <span :if={!post.url}>{post.title}</span>
+                  <span :if={post.published_at != ""} class="muted-note">
+                    {String.slice(post.published_at, 0, 10)}
+                  </span>
+                </li>
+              </ol>
+            <% end %>
+            <p class="muted-note">札の上のほうをもう一度押すと閉じます。</p>
+          </div>
         </div>
       </li>
     </ol>
