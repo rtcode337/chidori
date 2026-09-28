@@ -608,6 +608,16 @@ defmodule Tazuna.NewsTest do
       assert tech =~ "Qiita の人気"
     end
 
+    test "市況ニュースは、記事に出てくる上場企業の証券コードを付けさせる" do
+      # 売買提案のアプリ が自分の保有と突き合わせて注目銘柄にする
+      market = News.refine_prompt(defined_topic("tazuna_market"))
+
+      assert market =~ ~s("銘柄:<証券コード>")
+      assert market =~ ~s("区分:マクロ")
+      assert market =~ "適時開示"
+      refute market =~ "話題になっている論文"
+    end
+
     test "トピックの網の例も話題ごと" do
       # 一般ニュースの網に「AI」「インフラ」を例に出すと、分野がそちらへ引っ張られる
       news = Tazuna.Themes.tidy_prompt(defined_topic("tazuna_news"))

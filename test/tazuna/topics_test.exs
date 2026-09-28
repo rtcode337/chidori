@@ -42,7 +42,14 @@ defmodule Tazuna.TopicsTest do
     end
 
     test "技術ニュースの右隣に並ぶ" do
-      assert Enum.map(Topics.list(), & &1.name) == ["一般ニュース", "技術ニュース", "技術イベント", "映画"]
+      assert Enum.map(Topics.list(), & &1.name) == [
+               "一般ニュース",
+               "技術ニュース",
+               "技術イベント",
+               "映画",
+               "市況ニュース",
+               "銘柄調査"
+             ]
     end
 
     test "要約は作らず、開催日のカレンダーを出す", %{events: events} do

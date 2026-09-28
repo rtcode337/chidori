@@ -33,8 +33,12 @@ defmodule TazunaWeb.Router do
     get "/datasets/:key/travel-log.zip", DatasetsController, :export
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", TazunaWeb do
-  #   pipe_through :api
-  # end
+  # 外のアプリから頼まれる口（JSON）。**LAN の中から呼ばれる前提**で、認証は持たない
+  # （Chiezo と同じ線。ルーターでポートを開けないこと）
+  scope "/api", TazunaWeb do
+    pipe_through :api
+
+    # 銘柄調査を頼む（調べる銘柄は 売買提案のアプリ が決める。`Tazuna.News.StockResearch`）
+    post "/stock-research", StockResearchController, :create
+  end
 end

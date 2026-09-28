@@ -634,9 +634,10 @@ defmodule Tazuna.News do
   # 収集ぜんたいの依頼文（巡回に書いていなければここへ落ちる）。作品を育てる話題では
   # 先を探す回の文 —— 記事を集める文を置くと、名指ししない回が記事を溜め始める
   defp collection_prompt(topic) do
-    case Topics.works(topic) do
-      nil -> prompt(topic)
-      works -> works.survey_prompt(interest_of(topic))
+    cond do
+      module = Topics.sweeps_from(topic) -> module.prompt(topic)
+      works = Topics.works(topic) -> works.survey_prompt(interest_of(topic))
+      true -> prompt(topic)
     end
   end
 
@@ -661,9 +662,11 @@ defmodule Tazuna.News do
   （`focus_sweep/0`）—— 落とす力と印を付け直す力を持つのはその回だけだからです。
   """
   def sweeps(topic) do
-    case Topics.works(topic) do
-      nil -> article_sweeps(topic)
-      works -> work_sweeps(topic, works)
+    cond do
+      # **巡回をまるごと別のモジュールが決める話題**（銘柄調査。`Tazuna.Topics` の `sweeps_from`）
+      module = Topics.sweeps_from(topic) -> module.sweeps(topic)
+      works = Topics.works(topic) -> work_sweeps(topic, works)
+      true -> article_sweeps(topic)
     end
   end
 
@@ -1217,9 +1220,10 @@ defmodule Tazuna.News do
   混ざるほうが害が大きい）。
   """
   def refine_prompt(topic) do
-    case Topics.works(topic) do
-      nil -> article_refine_prompt(topic)
-      works -> works.refine_prompt(interest_of(topic))
+    cond do
+      module = Topics.sweeps_from(topic) -> module.prompt(topic)
+      works = Topics.works(topic) -> works.refine_prompt(interest_of(topic))
+      true -> article_refine_prompt(topic)
     end
   end
 
