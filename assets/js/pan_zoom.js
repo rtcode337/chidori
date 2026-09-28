@@ -61,7 +61,9 @@ const base = {
     this.moved = 0
     this.pointers = new Map()
     this.pinch = null
-    this.svg = this.el.querySelector("svg")
+    // **図は枠の直下の svg。** 道具のボタンにも svg（アイコン）が入っていて、
+    // 枠の中から最初の svg を探すとそちらを掴み、図が動かず札も描かれなくなる
+    this.svg = this.el.querySelector(":scope > svg")
     // **元の viewBox は覚えておく。** 動かすのはこれなので、動かしたあとに
     // 読み直すと、そのときの値が「元」になってしまう
     this.base = this.viewBox()
@@ -74,7 +76,7 @@ const base = {
 
   updated() {
     // 描き直されると svg の要素が入れ替わるので、持ち直してから当て直す
-    this.svg = this.el.querySelector("svg")
+    this.svg = this.el.querySelector(":scope > svg")
     const now = this.svg && this.svg.getAttribute("viewBox")
     // **自分が書いた値を「元」にしない** —— 動かしたぶんが元に化けると、
     // 描き直されるたびに図がそのぶんずれていく。サーバーが書き戻した値
