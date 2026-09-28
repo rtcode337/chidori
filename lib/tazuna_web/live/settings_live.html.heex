@@ -1,0 +1,192 @@
+<Layouts.flash_group flash={@flash} />
+<main class="relations-page settings-page">
+  <div>
+    <TazunaWeb.MainNav.main_nav active={:settings} />
+
+    <nav id="settings-tabs" class="relation-tabs" phx-hook="ScrollTabs" aria-label="設定">
+      <.link
+        :for={{key, label} <- @tabs}
+        patch={~p"/settings?tab=#{key}"}
+        class={if @tab == key, do: "selected"}
+        aria-current={if @tab == key, do: "page"}
+      >
+        {label}
+      </.link>
+    </nav>
+
+    <%!-- Chiezo 収集。**待ち行列が溜まってきたときに見る表** —— 巡回の間隔だけでは、
+         ワーカーが何分おきに何本流すのかが読めないので、両方を並べる --%>
+    <section :if={@tab == "chiezo"} class="settings-panel" aria-label="Chiezo 収集">
+      <section class="relations-intro">
+        <p>SETTINGS</p>
+        <h1>Chiezo 収集</h1>
+        <p>
+          tazuna が Chiezo に頼んでいる収集と、その回り方です。設定そのものは Chiezo にあり、開くたびに読み直します（直すのは各画面か Chiezo の画面から）。
+        </p>
+      </section>
+
+      <div class="button-row">
+        <button type="button" phx-click="reload" phx-disable-with="読んでいます…">読み直す</button>
+      </div>
+
+      <p :if={@overview in [nil, :loading]} class="muted-note">読み込んでいます…</p>
+      <p :if={match?({:error, _}, @overview)} class="muted-note">{error_text(@overview)}</p>
+
+      <%= if match?({:ok, _}, @overview) do %>
+        <% {:ok, overview} = @overview %>
+
+        <section class="settings-block">
+          <h3>ワーカー</h3>
+          <p :if={overview.queue_error} class="muted-note">
+            {queue_error_text(overview.queue_error)}
+          </p>
+          <p class="muted-note">
+            巡回は、ワーカーの待ち行列に積まれ、ワーカーが起きたときに 1 回に決まった数ずつ流します。次に起きるのは、前の塊を流し終えてから間隔が空いたとき。
+          </p>
+          <table :if={overview.workers != []} class="collect-overview">
+            <thead>
+              <tr>
+                <th>ワーカー</th>
+                <th>起きる間隔</th>
+                <th>1 回に流す数</th>
+                <th>次に起きる（JST）</th>
+                <th>流している / 待っている</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={worker <- overview.workers}>
+                <td>
+                  {worker.name}<span :if={worker.paused} class="muted-note">（止めています）</span>
+                </td>
+                <td>{worker.every}</td>
+                <td>{worker.per_run}</td>
+                <td>
+                  {cond do
+                    worker.flowing != [] -> "流し終えてから"
+                    true -> at(worker.next_at)
+                  end}
+                </td>
+                <td>
+                  <span :if={worker.flowing == [] and worker.queued == []}>なし</span>
+                  <ul :if={worker.flowing != [] or worker.queued != []} class="queue-list">
+                    <li :for={entry <- worker.flowing}>
+                      <strong>流している</strong> {entry["collection"]} / {entry["sweep"]}
+                    </li>
+                    <li :for={entry <- worker.queued}>
+                      待ち {entry["collection"]} / {entry["sweep"]}
+                      <span class="muted-note">（{at(entry["at"])} から）</span>
+                    </li>
+                  </ul>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p :if={overview.workers == [] and !overview.queue_error} class="muted-note">
+            ワーカーはありません。
+          </p>
+        </section>
+
+        <section :if={overview.waiting != []} class="settings-block">
+          <h3>取り込みの待ち行列（{length(overview.waiting)} 本）</h3>
+          <ol class="queue-list">
+            <li :for={entry <- overview.waiting}>
+              {entry["collection"]} / {entry["sweep"]}
+              <span class="muted-note">（{at(entry["at"])} から）</span>
+            </li>
+          </ol>
+        </section>
+
+        <section class="settings-block">
+          <h3>収集（{length(overview.collections)} 本）</h3>
+          <table class="collect-overview">
+            <thead>
+              <tr>
+                <th>収集</th>
+                <th>巡回</th>
+                <th>間隔</th>
+                <th>相手</th>
+                <th>前回（JST）</th>
+                <th>次回（JST）</th>
+              </tr>
+            </thead>
+            <tbody :for={collection <- overview.collections}>
+              <tr :for={{sweep, index} <- Enum.with_index(collection.sweeps)}>
+                <td :if={index == 0} rowspan={max(length(collection.sweeps), 1)}>
+                  <strong>{collection.label}</strong>
+                  <br /><span class="muted-note">{collection.name}</span>
+                  <br :if={!collection.enabled} /><span
+                    :if={!collection.enabled}
+                    class="muted-note"
+                  >止まっています</span>
+                </td>
+                <td>
+                  {sweep.name}<span :if={!sweep.enabled} class="muted-note">（止めています）</span>
+                </td>
+                <td>{sweep.clock}</td>
+                <td>
+                  {sweep.backend}<span :if={sweep.model} class="muted-note">{sweep.model}</span>
+                </td>
+                <td>
+                  {at(sweep.last_run_at)}<span
+                    :if={sweep.last_status && sweep.last_status != "ok"}
+                    class="muted-note"
+                  >{if sweep.last_status == "error", do: "失敗", else: sweep.last_status}</span>
+                </td>
+                <td>
+                  {at(sweep.next_run_at)}<br :if={sweep.blocked} /><span
+                    :if={sweep.blocked}
+                    class="muted-note"
+                  >{sweep.blocked}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      <% end %>
+    </section>
+
+    <%!-- トップページに並べる枠。**選んだ枠がタブになり、最初の枠が開いたときに出る** --%>
+    <section :if={@tab == "home"} class="settings-panel" aria-label="トップページ">
+      <section class="relations-intro">
+        <p>SETTINGS</p>
+        <h1>トップページ</h1>
+        <p>
+          トップページに並べる枠を選びます。選んだ枠がタブになり、上から順に並びます（いちばん上の枠が開いたときに出ます）。何も選ばなければ一般ニュースの要約だけを出します。
+        </p>
+      </section>
+
+      <form id="home-form" phx-submit="save_home">
+        <p class="muted-note">
+          左の ⠿ をつまんで上下に動かすと並べ替えられます（取っ手にフォーカスして ↑↓ でも動きます）。並べるものにチェックを入れて、保存を押してください。
+        </p>
+        <%!-- **描き直させない**（`phx-update="ignore"`）—— 描き直されると、つまんで
+             並べ替えた順番がサーバーの持っている順番に戻される --%>
+        <ol id="home-panels" class="sortable-list" phx-hook="SortableList" phx-update="ignore">
+          <li :for={panel <- ordered(@catalog, @home_keys)} data-sortable-item>
+            <button
+              type="button"
+              class="drag-handle"
+              data-drag-handle
+              aria-label={"#{panel.name}をつまんで並べ替える"}
+            >
+              ⠿
+            </button>
+            <input type="hidden" name={"panels[#{panel.key}][on]"} value="false" />
+            <input
+              type="checkbox"
+              id={"panel-#{panel.key}"}
+              name={"panels[#{panel.key}][on]"}
+              value="true"
+              checked={panel.key in @home_keys}
+            />
+            <label for={"panel-#{panel.key}"}>{panel.name}</label>
+            <input type="hidden" name={"panels[#{panel.key}][order]"} value="" data-order-input />
+          </li>
+        </ol>
+        <div class="button-row">
+          <button type="submit">保存</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</main>

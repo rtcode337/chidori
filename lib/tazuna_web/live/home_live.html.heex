@@ -1,0 +1,130 @@
+<Layouts.flash_group flash={@flash} />
+<main class="relations-page home-page">
+  <div>
+    <TazunaWeb.MainNav.main_nav active={:home} />
+
+    <%!-- 設定ページで選んだ枠。**最初の枠が開いたときに出る** --%>
+    <nav
+      :if={length(@panels) > 1}
+      id="home-tabs"
+      class="relation-tabs"
+      phx-hook="ScrollTabs"
+      aria-label="トップページの枠"
+    >
+      <.link
+        :for={panel <- @panels}
+        patch={~p"/?panel=#{panel.key}"}
+        class={if @panel && @panel.key == panel.key, do: "selected"}
+        aria-current={if @panel && @panel.key == panel.key, do: "page"}
+      >
+        {panel.name}
+      </.link>
+    </nav>
+
+    <section :if={@panel && @panel.kind == :topic} class="home-panel" aria-label={@panel.name}>
+      <% digest = @news && List.first(@news.digests) %>
+      <p :if={@news == nil or (@news.status == :loading and !digest)} class="muted-note">
+        読み込んでいます…
+      </p>
+      <%= if digest do %>
+        <TazunaWeb.Report.report
+          title={digest.title}
+          at={digest.collected_at}
+          body={digest.summary}
+          label={@panel.name}
+          articles={@news.articles}
+          cited={digest.cited}
+          id_prefix="home"
+          hero={TazunaWeb.NewsLive.hero?(@panel.topic)}
+        />
+      <% else %>
+        <p :if={@news && @news.status != :loading} class="muted-note">
+          まだ要約がありません（{@panel.name}の画面で、要約を作る時刻を決めると溜まっていきます）。
+        </p>
+      <% end %>
+      <p><a href={~p"/news?view=#{@panel.topic.collection}"}>{@panel.name}の画面へ</a></p>
+    </section>
+
+    <%!-- 関連図は画面ごと埋め込む（操作も同じ。頭のメニューと設定は出さない） --%>
+    <section :if={@panel && @panel.kind == :relations} class="home-panel" aria-label={@panel.name}>
+      <iframe
+        class="home-embed"
+        src={~p"/relations?view=#{@panel.view}&embed=1"}
+        title={@panel.name}
+        loading="lazy"
+      ></iframe>
+      <p><a href={~p"/relations?view=#{@panel.view}"}>関連図の画面へ</a></p>
+    </section>
+
+    <section :if={@panel && @panel.kind == :events} class="home-panel" aria-label={@panel.name}>
+      <h2 class="news-section-title">これからの注目イベント</h2>
+      <p :if={@events in [nil, :loading]} class="muted-note">読み込んでいます…</p>
+      <p :if={match?({:error, _}, @events)} class="muted-note">イベントを読めませんでした。</p>
+      <%= if match?({:ok, _}, @events) do %>
+        <% list = upcoming(elem(@events, 1)) %>
+        <p :if={list == []} class="muted-note">これから 2 か月の注目イベントはまだありません。</p>
+        <ul :if={list != []} class="event-day-list home-events">
+          <li :for={entry <- list} class={["event-item", "is-#{entry.attention}"]}>
+            <img
+              :if={TazunaWeb.NewsLive.entry_thumb(entry)}
+              class="event-thumb"
+              src={TazunaWeb.NewsLive.entry_thumb(entry)}
+              alt=""
+              loading="lazy"
+            />
+            <div class="event-item-head">
+              <span class={["event-chip", "is-#{entry.attention}"]}>
+                {TazunaWeb.NewsLive.day_label(entry.date)}
+              </span>
+              <a :if={entry.url} href={entry.url} target="_blank" rel="noreferrer">{entry.title}</a>
+              <strong :if={!entry.url}>{entry.title}</strong>
+            </div>
+            <p class="event-item-facts">
+              <span :if={Tazuna.News.Events.abroad?(entry)} class="event-abroad-mark">海外</span>
+              {TazunaWeb.NewsLive.event_facts(entry)}
+            </p>
+            <p :if={Tazuna.News.Events.description(entry) != ""} class="event-item-detail">
+              {Tazuna.News.Events.description(entry)}
+            </p>
+          </li>
+        </ul>
+      <% end %>
+      <p><a href={~p"/news?view=#{@panel.topic.collection}"}>{@panel.name}の画面へ</a></p>
+    </section>
+
+    <section :if={@panel && @panel.kind == :books} class="home-panel" aria-label={@panel.name}>
+      <p :if={@books in [nil, :loading]} class="muted-note">読み込んでいます…</p>
+      <p :if={match?({:error, _}, @books)} class="muted-note">本棚を読めませんでした。</p>
+      <TazunaWeb.TopBooks.top_books
+        :if={match?({:ok, _}, @books)}
+        books={elem(@books, 1)}
+        open_event="open_book"
+        opened={@opened_book}
+      />
+
+      <%!-- 押した本を勧めている記事。**札の下に開く**（新しい順。押し直すと閉じる） --%>
+      <section :if={@opened_book} class="book-posts-panel" aria-label="勧めている記事">
+        <header>
+          <h3>「{book_name(@opened_book)}」を勧めている記事</h3>
+          <button type="button" phx-click="open_book" phx-value-title={@opened_book}>閉じる</button>
+        </header>
+        <p :if={@book_posts in [nil, :loading]} class="muted-note">読み込んでいます…</p>
+        <p :if={match?({:error, _}, @book_posts)} class="muted-note">記事を読めませんでした。</p>
+        <%= if match?({:ok, _}, @book_posts) do %>
+          <% {:ok, posts} = @book_posts %>
+          <p :if={posts == []} class="muted-note">勧めている記事が見つかりませんでした。</p>
+          <ol :if={posts != []} class="book-posts">
+            <li :for={post <- posts}>
+              <a :if={post.url} href={post.url} target="_blank" rel="noreferrer">{post.title}</a>
+              <span :if={!post.url}>{post.title}</span>
+              <span :if={post.published_at != ""} class="muted-note">
+                {String.slice(post.published_at, 0, 10)}
+              </span>
+            </li>
+          </ol>
+        <% end %>
+      </section>
+      <p :if={match?({:ok, _}, @books)}><a href={~p"/datasets?view=books"}>本棚をぜんぶ見る</a></p>
+    </section>
+  </div>
+</main>

@@ -358,6 +358,12 @@ defmodule Tazuna.Relations do
   def keys, do: Map.keys(@views)
 
   @doc """
+  トップページに並べられる図（`{キー, 見出し}`）。**Chiezo から読む図だけ**（いまは画家）
+  —— 手書きの表示例しか無い図を並べても、読むものが無い。
+  """
+  def views, do: [{"painters", @views["painters"].title}]
+
+  @doc """
   Chiezo で頼める相手の一覧（画面の選択肢に使う）。
 
   **図を読むのとは別に引きます。** 図の読み直しは開くたびに走るので、そこへ混ぜると

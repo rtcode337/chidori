@@ -35,12 +35,19 @@ defmodule TazunaWeb.NewsLiveTest do
     assert html =~ "<h3>要約</h3>"
   end
 
-  test "トップページは一般ニュース", %{conn: conn} do
-    # 入口のためだけの頁は置かない。開いてすぐ読むものがいちばん上にあればよい
+  test "トップページは、何も選んでいなければ一般ニュースの要約", %{conn: conn} do
+    # トップは設定ページで選んだ枠。何も選んでいなければいちばん読まれるものを出す
     {:ok, _live, html} = live(conn, ~p"/")
 
-    assert html =~ ~r|<h1[^>]*>\s*一般ニュース\s*</h1>|
+    assert html =~ ~s(aria-label="一般ニュース")
+    assert html =~ ~s(href="/news?view=tazuna_news")
+  end
+
+  test "最新情報のタブは見出しの上にある", %{conn: conn} do
     # タブは見出しの上（関連図・データ収集と同じ）
+    {:ok, _live, html} = live(conn, ~p"/news")
+
+    assert html =~ ~r|<h1[^>]*>\s*一般ニュース\s*</h1>|
     [before_heading | _rest] = String.split(html, "<h1")
     assert before_heading =~ "relation-tabs"
   end
@@ -497,12 +504,15 @@ defmodule TazunaWeb.NewsLiveTest do
     assert html =~ ~p"/relations"
   end
 
-  test "設定の画面へは行かせない", %{conn: conn} do
+  test "設定ページでは、誰に頼むかを選ばせない", %{conn: conn} do
     # 誰に頼むかは巡回ごとに収集の枠で選ぶ。**別の置き場を残すと、どちらが効くのか
-    # 押す前に読めない**（しかも片方は何にも効かない欄になる）
-    {:ok, _live, html} = live(conn, ~p"/news")
+    # 押す前に読めない**（しかも片方は何にも効かない欄になる）。
+    # 設定ページの「Chiezo 収集」は一覧を見るだけ
+    {:ok, _live, html} = live(conn, ~p"/settings?tab=chiezo")
 
-    refute html =~ "/settings"
+    assert html =~ "Chiezo 収集"
+    refute html =~ ~s(name="backend")
+    refute html =~ "pick_sweep"
   end
 
   describe "一覧の並び" do

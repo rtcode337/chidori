@@ -108,6 +108,8 @@ defmodule TazunaWeb.RelationsLive do
     socket =
       assign(socket,
         view: view,
+        # トップページに埋め込まれているか（頭のメニューとタブと設定を出さない）
+        embed: params["embed"] == "1",
         relation: Relations.current(view),
         # 印は図ごとに別。切り替えたら引き直す
         marks: Marks.for_view(view),

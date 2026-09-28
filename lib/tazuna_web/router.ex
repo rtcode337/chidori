@@ -17,11 +17,13 @@ defmodule TazunaWeb.Router do
   scope "/", TazunaWeb do
     pipe_through :browser
 
-    # **トップは最新情報（一般ニュース）。** 何も選ばずに開いたときに読むものが
-    # いちばん上にあればよく、入口のためだけの頁は置かない。
+    # **トップは設定ページで選んだ枠**（要約・関連図・技術書）。何も選んでいなければ
+    # 一般ニュースの要約を出す（`Tazuna.Home`）。
     # 収集は数十秒かかるので LiveView にする。押した人に再読み込みをさせない
-    live "/", NewsLive, :index
+    live "/", HomeLive, :index
     live "/news", NewsLive, :index
+    # 設定（Chiezo に頼んでいる収集の一覧・トップページに並べる枠）
+    live "/settings", SettingsLive, :index
     # 記事のタグから育てたトピック。仕分けを頼むのもここ
     live "/relations", RelationsLive, :index
 

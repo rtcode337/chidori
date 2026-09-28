@@ -488,6 +488,35 @@ defmodule Tazuna.Chiezo do
     )
   end
 
+  @doc """
+  収集の一覧（全部）。`{:ok, [収集の生の JSON]}` か `{:error, 理由}`。
+  """
+  def collections(base), do: list(base)
+
+  @doc """
+  ワーカーと取り込みの待ち行列（`GET /v1/collect/queue`）。**読むだけ**。
+  口を持たない古い Chiezo では `{:error, :queue_unsupported}`。
+  """
+  def queue(base) do
+    case get(base <> "/v1/collect/queue") do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"workers" => workers} = decoded} when is_list(workers) -> {:ok, decoded}
+          _ -> {:error, :chiezo_unexpected_body}
+        end
+
+      # 口が無い（足す前の版）。**収集の名前として読まれて 404 になる**
+      {:ok, %{status: 404}} ->
+        {:error, :queue_unsupported}
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
   defp list(base) do
     case get(base <> "/v1/collect") do
       {:ok, %{status: 200, body: body}} ->

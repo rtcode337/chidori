@@ -70,10 +70,18 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relations-page header nav { display: flex; gap: 1rem; }
 .relations-page header nav a { color: #52607a; font-size: .9rem; font-weight: 700; text-decoration: none; }
 .relations-page header nav a.active { color: #4f46b9; }
-/* 狭い画面ではメニューを詰める。**語の途中で割らない**（「最新情/報」と割れると読めない） */
+.relations-page .brand-name { font-weight: inherit; }
+/* 狭い画面ではメニューを詰める。**語の途中で割らない**（「最新情/報」と割れると読めない）。
+   トップと設定を足して 5 つになり、スマホの幅に収まらなくなったので、**名前の字は隠して
+   印だけにし**、それでも入らなければメニューの列だけを横にスクロールさせる
+   （ページ全体が横に広がると、どの画面でも本文が左右に揺れる） */
 @media (max-width: 640px) {
-  .relations-page header nav { gap: .7rem; }
-  .relations-page header nav a { font-size: .8rem; white-space: nowrap; }
+  .relations-page header { gap: .6rem; }
+  .relations-page .brand { flex: none; }
+  .relations-page .brand-name { display: none; }
+  .relations-page header nav { min-width: 0; gap: .7rem; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; scrollbar-width: none; }
+  .relations-page header nav::-webkit-scrollbar { display: none; }
+  .relations-page header nav a { flex: none; font-size: .8rem; white-space: nowrap; }
 }
 /* 図を主役にする。見出しに 4.5rem 取っていた頃は、図が画面の下半分にしか
    出ていなかった（読みに来る人が見たいのは図のほう） */
@@ -88,11 +96,24 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relation-tabs a { margin-bottom: -1px; padding: .6rem 1.1rem; border: 1px solid transparent; border-bottom: 0; border-radius: .7rem .7rem 0 0; color: #616a82; font-size: .9rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
 .relation-tabs a:hover { background: #eceef8; color: #28235e; }
 .relation-tabs a.selected { border-color: #d9dcea; background: #f6f7fb; color: #28235e; box-shadow: inset 0 3px 0 #6254d6; }
-/* 狭い画面ではタブを詰める（最新情報は 4 つ並ぶ）。それでも入らなければ折り返す ——
-   はみ出すとページ全体が横に広がる */
+/* 狭い画面ではタブを詰め、**折り返さずにタブの列だけを横にスクロールさせる** ——
+   折り返すと段が増えて本文が押し下げられ、どれが選ばれているのかも読みにくい。
+   はみ出したぶんはタブの列の中でスクロールするので、ページ全体は横に広がらない。
+   選んだタブは見える位置まで寄せる（`ScrollTabs`） */
 @media (max-width: 640px) {
-  .relation-tabs { flex-wrap: wrap; }
-  .relation-tabs a { padding: .5rem .65rem; font-size: .8rem; }
+  .relation-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    /* **縦には動かさない。** 横だけスクロールさせると縦も auto になり、タブが下の線に
+       1px 重ねてあるぶん、横に払うたびに列が上下にも揺れていた */
+    overflow-y: hidden;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .relation-tabs::-webkit-scrollbar { display: none; }
+  .relation-tabs a { flex: none; padding: .5rem .65rem; font-size: .8rem; }
 }
 /* 設定欄の開閉。**押せる見出し**として見せる */
 /* 設定欄の見出し。**見出しそのものが開閉の口**なので、見た目は見出しのまま、
@@ -898,3 +919,72 @@ body.digest-open { overflow: hidden; }
 .find-pin { pointer-events: none; }
 .find-pin path { fill: #2f6fdb; stroke: #fff; stroke-width: 1.2; }
 .find-pin circle { fill: #fff; }
+
+/* 設定ページ（Chiezo 収集・トップページ） */
+.collect-overview { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.collect-overview th, .collect-overview td { padding: .4rem .5rem; border-bottom: 1px solid #e3e6f0; text-align: left; vertical-align: top; }
+.collect-overview th { color: #52607a; font-weight: 700; white-space: nowrap; }
+.collect-overview tbody + tbody { border-top: 2px solid #d9dcea; }
+.queue-list { margin: 0; padding-left: 1.1rem; }
+.order-input { width: 4rem; }
+
+/* トップページ */
+.home-panel { margin-top: 1.2rem; }
+.home-embed { width: 100%; height: 80vh; border: 1px solid #d9dcea; border-radius: .7rem; background: white; }
+
+/* 技術書の上位（技術書の画面とトップページ）。**見比べやすいよう札を揃える** ——
+   順位・表紙・書名・勧めている数・分野・説明（3 行まで）を同じ位置に */
+.top-books { display: grid; grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); gap: 1rem; margin: .6rem 0 1.2rem; padding: .6rem 0 0 .6rem; list-style: none; }
+.top-book { position: relative; display: flex; gap: .8rem; align-items: flex-start; padding: .8rem .9rem; border: 1px solid #e3e6f0; border-radius: .8rem; background: white; box-shadow: 0 1px 2px rgba(24, 32, 51, .04); }
+.top-book.is-near { border-color: #e2c46a; box-shadow: 0 0 0 1px #f3e2a8 inset; }
+.top-book-rank { position: absolute; top: -.55rem; left: -.55rem; display: grid; width: 1.7rem; height: 1.7rem; place-items: center; border-radius: 50%; background: #6254d6; color: white; font-size: .8rem; font-weight: 800; }
+.top-book-cover { flex: none; width: 72px; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 4px; background: #eef0f7; }
+.top-book-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.top-book-cover img.is-missing { visibility: hidden; }
+.top-book-body { min-width: 0; }
+.top-book-body p { margin: .25rem 0 0; }
+.top-book-title { margin: 0 !important; font-weight: 800; line-height: 1.35; overflow-wrap: anywhere; }
+.top-book-title a { color: #28235e; text-decoration: none; }
+.top-book-title a:hover { text-decoration: underline; }
+.top-book-score { color: #52607a; font-size: .82rem; }
+.top-book-score strong { color: #4f46b9; font-size: .95rem; }
+.top-book-fields { display: flex; flex-wrap: wrap; gap: .25rem; }
+.top-book-note { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: #3b4458; font-size: .85rem; line-height: 1.55; }
+@media (max-width: 40rem) {
+  .collect-overview { display: block; overflow-x: auto; }
+  .home-embed { height: 70vh; }
+}
+
+/* つまんで並べ替える一覧（トップページに並べる枠） */
+.sortable-list { display: grid; gap: .4rem; margin: .6rem 0 1rem; padding: 0; list-style: none; }
+.sortable-list li { display: flex; align-items: center; gap: .6rem; padding: .5rem .7rem; border: 1px solid #e3e6f0; border-radius: .6rem; background: white; }
+.sortable-list li.is-dragging { opacity: .85; border-color: #6254d6; box-shadow: 0 6px 16px rgba(40, 35, 94, .18); }
+.sortable-list label { flex: 1; cursor: pointer; }
+/* 取っ手だけ指で掴める（行のほかの場所では普通にスクロールできる） */
+.drag-handle { flex: none; padding: .2rem .45rem; border: 0; border-radius: .4rem; background: #eef0f7; color: #52607a; font-size: 1.1rem; line-height: 1; cursor: grab; touch-action: none; }
+.drag-handle:active { cursor: grabbing; }
+
+/* 要約の頭のおすすめの絵（映画）。ポスターは縦長なので、横に並べて名前を下に */
+.report-hero { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: .8rem; margin: .8rem 0 1rem; padding: 0; list-style: none; }
+.report-hero a { display: block; color: #28235e; text-decoration: none; }
+.report-hero img { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: .5rem; background: #eef0f7; box-shadow: 0 2px 8px rgba(24, 32, 51, .12); }
+.report-hero span { display: -webkit-box; margin-top: .35rem; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: .8rem; font-weight: 700; line-height: 1.35; }
+
+/* 技術書の札を押せるとき（勧めている記事をたどる） */
+.top-book.is-openable { cursor: pointer; }
+.top-book.is-openable:hover { border-color: #b9b3ee; }
+.top-book.is-opened { border-color: #6254d6; box-shadow: 0 0 0 1px #6254d6 inset; }
+.top-book-more { margin-left: .4rem; color: #4f46b9; font-weight: 700; white-space: nowrap; }
+.book-posts-panel { margin: 0 0 1.2rem; padding: .8rem 1rem; border: 1px solid #d9dcea; border-radius: .8rem; background: white; }
+.book-posts-panel header { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; }
+.book-posts-panel h3 { margin: 0; font-size: .95rem; color: #28235e; }
+.book-posts { margin: .5rem 0 0; padding-left: 1.2rem; display: grid; gap: .35rem; font-size: .88rem; }
+.book-posts .muted-note { margin-left: .4rem; }
+/* 埋め込まれた関連図は取得の行だけ（見出しと説明を落とす） */
+.relations-intro.is-embedded { padding: .4rem 0 .6rem; }
+
+/* 横にスクロールする列の**続きがある側の端をぼかす**（`ScrollTabs` が印を付ける）。
+   どちらにも続きが無ければぼかさない */
+.has-more-right { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.2rem), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 2.2rem), transparent); }
+.has-more-left { -webkit-mask-image: linear-gradient(to right, transparent, #000 2.2rem); mask-image: linear-gradient(to right, transparent, #000 2.2rem); }
+.has-more-left.has-more-right { -webkit-mask-image: linear-gradient(to right, transparent, #000 2.2rem, #000 calc(100% - 2.2rem), transparent); mask-image: linear-gradient(to right, transparent, #000 2.2rem, #000 calc(100% - 2.2rem), transparent); }

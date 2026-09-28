@@ -33,13 +33,15 @@ import DownloadLink from "./download_link"
 import DigestSwipe from "./digest_swipe"
 // トピックの網を関連図と同じ操作で動かす
 import TopicMap from "./topic_map"
+import SortableList from "./sortable_list"
+import ScrollTabs from "./scroll_tabs"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, PartitionMap, RelationMap, DownloadLink, DigestSwipe, TopicMap},
+  hooks: {...colocatedHooks, PartitionMap, RelationMap, DownloadLink, DigestSwipe, TopicMap, SortableList, ScrollTabs},
 })
 
 // Show progress bar on live navigation and form submits

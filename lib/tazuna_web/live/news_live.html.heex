@@ -3,21 +3,20 @@
      見出しの作りが違うと、同じアプリの中を移っている気がしない --%>
 <main class="relations-page news-page">
   <div>
-    <header>
-      <a href={~p"/"} class="brand" aria-label="tazuna トップページ"><span>t</span>tazuna</a>
-      <nav aria-label="主要メニュー">
-        <a class="active" href={~p"/news"}>最新情報</a>
-        <a href={~p"/relations"}>関連図</a>
-        <a href={~p"/datasets"}>データ収集</a>
-      </nav>
-    </header>
+    <TazunaWeb.MainNav.main_nav active={:news} />
 
     <%!-- 話題ごとのタブ。**集めるものも溜まるものも話題ごとに別**なので、
          1 つに混ぜると、どちらの状態を見ているのか読めなくなる。
          並ぶのは `Tazuna.Topics` の話題そのもの（定義はコードにある）。
          **見出しの上に置く**（関連図・データ収集と同じ）—— 見出しと説明は選んだ話題の
          ものなので、切り替える口がその下にあると、どこまでが切り替わるのかが読めない --%>
-    <nav :if={@topics != []} class="relation-tabs" aria-label="話題">
+    <nav
+      :if={@topics != []}
+      id="topic-tabs"
+      class="relation-tabs"
+      phx-hook="ScrollTabs"
+      aria-label="話題"
+    >
       <.link
         :for={topic <- @topics}
         patch={~p"/news?view=#{topic.collection}"}

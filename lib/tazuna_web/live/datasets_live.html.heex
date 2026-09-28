@@ -2,21 +2,19 @@
 
 <main class="relations-page collect-page">
   <div>
-    <header>
-      <a href={~p"/"} class="brand" aria-label="tazuna トップページ"><span>t</span>tazuna</a>
-      <nav aria-label="主要メニュー">
-        <a href={~p"/news"}>最新情報</a>
-        <a href={~p"/relations"}>関連図</a>
-        <a class="active" href={~p"/datasets"}>データ収集</a>
-      </nav>
-    </header>
+    <TazunaWeb.MainNav.main_nav active={:datasets} />
 
     <%!-- 集めるものごとのタブ。**収集も溜まる先も別**なので、1 つに混ぜると
          どちらの状態を見ているのか読めなくなる。並ぶのは `Tazuna.Datasets` の
          定義そのもの（定義はコードにある）。**見出しの上に置く**（関連図と同じ）——
          見出しと説明は選んだものなので、切り替える口がその下にあると、
          どこまでが切り替わるのかが読めない --%>
-    <nav class="relation-tabs" aria-label="集めるもの">
+    <nav
+      id="dataset-tabs"
+      class="relation-tabs"
+      phx-hook="ScrollTabs"
+      aria-label="集めるもの"
+    >
       <.link
         :for={dataset <- @datasets}
         patch={~p"/datasets?view=#{dataset.key}"}
@@ -64,6 +62,11 @@
       <% near_count = Enum.count(all_books, &(&1.near != [])) %>
       <% books =
         if @shelf_near_only, do: Enum.filter(all_books, &(&1.near != [])), else: all_books %>
+      <%!-- **上位の数冊を先に**（トップページと同じ枠）。本棚は何百冊にもなるので、
+           いま何が勧められているかを一目で見るには長すぎる --%>
+      <h2>いま勧められている上位 {TazunaWeb.TopBooks.count()} 冊</h2>
+      <%!-- 押すと本棚の詳細と同じもの（勧めている記事つき）が開く --%>
+      <TazunaWeb.TopBooks.top_books books={all_books} open_event="open_book" />
       <h2>本棚 <span class="muted-note">（{length(all_books)} 冊・おすすめ度の高い順）</span></h2>
       <%!-- **興味トピックに近い本は強調する**（技術ニュースで選んだもの。言い換えと
            すぐ下の子も近いと数える）。絞り込みは押したときだけ --%>

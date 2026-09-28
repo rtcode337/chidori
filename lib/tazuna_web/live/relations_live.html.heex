@@ -6,18 +6,20 @@
      押せないことを見せる（見た目だけ止めても、タブ送りでは押せてしまう） --%>
 <main class={["relations-page", busy?(@relation) && "is-busy"]} inert={busy?(@relation) || nil}>
   <div>
-    <header>
-      <a href={~p"/"} class="brand" aria-label="tazuna トップページ"><span>t</span>tazuna</a>
-      <nav aria-label="主要メニュー">
-        <a href={~p"/news"}>最新情報</a>
-        <a class="active" href={~p"/relations"}>関連図</a>
-        <a href={~p"/datasets"}>データ収集</a>
-      </nav>
-    </header>
+    <%!-- **トップページに埋め込まれたときは、頭のメニューとタブと設定を出さない**
+         （`embed=1`。図と操作だけあればよく、トップの中にもう 1 つ画面の頭が並ぶと
+         どこにいるのか読めない） --%>
+    <TazunaWeb.MainNav.main_nav :if={!@embed} active={:relations} />
 
     <%!-- **図の種類はタブで、見出しの上に置く。** 見出しと説明は選んだ図のものなので、
          切り替える口がその下にあると、どこまでが切り替わるのかが読めない --%>
-    <nav class="relation-tabs" aria-label="関連図の種類">
+    <nav
+      :if={!@embed}
+      id="relation-tabs"
+      class="relation-tabs"
+      phx-hook="ScrollTabs"
+      aria-label="関連図の種類"
+    >
       <.link
         patch={~p"/relations?view=painters"}
         class={if @view == "painters", do: "selected"}
@@ -34,10 +36,12 @@
       </.link>
     </nav>
 
-    <section class="relations-intro">
-      <p>{@relation.eyebrow}</p>
-      <h1>{@relation.title}</h1>
-      <p>{@relation.description}</p>
+    <%!-- 埋め込まれたときは**取得の行と図だけ**（見出し・説明・図の下の節は出さない）。
+         トップページの中で読むのは図で、見方や設定は関連図の画面で読む --%>
+    <section class={["relations-intro", @embed && "is-embedded"]}>
+      <p :if={!@embed}>{@relation.eyebrow}</p>
+      <h1 :if={!@embed}>{@relation.title}</h1>
+      <p :if={!@embed}>{@relation.description}</p>
 
       <%!-- **開くたびには取りに行かない。** 8,000 人ぶんを読むので数秒かかるのに、
            Chiezo の側は数時間に 1 度しか動かない。いつのものを見ているかを出して、
@@ -325,7 +329,8 @@
          説明も影響元もまだ無いことが多い）。押すとその人たちだけになる --%>
     <section
       :if={
-        @view == "painters" and is_integer(@relation[:unreviewed]) and @relation.unreviewed > 0
+        !@embed and @view == "painters" and is_integer(@relation[:unreviewed]) and
+          @relation.unreviewed > 0
       }
       class="changed-note review-note"
     >
@@ -351,7 +356,10 @@
     <%!-- 直近の巡回で何が動いたか。**図の下、凡例のすぐ上に置く** —— 押すと
          その人たちだけになるので、絞り込みの仲間として並べたほうが見つかる。
          動いたものが無ければ出さない（最初の一括作成では全部が同じ刻みになる）--%>
-    <section :if={@view == "painters" and changed_note(@relation)} class="changed-note">
+    <section
+      :if={!@embed and @view == "painters" and changed_note(@relation)}
+      class="changed-note"
+    >
       <p>{changed_note(@relation)}</p>
       <button
         type="button"
@@ -365,7 +373,10 @@
 
     <%!-- 色の凡例。**図の真下に置く** —— 色を見てから凡例を探すので、間に何かを
          挟むと目が行き来する。**押すとその様式だけになる**（もう一度押すと戻る）--%>
-    <section :if={@view == "painters" and style_legend(@relation) != []} class="style-legend">
+    <section
+      :if={!@embed and @view == "painters" and style_legend(@relation) != []}
+      class="style-legend"
+    >
       <ul>
         <li :for={{style, count, hue} <- style_legend(@relation)}>
           <button
@@ -389,7 +400,7 @@
 
     <%!-- 出典を並べていた右半分を畳んで、説明のほうを広げた。**読むのは見方のほう**で、
          出典は表示例のものが固定で出ているだけだった --%>
-    <section class="relation-guide">
+    <section :if={!@embed} class="relation-guide">
       <h2>この図の見方</h2>
       <%= if @view == "painters" do %>
         <p>
@@ -437,7 +448,7 @@
          状態を見る場所と、直す場所と、押す場所が離れていると、何がどこへ効くのか
          読めない --%>
     <%!-- 設定はページの名前を冠した 1 つの枠にまとめる（他の画面と同じ形）--%>
-    <section class="settings-panel" aria-label={"#{@relation.title}の設定"}>
+    <section :if={!@embed} class="settings-panel" aria-label={"#{@relation.title}の設定"}>
       <%!-- **見出しそのものを開閉の口にする。** 設定は見たいときだけ見るもので、
            開いたときに Chiezo から読む（図を開くたびに巡回・区画・依頼文まで
            運んでいた頃は、見もしない設定のために待たされた）。
