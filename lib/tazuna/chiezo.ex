@@ -172,6 +172,40 @@ defmodule Tazuna.Chiezo do
   end
 
   @doc """
+  ある点のまわり（`meters` 四方）の文書。`{:ok, [文書]}` か `{:error, 理由}`。
+
+  **消えたものも、まだ AI が見ていないものも返します**（`include_removed`）——
+  読み口の既定では両方外れるが、近くに何が残っているかを探す側は、見られて
+  いないものこそ知りたい。消えたものを落とすのは呼ぶ側です。
+  """
+  def nearby(base, name, lat, lon, meters) when is_number(lat) and is_number(lon) do
+    dlat = meters / 111_320
+    dlon = meters / (111_320 * max(:math.cos(lat * :math.pi() / 180), 0.01))
+
+    query =
+      URI.encode_query(%{
+        "bbox" => Enum.join([lat - dlat, lon - dlon, lat + dlat, lon + dlon], ","),
+        "limit" => 50,
+        "fields" => "title,tags,extra",
+        "include_removed" => "true"
+      })
+
+    case get(base <> "/v1/" <> URI.encode(name) <> "/filter?" <> query) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"results" => results}} when is_list(results) -> {:ok, results}
+          _other -> {:error, :chiezo_unexpected_body}
+        end
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
   収集を依頼します。**作られるのは止まった状態**なので、これで AI が動き出すことは
   ありません。すでにあれば何もしません（409 は成功として扱う）。
   """

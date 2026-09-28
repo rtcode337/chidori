@@ -162,8 +162,12 @@ defmodule Tazuna.Datasets.Meals do
   # 名簿に引く地図辞典のカテゴリ。**食べに行く先だけ**を採る。
   # カテゴリ名は Overture のもので、推測で書くと**エラーにならず 0 件**になる
   # （`/v1/overture_japan/tags?contains=` で実在を確かめてある）
+  #
+  # **Overture は版で語彙が動く。** 2026-09 の版で `noodles_restaurant` が無くなり、
+  # ラーメン屋は `ramen_restaurant` に入った。古い版のぶんも読めるよう両方書く
+  # （無いカテゴリは 0 件になるだけで、落ちはしない）
   @categories ~w(
-    restaurant japanese_restaurant sushi_restaurant noodles_restaurant
+    restaurant japanese_restaurant sushi_restaurant noodles_restaurant ramen_restaurant
     barbecue_restaurant seafood_restaurant chinese_restaurant korean_restaurant
     italian_restaurant french_restaurant
   )
@@ -186,6 +190,7 @@ defmodule Tazuna.Datasets.Meals do
   @genres [
     {"sushi_restaurant", "寿司"},
     {"noodles_restaurant", "麺類"},
+    {"ramen_restaurant", "麺類"},
     {"barbecue_restaurant", "焼肉"},
     {"seafood_restaurant", "海鮮"},
     {"chicken_restaurant", "鶏料理"},
@@ -290,6 +295,9 @@ defmodule Tazuna.Datasets.Meals do
       # ので、「この区画を先に調べて」「この店が違う」をその場で頼む先はざっと ——
       # 直す・消す・埋めるはざっとの依頼文がそのまま引き受ける
       survey_sweep: @scan_sweep,
+      # **閉店の片割れを探して確かめてもらう**（`Tazuna.Datasets.ClosedTwins`）。
+      # 場所を持つ収集でしか探せない
+      closed_twins: true,
       # **tazuna が起点と時刻を決めて起こす巡回**（`Tazuna.Datasets.SurveyScheduler`）
       survey_plan_sweep: @survey_sweep,
       # **区画を回る巡回を、回る順に。** 進み具合はこの順で深くなる
@@ -426,6 +434,10 @@ defmodule Tazuna.Datasets.Meals do
       # 持っているのは地図辞典の飲食店の 1 割ほど
       # `wikidata` は使っていません（上と同じ理由で運びません）
       extra: ~w(lat lon area address website phone opening_hours),
+      # **元の地物を名指す鍵。** 見出しは同じ名前の地物に「先に来たほうが素の名前、
+      # あとは (node:番号)」と付けるので、取り込み直すと入れ替わりうる ——
+      # 見出しだけで突き合わせていると、閉店で消した店が別の見出しで戻ってくる
+      identity: ~w(osm_type osm_id),
       tags: [%{const: kind_tag()}, %{const: @source_tags[:osm]}]
     }
   end
@@ -457,7 +469,12 @@ defmodule Tazuna.Datasets.Meals do
       # 使うだけで、溜めたあとは誰も読みません（`locality` は本文の「所在:」と同じ）——
       # 脇書きは**毎回の素材に丸ごと乗る**ので、読まないものを運ぶと焼きが遅くなります
       # （実測で、この 2 つだけで 9.8 MB）
-      extra: ~w(lat lon address website phone)
+      extra: ~w(lat lon address website phone),
+      # **元の地物を名指す鍵。** 同じ名前の店の見出しの札は取り込みの版で変わる
+      # （通し番号 → 町の名前）ので、見出しだけで突き合わせていると、変わった日に
+      # 消した店が丸ごと戻り、生きている店は 2 件に増える。Overture の id は
+      # 版をまたいで変わらない
+      identity: ~w(overture_id)
     }
   end
 
@@ -611,6 +628,7 @@ defmodule Tazuna.Datasets.Meals do
     （tags に "#{Chiezo.tombstone_tag()}" を入れ、body に「◯年に閉店」のように
     理由を1行書く）。地図辞典は閉店をすぐには落とさないので、**ここは AI にしか
     見分けられないところ**です。
+    #{closed_twin_rule()}
 
     **3. 食事処でないものを消す。** 名簿はカテゴリで機械的に作っているので、
     事務所・商業施設そのもの・カラオケ店のような「食べに行く先ではないもの」が
@@ -674,6 +692,11 @@ defmodule Tazuna.Datasets.Meals do
     レート制限が無く、入っている地物は実在が確かめられています。足りなければ web で。
     **確信が持てるものだけを挙げてください。** 思い当たらなければ足さなくて構いません
     —— 既にあるものを挙げ直しても名簿は変わらず、AI の枠だけが減ります。
+    **足す前に、いまも営業しているかを確かめてください。** 閉店した店の記事や
+    口コミの頁は何年も残るので、見つかったことは開いている証拠になりません。
+    **直近 1 年ほどの口コミ・公式の告知・営業時間の更新**のどれかで営業が確かめられた
+    店だけを足し、「閉店」「閉業」「移転」の表示があるもの、確かめられなかったものは
+    足さないでください（**足した閉店は、次にざっと見るの回が見つけるまで地図に残ります**）。
 
     **足すものには必ず座標を入れてください**（`lat` と `lon` に数で）。
     **座標の無いものはどの区画にも入らず**、次に同じ区画を見たときには
@@ -683,6 +706,7 @@ defmodule Tazuna.Datasets.Meals do
     閉店したもの・食べに行く先でないものは墓標で消し（tags に
     "#{Chiezo.tombstone_tag()}" を入れ、body に理由を1行）、
     説明・ジャンル・地域・ランク・特徴の空いているところを埋めてください。
+    #{closed_twin_rule()}
 
     #{move_by_fixing()}
     #{eat_in_rule()}
@@ -702,6 +726,19 @@ defmodule Tazuna.Datasets.Meals do
     #{item_format()}
 
     **触ったものと足すものだけ返してください。** 触れなかったものはそのまま残ります。
+    """
+  end
+
+  # 閉店した店の片割れ。**2 つの依頼文で同じ文を使う**（`move_by_fixing/0` と同じ理由）。
+  # 同じ店が辞典に 2 件入っていることがあり、片方だけ消すともう片方が地図に残る
+  # （実測: 閉店で消した店と同じ名前の店が、同じ住所で生きたまま残っていた）
+  defp closed_twin_rule do
+    """
+    **閉店で消すときは、同じ店の片割れも消してください。** 同じ店が辞典に 2 件以上
+    入っていることがあります（辞典違い・表記違い・見出しの後ろの「(番号)」「(町名)」だけが
+    違うもの）。**上に同じ住所・同じ名前の 1 件があれば、それも同じ理由で墓標を付けて**
+    ください —— 片方だけ消すと、もう片方が開いている店として地図に残ります。
+    同じチェーンの別の店舗（住所が違う）は別の店なので残してください。
     """
   end
 

@@ -66,6 +66,37 @@ defmodule Tazuna.Datasets.MealsTest do
       assert "pageviews_month" in by_source["jawiki"].extra
     end
 
+    test "地図の辞典は、元の地物を名指す鍵も運ぶ", %{by_source: by_source} do
+      # **見出しは取り込み直すと変わりうる**（同じ名前の地物の見分けの札）。見出しだけで
+      # 突き合わせていると、閉店で消した店が新しい見出しで戻ってくる
+      assert by_source["osm_japan"].identity == ~w(osm_type osm_id)
+      assert by_source["overture_japan"].identity == ~w(overture_id)
+      # 百科事典の見出しは記事名なので、札が付け直されることはない
+      refute Map.has_key?(by_source["jawiki"], :identity)
+    end
+
+    test "ラーメン屋は新しい版の語彙でも麺類になる", %{by_source: by_source} do
+      # 2026-09 の版で noodles_restaurant が無くなり、ramen_restaurant に入った
+      assert by_source["overture_japan"].tag =~ "ramen_restaurant"
+
+      assert Enum.any?(
+               by_source["overture_japan"].tags,
+               &(&1[:pattern] == "^ramen_restaurant$" and &1[:format] =~ "麺類")
+             )
+    end
+
+    test "閉店の片割れを確かめてもらう" do
+      # 同じ店が辞典に 2 件入っていて、片方だけ閉店で消えることがある
+      assert Meals.definition().closed_twins == true
+      assert Meals.scan_prompt() =~ "片割れ"
+      assert Meals.survey_prompt() =~ "片割れ"
+    end
+
+    test "足す前に営業しているかを確かめさせる" do
+      # 閉店した店の記事や口コミの頁は何年も残る
+      assert Meals.survey_prompt() =~ "いまも営業しているか"
+    end
+
     test "読まないものは運ばない" do
       # 脇書きは毎回の素材に丸ごと乗る —— 読まないものを運ぶと、そのぶん焼きが遅くなる
       # （実測で confidence と locality だけで 9.8 MB）
