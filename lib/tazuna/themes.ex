@@ -168,13 +168,6 @@ defmodule Tazuna.Themes do
     end
   end
 
-  @doc """
-  整理の回の依頼文。**語はもう拾ってあります**（機械が）。この回は**精査だけ**です。
-
-  分類の 4 択にしてあるのは、**間違い方に差がある**からです —— 言い換えでないものを
-  畳むと片方が消え、外した語は二度と戻ってきません。迷ったものは触らせずに
-  次の回へ送ります。
-  """
   # 依頼文の例。**話題が書いていればそちら**（`Tazuna.Topics` の `theme_examples`）——
   # 一般ニュースの網に「AI」「インフラ」を例に出すと、分野がそちらへ引っ張られる
   defp field_examples(topic) do
@@ -191,6 +184,13 @@ defmodule Tazuna.Themes do
   defp theme_examples(topic, key, default),
     do: topic |> Map.get(:theme_examples, %{}) |> Map.get(key, default)
 
+  @doc """
+  整理の回の依頼文。**語はもう拾ってあります**（機械が）。この回は**精査だけ**です。
+
+  分類の 4 択にしてあるのは、**間違い方に差がある**からです —— 言い換えでないものを
+  畳むと片方が消え、外した語は二度と戻ってきません。迷ったものは触らせずに
+  次の回へ送ります。
+  """
   def tidy_prompt(topic) do
     """
     {names}

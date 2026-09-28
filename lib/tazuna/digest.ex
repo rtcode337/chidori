@@ -93,7 +93,7 @@ defmodule Tazuna.Digest do
         {:error, :chiezo_not_configured}
 
       base ->
-        result = walk(base, collection, free_by || manual_deadline())
+        result = walk(base, topic_of(collection), free_by || manual_deadline())
         # 画面はこの後の状態を見る（まとめが入れ替わっているので）
         News.refresh(News.server(collection))
         log(collection, result)
@@ -108,7 +108,9 @@ defmodule Tazuna.Digest do
   def run(_topic, _free_by), do: {:error, :no_topic}
 
   # `free_by` までは、取り込みが空くのを待って頼み直す（断られても、その回を落とさない）
-  defp walk(base, collection, free_by) do
+  defp walk(base, topic, free_by) do
+    collection = topic.collection
+
     with {:ok, before} <- Chiezo.collection(base, collection, @samples),
          :ok <- enabled(before),
          :ok <- tell(collection, "整理を起こしています…"),
@@ -124,17 +126,56 @@ defmodule Tazuna.Digest do
              fn ->
                busy_told(
                  collection,
-                 Chiezo.focus(base, collection, @digest_note, [], @digest_sweep)
+                 Chiezo.focus(
+                   base,
+                   collection,
+                   @digest_note,
+                   digest_titles(base, topic),
+                   @digest_sweep
+                 )
                )
              end,
              free_by
            ),
          {:ok, digest} <-
            wait_for_digest(base, collection, digest_title(before), deadline(@digest_wait_ms)) do
-      tell(collection, "知らせています…")
-      delivered = Notify.deliver(collection, digest)
+      delivered = deliver_if_set(collection, digest)
       interest_round(base, collection, free_by)
       delivered
+    end
+  end
+
+  # 定義の話題（無ければ名前だけの入れ物。要約の材料を名指ししない話題と同じ扱いになる）
+  defp topic_of(collection), do: Tazuna.Topics.get(collection) || %{collection: collection}
+
+  # 要約の材料として**名指しする**もの。**要約は割り込みとして起こす**ので、依頼文が
+  # いま入っているもの（`{current}`）を読む話題では、名指ししないと差し込みが空になる
+  # （割り込みの `{current}` は名指しした見出しだけ —— 映画の要約が材料 0 件で空振りした）。
+  # 名指しするかは作り方のモジュールが決める（`digest_titles/2`。記事を溜める話題は
+  # `{recent}` を読むので要らない）
+  defp digest_titles(base, topic) do
+    case Tazuna.Topics.works(topic) do
+      nil ->
+        []
+
+      works ->
+        if function_exported?(works, :digest_titles, 2),
+          do: works.digest_titles(base, topic),
+          else: []
+    end
+  end
+
+  # **知らせるのは通知先があるときだけ。** 時刻は「要約を作る時刻」で、通知はその後に
+  # 付いてくるもの —— 通知先が無いのは「知らせない」の意思表示で、失敗ではない
+  # （失敗として残すと、要約はできているのに画面に「止まりました」と出る）
+  defp deliver_if_set(collection, digest) do
+    case Tazuna.Ntfy.ready(collection) do
+      {:ok, _ready} ->
+        tell(collection, "知らせています…")
+        Notify.deliver(collection, digest)
+
+      {:error, :ntfy_topic_missing} ->
+        {:ok, :made}
     end
   end
 
@@ -170,8 +211,7 @@ defmodule Tazuna.Digest do
                  interest_title(before),
                  deadline(@digest_wait_ms)
                ) do
-          tell(collection, "興味トピックの要約を知らせています…")
-          Notify.deliver(collection, digest)
+          deliver_if_set(collection, digest)
         end
 
       case result do
@@ -303,6 +343,7 @@ defmodule Tazuna.Digest do
   end
 
   defp outcome({:ok, :sent}), do: "まとめを作って知らせました。"
+  defp outcome({:ok, :made}), do: "まとめを作りました（通知先が無いので知らせていません）。"
   defp outcome({:ok, :already_sent}), do: "まとめを作りましたが、同じものは知らせ済みでした。"
 
   defp outcome({:ok, :nothing_to_send}),

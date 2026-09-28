@@ -26,11 +26,13 @@ defmodule TazunaWeb.NewsLiveTest do
     {:ok, _live, html} = live(conn, ~p"/news?view=tazuna_events")
 
     assert html =~ "開催日のカレンダー"
-    refute html =~ "通知の設定"
+    refute html =~ "<h3>通知</h3>"
+    refute html =~ "<h3>要約</h3>"
 
     {:ok, _live, html} = live(conn, ~p"/news?view=tazuna_tech")
     refute html =~ "開催日のカレンダー"
-    assert html =~ "通知の設定"
+    assert html =~ "<h3>通知</h3>"
+    assert html =~ "<h3>要約</h3>"
   end
 
   test "トップページは一般ニュース", %{conn: conn} do
@@ -135,6 +137,23 @@ defmodule TazunaWeb.NewsLiveTest do
                "https://example.com/a.png"
 
       assert NewsLive.entry_thumb(%{thumb: nil, image: nil}) == nil
+    end
+
+    test "要約の頭に、出典の順で絵のある作品を並べる" do
+      sources = [
+        %{url: "https://a.example", label: "作品A"},
+        %{url: "https://b.example", label: "作品B"},
+        %{url: "https://c.example", label: "作品C"}
+      ]
+
+      known = %{
+        "https://a.example" => %{image: "/a.webp"},
+        "https://c.example" => %{image: "/c.webp"}
+      }
+
+      assert [%{label: "作品A"}, %{label: "作品C"}] = TazunaWeb.Report.hero_figures(sources, known)
+      assert NewsLive.hero?(Tazuna.Topics.get("tazuna_movies"))
+      refute NewsLive.hero?(Tazuna.Topics.get("tazuna_tech"))
     end
 
     test "本文の URL はリンクにする" do
@@ -343,13 +362,15 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "ニュースの設定"
       assert html =~ "settings-panel"
       assert html =~ "Chiezo の収集"
-      assert html =~ "通知の設定"
+      # 要約を作る時刻と通知先は別の枠（時刻は通知の時刻ではない）
+      assert html =~ "<h3>要約</h3>"
+      assert html =~ "<h3>通知</h3>"
 
       # 通知の設定は畳まない（時刻も宛先も、開かずに読めるほうが大事）
       refute html =~ "まとめを知らせる（ntfy）"
     end
 
-    test "知らせる時刻を書けて、その場で作らせる口もある", %{conn: conn} do
+    test "要約を作る時刻を書けて、その場で作らせる口もある", %{conn: conn} do
       # 時計を持つのは tazuna の側。Chiezo には「いま回してください」としか言わない
       System.put_env("NTFY_BASE_URL", "http://ntfy.test")
       on_exit(fn -> System.delete_env("NTFY_BASE_URL") end)
@@ -361,6 +382,17 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "いま作って知らせる"
       # 作り直さずに送るだけの口も残す
       assert html =~ "いまのまとめを知らせる"
+    end
+
+    test "通知先が無ければ、要約を作るだけの口になる", %{conn: conn} do
+      # 時刻は「要約を作る時刻」。通知先が無いのは「知らせない」の意思表示
+      Tazuna.Notify.Settings.put("tazuna_news", %{"ntfy_topic" => ""})
+
+      html = shown(conn)
+
+      assert html =~ "要約を作る時刻"
+      assert html =~ "いま要約を作る"
+      refute html =~ "いまのまとめを知らせる"
     end
 
     test "どれだけ反応されているかを、重要度とは別に出す", %{conn: conn} do
@@ -404,9 +436,13 @@ defmodule TazunaWeb.NewsLiveTest do
       {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news")
       assert_receive {:news_updated, %{status: :ready}}, 2_000
 
+      live
+      |> form("#notify-form", setting: %{ntfy_topic: "tazuna-news"})
+      |> render_change()
+
       html =
         live
-        |> form("#notify-form", setting: %{ntfy_topic: "tazuna-news", digest_at: "25 時"})
+        |> form("#digest-form", setting: %{digest_at: "25 時"})
         |> render_submit()
 
       assert html =~ "24 時間制で書いてください"
@@ -421,7 +457,11 @@ defmodule TazunaWeb.NewsLiveTest do
       assert_receive {:news_updated, %{status: :ready}}, 2_000
 
       live
-      |> form("#notify-form", setting: %{ntfy_topic: "書きかけ", digest_at: "0800"})
+      |> form("#notify-form", setting: %{ntfy_topic: "書きかけ"})
+      |> render_change()
+
+      live
+      |> form("#digest-form", setting: %{digest_at: "0800"})
       |> render_change()
 
       # 収集を読み直す（本物の画面では巡回のたびに届く）

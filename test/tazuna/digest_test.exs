@@ -241,12 +241,14 @@ defmodule Tazuna.DigestTest do
     assert Settings.get(@collection).last_digest_result =~ "Chiezo 側で止まっています"
   end
 
-  test "知らせ先が決まっていなければ、その理由を残す", %{topic: topic} do
-    # 宛先が空のまま時刻だけ決めると、静かに送れずにいる（実際にそうなった）
+  test "通知先が決まっていなければ、要約は作って知らせない", %{topic: topic} do
+    # 時刻は「要約を作る時刻」。通知先が無いのは「知らせない」の意思表示で失敗ではない
+    # （失敗として残すと、要約はできているのに「止まりました」と出る）。
+    # 知らせなかったことは残す（静かに送れずにいるのと見分けるため）
     Settings.put(@collection, %{"ntfy_topic" => ""})
     stub_chiezo(%{})
 
-    assert Digest.run(topic) == {:error, :ntfy_topic_missing}
-    assert Settings.get(@collection).last_digest_result =~ "通知先が決まっていません"
+    assert Digest.run(topic) == {:ok, :made}
+    assert Settings.get(@collection).last_digest_result =~ "通知先が無いので知らせていません"
   end
 end

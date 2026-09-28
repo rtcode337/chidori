@@ -42,6 +42,10 @@ defmodule TazunaWeb.Report do
   # どの並びのまとめか（全画面で開くときに渡す。`main` / `interest`）
   attr :open_kind, :string, default: nil
 
+  # **頭に絵を並べる**（映画の要約。おすすめの作品のポスターを、要旨より先に見せる）。
+  # 並べるのは出典の順で、絵を持つものの最初の数枚
+  attr :hero, :boolean, default: false
+
   @doc """
   まとめ 1 件を、レポートとして描きます。
 
@@ -66,12 +70,15 @@ defmodule TazunaWeb.Report do
         |> Map.put(:figure, figure_of(section.blocks, known))
       end)
 
+    sources = Report.sources(document)
+
     assigns =
       assign(assigns,
         summary: document.summary,
         sections: sections,
-        sources: Report.sources(document),
-        known: known
+        sources: sources,
+        known: known,
+        hero_figures: if(assigns.hero, do: hero_figures(sources, known), else: [])
       )
 
     ~H"""
@@ -81,6 +88,16 @@ defmodule TazunaWeb.Report do
         <h2>{@title}</h2>
         <p :if={@at} class="report-at">{@at}</p>
       </header>
+
+      <%!-- おすすめの絵（`hero`）。**要旨より先に**、出典の順で数枚 --%>
+      <ul :if={@hero_figures != []} class="report-hero" aria-label="おすすめ">
+        <li :for={figure <- @hero_figures}>
+          <a href={figure.url} target="_blank" rel="noreferrer" title={figure.label}>
+            <img src={figure.image} alt="" loading="lazy" />
+            <span>{figure.label}</span>
+          </a>
+        </li>
+      </ul>
 
       <%!-- 要旨。通知に流れるのもここ（同じ文を、出す場所に合わせて使い分ける） --%>
       <section :if={@summary != []} class="report-summary" aria-label="要旨">
@@ -215,6 +232,26 @@ defmodule TazunaWeb.Report do
       match?(%{title: title} when is_binary(title), known[url]) -> known[url].title
       true -> url
     end
+  end
+
+  # 頭に並べる絵の数
+  @hero_count 4
+
+  @doc false
+  # 頭に並べる絵。出典の順に、絵を持つものを #{@hero_count} 枚まで（同じ絵は 1 度だけ）
+  def hero_figures(sources, known) do
+    sources
+    |> Enum.flat_map(fn %{url: url} = source ->
+      case known[url] do
+        %{image: image} when is_binary(image) and image != "" ->
+          [%{url: url, image: image, label: label_of(source, known)}]
+
+        _article ->
+          []
+      end
+    end)
+    |> Enum.uniq_by(& &1.image)
+    |> Enum.take(@hero_count)
   end
 
   @doc false

@@ -217,26 +217,32 @@ defmodule TazunaWeb.NewsLive do
   # 通知先を書き換える。**押したときだけ送る**ので、ここでは保存だけ
   # **書いたそばから覚える。** 覚えないと、収集の状態が届いた拍子にフォームが
   # 描き直され、**書きかけの通知先が消えます**（保存したつもりで消えたように見える）
+  # 要約の時刻と通知先は**別のフォーム**（別の枠）だが、書きかけは 1 つに覚える ——
+  # 片方を書き換えた拍子に、もう片方の書きかけが消えないように
   def handle_event("edit_notify", %{"setting" => attrs}, socket) do
     topic = socket.assigns.topic
 
-    {:noreply, assign(socket, notify_form: notify_form(topic, attrs))}
+    {:noreply, assign(socket, notify_form: notify_form(topic, pending(socket, attrs)))}
   end
 
   def handle_event("save_notify", %{"setting" => attrs}, socket) do
     topic = socket.assigns.topic
+    pending = pending(socket, attrs)
 
     case Settings.put(topic.collection, attrs) do
       {:ok, _setting} ->
+        # 保存したぶんは DB の値に戻し、もう片方の書きかけは残す
         {:noreply,
-         socket |> assign(notify_form: notify_form(topic)) |> put_flash(:info, "通知先を保存しました。")}
+         socket
+         |> assign(notify_form: notify_form(topic, Map.drop(pending, Map.keys(attrs))))
+         |> put_flash(:info, "保存しました。")}
 
       {:error, changeset} ->
         # **書いたものは消さない。** 時刻の書き方を間違えただけで通知先まで
         # 書き直させられると、直すたびに全部を入れ直すことになる
         {:noreply,
          socket
-         |> assign(notify_form: to_form(changeset, as: :setting))
+         |> assign(notify_form: notify_form(topic, pending))
          |> put_flash(:error, first_error(changeset))}
     end
   end
@@ -308,6 +314,25 @@ defmodule TazunaWeb.NewsLive do
   def handle_event("cal_shift", %{"by" => by}, socket) do
     month = Events.shift_month(socket.assigns.cal_month, String.to_integer(by))
     {:noreply, socket |> assign(cal_month: month, cal_day: nil) |> load_calendar()}
+  end
+
+  # 絵の無い注目作に絵を探させる（映画）。**頼むだけ**で、付いた絵は次に開いたとき出る
+  def handle_event("fill_images", _params, socket) do
+    topic = socket.assigns.topic
+
+    with %{} <- topic,
+         base when is_binary(base) <- News.chiezo_base_url(),
+         {:ok, count} <- Movies.fill_images(base, topic) do
+      message =
+        if count > 0,
+          do: "絵の無い注目作 #{count} 本の絵を探すよう頼みました（数分かかります）。",
+          else: "絵の無い注目作はありません。"
+
+      {:noreply, put_flash(socket, :info, message)}
+    else
+      {:error, reason} -> {:noreply, put_flash(socket, :error, ask_error(reason))}
+      _other -> {:noreply, put_flash(socket, :error, "Chiezo の場所が設定されていません。")}
+    end
   end
 
   def handle_event("cal_today", _params, socket),
@@ -796,6 +821,8 @@ defmodule TazunaWeb.NewsLive do
   attr :kind, :string, required: true
   attr :label, :string, default: nil
   attr :articles, :list, default: []
+  # 頭におすすめの絵を並べるか（作品を育てる話題の要約。`hero?/1`）
+  attr :hero, :boolean, default: false
 
   @doc """
   要約の窓。**見出し・要旨・目次はここで読める。** 章と出典は全画面で読む ——
@@ -823,6 +850,7 @@ defmodule TazunaWeb.NewsLive do
         articles={@articles}
         cited={@digest.cited}
         id_prefix={"preview-#{@kind}"}
+        hero={@hero}
         intro_only
         open_event="open_digest"
         open_kind={@kind}
@@ -1081,7 +1109,7 @@ defmodule TazunaWeb.NewsLive do
   def settings_title(_topic), do: "設定"
 
   @doc """
-  知らせる時刻の一言。**次にいつ知らせるのかまで出します** ——
+  要約を作る時刻の一言。**次にいつ知らせるのかまで出します** ——
   時刻だけ書かれていても、それが今日のぶんとして残っているのかは読めません。
   """
   def digest_note(nil), do: nil
@@ -1091,11 +1119,11 @@ defmodule TazunaWeb.NewsLive do
 
     case Setting.digest_times(setting) do
       [] ->
-        "時刻を書くと、その時刻に整理→要約を起こして知らせます" <>
+        "時刻を書くと、その時刻に整理→要約を起こします。通知先があれば、作った後に知らせます" <>
           "（空なら自分からは回りません。08:00 でも 0800 でも 8 でも読めます）。"
 
       times ->
-        "この時刻に、整理を 1 回起こしてからまとめを作らせて知らせます（JST）: " <>
+        "この時刻に、整理を 1 回起こしてからまとめを作らせます（通知先があれば、作った後に知らせます。JST）: " <>
           Enum.map_join(times, "、", fn {hour, minute} ->
             String.pad_leading("#{hour}", 2, "0") <>
               ":" <> String.pad_leading("#{minute}", 2, "0")
@@ -1287,6 +1315,15 @@ defmodule TazunaWeb.NewsLive do
   def entry_thumb(%{image: image}) when is_binary(image), do: image
   def entry_thumb(_entry), do: nil
 
+  @doc "絵の無い注目作の数（`fill_images` のボタンに添える）。"
+  def missing_images(entries), do: Enum.count(entries, &(is_nil(&1.thumb) and is_nil(&1.image)))
+
+  @doc """
+  要約の頭におすすめの絵を並べる話題か。**作品を育てる話題だけ**（映画。ポスターが
+  あると、どれを観るかを要旨より先に決められる）。
+  """
+  def hero?(topic), do: topic != nil and Topics.works(topic) != nil
+
   @doc "作品の事実（公開日・上映形式・配信開始）を 1 行で。"
   def work_facts(entry) do
     [
@@ -1385,4 +1422,12 @@ defmodule TazunaWeb.NewsLive do
   end
 
   def sweep_prompts(_topic), do: []
+
+  # いまの書きかけに、届いたぶんを重ねる
+  defp pending(socket, attrs) do
+    case socket.assigns[:notify_form] do
+      %{params: params} when is_map(params) -> Map.merge(params, attrs)
+      _ -> attrs
+    end
+  end
 end

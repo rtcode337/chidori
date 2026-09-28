@@ -108,6 +108,39 @@ defmodule Tazuna.News.MoviesTest do
     assert entry.summary == "頭\n口コミ: 好評"
   end
 
+  test "要約には、注目度の高い公開中とこれからの作品を名指しで渡す" do
+    # 要約は割り込みとして起こすので、名指ししないと材料（{current}）が空になる
+    today = ~D[2026-10-01]
+    film = fn title, date, attention -> %{title: title, date: date, attention: attention} end
+
+    titles =
+      Movies.pick_for_digest(
+        [
+          film.("公開から時間が経った", ~D[2026-07-01], :high),
+          film.("先すぎる", ~D[2027-03-01], :high),
+          film.("来週・中", ~D[2026-10-08], :mid),
+          film.("来月・高", ~D[2026-11-05], :high),
+          film.("公開中・高", ~D[2026-09-25], :high)
+        ],
+        today
+      )
+
+    assert titles == ["公開中・高", "来月・高", "来週・中"]
+  end
+
+  test "整理の回には、返す作品の絵の URL も返させる" do
+    assert Movies.refine_prompt("映画") =~ "返す作品には image も入れてください"
+  end
+
+  test "絵を探させる回は、タグを全部返させて本文には触らせない" do
+    # 返した tags がそのまま付け替わるので、落とすと公開日や注目度が消える
+    prompt = Movies.image_prompt()
+
+    assert prompt =~ "{current}"
+    assert prompt =~ "tags は全部返してください"
+    assert prompt =~ "body は返さないでください"
+  end
+
   test "公開日のタグでカレンダーに並ぶ" do
     entry =
       Events.entry(

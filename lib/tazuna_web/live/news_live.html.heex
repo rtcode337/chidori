@@ -37,6 +37,36 @@
       </p>
     </section>
 
+    <%!-- まとめ。**カレンダーと記事の一覧より先に出す**（映画の注目作の一覧は長いので、
+         下に置くと要約が見えなくなっていた） —— 溜まったものをそのまま並べても
+         読めないので、何が起きたかを先に言う（通知へ流れるのは、この中の要旨） --%>
+    <section :if={@news.digests != []} class="news-digest" aria-label="要約">
+      <h2 class="news-section-title">要約</h2>
+      <.digest_preview
+        digests={@news.digests}
+        kind="main"
+        label={@topic && @topic.name}
+        articles={@news.articles}
+        hero={hero?(@topic)}
+      />
+    </section>
+
+    <%!-- 興味トピックの要約。**ふつうの要約のすぐ下** —— 同じ期間を、読む人が選んだ
+         語に絞って書いた別の 1 本（興味トピックを選んでいなければ書かれない） --%>
+    <section
+      :if={@news.interest_digests != []}
+      class="news-digest"
+      aria-label="興味トピックの要約"
+    >
+      <h2 class="news-section-title">興味トピックの要約</h2>
+      <.digest_preview
+        digests={@news.interest_digests}
+        kind="interest"
+        label="興味トピック"
+        articles={@news.articles}
+      />
+    </section>
+
     <%!-- 開催日のカレンダー（技術イベント）。**記事の一覧より先に出す** ——
          イベントは読み物ではなく「いつ・どこで・行く価値があるか」で選ぶもの。
          注目度の高いものを色付きで上に並べ、低いものは件数だけに畳む
@@ -217,6 +247,17 @@
       aria-label="注目作"
     >
       <h2 class="news-section-title">注目作</h2>
+      <%!-- 絵の無い注目作に、絵を探させる（割り込み 1 回）。**前から入っている作品には
+           絵が付かない**（整理は触った作品しか返さない）ので、まとめて埋める口を置く --%>
+      <div
+        :if={match?({:ok, _}, @works) and missing_images(elem(@works, 1)) > 0}
+        class="button-row"
+      >
+        <span class="muted-note">絵の無い注目作が {missing_images(elem(@works, 1))} 本あります。</span>
+        <button type="button" phx-click="fill_images" phx-disable-with="頼んでいます…">
+          絵を探させる
+        </button>
+      </div>
       <p :if={@works in [nil, :loading]} class="muted-note">読み込んでいます…</p>
       <p :if={match?({:error, _}, @works)} class="muted-note">{cal_error(@works)}</p>
       <%= if match?({:ok, _}, @works) do %>
@@ -249,34 +290,6 @@
           </ul>
         </section>
       <% end %>
-    </section>
-
-    <%!-- まとめ。**記事の一覧より先に出す** —— 溜まったものをそのまま並べても
-         読めないので、何が起きたかを先に言う（通知へ流れるのは、この中の要旨） --%>
-    <section :if={@news.digests != []} class="news-digest" aria-label="要約">
-      <h2 class="news-section-title">要約</h2>
-      <.digest_preview
-        digests={@news.digests}
-        kind="main"
-        label={@topic && @topic.name}
-        articles={@news.articles}
-      />
-    </section>
-
-    <%!-- 興味トピックの要約。**ふつうの要約のすぐ下** —— 同じ期間を、読む人が選んだ
-         語に絞って書いた別の 1 本（興味トピックを選んでいなければ書かれない） --%>
-    <section
-      :if={@news.interest_digests != []}
-      class="news-digest"
-      aria-label="興味トピックの要約"
-    >
-      <h2 class="news-section-title">興味トピックの要約</h2>
-      <.digest_preview
-        digests={@news.interest_digests}
-        kind="interest"
-        label="興味トピック"
-        articles={@news.articles}
-      />
     </section>
 
     <%!-- 全画面の要約。**左右のスワイプで前後の要約へ**（`DigestSwipe`）。
@@ -333,6 +346,7 @@
             articles={@news.articles}
             cited={viewed.cited}
             id_prefix="digest-viewer"
+            hero={@digest_kind == :main and hero?(@topic)}
           />
         </div>
       </div>
@@ -556,16 +570,62 @@
         </details>
       </section>
 
+      <%!-- 要約を作る時刻。**通知とは別の設定** —— 時刻は「要約を作る時刻」で、
+           通知先があれば作った後に知らせる（無ければ作るだけ）。通知の枠の中に
+           置いていた頃は、通知の時刻に読めた --%>
+      <section :if={Tazuna.Topics.digest?(@topic)} class="settings-block">
+        <h3>要約</h3>
+        <%!-- 書いたそばから覚える（`phx-change`）。覚えないと、収集の状態が届いた
+             拍子にフォームが描き直され、書きかけが消える --%>
+        <.form
+          :let={f}
+          id="digest-form"
+          for={@notify_form}
+          phx-submit="save_notify"
+          phx-change="edit_notify"
+        >
+          <p>
+            <label>
+              要約を作る時刻（JST・空なら自分からは作りません。例: 08:00,21:00）<br />
+              <input
+                type="text"
+                name={f[:digest_at].name}
+                value={f[:digest_at].value}
+                placeholder="07:00,21:00"
+              />
+            </label>
+          </p>
+          <div class="button-row">
+            <button type="submit">時刻を保存</button>
+          </div>
+        </.form>
+
+        <%!-- 時計を持つのは tazuna の側。Chiezo には「いま回してください」としか
+             言わない（何時に読みたいかは利用者の都合なので、あちらに持たせない） --%>
+        <p class="muted-note">{digest_note(@topic)}</p>
+        <%!-- いまの状態と、前に走った回の記録は分けて出す。混ぜると、止まった回の
+             理由（現在形で書かれる）が、いまの状態として読まれる --%>
+        <p :if={digest_state_text(@news, @topic)} class="muted-note">
+          {digest_state_text(@news, @topic)}
+        </p>
+        <p class="muted-note">{last_digest_text(@topic)}</p>
+        <p :if={@digest_message} aria-live="polite">{@digest_message}</p>
+
+        <div class="button-row">
+          <button type="button" phx-click="digest_now" phx-disable-with="始めています…">
+            {if can_notify?(@topic), do: "いま作って知らせる", else: "いま要約を作る"}
+          </button>
+        </div>
+      </section>
+
       <%!-- 通知先。**画面から直せるようにする** —— 宛先は運用しながら決めるもの
            （試しに別のトピックへ流す、しばらく止める）なので、環境変数だけだと
-           変えるたびに立て直しが要る。**畳まない** —— 時刻も宛先も、いまどうなって
-           いるかを開かずに読めることのほうが大事 --%>
+           変えるたびに立て直しが要る。**畳まない** —— 宛先がいまどうなっているかを
+           開かずに読めることのほうが大事 --%>
       <section :if={Tazuna.Topics.digest?(@topic)} class="settings-block">
-        <h3>通知の設定</h3>
+        <h3>通知</h3>
         <p :if={notify_note(@topic)} class="muted-note">{notify_note(@topic)}</p>
 
-        <%!-- 書いたそばから覚える（`phx-change`）。覚えないと、収集の状態が届いた
-             拍子にフォームが描き直され、書きかけの通知先が消える --%>
         <.form
           :let={f}
           id="notify-form"
@@ -590,19 +650,8 @@
               />
             </label>
           </p>
-          <p>
-            <label>
-              知らせる時刻（JST・空なら回しません。例: 08:00,21:00）<br />
-              <input
-                type="text"
-                name={f[:digest_at].name}
-                value={f[:digest_at].value}
-                placeholder="07:00,21:00"
-              />
-            </label>
-          </p>
           <p class="muted-note">
-            <strong>通知先を空にすると知らせなくなります。</strong>
+            <strong>通知先を空にすると知らせなくなります</strong>（要約は時刻どおりに作ります）。
             既定の通知先は持ちません —— 公開の ntfy では、推測できる名前は誰でも読めるので、<strong>推測されない名前</strong>にしてください。場所は書かなければ公式の公開サーバーへ送ります。
           </p>
           <div class="button-row">
@@ -610,27 +659,8 @@
           </div>
         </.form>
 
-        <%!-- 時計を持つのは tazuna の側。Chiezo には「いま回してください」としか
-             言わない（何時に読みたいかは利用者の都合なので、あちらに持たせない） --%>
-        <p class="muted-note">{digest_note(@topic)}</p>
-        <%!-- いまの状態と、前に走った回の記録は分けて出す。混ぜると、止まった回の
-             理由（現在形で書かれる）が、いまの状態として読まれる --%>
-        <p :if={digest_state_text(@news, @topic)} class="muted-note">
-          {digest_state_text(@news, @topic)}
-        </p>
-        <p class="muted-note">{last_digest_text(@topic)}</p>
         <p class="muted-note">{last_sent_text(@topic)}</p>
-        <p :if={@digest_message} aria-live="polite">{@digest_message}</p>
-
         <div class="button-row">
-          <button
-            :if={can_notify?(@topic)}
-            type="button"
-            phx-click="digest_now"
-            phx-disable-with="始めています…"
-          >
-            いま作って知らせる
-          </button>
           <button
             :if={can_notify?(@topic)}
             type="button"

@@ -993,11 +993,21 @@ defmodule Tazuna.News do
   defp article_of(%{url: url, label: label}, base, name) do
     with {:ok, doc} <- Chiezo.doc(base, name, label, "title,extra"),
          %{} = extra <- doc["extra"] do
-      {url, %{title: doc["title"], image: source_url(extra["image"]), url: url}}
+      # **Chiezo が縮めて持っている絵を先に使う**（`extra.thumb`。見る人のブラウザが
+      # 外のサイトへつながないため）。無ければ配信元が配っている絵
+      image = chiezo_thumb(extra["thumb"]) || source_url(extra["image"])
+      {url, %{title: doc["title"], image: image, url: url}}
     else
       _other -> nil
     end
   end
+
+  # Chiezo が配るサムネイルの場所（相対パス → Chiezo の URL）。その形のものだけ通す
+  defp chiezo_thumb("/v1/thumbs/" <> name = path) do
+    if name =~ ~r/\A[0-9a-f]{40}\.webp\z/, do: chiezo_url(path), else: nil
+  end
+
+  defp chiezo_thumb(_path), do: nil
 
   # 記事一覧の窓（`@window_hours`）。**新着の口が読めなければ、収集の見本で代える**
   # （古い並びでも、何も出ないよりよい）。はてブ数はここで載せる（`Tazuna.News.Hatena`）。
@@ -1301,6 +1311,23 @@ defmodule Tazuna.News do
     """
   end
 
+  # 要約の書き出し・材料・調子。**話題が書いていればそちら**（`Tazuna.Topics` の
+  # `digest_intro` / `digest_material` / `digest_tone`）—— 映画は「前回から入ったもの」
+  # ではなく「いま入っている作品」から、ニュースの固さではなく映画館の販促記事の調子で書く
+  defp digest_intro(topic),
+    do:
+      Map.get(topic || %{}, :digest_intro) ||
+        "前回のまとめから今回までに入ったものを、**1 件のレポート**にしてください。"
+
+  defp digest_material(topic), do: Map.get(topic || %{}, :digest_material) || "{recent}"
+
+  defp digest_tone(topic) do
+    case Map.get(topic || %{}, :digest_tone) do
+      tone when is_binary(tone) and tone != "" -> "\n" <> String.trim_trailing(tone) <> "\n"
+      _ -> ""
+    end
+  end
+
   # 整理の回に付けさせる興味度の目安。**興味トピックを選んでいなければ何も足さない**
   # （付ける基準が無いのに数を書かせると、どの記事にも同じような点が並ぶだけになる）
   defp interest_rubric(topic) do
@@ -1448,12 +1475,12 @@ defmodule Tazuna.News do
   """
   def digest_prompt(topic) do
     """
-    前回のまとめから今回までに入ったものを、**1 件のレポート**にしてください。
+    #{digest_intro(topic)}
 
     読む人が知りたいのは次のようなことです。
     #{interest_of(topic)}
-
-    {recent}
+    #{digest_tone(topic)}
+    #{digest_material(topic)}
 
     返すのは **items に 1 件だけ**です。
 

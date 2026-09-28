@@ -618,6 +618,27 @@ defmodule Tazuna.NewsTest do
       refute market =~ "話題になっている論文"
     end
 
+    test "映画の要約は、いま入っている作品から販促記事の調子で書かせる" do
+      # 前回から入ったものではなく、公開中とこれからの作品ぜんぶが材料
+      movies = News.digest_prompt(defined_topic("tazuna_movies"))
+
+      assert movies =~ "{current}"
+      refute movies =~ "{recent}"
+      assert movies =~ "映画館のロビーに置く販促記事"
+      assert movies =~ "結末や仕掛けは書かないでください"
+      # 形はほかの要約と同じ（画面と通知が同じ読み方をする）
+      assert movies =~ "## 要旨"
+
+      # ほかの話題は今までどおり
+      assert News.digest_prompt(defined_topic("tazuna_tech")) =~ "{recent}"
+      refute News.digest_prompt(defined_topic("tazuna_tech")) =~ "販促"
+    end
+
+    test "映画は整理と要約の回を持つ" do
+      names = defined_topic("tazuna_movies") |> News.sweeps() |> Enum.map(& &1.name)
+      assert "要約" in names
+    end
+
     test "トピックの網の例も話題ごと" do
       # 一般ニュースの網に「AI」「インフラ」を例に出すと、分野がそちらへ引っ張られる
       news = Tazuna.Themes.tidy_prompt(defined_topic("tazuna_news"))
@@ -804,12 +825,12 @@ defmodule Tazuna.NewsTest do
       refute News.refine_prompt(defined_topic("tazuna_tech")) =~ "開催日"
     end
 
-    test "作品を育てる話題は、先を探す回と整理の回だけで回す" do
+    test "作品を育てる話題は、先を探す回と整理の回（と要約）で回す" do
       # 記事を集める回を置くと、単位が記事に戻る
       sweeps = defined_topic("tazuna_movies") |> News.sweeps()
       by_name = Map.new(sweeps, &{&1.name, &1})
 
-      assert Enum.map(sweeps, & &1.name) == ["情報収集", "整理"]
+      assert Enum.map(sweeps, & &1.name) == ["情報収集", "整理", "要約"]
       assert by_name["情報収集"].only_new
       # 空の収集を相手に整理が走らないように
       assert by_name["整理"].after == "情報収集"

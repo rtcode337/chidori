@@ -227,6 +227,9 @@ defmodule Tazuna.News.Movies do
     **返すのは、触ったものと落とすものだけ**です。触らなかったものはそのまま残ります。
     **返すときは、title は今のまま、tags は全部**（変えないものも）返してください ——
     返した tags がそのまま付け替わります。body を変えないなら body は返さなくて構いません。
+    **返す作品には image も入れてください** —— ポスターかキービジュアルの画像の URL
+    （公式サイトのページの og:image。**ページではなく画像そのものの URL**。分からなければ入れない）。
+    画面と要約に作品の絵として出します。
     **next_cursor は返さないでください**（情報収集の回が、次に探す区切りを覚えている印です）。
 
     タグの決まりは次のとおりです。
@@ -250,6 +253,92 @@ defmodule Tazuna.News.Movies do
   end
 
   def body_lines(_entry), do: []
+
+  # 要約に名指しで渡す作品の数（Chiezo の割り込みで名指しできる上限）
+  @digest_titles 50
+
+  @doc """
+  要約の材料として名指しする作品の見出し（`Tazuna.Digest`）。**注目度が中以上で、
+  公開中（公開から #{@keep_after_release_days} 日以内）とこれから公開のもの**を、
+  注目度の高いものから、公開日の近い順に #{@digest_titles} 本まで。
+
+  要約は割り込みとして起こすので、名指ししないと依頼文の `{current}` が空になる。
+  読めなければ空（名指し無しで起こす。要約は「まとめるものが無い」として空振りする）。
+  """
+  def digest_titles(base, topic) do
+    tags = Enum.map_join(["高", "中"], ",", &"#{Events.attention_tag()}:#{&1}")
+
+    case Events.fetch_tagged(base, topic.collection, tags, date_tag: @date_tag) do
+      {:ok, entries} -> pick_for_digest(entries, Tazuna.Jst.today())
+      {:error, _reason} -> []
+    end
+  end
+
+  @doc false
+  def pick_for_digest(entries, today) do
+    from = Date.add(today, -@keep_after_release_days)
+    until = Date.add(today, @look_ahead_months * 31)
+
+    entries
+    |> Enum.filter(&(Date.compare(&1.date, from) != :lt and Date.compare(&1.date, until) != :gt))
+    |> Enum.sort_by(
+      &{if(&1.attention == :high, do: 0, else: 1), abs(Date.diff(&1.date, today)), &1.title}
+    )
+    |> Enum.take(@digest_titles)
+    |> Enum.map(& &1.title)
+  end
+
+  @doc """
+  **絵の無い注目作に、絵を探させます**（割り込み 1 回。名指しで #{@digest_titles} 本まで）。
+
+  絵の URL は情報収集の回と整理の回に返させているが、**それより前に入った作品には
+  付かない**（整理は触った作品しか返さない）。どの作品に絵が無いかは脇書きにしか無く、
+  AI には見えない（`{current}` は見出し・タグ・本文の頭だけ）ので、こちらで選んで
+  名指しする。`{:ok, 名指しした数}` / `{:error, 理由}`。
+  """
+  def fill_images(base, topic) do
+    tags = Enum.map_join(["高", "中"], ",", &"#{Events.attention_tag()}:#{&1}")
+
+    with {:ok, entries} <-
+           Events.fetch_tagged(base, topic.collection, tags, date_tag: @date_tag),
+         titles when titles != [] <-
+           entries
+           |> Enum.filter(&(is_nil(&1.thumb) and is_nil(&1.image)))
+           |> pick_for_digest(Tazuna.Jst.today()),
+         :ok <-
+           Tazuna.Chiezo.focus(
+             base,
+             topic.collection,
+             "名指しした作品に、絵（image）を付けてください。",
+             titles,
+             Tazuna.SweepNames.tidy(),
+             nil,
+             image_prompt()
+           ) do
+      {:ok, length(titles)}
+    else
+      [] -> {:ok, 0}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "絵を探させる回の依頼文（その回だけの依頼文。定義の文は変わらない）。"
+  def image_prompt do
+    """
+    下に並んでいる映画それぞれについて、**ポスターかキービジュアルの画像の URL** を探して
+    image に入れて返してください。
+
+    {current}
+
+    - image は公式サイトのページの og:image（**ページではなく画像そのものの URL**）。
+      公式サイトが無ければ配給会社や映画の情報サイトの作品ページのもの。
+      **確かめられなければ入れないでください**（その作品は返さなくて構いません）
+    - **title と tags は上のまま、tags は全部返してください** —— 返した tags がそのまま
+      付け替わります（1 つでも落とすと、公開日や注目度が消えます）
+    - **body は返さないでください**（本文は今のまま残ります）
+    - **next_cursor は返さないでください**
+    """
+  end
 
   @doc "上映形式（タグから。無ければ空）。"
   def formats(%{tags: tags}), do: values(tags, @format_tag)

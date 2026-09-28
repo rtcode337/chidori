@@ -114,8 +114,8 @@ defmodule Tazuna.TopicsTest do
       assert Topics.articles?(Topics.get("tazuna_tech"))
     end
 
-    test "要約は作らず、公開日のカレンダーを出す", %{movies: movies} do
-      refute Topics.digest?(movies)
+    test "要約を作り、公開日のカレンダーも出す", %{movies: movies} do
+      assert Topics.digest?(movies)
       assert Topics.calendar?(movies)
       assert Topics.date_tag(movies) == "公開日"
       assert Topics.item_word(movies) == "公開作"
