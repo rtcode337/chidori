@@ -14,7 +14,7 @@ defmodule Tazuna.News.Movies do
 
   - 情報収集（1 日に 1 回）—— **いま公開中の作品**と、これから公開される作品を外から
     探して足す。**1 回に探すのは 1 区切りだけ**（`segments/0` を順に回る）。**足すだけ**
-  - 整理（6 時間ごと。どの収集も同じ）—— 公開日と注目度を付け直し、公開された注目作に口コミと
+  - 整理（12 時間ごと。どの収集も同じ）—— 公開日と注目度を付け直し、公開された注目作に口コミと
     興行成績を書き足し、公開から時間が経ったものを落とす
 
   ## タグ
@@ -55,7 +55,6 @@ defmodule Tazuna.News.Movies do
 
   # 整理の回（どの収集も同じ。`Tazuna.SweepNames.tidy_minutes/0`）。口コミは書いた日を
   # タグに残させているので、回数が増えても同じ作品を毎回取り直さない
-  @refine_minutes Tazuna.SweepNames.tidy_minutes()
 
   @doc "公開日のタグの頭（カレンダーはこのタグで引く）。"
   def date_tag, do: @date_tag
@@ -73,7 +72,7 @@ defmodule Tazuna.News.Movies do
   def survey_minutes, do: @survey_minutes
 
   @doc "整理の回の間隔（分）。"
-  def refine_minutes, do: @refine_minutes
+  def refine_minutes, do: Tazuna.SweepNames.tidy_minutes()
 
   @doc """
   作品に付けるタグの決まり。**先を探す回と整理の回で同じ文を使う** ——

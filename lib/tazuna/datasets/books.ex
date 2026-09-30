@@ -55,7 +55,6 @@ defmodule Tazuna.Datasets.Books do
 
   # 整理の回の間隔（どの収集も同じ。`Tazuna.SweepNames.tidy_minutes/0`）。
   # **記事を開くので web を開ける**（配信元は要約しか配らない）
-  @read_minutes Tazuna.SweepNames.tidy_minutes()
 
   @doc "記事 1 本ごとに付く印。"
   def kind_tag, do: @kind_tag
@@ -210,7 +209,7 @@ defmodule Tazuna.Datasets.Books do
       %{
         name: SweepNames.tidy(),
         after: SweepNames.machine(),
-        interval_minutes: @read_minutes,
+        interval_minutes: Tazuna.SweepNames.tidy_minutes(),
         web: true,
         prompt: :read
       }
@@ -301,7 +300,7 @@ defmodule Tazuna.Datasets.Books do
       name: collection(),
       description: "tazuna のデータ収集（技術書を勧めている記事）",
       prompt: read_prompt(),
-      interval_minutes: @read_minutes,
+      interval_minutes: Tazuna.SweepNames.tidy_minutes(),
       feed: feed_spec(),
       sweeps: with_choices(sweeps(), choices),
       # **網羅。** 2022 年の記事も根拠として生きている（期限で落とすと数が減る）

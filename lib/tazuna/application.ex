@@ -13,6 +13,9 @@ defmodule Tazuna.Application do
         TazunaWeb.Telemetry,
         # DB は他の何より先に立てる。設定も選別結果もここから読む
         Tazuna.Repo,
+        # 画面で決めた巡回の間隔（`Tazuna.CollectPace`）。**読めなければ既定の間隔**
+        # のまま動く（テストでは DB を持たないプロセスから読むので、ここは空振りする）
+        Supervisor.child_spec({Task, &Tazuna.CollectPace.load_all/0}, id: :collect_paces),
         {DNSCluster, query: Application.get_env(:tazuna, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Tazuna.PubSub},
         # 外部への取得はこの下で動かす。収集を持つ GenServer では待たない ——

@@ -54,7 +54,6 @@ defmodule Tazuna.Themes do
   # AI を呼ばないぶん短い間隔で回せる。整理は読んで判断する回
   @pick_minutes 60
   # 整理の回（どの収集も同じ。`Tazuna.SweepNames.tidy_minutes/0`）
-  @tidy_minutes Tazuna.SweepNames.tidy_minutes()
 
   # 語として拾う下限。**1 件しか付いていない語は、まだ話題かどうかも分からない**
   # （次の回に増えていれば入る）
@@ -106,7 +105,7 @@ defmodule Tazuna.Themes do
       name: collection_name(topic),
       description: "tazuna の「#{topic.name}」のトピック（記事のタグから作る話題の網）",
       prompt: tidy_prompt(topic),
-      interval_minutes: @tidy_minutes,
+      interval_minutes: Tazuna.SweepNames.tidy_minutes(),
       kind: "stock",
       extract: extract_spec(topic),
       sweeps: with_choices(sweeps(topic), choices),
@@ -155,7 +154,11 @@ defmodule Tazuna.Themes do
   def sweeps(topic) do
     [
       %{name: @pick_sweep, interval_minutes: @pick_minutes, use_extract: true, only_new: true},
-      %{name: @tidy_sweep, interval_minutes: @tidy_minutes, prompt: tidy_prompt(topic)}
+      %{
+        name: @tidy_sweep,
+        interval_minutes: Tazuna.SweepNames.tidy_minutes(),
+        prompt: tidy_prompt(topic)
+      }
     ]
   end
 

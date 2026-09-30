@@ -25,6 +25,33 @@
         </p>
       </section>
 
+      <%!-- 巡回の間隔。**枠の減り方と回復の速さを釣り合わせるつまみ**。保存すると
+           Chiezo にも送る（間隔だけ。相手や依頼文には触らない） --%>
+      <section class="settings-block">
+        <h3>巡回の間隔</h3>
+        <p class="muted-note">
+          どの収集にも共通の速さです。AI の枠が回復より速く減るときは延ばしてください。区画を回る巡回（関連図・食事処）は、一周の日数も同じ比で伸ばして、1 回に見る量を変えません。整理を延ばすと、AI が目を通すまで画面に出ないニュース類は、そのぶん遅れて出ます。
+        </p>
+        <form id="collect-pace" phx-submit="save_pace" class="pace-form">
+          <label :for={kind <- CollectPace.kinds()}>
+            <span>{CollectPace.sweep_name(kind)}</span>
+            <select name={"pace[#{kind}]"}>
+              <option
+                :for={minutes <- CollectPace.choices(kind)}
+                value={minutes}
+                selected={minutes == CollectPace.minutes(kind)}
+              >
+                {CollectPace.label(minutes)}ごと{if minutes == CollectPace.default(kind),
+                  do: "（既定）",
+                  else: ""}
+              </option>
+            </select>
+          </label>
+          <button type="submit" phx-disable-with="送っています…">保存して Chiezo に送る</button>
+        </form>
+        <p :if={@pace_message} class="muted-note" aria-live="polite">{@pace_message}</p>
+      </section>
+
       <div class="button-row">
         <button type="button" phx-click="reload" phx-disable-with="読んでいます…">読み直す</button>
       </div>

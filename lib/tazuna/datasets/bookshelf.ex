@@ -84,7 +84,6 @@ defmodule Tazuna.Datasets.Bookshelf do
   # 機械収集の回と整理の回（AI）の間隔
   @pick_minutes 360
   # 整理の回（どの収集も同じ。`Tazuna.SweepNames.tidy_minutes/0`）
-  @tidy_minutes SweepNames.tidy_minutes()
 
   @doc "1 冊ごとに必ず付く印。"
   def kind_tag, do: @kind_tag
@@ -181,7 +180,7 @@ defmodule Tazuna.Datasets.Bookshelf do
       %{
         name: SweepNames.tidy(),
         after: SweepNames.machine(),
-        interval_minutes: @tidy_minutes,
+        interval_minutes: SweepNames.tidy_minutes(),
         prompt: :tidy,
         unreviewed_per_run: @tidy_per_run,
         unreviewed_by: @tidy_order
@@ -325,7 +324,7 @@ defmodule Tazuna.Datasets.Bookshelf do
       name: collection(),
       description: "tazuna のデータ収集（定番の技術書。記事のタグから作る本棚）",
       prompt: tidy_prompt(),
-      interval_minutes: @tidy_minutes,
+      interval_minutes: SweepNames.tidy_minutes(),
       kind: "stock",
       extract: extract_spec(),
       sweeps: with_choices(sweeps(), choices),

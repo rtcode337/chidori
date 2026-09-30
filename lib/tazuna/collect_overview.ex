@@ -55,8 +55,8 @@ defmodule Tazuna.CollectOverview do
     end
   end
 
-  # **tazuna が頼んだものだけ**（Chiezo には他のアプリの収集も並ぶ）
-  defp ours?(collection),
+  @doc "tazuna が頼んだ収集か（Chiezo には他のアプリの収集も並ぶ）。"
+  def ours?(collection),
     do:
       collection["requested_by"] == "tazuna" or
         String.starts_with?(collection["name"] || "", "tazuna_")

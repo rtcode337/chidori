@@ -11,6 +11,7 @@ defmodule TazunaWeb.SettingsLive do
   use TazunaWeb, :live_view
 
   alias Tazuna.CollectOverview
+  alias Tazuna.CollectPace
   alias Tazuna.Home
   alias Tazuna.News
 
@@ -18,7 +19,14 @@ defmodule TazunaWeb.SettingsLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "設定", tabs: @tabs, overview: nil, home_keys: [])}
+    {:ok,
+     assign(socket,
+       page_title: "設定",
+       tabs: @tabs,
+       overview: nil,
+       home_keys: [],
+       pace_message: nil
+     )}
   end
 
   @impl true
@@ -57,8 +65,42 @@ defmodule TazunaWeb.SettingsLive do
   def handle_async(:overview, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, overview: {:error, :chiezo_unavailable})}
 
+  def handle_async(:pace, {:ok, result}, socket) do
+    {:noreply, socket |> assign(pace_message: pace_text(result)) |> load("chiezo")}
+  end
+
+  def handle_async(:pace, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, pace_message: pace_text({:error, :chiezo_unavailable}))}
+
   @impl true
   def handle_event("reload", _params, socket), do: {:noreply, load(socket, "chiezo")}
+
+  # **保存してから送る。** 送れなくても保存は残る（次に「収集の設定を更新」を押した
+  # ときにも、この間隔で組んで送られる）
+  def handle_event("save_pace", %{"pace" => pace}, socket) do
+    saved =
+      for kind <- CollectPace.kinds(),
+          value = pace[to_string(kind)],
+          {minutes, ""} <- [Integer.parse(to_string(value))],
+          do: CollectPace.put(kind, minutes)
+
+    cond do
+      Enum.any?(saved, &(&1 != :ok)) ->
+        {:noreply, assign(socket, pace_message: "選べない間隔が含まれていました。")}
+
+      base = News.chiezo_base_url() ->
+        {:noreply,
+         socket
+         |> assign(pace_message: "保存しました。Chiezo に送っています…")
+         |> start_async(:pace, fn -> CollectPace.apply(base) end)}
+
+      true ->
+        {:noreply,
+         assign(socket,
+           pace_message: "保存しました（Chiezo の場所が設定されていないので送っていません）。"
+         )}
+    end
+  end
 
   # **並びは送られてきた順**（チェックした枠の順番の欄で決める）
   def handle_event("save_home", params, socket) do
@@ -83,6 +125,18 @@ defmodule TazunaWeb.SettingsLive do
       :error -> 999
     end
   end
+
+  @doc "間隔を送った結果の言い方。"
+  def pace_text({:ok, %{sent: sent, failed: []}}),
+    do: "保存して、#{length(sent)} 本の巡回に送りました。"
+
+  def pace_text({:ok, %{sent: sent, failed: failed}}) do
+    names = Enum.map_join(failed, "、", fn {name, sweep, _reason} -> "#{name} / #{sweep}" end)
+    "保存して、#{length(sent)} 本の巡回に送りました。送れなかったもの: #{names}"
+  end
+
+  def pace_text({:error, _reason}),
+    do: "保存しました。Chiezo に送れませんでした（繋がらないかもしれません）。各画面の「収集の設定を更新」でも送れます。"
 
   @doc """
   日時を JST で短く（「9/28 09:53」。空なら —）。**表に何行も並ぶので年と「JST」は

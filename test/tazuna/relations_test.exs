@@ -94,8 +94,10 @@ defmodule Tazuna.RelationsTest do
 
       assert rough["name"] == "ざっと見る"
 
-      # 一周を数日で終える（区画の材料が埋まるまで、後の回は走れない）
-      assert rough["cover_days"] == 3
+      # 一周を数日で終える（区画の材料が埋まるまで、後の回は走れない）。
+      # 間隔を延ばしたぶん日数も延ばす（1 回に見る区画を増やさない）
+      assert rough["cover_days"] == 6
+      assert rough["interval_minutes"] == 120
       assert rough["after"] == "機械収集"
 
       # **一周したら止まる。** 行き渡れば用が済む回で、止めないと 2 周目 3 周目が
@@ -108,7 +110,7 @@ defmodule Tazuna.RelationsTest do
 
       # **一周の日数で決める。** 1 日 1 区画にしていた頃は、400 区画を一周するのに
       # 400 日かかっていた —— 手入れの回が一周しないなら、区画で割っている意味が無い
-      assert survey["cover_days"] == 21
+      assert survey["cover_days"] == 42
 
       # **考える量は送りません。** Chiezo 側でモデルの名前に畳んであるので
       # （`sonnet-high` の形）、こちらから別枠で送ると画面で選んだものが

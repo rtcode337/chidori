@@ -172,6 +172,33 @@ defmodule Tazuna.Chiezo do
   end
 
   @doc """
+  巡回 1 本の**間隔だけ**を変えます（`PATCH /v1/collect/{name}/sweeps/{sweep}`）。
+  **相手や依頼文には触りません** —— 巡回を並びごと送り直すと、画面で選んだ相手まで
+  送り直すことになる。**一周の日数も同じ比で伸ばしてもらいます**（`keep_per_run`）。
+  1 回に見る区画の数は一周の日数から逆算されるので、間隔だけでは使う枠が変わらない。
+  """
+  def set_sweep_clock(base, name, sweep, minutes) do
+    body = Jason.encode!(%{interval_minutes: minutes, keep_per_run: true})
+
+    url =
+      base <>
+        "/v1/collect/" <>
+        URI.encode(name) <> "/sweeps/" <> URI.encode(sweep, &URI.char_unreserved?/1)
+
+    case Http.patch(url, body,
+           headers: [{"user-agent", @user_agent}],
+           content_type: "application/json",
+           timeout: @timeout,
+           connect_timeout: @connect_timeout
+         ) do
+      {:ok, %{status: status}} when status in 200..299 -> :ok
+      {:ok, %{status: 404}} -> {:error, :not_found}
+      {:ok, %{status: status, body: raw}} -> {:error, {:chiezo_refused, status, reason_of(raw)}}
+      {:error, _reason} -> {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
   ある点のまわり（`meters` 四方）の文書。`{:ok, [文書]}` か `{:error, 理由}`。
 
   **消えたものも、まだ AI が見ていないものも返します**（`include_removed`）——

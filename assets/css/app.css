@@ -1014,3 +1014,7 @@ body.digest-open { overflow: hidden; }
   .relation-tools { gap: .25rem; }
   .relation-tools button { padding-left: .6rem; padding-right: .6rem; }
 }
+
+/* 巡回の間隔（設定ページ）。狭い画面では縦に積む */
+.pace-form { display: flex; flex-wrap: wrap; align-items: end; gap: .6rem 1rem; margin: .6rem 0; }
+.pace-form label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; }

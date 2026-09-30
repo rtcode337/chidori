@@ -787,26 +787,26 @@ defmodule Tazuna.NewsTest do
 
       assert Map.get(sweeps["要約"], :on_demand)
       refute Map.get(sweeps["要約"], :interval_minutes)
-      assert sweeps["整理"].interval_minutes == 360
+      assert sweeps["整理"].interval_minutes == 720
     end
 
-    test "整理はどの収集も 6 時間ごと" do
+    test "整理はどの収集も 12 時間ごと" do
       # 収集ごとに散らばっていると、待ち行列が溜まったときに何がどれだけ積まれるのかが
       # 読めない。話題の定義でも変えられない
       for topic <- Tazuna.Topics.list(),
           sweep <- News.sweeps(topic),
           sweep.name == "整理" do
-        assert sweep.interval_minutes == 360, topic.name
+        assert sweep.interval_minutes == 720, topic.name
       end
 
-      assert Tazuna.SweepNames.tidy_minutes() == 360
+      assert Tazuna.SweepNames.tidy_minutes() == 720
 
       for sweep <-
             Tazuna.Datasets.Books.sweeps() ++
               Tazuna.Datasets.Bookshelf.sweeps() ++
               Tazuna.Themes.sweeps(defined_topic("tazuna_tech")),
           sweep.name == "整理" do
-        assert sweep.interval_minutes == 360
+        assert sweep.interval_minutes == 720
       end
     end
 

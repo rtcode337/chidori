@@ -120,9 +120,12 @@ defmodule Tazuna.Datasets.Meals do
   # 何十分にもなる）、**区画が多いとそこで頭打ちになります** —— 書いた日数より
   # 遅くなるので、ここに短い日数を書いても速くはなりません。
   # **実際にかかる日数は Chiezo の画面が出します**（そのときの区画数から計算する）。
-  # 間隔のほうは意味があります: 1 回の取り込みが次の予定に追いつかれない長さにする
-  @scan_minutes 60
-  @scan_days 15
+  # 間隔のほうは意味があります: 1 回の取り込みが次の予定に追いつかれない長さにする。
+  # **枠の減りが回復に追いつかなかったので 1 時間 → 2 時間にした。** 日数も同じだけ
+  # 延ばす —— 延ばさないと、1 回に見る区画が増えるだけで呼ぶ回数が変わらない
+  # **間隔は設定ページから変えられる**（`Tazuna.CollectPace`。既定 2 時間）。
+  # 日数は既定の間隔のときのもので、間隔を変えたら同じ比で伸びる（`scan_days/0`）
+  @scan_days_at_default 30
 
   # 情報収集が 1 回に見る区画の数。**間隔と一周の日数は持たせない** —— この回は
   # tazuna が決めた時刻に起こすので、Chiezo の間隔は意味を持たない（画面にも
@@ -528,8 +531,8 @@ defmodule Tazuna.Datasets.Meals do
       },
       %{
         name: @scan_sweep,
-        interval_minutes: @scan_minutes,
-        cover_days: @scan_days,
+        interval_minutes: Tazuna.SweepNames.scan_minutes(),
+        cover_days: Tazuna.CollectPace.days(:scan, @scan_days_at_default),
         after: @roster_sweep,
         one_lap: true
       },
@@ -564,7 +567,7 @@ defmodule Tazuna.Datasets.Meals do
       name: collection(),
       description: "tazuna のデータ収集（日本の食事処 / travel-log 向け）",
       prompt: scan_prompt(),
-      interval_minutes: @scan_minutes,
+      interval_minutes: Tazuna.SweepNames.scan_minutes(),
       extract: extract(),
       partition: partition(),
       sweeps: with_choices(sweeps(), choices),

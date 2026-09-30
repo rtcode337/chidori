@@ -75,20 +75,25 @@ defmodule Tazuna.Relations do
   # 狙い撃ちで調べさせたいときは割り込み（`POST /v1/collect/<name>/focus`）。
   @partition %{by: "band", prefix: Graph.region_tag(), value: Graph.years_tag(), target: 25}
 
-  # ざっと全体を拾う巡回。6 時間ごとに 14 日で一周する（1 回に見る区画数は
-  # Chiezo が区画の数から計算するので、画家が増えても一周の日数は変わらない）。
+  # ざっと全体を拾う巡回（1 回に見る区画数は Chiezo が区画の数と一周の日数から
+  # 計算するので、画家が増えても一周の日数は変わらない）。
   # **一周の日数で決める**のは、AI の呼び出し回数がそこから逆算されるため ——
-  # 1 万人を 7 日で回ると 1 日 32 回になる
-  # **一周を数日で終える。** 400 区画を 1 時間ごとに 6 区画ずつで 2〜3 日
-  @rough_minutes 60
-  @rough_days 3
-  # **区画ごとに仕上げる回。** 6 時間ごとに何区画かまとめて見る ——
+  # 1 万人を 7 日で回ると 1 日 32 回になる。
+  # **間隔を延ばすときは一周の日数も同じだけ延ばす** —— 間隔だけ延ばすと、
+  # 1 回に見る区画が増えるだけで、1 日に呼ぶ回数は変わらない（枠の減りが釣り合わ
+  # なかったので 1 時間 → 2 時間にした）。400 区画を 2 時間ごとに 6 区画ずつで 6 日
+  # **間隔は設定ページから変えられる**（`Tazuna.CollectPace`。既定 2 時間）。
+  # 日数は既定の間隔のときのもので、間隔を変えたら同じ比で伸びる
+  @rough_days_at_default 6
+  # **区画ごとに仕上げる回。** 整理と同じ間隔で、何区画かまとめて見る ——
   # 1 時間ごとだと、走っている時間のほうが長くなる。400 区画なら 1 回 5 区画で、
-  # 20 日ほどで一周する。1 日 1 区画にしていた頃は一周に 400 日かかっていた
+  # 40 日ほどで一周する。1 日 1 区画にしていた頃は一周に 400 日かかっていた
   # (手入れの回が一周しないなら、区画で割っている意味が無い)。
-  # **一周の日数で決める**ので、区画が増えても 1 回あたりが自動で増える
-  @survey_minutes Tazuna.SweepNames.tidy_minutes()
-  @survey_days 21
+  # **一周の日数で決める**ので、区画が増えても 1 回あたりが自動で増える。
+  # 間隔を 6 時間 → 12 時間に延ばしたときに一周も 21 日 → 42 日に延ばした
+  # （延ばさないと 1 回の区画が倍になり、使う枠が減らない）
+  # 間隔は整理と同じ（設定ページから変えられる）。日数は既定の間隔のときのもの
+  @survey_days_at_default 42
 
   # 名簿を機械で取り込み直す巡回。**週 1 で足りる** —— Wikipedia のカテゴリが
   # 増える速さはその程度で、AI を呼ばないぶん頻度を上げても得るものが無い
@@ -124,8 +129,8 @@ defmodule Tazuna.Relations do
     # 回り続け、同じことを何度も聞くために枠を使う。そのあとの手入れは調査が引き継ぐ
     %{
       name: Tazuna.SweepNames.scan(),
-      interval_minutes: @rough_minutes,
-      cover_days: @rough_days,
+      interval_minutes: Tazuna.SweepNames.scan_minutes(),
+      cover_days: Tazuna.CollectPace.days(:scan, @rough_days_at_default),
       after: "機械収集",
       one_lap: true
     },
@@ -134,8 +139,8 @@ defmodule Tazuna.Relations do
     # **割り込みもここへ頼む**（時計を持たない 1 本は置かない）
     %{
       name: Tazuna.SweepNames.tidy(),
-      interval_minutes: @survey_minutes,
-      cover_days: @survey_days,
+      interval_minutes: Tazuna.SweepNames.tidy_minutes(),
+      cover_days: Tazuna.CollectPace.days(:tidy, @survey_days_at_default),
       prompt: :survey,
       after: "ざっと見る"
     }
@@ -1304,7 +1309,7 @@ defmodule Tazuna.Relations do
       name: name,
       description: "tazuna の関連図（画家の影響と時代）",
       prompt: painters_prompt(),
-      interval_minutes: @rough_minutes,
+      interval_minutes: Tazuna.SweepNames.scan_minutes(),
       partition: @partition,
       sweeps: with_choices(@sweeps, choices),
       # **名簿の引き方も送る。** ここが tazuna 側にあるので、直したいときに直せる
