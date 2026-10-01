@@ -10,6 +10,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
     # 読んだ本棚はテストをまたいで残る（常駐プロセスが覚える）ので、毎回まっさらにする
     Tazuna.Datasets.ShelfCache.clear()
+    Tazuna.AreaFixture.area!()
     :ok
   end
 
@@ -25,20 +26,20 @@ defmodule TazunaWeb.DatasetsLiveTest do
     {:ok, _live, html} = open_live(conn, ~p"/datasets")
     assert html =~ "定番の技術書の設定"
 
-    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=meals")
-    assert html =~ "日本の食事処"
+    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=dining-1")
+    assert html =~ "テスト範囲の食事処"
 
     # 集めるのは Chiezo で、どこに残り誰が読むのかを、設定の頭で読めること
-    [_, settings] = String.split(html, "日本の食事処の設定", parts: 2)
-    assert settings =~ ~r|collect-origin.*「集める」層です.*tazuna_meals.*読むのはtravel-logです|s
+    [_, settings] = String.split(html, "テスト範囲の食事処の設定", parts: 2)
+    assert settings =~ ~r|collect-origin.*「集める」層です.*tazuna_dining_1.*読むのはtravel-logです|s
   end
 
   test "travel-log 用の書き出しを、リンクと分かる形で出す", %{conn: conn} do
     # ブラウザから Chiezo を直接読ませない代わりの道。押すと降ってくるだけなので、
     # リンクと分かる見た目のまま、周りの注記より一段強く出す
-    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=meals")
+    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=dining-1")
 
-    assert html =~ ~p"/datasets/meals/travel-log.zip"
+    assert html =~ ~p"/datasets/dining-1/travel-log.zip"
     assert html =~ "download-link"
   end
 
@@ -70,7 +71,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
   test "溜まったものは、この画面には出さない", %{conn: conn} do
     # 読むのは travel-log。同じものを 2 つの画面で見せると、
     # どちらが本当の状態なのか読めなくなる
-    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=meals")
+    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=dining-1")
 
     assert html =~ "travel-log に渡す中身"
     refute html =~ "relation-canvas"
@@ -91,7 +92,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
   test "機械で引くところと AI が書くところの線引きが読める", %{conn: conn} do
     # どちらが入れた値かが読めないと、地図辞典の間違いを AI のせいにしてしまう
-    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=meals")
+    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=dining-1")
 
     assert html =~ "抽出の指定"
     assert html =~ "overture_japan"
@@ -100,7 +101,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
   describe "Chiezo の収集の枠" do
     @collection %{
-      "name" => "tazuna_meals",
+      "name" => "tazuna_dining_1",
       "description" => "tazuna のデータ収集（日本の食事処 / travel-log 向け）",
       "enabled" => true,
       "interval_minutes" => 60,
@@ -157,7 +158,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
         %{url: "http://chiezo.test:7010/v1/sources"} ->
           Tazuna.HttpStub.ok(
-            Jason.encode!(%{"sources" => [%{"name" => "tazuna_meals", "docs" => 42}]})
+            Jason.encode!(%{"sources" => [%{"name" => "tazuna_dining_1", "docs" => 42}]})
           )
 
         # 変更履歴。**依頼した区画をちょうど見た回**が 1 つある（依頼の結果として引き当たる）
@@ -209,7 +210,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
     end
 
     defp shown(conn) do
-      {:ok, live, _html} = open_live(conn, ~p"/datasets?view=meals")
+      {:ok, live, _html} = open_live(conn, ~p"/datasets?view=dining-1")
       {live, render_async(live)}
     end
 
@@ -274,7 +275,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
       render_async(live)
 
       assert_receive {:patched, url, sent}, 2_000
-      assert url =~ "/v1/collect/tazuna_meals"
+      assert url =~ "/v1/collect/tazuna_dining_1"
       assert sent["kind"] == "stock"
 
       # 辞典は 3 つ。**書いた順がそのまま優先の順**なので、並びごと送る
@@ -352,9 +353,9 @@ defmodule TazunaWeb.DatasetsLiveTest do
       # 情報収集だけ（情報収集が済んでいれば緑）
       assert html =~ ~r|<rect[^>]*is-done[^>]*phx-value-key="43.0,141.3/43.1,141.4"|
       assert html =~ "薄い黄色が「ざっと見る」まで、薄い緑が「情報収集」まで見終わった区画"
-      # 起点にピンが立つ（決めていなければ東京駅）
+      # 起点にピンが立つ（決めていなければ範囲の真ん中）
       assert html =~ ~s(class="origin-pin")
-      assert html =~ "起点：東京駅"
+      assert html =~ "起点：テスト範囲の真ん中"
       assert html =~ "ざっと見る 済み"
     end
 
@@ -448,7 +449,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
       # **ふつうの回として走らせる**（割り込みではない）。区画は座標から引き、
       # 同じ区画に入る 2 件は 1 つにまとめる。補足は**区画ごと**に渡す
       assert_receive {:posted, url, sent}, 2_000
-      assert url =~ "/v1/collect/tazuna_meals/run"
+      assert url =~ "/v1/collect/tazuna_dining_1/run"
       assert url =~ URI.encode_query(%{"sweep" => "情報収集"})
       assert sent["partitions"] == ["35.6,139.7/35.7,139.8"]
       note = sent["notes"]["35.6,139.7/35.7,139.8"]
@@ -464,7 +465,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert html =~ "(26.2,127.68)"
 
       # **依頼と、その結果を並べる**（頼んだ区画をちょうど見た回を引き当てる）
-      assert [log] = Tazuna.Datasets.Requests.recent("tazuna_meals")
+      assert [log] = Tazuna.Datasets.Requests.recent("tazuna_dining_1")
       assert log.keys == ["35.6,139.7/35.7,139.8"]
       assert log.status == "sent"
       assert html =~ "依頼の結果"
@@ -472,7 +473,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert html =~ "そば屋"
       assert html =~ "閉店した店"
       # 見出しは Chiezo の画面の「直す前との違い」へ
-      assert html =~ "/admin/collect/tazuna_meals/doc?title="
+      assert html =~ "/admin/collect/tazuna_dining_1/doc?title="
       # Chiezo の控えは頭のほうだけ（足した 25 件のうち 1 件だけ並ぶ）
       assert html =~ "ほか 24 件"
     end
@@ -746,18 +747,18 @@ defmodule TazunaWeb.DatasetsLiveTest do
     end
 
     test "地名で探して起点を決め、時刻を保存する", %{conn: conn} do
-      {:ok, live, html} = open_live(conn, ~p"/datasets?view=meals")
+      {:ok, live, html} = open_live(conn, ~p"/datasets?view=dining-1")
       assert html =~ ~s(aria-label="起点")
       assert html =~ ~s(aria-label="情報収集の時刻")
       # 並びは 起点 → Chiezo の収集 → 情報収集の時刻（地図は起点の上）
       at = fn needle -> html |> :binary.match(needle) |> elem(0) end
       assert at.(~s(aria-label="起点")) < at.("<h3>Chiezo の収集</h3>")
       assert at.("<h3>Chiezo の収集</h3>") < at.(~s(aria-label="情報収集の時刻"))
-      # 決めていなければ東京駅（ざっと見るが元から広げていた起点）
-      assert html =~ "東京駅（35.681, 139.767）"
+      # 決めていなければ範囲の真ん中
+      assert html =~ "テスト範囲の真ん中（35.7, 139.7）"
 
       # 座標を Google マップで開ける（同じ名前の別の場所を選んでいないか確かめるため）
-      assert html =~ "https://www.google.com/maps/search/?api=1&amp;query=35.681%2C139.767"
+      assert html =~ "https://www.google.com/maps/search/?api=1&amp;query=35.7%2C139.7"
       assert html =~ "既定のままです"
 
       live |> form("#place-search", %{"q" => "銀座"}) |> render_submit()
@@ -770,7 +771,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
       html = live |> element(~s([phx-click="pick_place"])) |> render_click()
       assert html =~ "銀座（35.6728, 139.7631）"
-      assert Tazuna.Datasets.SurveyPlans.get("tazuna_meals").place_set_at
+      assert Tazuna.Datasets.SurveyPlans.get("tazuna_dining_1").place_set_at
 
       # 収集がまだ無いので Chiezo へは送らない（作るときに載る）。送れなかった旨も出さない
       refute html =~ "Chiezo へ送れませんでした"
@@ -780,12 +781,12 @@ defmodule TazunaWeb.DatasetsLiveTest do
         |> form("#survey-times", %{"survey_plan" => %{"run_at" => "3:00"}})
         |> render_submit()
 
-      assert Tazuna.Datasets.SurveyPlans.get("tazuna_meals").run_at == "03:00"
+      assert Tazuna.Datasets.SurveyPlans.get("tazuna_dining_1").run_at == "03:00"
       refute html =~ "時刻が決まっていません"
     end
 
     test "読めない時刻は保存せず、理由を出す", %{conn: conn} do
-      {:ok, live, _html} = open_live(conn, ~p"/datasets?view=meals")
+      {:ok, live, _html} = open_live(conn, ~p"/datasets?view=dining-1")
 
       html =
         live

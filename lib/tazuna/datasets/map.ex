@@ -96,6 +96,16 @@ defmodule Tazuna.Datasets.Map do
 
   def xy(_map, _lat, _lon), do: nil
 
+  @doc """
+  緯度経度を、その図の座標へ（**細かい桁のまま**）。`xy/3` は小数 1 桁に丸めるので、
+  区や駅の細かさまで寄る図（範囲を描く地図）では点が数十 px ずれる。
+  """
+  def point(%{frame: %{west: west, top: top, scale: scale}}, lat, lon)
+      when is_number(lat) and is_number(lon),
+      do: %{x: place1((lon - west) * scale), y: place1((top - mercator(lat)) * scale)}
+
+  def point(_map, _lat, _lon), do: nil
+
   @doc "図の幅（画面はこの座標系で描きます）。"
   def width, do: @width
 
@@ -208,6 +218,41 @@ defmodule Tazuna.Datasets.Map do
       # 線にもならずに消える
       tiny: min(width, height) < @tiny_side,
       density: box.count / (width * height)
+    }
+  end
+
+  # 範囲を描く地図の枠（日本の主な島。南鳥島のような離れた島まで入れると、本土が細くなる）
+  @japan {24.0, 122.5, 45.8, 146.0}
+
+  @doc """
+  区画を持たない白地図（範囲を描く画面で使う）。**区画の地図と同じ置き方で投影する**
+  ので、四角も点も `box/2`・`xy/3` で同じ図の座標に直せます。
+
+  画面は図の座標から緯度経度へ戻す（描いた四角を範囲にする）ので、枠（`frame`）も渡す。
+  """
+  def blank do
+    {south, west, north, east} = @japan
+    scale = @width / (east - west)
+    top = mercator(north)
+
+    %{
+      coast: coast(west, top, scale),
+      width: @width,
+      height: Float.round((top - mercator(south)) * scale, 1),
+      frame: %{west: west, top: top, scale: scale}
+    }
+  end
+
+  @doc "四角（`[南, 西, 北, 東]`）を、その図の座標の矩形へ（`%{x, y, width, height}`）。"
+  def box(%{frame: %{west: west, top: top, scale: scale}}, [south, west_lon, north, east]) do
+    left = place1((west_lon - west) * scale)
+    upper = place1((top - mercator(north)) * scale)
+
+    %{
+      x: left,
+      y: upper,
+      width: place1(max((east - west) * scale - left, @min_span)),
+      height: place1(max((top - mercator(south)) * scale - upper, @min_span))
     }
   end
 

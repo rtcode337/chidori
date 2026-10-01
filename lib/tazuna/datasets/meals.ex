@@ -76,6 +76,19 @@ defmodule Tazuna.Datasets.Meals do
 
   @collection "tazuna_meals"
 
+  # **範囲ごとの収集**（`definition/1`）。日本全体を 1 つで回していた頃は、
+  # 59.7 万件・4,105 区画で一周のめどが立たず、AI の費用もかさみ、抜け漏れと
+  # 間違いが多すぎて地図として使えなかった。見たい範囲だけを、細かい区画で回す
+  @area_collection_prefix "tazuna_dining_"
+  # 範囲ごとの収集の区画の大きさ。**全国の 150 件より小さくする** —— AI が 1 回に
+  # 読む量が減るほど見落としが減る（抜け漏れを減らすのがこの作り替えの目的）
+  @area_partition_target 50
+  # 範囲ごとの収集のざっと見るの一周（既定の間隔のとき）。範囲は小さいので数日で回る
+  @area_scan_days_at_default 7
+  # travel-log の種別。**範囲が違っても同じ種別に入る**（書き出しは範囲ごと、
+  # 読み込み先は 1 つ）。全国版（`meals`）とは別の種別にする
+  @area_export_key "dining"
+
   # 対象の矩形。**日本全体**（`[南緯, 西経, 北緯, 東経]` = Chiezo の順）。
   # 書かないと母集団の外接矩形になり、まだ 1 軒も入っていない範囲が対象から落ちる
   @japan_bbox [20.2, 122.5, 45.8, 154.0]
@@ -270,6 +283,50 @@ defmodule Tazuna.Datasets.Meals do
     end
   end
 
+  @doc "範囲ごとの収集の名前（`tazuna_dining_<範囲の番号>`）。範囲を渡さなければ全国版。"
+  def collection(nil), do: collection()
+  def collection(%{id: id}), do: @area_collection_prefix <> to_string(id)
+
+  @doc """
+  AI が直した中身を引き継ぐ元（全国版の収集）。範囲の収集を作るときに、
+  **Chiezo にこれが残っていれば**、名簿の最初の辞典として範囲で絞って読む
+  （`Tazuna.Datasets.push/2`）。
+  """
+  def carry_from, do: collection()
+
+  @doc "範囲ごとの収集の区画の大きさ（1 区画あたりの件数の目安）。"
+  def area_partition_target, do: @area_partition_target
+
+  @doc "ジャンルの並び（travel-log のシリーズの並び。範囲が違っても同じ並び・同じ色にする）。"
+  def genre_order, do: @genres |> Enum.map(&elem(&1, 1)) |> Enum.uniq()
+
+  @doc """
+  範囲 1 つぶんのタブ。**収集も溜まる先も範囲ごと**で、依頼文・巡回の組み方は
+  全国版と同じです。travel-log へは同じ種別（`dining`）に書き出し、スポットの key に
+  範囲の番号を付けます（収集ごとに `doc_id` が 1 から振られるので、付けないと
+  範囲どうしで key がぶつかり、あとから読み込んだ範囲が前の範囲を上書きする）。
+  """
+  def definition(nil), do: definition()
+
+  def definition(%{id: id, name: name} = area) do
+    definition()
+    |> Map.merge(%{
+      key: "dining-#{id}",
+      name: name,
+      eyebrow: "EATERIES IN AN AREA",
+      title: "#{name}の食事処",
+      description:
+        "travel-log の地図に並べる「食べに行く先」を、この範囲の中だけで集めます。" <>
+          "名前と座標は辞典から機械で引き、食べに行く価値があるかどうかを AI が見ます。",
+      collection: collection(area),
+      area: area,
+      export_key: @area_export_key,
+      export_name: "食事処",
+      key_prefix: "#{id}-",
+      series_order: genre_order()
+    })
+  end
+
   @doc """
   データ収集の画面に出す 1 タブぶん。
   """
@@ -396,6 +453,38 @@ defmodule Tazuna.Datasets.Meals do
   """
   def extract, do: [wikipedia_extract(), osm_extract(), overture_extract()]
 
+  @doc """
+  範囲の名簿。**3 つの辞典を範囲の四角で絞ります**（Chiezo の抽出の `bbox`）。
+  座標を持たない 1 件は範囲に入りません。
+
+  `carry: true` の範囲では、**全国版の収集を最初の辞典として加えます**。AI が目を
+  通して直した中身（説明・ジャンル・座標の直し・足した店）を、見出しが同じ辞典の
+  1 件より先に採るため。引けるのは目を通した生きている店だけで、消した店（墓標）は
+  引けません（閉店した店は、新しい収集の AI がもう一度見つけて消す）。
+  """
+  def extract(nil), do: extract()
+
+  def extract(area) do
+    box = Tazuna.Datasets.MealAreas.bbox(area)
+    dictionaries = Enum.map(extract(), &Map.put(&1, :bbox, box))
+    if Map.get(area, :carry), do: [carry_extract(box) | dictionaries], else: dictionaries
+  end
+
+  # 全国版の収集から、範囲の中で AI が目を通したものを引き継ぐ。**中身で勝つ**
+  # （説明・URL・脇書き）。タグは機械の印（`_chiezo_`）を除いてそのまま写す
+  defp carry_extract(box) do
+    %{
+      source: carry_from(),
+      tag: kind_tag(),
+      bbox: box,
+      provides: ~w(body url extra),
+      body: "body",
+      extra:
+        ~w(lat lon area address website phone opening_hours pageviews_month image record_keys),
+      tags: [%{pattern: "^((?!_chiezo_).+)$", format: "{1}"}]
+    }
+  end
+
   # 百科事典。**説明で勝つ**（読み物になる紹介文があるのはここだけ）。
   # 座標も持っているが譲る —— 地図辞典のほうが確かなため
   defp wikipedia_extract do
@@ -503,6 +592,18 @@ defmodule Tazuna.Datasets.Meals do
     %{by: "geo", target: @partition_target, bbox: @japan_bbox, origin: origin}
   end
 
+  @doc "範囲の区画。**範囲の四角だけを、全国より細かく割ります**（1 区画 50 件）。"
+  def partition(origin, nil), do: partition(origin)
+
+  def partition(origin, area) do
+    %{
+      by: "geo",
+      target: @area_partition_target,
+      bbox: Tazuna.Datasets.MealAreas.bbox(area),
+      origin: origin
+    }
+  end
+
   @doc """
   起点の既定（利用者が決めていないとき）。**ざっと見るも情報収集もここから広げます**。
   """
@@ -511,11 +612,21 @@ defmodule Tazuna.Datasets.Meals do
     %{name: @start_name, lat: lat, lon: lon}
   end
 
+  @doc "範囲の起点の既定は、範囲の真ん中。"
+  def default_origin(nil), do: default_origin()
+
+  def default_origin(area) do
+    {lat, lon} = Tazuna.Datasets.MealAreas.center(area)
+    %{name: "#{area.name}の真ん中", lat: Float.round(lat, 6), lon: Float.round(lon, 6)}
+  end
+
   @doc """
   巡回 3 本。**仕事が違うものは 1 本にまとめません** ——
   1 つの文で全部を頼むと、どの回も同じ薄さの仕事になります。
   """
-  def sweeps do
+  def sweeps(area \\ nil) do
+    scan_days = if area, do: @area_scan_days_at_default, else: @scan_days_at_default
+
     [
       # **機械で引く回。** AI を呼ばず、抽出の指定を走らせるだけ。
       # **一度きり** —— 地図辞典が焼き直されない限り何度やっても同じで、
@@ -532,7 +643,7 @@ defmodule Tazuna.Datasets.Meals do
       %{
         name: @scan_sweep,
         interval_minutes: Tazuna.SweepNames.scan_minutes(),
-        cover_days: Tazuna.CollectPace.days(:scan, @scan_days_at_default),
+        cover_days: Tazuna.CollectPace.days(:scan, scan_days),
         after: @roster_sweep,
         one_lap: true
       },
@@ -562,15 +673,21 @@ defmodule Tazuna.Datasets.Meals do
   @doc """
   Chiezo へ送る依頼の中身（作るときも、送り直すときも同じもの）。
   """
-  def attrs(choices \\ %{}) do
+  def attrs(choices \\ %{}, area \\ nil) do
+    origin = with(%{lat: lat, lon: lon} <- default_origin(area), do: [lat, lon])
+
     %{
-      name: collection(),
-      description: "tazuna のデータ収集（日本の食事処 / travel-log 向け）",
+      name: collection(area),
+      description:
+        if(area,
+          do: "tazuna のデータ収集（#{area.name}の食事処 / travel-log 向け）",
+          else: "tazuna のデータ収集（日本の食事処 / travel-log 向け）"
+        ),
       prompt: scan_prompt(),
       interval_minutes: Tazuna.SweepNames.scan_minutes(),
-      extract: extract(),
-      partition: partition(),
-      sweeps: with_choices(sweeps(), choices),
+      extract: extract(area),
+      partition: partition(origin, area),
+      sweeps: with_choices(sweeps(area), choices),
       # **網羅。** ある括りの全部が対象で、古いものが要らなくなることはない
       kind: "stock",
       requested_by: "tazuna"

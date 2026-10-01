@@ -50,7 +50,7 @@ defmodule Tazuna.Datasets.SurveyTest do
       System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
       on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
 
-      dataset = Datasets.get("meals")
+      dataset = Tazuna.AreaFixture.area!() && Datasets.get("dining-1")
 
       {:ok, _plan} =
         SurveyPlans.put_place(dataset.collection, %{name: "東京駅", lat: 35.681, lon: 139.767})
@@ -139,11 +139,11 @@ defmodule Tazuna.Datasets.SurveyTest do
     setup do
       System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
       on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
-      %{dataset: Datasets.get("meals")}
+      %{dataset: Tazuna.AreaFixture.area!() && Datasets.get("dining-1")}
     end
 
     defp stub_existing(test_pid) do
-      item = %{"name" => "tazuna_meals", "enabled" => true, "sweeps" => [], "partitions" => []}
+      item = %{"name" => "tazuna_dining_1", "enabled" => true, "sweeps" => [], "partitions" => []}
 
       HttpStub.stub(fn
         %{method: :patch, body: body} ->
@@ -161,9 +161,9 @@ defmodule Tazuna.Datasets.SurveyTest do
       end)
     end
 
-    test "決めていなければ東京駅", %{dataset: dataset} do
+    test "決めていなければ範囲の真ん中", %{dataset: dataset} do
       plan = Datasets.plan(dataset)
-      assert {plan.place, plan.lat, plan.lon} == {"東京駅", 35.681, 139.767}
+      assert {plan.place, plan.lat, plan.lon} == {"テスト範囲の真ん中", 35.7, 139.7}
 
       # 既定を返すだけで、決めたことにはしない（回り直しの起点にならない）
       assert plan.place_set_at == nil
@@ -178,7 +178,7 @@ defmodule Tazuna.Datasets.SurveyTest do
       assert_received {:patched, %{"partition" => %{"origin" => [34.985, 135.758]}}}
     end
 
-    test "送り直すときも、決めた起点を送る（東京駅へ戻さない）", %{dataset: dataset} do
+    test "送り直すときも、決めた起点を送る（既定の起点へ戻さない）", %{dataset: dataset} do
       {:ok, _plan} =
         SurveyPlans.put_place(dataset.collection, %{name: "京都駅", lat: 34.985, lon: 135.758})
 

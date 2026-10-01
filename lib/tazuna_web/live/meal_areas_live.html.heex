@@ -1,0 +1,220 @@
+<Layouts.flash_group flash={@flash} />
+<main class="relations-page collect-page">
+  <div>
+    <TazunaWeb.MainNav.main_nav active={:datasets} />
+
+    <section class="relations-intro">
+      <p>EATERIES IN AN AREA</p>
+      <h1>食事処の範囲</h1>
+      <p>
+        食事処は、範囲を決めてその中だけを集めます。範囲 1 つにつき Chiezo の収集が 1 つで、データ収集の画面にタブが増えます。離れた場所は、別の範囲にしてください（1 つの四角で囲むと、あいだの見たくない土地まで AI が回ります）。
+      </p>
+      <p><.link navigate={~p"/datasets"}>データ収集の画面へ戻る</.link></p>
+    </section>
+
+    <section class="settings-block" aria-label="作った範囲">
+      <h3>作った範囲</h3>
+      <p :if={@areas == []} class="muted-note">まだありません。下の地図で四角を描いて足してください。</p>
+      <ul :if={@areas != []} class="area-list">
+        <li :for={area <- @areas}>
+          <.link navigate={~p"/datasets?view=#{Tazuna.Datasets.Meals.definition(area).key}"}>
+            {area.name}
+          </.link>
+          <span class="muted-note">{bbox_text(area)}</span>
+          <button
+            type="button"
+            phx-click="delete"
+            phx-value-id={area.id}
+            data-confirm={"範囲「#{area.name}」を外します。Chiezo の収集は消えません。よろしいですか？"}
+          >
+            外す
+          </button>
+        </li>
+      </ul>
+    </section>
+
+    <section class="settings-block" aria-label="範囲を足す">
+      <h3>範囲を足す</h3>
+      <p class="muted-note">
+        地名で探して寄り、「四角を描く」を押してから地図の上をドラッグしてください。数でも直せます。探した場所のまわりで手早く作ることもできます。
+      </p>
+
+      <div class="map-canvas area-canvas" id="area-canvas" phx-hook="AreaDraw">
+        <div class="relation-find">
+          <form
+            id="area-search"
+            class="relation-search"
+            phx-submit="search_place"
+            phx-change="search_place"
+            autocomplete="off"
+          >
+            <input
+              type="search"
+              name="q"
+              value={@query}
+              placeholder="地名で探す"
+              aria-label="地名で探す"
+              phx-debounce="400"
+            />
+            <%= case @places do %>
+              <% {:ok, [_ | _] = places} -> %>
+                <ul class="relation-matches">
+                  <li :for={{place, index} <- Enum.with_index(places)}>
+                    <button type="button" phx-click="focus_place" phx-value-index={index}>
+                      {place.name}
+                    </button>
+                  </li>
+                </ul>
+              <% {:ok, []} -> %>
+                <ul class="relation-matches">
+                  <li class="muted-note">見つかりませんでした</li>
+                </ul>
+              <% :loading -> %>
+                <ul class="relation-matches">
+                  <li class="muted-note">探しています…</li>
+                </ul>
+              <% {:error, _reason} -> %>
+                <ul class="relation-matches">
+                  <li class="muted-note">地名を引けませんでした</li>
+                </ul>
+              <% _none -> %>
+            <% end %>
+          </form>
+        </div>
+        <div class="map-tools">
+          <button type="button" data-zoom="draw" class="draw-toggle" aria-pressed="false">
+            四角を描く
+          </button>
+          <button type="button" data-zoom="in" aria-label="拡大">＋</button>
+          <button type="button" data-zoom="out" aria-label="縮小">−</button>
+          <button type="button" data-zoom="reset" aria-label="全体を表示">全体</button>
+        </div>
+        <svg
+          viewBox={"0 0 #{@map.width} #{@map.height}"}
+          role="img"
+          aria-label="範囲を描く地図"
+          data-west={@map.frame.west}
+          data-top={@map.frame.top}
+          data-scale={@map.frame.scale}
+        >
+          <path :for={ring <- @map.coast} d={ring} class="coast" />
+
+          <%!-- 作った範囲（押す口ではない） --%>
+          <% rects = Enum.map(@areas, &{&1, rect(@map, &1)}) %>
+          <rect
+            :for={{area, r} <- rects}
+            x={r.x}
+            y={r.y}
+            width={r.width}
+            height={r.height}
+            class="area-rect"
+          >
+            <title>{area.name}</title>
+          </rect>
+
+          <%!-- いま決めている四角 --%>
+          <% draft = draft_rect(@map, @draft) %>
+          <rect
+            :if={draft}
+            x={draft.x}
+            y={draft.y}
+            width={draft.width}
+            height={draft.height}
+            class="draft-rect"
+          />
+
+          <%!-- 目印の駅。**寄っても同じ大きさに見せる**（`area_draw.js` が倍率で割り戻す）。
+               名前は寄ったときだけ出す --%>
+          <g
+            :for={point <- landmark_points(@map, @landmarks)}
+            class="landmark"
+            data-pin
+            data-x={point.x}
+            data-y={point.y}
+            transform={"translate(#{point.x} #{point.y})"}
+          >
+            <circle r="3" />
+            <text x="5" y="4">{point.name}</text>
+          </g>
+
+          <g
+            :if={@marker}
+            class="find-pin"
+            data-pin
+            data-x={@marker.x}
+            data-y={@marker.y}
+            transform={"translate(#{@marker.x} #{@marker.y})"}
+          >
+            <title>{@marker.label}</title>
+            <path d="M0 0 C-4 -6 -7 -9.5 -7 -14 A7 7 0 1 1 7 -14 C7 -9.5 4 -6 0 0 Z" />
+            <circle cx="0" cy="-14" r="2.6" />
+          </g>
+
+          <%!-- 描いている最中の四角（台本が描く。LiveView に描き直させない） --%>
+          <g id="area-draw-layer" phx-update="ignore"></g>
+        </svg>
+      </div>
+      <p class="muted-note map-hint">
+        <span class="only-touch">指で動かし、2 本の指でつまんで拡大縮小。</span><span class="only-mouse">引きずって移動、Ctrl+ホイールで拡大縮小。</span>
+        海岸線は {Tazuna.Geo.Japan.source()}。駅は地図辞典（OpenStreetMap）から。
+      </p>
+      <div :if={@marker} class="button-row">
+        <button type="button" phx-click="around_marker">
+          「{@marker.label}」のまわり 3 km ほどで四角を作る
+        </button>
+      </div>
+
+      <form id="area-form" phx-change="edit" phx-submit="create" class="area-form">
+        <label>
+          <span>名前</span>
+          <input
+            type="text"
+            name="area[name]"
+            value={@draft["name"]}
+            maxlength="20"
+            placeholder="東京駅"
+          />
+        </label>
+        <div class="area-box">
+          <label :for={
+            {key, label} <- [{"north", "北"}, {"west", "西"}, {"east", "東"}, {"south", "南"}]
+          }>
+            <span>{label}</span>
+            <input
+              type="text"
+              inputmode="decimal"
+              name={"area[#{key}]"}
+              value={@draft[key]}
+              phx-debounce="600"
+            />
+          </label>
+        </div>
+
+        <div :if={@estimate} class="area-estimate" aria-live="polite">
+          <%= case @estimate do %>
+            <% :loading -> %>
+              <p class="muted-note">数えています…</p>
+            <% {:ok, estimate} -> %>
+              <p>
+                中にある飲食店: <strong>{estimate.total} 件</strong>（{Enum.map_join(
+                  estimate.counts,
+                  "・",
+                  fn {source, count} -> "#{source_label(source)} #{count || "?"}" end
+                )}。同じ店が 2 つの辞典に居れば 2 と数えるので、実際はこれより少なくなります）
+              </p>
+              <p>
+                区画の見込み: <strong>{estimate.partitions} 区画</strong>（1 区画 {Tazuna.Datasets.Meals.area_partition_target()} 件の目安）
+              </p>
+            <% {:error, _reason} -> %>
+              <p class="muted-note">Chiezo から数えられませんでした。</p>
+          <% end %>
+        </div>
+
+        <ul :if={@errors != []} class="area-errors">
+          <li :for={line <- @errors}>{line}</li>
+        </ul>
+        <button type="submit" phx-disable-with="作っています…">この範囲を作る</button>
+      </form>
+    </section>
+  </div>
+</main>

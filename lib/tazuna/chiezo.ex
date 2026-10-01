@@ -172,6 +172,70 @@ defmodule Tazuna.Chiezo do
   end
 
   @doc """
+  四角（`[南, 西, 北, 東]`）の中で、そのタグを持つ文書の数。`{:ok, 数}` か `{:error, 理由}`。
+  **1 件も読まずに数だけ**（範囲を描きながら、広すぎないかをその場で確かめるため）。
+  """
+  def count_in(base, source, tag, [_s, _w, _n, _e] = box) do
+    query =
+      URI.encode_query(%{
+        "tag" => tag,
+        "bbox" => Enum.join(box, ","),
+        "limit" => 1,
+        "fields" => "title"
+      })
+
+    case get(base <> "/v1/" <> URI.encode(source) <> "/filter?" <> query) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"total" => total}} when is_integer(total) -> {:ok, total}
+          _other -> {:error, :chiezo_unexpected_body}
+        end
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
+  四角の中で、そのタグを持つ地物の名前と座標（`[%{name, lat, lon}]`）。
+  範囲を描く地図に**目印として重ねる**（白地図だけでは、区や駅の細かさで場所が読めない）。
+  """
+  def points_in(base, source, tag, [_s, _w, _n, _e] = box, limit \\ 200) do
+    query =
+      URI.encode_query(%{
+        "tag" => tag,
+        "bbox" => Enum.join(box, ","),
+        "limit" => limit,
+        "fields" => "title,extra"
+      })
+
+    case get(base <> "/v1/" <> URI.encode(source) <> "/filter?" <> query) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"results" => results}} when is_list(results) ->
+            points =
+              for %{"title" => name, "extra" => %{"lat" => lat, "lon" => lon}} <- results,
+                  is_number(lat) and is_number(lon),
+                  do: %{name: name, lat: lat, lon: lon}
+
+            {:ok, points}
+
+          _other ->
+            {:error, :chiezo_unexpected_body}
+        end
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
   巡回 1 本の**間隔だけ**を変えます（`PATCH /v1/collect/{name}/sweeps/{sweep}`）。
   **相手や依頼文には触りません** —— 巡回を並びごと送り直すと、画面で選んだ相手まで
   送り直すことになる。**一周の日数も同じ比で伸ばしてもらいます**（`keep_per_run`）。

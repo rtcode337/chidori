@@ -69,7 +69,12 @@ defmodule Tazuna.Datasets.TravelLog do
 
   内訳は `%{rows: 書き出した件数, skipped: 落とした件数, excluded: 消えたものの件数}`。
   """
-  def bundle(%{key: key, name: name, collection: collection, module: module} = dataset) do
+  def bundle(%{key: zip_name, collection: collection, module: module} = dataset) do
+    # **種別の key と名前は、範囲の収集では範囲によらず同じ**（`dining`）。書き出しは
+    # 範囲ごとでも、travel-log では 1 つの種別に読み込む
+    key = dataset[:export_key] || zip_name
+    name = dataset[:export_name] || dataset.name
+
     with true <- exportable?(dataset) || {:error, :not_exportable},
          {:ok, base} <- Datasets.base_url(),
          {:ok, docs} <- fetch_all(base, collection, module.kind_tag()),
@@ -80,16 +85,17 @@ defmodule Tazuna.Datasets.TravelLog do
 
       files =
         [
-          {~c"#{key}/settings.json", settings_json(key, name, rows, category_order(module))},
+          {~c"#{key}/settings.json",
+           settings_json(key, name, rows, category_order(module), dataset[:series_order])},
           {~c"#{key}/spots.csv", csv(rows)}
         ] ++
           if excluded == [],
             do: [],
             else: [{~c"#{key}/excluded_candidates/exclude.txt", exclude_txt(excluded)}]
 
-      case :zip.create(~c"#{key}.zip", files, [:memory]) do
+      case :zip.create(~c"#{zip_name}.zip", files, [:memory]) do
         {:ok, {_name, binary}} ->
-          {:ok, "#{key}.zip", binary,
+          {:ok, "#{zip_name}.zip", binary,
            %{
              rows: length(rows),
              skipped: length(docs) - length(rows),
@@ -137,7 +143,7 @@ defmodule Tazuna.Datasets.TravelLog do
   入れません。収集の目印（`kind_tag`）の無いものも落とします —— 同じ収集に別の種類の
   文書が混ざっても、それは地図のスポットではないためです。
   """
-  def excluded_keys(docs, %{module: module}) do
+  def excluded_keys(docs, %{module: module} = dataset) do
     docs
     |> Enum.filter(fn doc ->
       tags = Map.get(doc, "tags") || []
@@ -150,8 +156,15 @@ defmodule Tazuna.Datasets.TravelLog do
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq()
     |> Enum.sort()
-    |> Enum.map(&to_string/1)
+    |> Enum.map(&spot_key(&1, dataset))
   end
+
+  @doc """
+  スポットの key。**範囲の収集では範囲の番号を頭に付けます**（`3-1234`）——
+  `doc_id` は収集ごとに 1 から振られるので、付けないと範囲どうしで key がぶつかり、
+  同じ種別へあとから読み込んだ範囲が、前の範囲のスポットを上書きする。
+  """
+  def spot_key(doc_id, dataset), do: "#{dataset[:key_prefix]}#{doc_id}"
 
   @doc """
   exclude.txt。1 行に 1 つの key で、改行は CRLF（spots.csv と揃える）。
@@ -172,7 +185,7 @@ defmodule Tazuna.Datasets.TravelLog do
   （寿司屋の「和食」）ばかりで、絞り込みの軸になっていませんでした。
   `categories/2` を持たない収集は、今までどおりジャンルの 2 つめ以降を回します。
   """
-  def row(doc, %{module: module, collection: collection}) do
+  def row(doc, %{module: module, collection: collection} = dataset) do
     tags = Map.get(doc, "tags") || []
     extra = Map.get(doc, "extra") || %{}
     name = doc |> Map.get("title") |> clean() |> without_disambiguation()
@@ -194,7 +207,7 @@ defmodule Tazuna.Datasets.TravelLog do
         # カテゴリはパイプ区切りの 1 列（CSV の区切りと衝突しないため）
         "categories" => categories(module, tags, extra, genres) |> Enum.join("|"),
         "description" => description(doc, tags, extra, collection, module),
-        "key" => to_string(Map.get(doc, "doc_id"))
+        "key" => spot_key(Map.get(doc, "doc_id"), dataset)
       }
     end
   end
@@ -282,15 +295,14 @@ defmodule Tazuna.Datasets.TravelLog do
   travel-log はこれを絞り込みの並びに使います。カテゴリは見た目に効かないので、
   シリーズの一覧には混ぜません。
   """
-  def settings_json(key, name, rows, categories \\ nil) do
+  def settings_json(key, name, rows, categories \\ nil, order \\ nil) do
     series =
       rows
       |> Enum.map(& &1["series"])
       |> Enum.reject(&(&1 == ""))
-      |> Enum.frequencies()
-      |> Enum.sort_by(fn {series, count} -> {-count, series} end)
+      |> series_in_order(order)
       |> Enum.with_index()
-      |> Enum.map(fn {{series, _count}, index} ->
+      |> Enum.map(fn {series, index} ->
         %{
           series: series,
           label: series |> String.graphemes() |> Enum.take(2) |> Enum.join(),
@@ -311,6 +323,23 @@ defmodule Tazuna.Datasets.TravelLog do
       end),
       pretty: true
     )
+  end
+
+  # シリーズの並び。**語彙を持つ収集は語彙の順に固定する** —— settings.json は読み込む
+  # たびに種別の設定を上書きするので、ZIP に入っている店から並びを作ると、別の範囲を
+  # 読み込んだ拍子に並びも色も入れ替わり、前の範囲にしか無いジャンルは一覧から落ちる。
+  # 語彙に無いジャンル（AI が付けたもの）は名前順で後ろに付ける。
+  # 語彙を持たない収集は今までどおり件数の多い順
+  defp series_in_order(found, order) when is_list(order) do
+    extra = found |> Enum.uniq() |> Enum.reject(&(&1 in order)) |> Enum.sort()
+    order ++ extra
+  end
+
+  defp series_in_order(found, _order) do
+    found
+    |> Enum.frequencies()
+    |> Enum.sort_by(fn {series, count} -> {-count, series} end)
+    |> Enum.map(&elem(&1, 0))
   end
 
   @doc """

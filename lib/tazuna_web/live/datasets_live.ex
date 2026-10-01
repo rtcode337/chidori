@@ -758,8 +758,9 @@ defmodule TazunaWeb.DatasetsLive do
 
   # **抽出の指定を持たない対象もある**（技術書は記事を溜めてからタグで数えるので、
   # 辞典から引かない）。持たなければ nil で、画面はその見出しごと出さない
-  def extract_text(%{dataset: %{module: module}}) do
-    if defines?(module, :extract, 0), do: Jason.encode!(module.extract(), pretty: true)
+  def extract_text(%{dataset: %{module: module} = dataset}) do
+    if defines?(module, :extract, 0),
+      do: Jason.encode!(Datasets.call(dataset, :extract), pretty: true)
   end
 
   @doc "区画の割り方。**座標で割るので、鍵は矩形になります**。"
@@ -770,7 +771,7 @@ defmodule TazunaWeb.DatasetsLive do
   def partition_text(%{dataset: %{module: module} = dataset}) do
     if defines?(module, :partition, 1) do
       plan = Datasets.plan(dataset)
-      Jason.encode!(module.partition([plan.lat, plan.lon]), pretty: true)
+      Jason.encode!(Datasets.call(dataset, :partition, [[plan.lat, plan.lon]]), pretty: true)
     end
   end
 

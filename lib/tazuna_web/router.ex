@@ -29,6 +29,7 @@ defmodule TazunaWeb.Router do
 
     # 依頼を出す画面。送るのも読み直すのも Chiezo への往復なので、押した人を待たせない
     live "/datasets", DatasetsLive, :index
+    live "/datasets/areas", MealAreasLive, :index
 
     # 集めたものを travel-log 用の ZIP で渡す。**ファイルを返すだけなので LiveView に
     # 載せない**（押したら降ってくる、以上の状態を持たない）

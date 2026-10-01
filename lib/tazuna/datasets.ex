@@ -16,14 +16,30 @@ defmodule Tazuna.Datasets do
 
   alias Tazuna.Chiezo
   alias Tazuna.Datasets.Books
+  alias Tazuna.Datasets.MealAreas
   alias Tazuna.Datasets.Meals
   alias Tazuna.Datasets.SurveyPlan
   alias Tazuna.Datasets.SurveyPlans
 
   @doc """
   tazuna が持っている収集の対象。**この並びがタブの並び**。
+
+  **食事処は範囲ごとに 1 つ**（`Tazuna.Datasets.MealAreas`。画面で地図に四角を描いて
+  足す）。日本全体を 1 つで回していた頃は、費用がかさみ抜け漏れも多すぎた ——
+  全国版（`Meals.definition/0`）はタブに出さない（Chiezo の収集は止めて残す）。
   """
-  def defined, do: [Books.definition(), Meals.definition()]
+  def defined, do: [Books.definition() | Enum.map(MealAreas.list(), &Meals.definition/1)]
+
+  @doc """
+  対象の関数を呼びます。**範囲を持つ対象（食事処）は、範囲を最後の引数に足して呼ぶ**
+  —— 名簿・区画・起点・依頼の中身が範囲で変わるため。範囲を持たない対象はそのまま。
+  """
+  def call(%{module: module} = dataset, fun, args \\ []) do
+    case dataset[:area] do
+      nil -> apply(module, fun, args)
+      area -> apply(module, fun, args ++ [area])
+    end
+  end
 
   @doc "対象の一覧（定義の順）。"
   def list, do: defined()
@@ -67,16 +83,28 @@ defmodule Tazuna.Datasets do
   **既にある収集には送り直しが要ります。** 作るときの `POST` は「もうある」で
   断られるので、それだけだと tazuna 側で依頼文や区画を直しても永遠に届きません。
   """
-  def push(%{module: module, collection: name} = dataset, choices \\ %{}) do
-    # **起点は tazuna が持っているものを送る**（画面で決め直したもの）。定義の既定を
-    # 送ると、送り直すたびに東京駅へ戻る
-    attrs = module.attrs(choices) |> with_origin(dataset)
-
+  def push(%{collection: name} = dataset, choices \\ %{}) do
     with {:ok, base} <- base_url(),
          {:ok, existing} <- Chiezo.collection(base, name) do
+      # **起点は tazuna が持っているものを送る**（画面で決め直したもの）。定義の既定を
+      # 送ると、送り直すたびに東京駅へ戻る
+      attrs = dataset |> carrying(base) |> call(:attrs, [choices]) |> with_origin(dataset)
       if existing, do: Chiezo.patch(base, name, attrs), else: Chiezo.request(base, attrs)
     end
   end
+
+  # **引き継ぐ元が Chiezo に残っていれば、範囲の名簿に加える**（`Meals.carry_from/0`）。
+  # 残っていないのに名簿に書くと、名簿の回が「ソースがありません」で落ちる
+  defp carrying(%{area: area, module: module} = dataset, base) when not is_nil(area) do
+    Code.ensure_loaded(module)
+
+    if function_exported?(module, :carry_from, 0) and
+         Chiezo.docs_count(base, module.carry_from()) > 0,
+       do: %{dataset | area: Map.put(area, :carry, true)},
+       else: dataset
+  end
+
+  defp carrying(dataset, _base), do: dataset
 
   @doc """
   起点と時刻（tazuna が持つもの）。**起点を決めていなければ、対象の既定**
@@ -100,8 +128,8 @@ defmodule Tazuna.Datasets do
 
   def uses_origin?(_dataset), do: false
 
-  defp default_origin(%{module: module}) do
-    if function_exported?(module, :default_origin, 0), do: module.default_origin()
+  defp default_origin(%{module: module} = dataset) do
+    if function_exported?(module, :default_origin, 0), do: call(dataset, :default_origin)
   end
 
   @doc """
@@ -112,21 +140,22 @@ defmodule Tazuna.Datasets do
   tazuna に保存できても Chiezo へ送れなかったときは `{:error, {:not_sent, 理由}}` ——
   次に「収集の設定を更新」を押せば、保存した起点が送られます。
   """
-  def put_origin(%{module: module, collection: name}, place) do
+  def put_origin(%{collection: name} = dataset, place) do
     with {:ok, plan} <- SurveyPlans.put_place(name, place) do
-      case send_origin(module, name, plan) do
+      case send_origin(dataset, name, plan) do
         :ok -> {:ok, plan}
         {:error, reason} -> {:error, {:not_sent, reason}}
       end
     end
   end
 
-  defp send_origin(module, name, plan) do
+  defp send_origin(dataset, name, plan) do
     with {:ok, base} <- base_url(),
          {:ok, existing} <- Chiezo.collection(base, name) do
       # まだ収集が無ければ送る先が無い（作るときに、保存した起点が載る）
       if existing,
-        do: Chiezo.patch(base, name, %{partition: module.partition([plan.lat, plan.lon])}),
+        do:
+          Chiezo.patch(base, name, %{partition: call(dataset, :partition, [[plan.lat, plan.lon]])}),
         else: :ok
     end
   end

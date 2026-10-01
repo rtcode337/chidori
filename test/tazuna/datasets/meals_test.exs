@@ -444,4 +444,60 @@ defmodule Tazuna.Datasets.MealsTest do
     assert Enum.any?(rows, &(&1.field =~ "座標"))
     assert Enum.any?(rows, &(&1.field =~ "ランク"))
   end
+
+  describe "範囲ごとの収集" do
+    @area %{id: 3, name: "東京駅", south: 35.67, west: 139.75, north: 35.69, east: 139.78}
+
+    test "収集の名前は範囲ごと" do
+      assert Meals.collection(@area) == "tazuna_dining_3"
+      assert Meals.definition(@area).collection == "tazuna_dining_3"
+    end
+
+    test "3 つの辞典を範囲の四角で絞る" do
+      specs = Meals.extract(@area)
+
+      assert Enum.map(specs, & &1.source) == ["jawiki", "osm_japan", "overture_japan"]
+      for spec <- specs, do: assert(spec.bbox == [35.67, 139.75, 35.69, 139.78])
+    end
+
+    test "全国版が残っていれば、AI が直した中身を最初の辞典として引き継ぐ" do
+      [carry | _rest] = Meals.extract(Map.put(@area, :carry, true))
+
+      assert carry.source == Meals.carry_from()
+      assert carry.bbox == [35.67, 139.75, 35.69, 139.78]
+      # 中身で勝つ（辞典の定型の本文より、AI が書いた説明を採る）
+      assert "body" in carry.provides
+      assert carry.body == "body"
+    end
+
+    test "区画は範囲の四角を、全国より細かく割る" do
+      partition = Meals.partition([35.68, 139.765], @area)
+
+      assert partition.bbox == [35.67, 139.75, 35.69, 139.78]
+      assert partition.target < Meals.partition().target
+    end
+
+    test "起点の既定は範囲の真ん中" do
+      origin = Meals.default_origin(@area)
+
+      assert {origin.lat, origin.lon} == {35.68, 139.765}
+    end
+
+    test "依頼の中身も範囲のもの" do
+      attrs = Meals.attrs(%{}, @area)
+
+      assert attrs.name == "tazuna_dining_3"
+      assert attrs.partition.bbox == [35.67, 139.75, 35.69, 139.78]
+      assert Enum.all?(attrs.extract, &(&1.bbox == [35.67, 139.75, 35.69, 139.78]))
+    end
+
+    test "travel-log へは範囲によらず同じ種別に書き出し、key に範囲の番号を付ける" do
+      definition = Meals.definition(@area)
+
+      assert definition.export_key == "dining"
+      assert definition.key_prefix == "3-"
+      # 全国版とは別の種別
+      refute definition.export_key == Meals.definition().key
+    end
+  end
 end

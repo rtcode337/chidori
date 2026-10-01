@@ -4,7 +4,7 @@ defmodule Tazuna.Datasets.TravelLogTest do
   alias Tazuna.Datasets
   alias Tazuna.Datasets.TravelLog
 
-  defp dataset, do: Datasets.get("meals")
+  defp dataset, do: Tazuna.Datasets.Meals.definition()
 
   defp doc(overrides) do
     Map.merge(
@@ -197,6 +197,36 @@ defmodule Tazuna.Datasets.TravelLogTest do
       assert TravelLog.exportable?(dataset())
       refute TravelLog.exportable?(%{module: Enum})
       refute TravelLog.exportable?(%{})
+    end
+  end
+
+  describe "範囲の収集の書き出し" do
+    @area %{id: 3, name: "東京駅", south: 35.67, west: 139.75, north: 35.69, east: 139.78}
+
+    test "スポットの key に範囲の番号を付ける（範囲どうしで key をぶつけない）" do
+      doc = %{
+        "doc_id" => 1234,
+        "title" => "店",
+        "tags" => ["食事処", "地域:神奈川県"],
+        "extra" => %{"lat" => 35.681, "lon" => 139.767}
+      }
+
+      assert TravelLog.row(doc, Tazuna.Datasets.Meals.definition(@area))["key"] == "3-1234"
+    end
+
+    test "シリーズは語彙の順に固定する（読み込むたびに並びも色も入れ替わらない）" do
+      rows = [%{"series" => "和食"}, %{"series" => "和食"}, %{"series" => "カレー"}]
+      order = Tazuna.Datasets.Meals.genre_order()
+
+      %{"series" => series} =
+        Jason.decode!(TravelLog.settings_json("dining", "食事処", rows, nil, order))
+
+      names = Enum.map(series, & &1["series"])
+
+      # 店に無いジャンルも並ぶ（別の範囲にしか無いジャンルを落とさない）
+      assert Enum.take(names, length(order)) == order
+      # 語彙に無いジャンルは後ろに
+      assert List.last(names) == "カレー"
     end
   end
 end
