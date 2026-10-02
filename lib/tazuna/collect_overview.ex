@@ -73,6 +73,8 @@ defmodule Tazuna.CollectOverview do
           %{
             name: sweep["name"],
             enabled: sweep["enabled"] != false,
+            # 時計を外した巡回（依頼元が名指しで起こす。整理を自動で回さない収集など）
+            by_caller: sweep["by_caller"] == true,
             clock: clock(sweep, collection["name"]),
             # **ワーカーは `worker` の欄に入っている**（`backend` は相手を名指ししたときだけ）
             backend:
@@ -128,6 +130,9 @@ defmodule Tazuna.CollectOverview do
 
       sweep["once"] ->
         "一度きり"
+
+      sweep["by_caller"] ->
+        "自動では回さない"
 
       is_integer(sweep["interval_minutes"]) ->
         every(sweep["interval_minutes"])

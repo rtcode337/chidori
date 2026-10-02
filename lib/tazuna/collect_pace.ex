@@ -21,6 +21,16 @@ defmodule Tazuna.CollectPace do
 
   **保存したら Chiezo にも送ります**（`apply/1`）。送るのは巡回の間隔だけで、
   画面で選んだ相手や依頼文には触りません（Chiezo の `PATCH …/sweeps/{sweep}`）。
+
+  ## 整理を自動で回さない収集
+
+  **AI の枠を節約したい収集は、整理だけを自動で回さないようにできます**
+  （`stop_tidy/3`）。巡回は消さずに Chiezo の時計だけを外す（`by_caller`）ので、
+  割り込みや travel-log からの依頼の行き先としては今までどおり走ります。
+
+  **選んだものは tazuna が覚えて、収集の設定を送るたびに載せ直します**
+  （`with_stops/2`。`Tazuna.Chiezo.request/2` と `patch/3` が通す）—— 各画面の
+  「収集の設定を更新」は巡回を並びごと送るので、載せないと時計が戻る。
   """
 
   import Ecto.Changeset
@@ -36,6 +46,17 @@ defmodule Tazuna.CollectPace do
     schema "collect_paces" do
       field(:kind, :string)
       field(:minutes, :integer)
+
+      timestamps(type: :utc_datetime)
+    end
+  end
+
+  defmodule TidyStop do
+    @moduledoc false
+    use Ecto.Schema
+
+    schema "tidy_stops" do
+      field(:collection, :string)
 
       timestamps(type: :utc_datetime)
     end
@@ -73,17 +94,94 @@ defmodule Tazuna.CollectPace do
     max(round(days_at_default * minutes(kind) / default(kind)), 1)
   end
 
-  @doc "保存してある間隔を読み込みます（起動時）。**読めなければ既定のまま**。"
+  @doc """
+  保存してある間隔と、整理を自動で回さない収集を読み込みます（起動時）。
+  **読めなければ既定のまま**。
+  """
   def load_all do
     for %Setting{kind: kind, minutes: minutes} <- Repo.all(Setting),
         kind in Enum.map(kinds(), &to_string/1) do
       :persistent_term.put({__MODULE__, String.to_existing_atom(kind)}, minutes)
     end
 
+    stops = TidyStop |> Repo.all() |> MapSet.new(& &1.collection)
+    :persistent_term.put({__MODULE__, :tidy_stops}, stops)
     :ok
   rescue
     _error -> :ok
   end
+
+  @doc "整理を自動で回さない収集か。読み込んでいなければ「回す」。"
+  def tidy_stopped?(collection), do: MapSet.member?(tidy_stops(), collection)
+
+  defp tidy_stops, do: :persistent_term.get({__MODULE__, :tidy_stops}, MapSet.new())
+
+  @doc """
+  整理を自動で回すか決めます（`stop?` が true で回さない）。**保存してから Chiezo へ
+  送ります**（`base` が nil なら保存だけ）。
+
+  返すのは `:ok`、`{:ok, :not_sent}`（保存したが送れなかった。次に「収集の設定を
+  更新」を押せば載る）、`{:error, 理由}`（保存できなかった）。
+  """
+  def stop_tidy(collection, stop?, base) when is_binary(collection) and is_boolean(stop?) do
+    with :ok <- save_stop(collection, stop?) do
+      case base && Chiezo.set_sweep_by_caller(base, collection, SweepNames.tidy(), stop?) do
+        :ok -> :ok
+        # 整理を持たない収集・まだ作っていない収集は、送る先が無いだけ
+        {:error, :not_found} -> :ok
+        _not_sent -> {:ok, :not_sent}
+      end
+    end
+  end
+
+  defp save_stop(collection, true) do
+    %TidyStop{collection: collection}
+    |> Ecto.Changeset.change()
+    |> Repo.insert(on_conflict: :nothing, conflict_target: :collection)
+    |> case do
+      {:ok, _row} ->
+        :persistent_term.put({__MODULE__, :tidy_stops}, MapSet.put(tidy_stops(), collection))
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp save_stop(collection, false) do
+    import Ecto.Query
+    Repo.delete_all(from(t in TidyStop, where: t.collection == ^collection))
+    :persistent_term.put({__MODULE__, :tidy_stops}, MapSet.delete(tidy_stops(), collection))
+    :ok
+  end
+
+  @doc """
+  送る設定に、整理を自動で回さないことを載せます（`by_caller: true`）。巡回を
+  持たない設定や、止めていない収集はそのまま返します。
+  """
+  def with_stops(collection, %{} = attrs) do
+    key = if Map.has_key?(attrs, :sweeps), do: :sweeps, else: "sweeps"
+
+    case Map.get(attrs, key) do
+      sweeps when is_list(sweeps) and is_binary(collection) ->
+        if tidy_stopped?(collection),
+          do: Map.put(attrs, key, Enum.map(sweeps, &stop_if_tidy/1)),
+          else: attrs
+
+      _none ->
+        attrs
+    end
+  end
+
+  def with_stops(_collection, attrs), do: attrs
+
+  defp stop_if_tidy(%{} = sweep) do
+    name = sweep[:name] || sweep["name"]
+    key = if Map.has_key?(sweep, "name"), do: "by_caller", else: :by_caller
+    if name == SweepNames.tidy(), do: Map.put(sweep, key, true), else: sweep
+  end
+
+  defp stop_if_tidy(sweep), do: sweep
 
   @doc """
   間隔を保存します。**選べる値のほかは断ります**（`{:error, :not_a_choice}`）。
@@ -118,6 +216,8 @@ defmodule Tazuna.CollectPace do
             Tazuna.CollectOverview.ours?(collection),
             sweep <- collection["sweeps"] || [],
             sweep["on_demand"] != true,
+            # 時計を外した巡回（整理を自動で回さない収集など）には、間隔を送っても断られる
+            sweep["by_caller"] != true,
             kind <- kinds(),
             sweep["name"] == sweep_name(kind) do
           name = collection["name"]

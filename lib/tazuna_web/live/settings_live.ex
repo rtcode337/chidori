@@ -25,7 +25,8 @@ defmodule TazunaWeb.SettingsLive do
        tabs: @tabs,
        overview: nil,
        home_keys: [],
-       pace_message: nil
+       pace_message: nil,
+       tidy_message: nil
      )}
   end
 
@@ -69,6 +70,13 @@ defmodule TazunaWeb.SettingsLive do
     {:noreply, socket |> assign(pace_message: pace_text(result)) |> load("chiezo")}
   end
 
+  def handle_async(:tidy, {:ok, {name, stop?, result}}, socket) do
+    {:noreply, socket |> assign(tidy_message: tidy_text(name, stop?, result)) |> load("chiezo")}
+  end
+
+  def handle_async(:tidy, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, tidy_message: "保存できませんでした。")}
+
   def handle_async(:pace, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, pace_message: pace_text({:error, :chiezo_unavailable}))}
 
@@ -102,6 +110,18 @@ defmodule TazunaWeb.SettingsLive do
     end
   end
 
+  # 整理を自動で回すか。**保存してから Chiezo へ送る**（送れなくても、次に各画面で
+  # 「収集の設定を更新」を押したときに載る）
+  def handle_event("toggle_tidy", %{"name" => name, "stop" => stop}, socket) do
+    stop? = stop == "true"
+    base = News.chiezo_base_url()
+
+    {:noreply,
+     socket
+     |> assign(tidy_message: nil)
+     |> start_async(:tidy, fn -> {name, stop?, CollectPace.stop_tidy(name, stop?, base)} end)}
+  end
+
   # **並びは送られてきた順**（チェックした枠の順番の欄で決める）
   def handle_event("save_home", params, socket) do
     keys =
@@ -125,6 +145,20 @@ defmodule TazunaWeb.SettingsLive do
       :error -> 999
     end
   end
+
+  @doc "整理を止めた・戻した結果の言い方。"
+  def tidy_text(name, true, :ok),
+    do: "#{name} の整理を自動で回さないようにしました（割り込みや依頼では今までどおり走ります）。"
+
+  def tidy_text(name, false, :ok), do: "#{name} の整理を自動で回すように戻しました。"
+
+  def tidy_text(name, _stop?, {:ok, :not_sent}),
+    do: "#{name} の選択は保存しましたが、Chiezo へ送れませんでした。その収集の画面で「収集の設定を更新」を押すと送られます。"
+
+  def tidy_text(_name, _stop?, {:error, _reason}), do: "保存できませんでした。"
+
+  @doc "整理の巡回か（止める・戻す口を出す）。"
+  def tidy_sweep?(sweep), do: sweep.name == Tazuna.SweepNames.tidy()
 
   @doc "間隔を送った結果の言い方。"
   def pace_text({:ok, %{sent: sent, failed: []}}),

@@ -16,6 +16,7 @@ defmodule TazunaWeb.SettingsLiveTest do
     on_exit(fn ->
       System.delete_env("CHIEZO_BASE_URL")
       for kind <- CollectPace.kinds(), do: :persistent_term.erase({CollectPace, kind})
+      :persistent_term.erase({CollectPace, :tidy_stops})
     end)
 
     parent = self()
@@ -62,5 +63,20 @@ defmodule TazunaWeb.SettingsLiveTest do
     assert_receive {:patched, "http://chiezo.test/v1/collect/tazuna_tech/sweeps/整理", body}
     assert body["interval_minutes"] == 1440
     assert render_async(live) =~ "1 本の巡回に送りました"
+  end
+
+  test "整理を自動で回さないようにでき、Chiezo の整理の時計を外す", %{conn: conn} do
+    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    render_async(live)
+
+    live |> element("button.tidy-toggle") |> render_click()
+    html = render_async(live)
+
+    assert CollectPace.tidy_stopped?("tazuna_tech")
+
+    assert_received {:patched, "http://chiezo.test/v1/collect/tazuna_tech/sweeps/整理",
+                     %{"by_caller" => true}}
+
+    assert html =~ "整理を自動で回さないようにしました"
   end
 end

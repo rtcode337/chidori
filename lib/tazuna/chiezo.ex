@@ -206,7 +206,21 @@ defmodule Tazuna.Chiezo do
   1 回に見る区画の数は一周の日数から逆算されるので、間隔だけでは使う枠が変わらない。
   """
   def set_sweep_clock(base, name, sweep, minutes) do
-    body = Jason.encode!(%{interval_minutes: minutes, keep_per_run: true})
+    patch_sweep(base, name, sweep, %{interval_minutes: minutes, keep_per_run: true})
+  end
+
+  @doc """
+  巡回 1 本の**時計を外す / 戻す**（`by_caller`。同じ口）。外した巡回は Chiezo の
+  時計では走らず、名指しの 1 回（`run/3` の `sweep`）や割り込みの行き先としては
+  今までどおり走る。AI の枠を節約したい収集の整理を止めるのに使う
+  （`Tazuna.CollectPace.stop_tidy/3`）。
+  """
+  def set_sweep_by_caller(base, name, sweep, on) when is_boolean(on) do
+    patch_sweep(base, name, sweep, %{by_caller: on})
+  end
+
+  defp patch_sweep(base, name, sweep, attrs) do
+    body = Jason.encode!(attrs)
 
     url =
       base <>
@@ -265,6 +279,9 @@ defmodule Tazuna.Chiezo do
   ありません。すでにあれば何もしません（409 は成功として扱う）。
   """
   def request(base, attrs) do
+    # 整理を自動で回さないと決めた収集は、作るときから時計を外して送る
+    attrs = Tazuna.CollectPace.with_stops(attrs[:name] || attrs["name"], attrs)
+
     case post(base <> "/v1/collect", Jason.encode!(attrs)) do
       {:ok, %{status: status}} when status in 200..299 -> :ok
       {:ok, %{status: 409}} -> :ok
@@ -283,6 +300,9 @@ defmodule Tazuna.Chiezo do
   """
   def patch(base, name, attrs) do
     url = base <> "/v1/collect/" <> name
+
+    # **巡回を並びごと送るときは、整理を自動で回さないことも載せ直す**（載せないと時計が戻る）
+    attrs = Tazuna.CollectPace.with_stops(name, attrs)
 
     case Http.patch(url, Jason.encode!(attrs),
            headers: [{"user-agent", @user_agent}],

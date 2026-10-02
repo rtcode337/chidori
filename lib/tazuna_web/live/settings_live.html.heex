@@ -56,6 +56,9 @@
         <button type="button" phx-click="reload" phx-disable-with="読んでいます…">読み直す</button>
       </div>
 
+      <%!-- 整理を止めた・戻した結果。**表の外に置く**（送ったあと表を読み直すので、
+           表の中だと読み直しているあいだ消える） --%>
+      <p :if={@tidy_message} class="muted-note" aria-live="polite">{@tidy_message}</p>
       <p :if={@overview in [nil, :loading]} class="muted-note">読み込んでいます…</p>
       <p :if={match?({:error, _}, @overview)} class="muted-note">{error_text(@overview)}</p>
 
@@ -125,6 +128,9 @@
 
         <section class="settings-block">
           <h3>収集（{length(overview.collections)} 本）</h3>
+          <p class="muted-note">
+            AI の枠を節約したい収集は、整理の「自動で回さない」を押すと、整理だけが自動では回らなくなります（巡回は消さないので、割り込みや travel-log からの依頼では今までどおり走ります）。選んだものは tazuna が覚えていて、収集の設定を送り直すたびに載せ直します。
+          </p>
           <table class="collect-overview">
             <thead>
               <tr>
@@ -147,7 +153,24 @@
                   >止まっています</span>
                 </td>
                 <td>
-                  {sweep.name}<span :if={!sweep.enabled} class="muted-note">（止めています）</span>
+                  {sweep.name}<span
+                    :if={!sweep.enabled and !sweep.by_caller}
+                    class="muted-note"
+                  >（止めています）</span>
+                  <%!-- **整理だけは、ここで自動で回すかを決められる**（AI の枠の節約）。
+                       時計を外すだけなので、割り込みや依頼の行き先としては走る --%>
+                  <br :if={tidy_sweep?(sweep)} />
+                  <button
+                    :if={tidy_sweep?(sweep)}
+                    type="button"
+                    class="tidy-toggle"
+                    phx-click="toggle_tidy"
+                    phx-value-name={collection.name}
+                    phx-value-stop={to_string(!sweep.by_caller)}
+                    phx-disable-with="送っています…"
+                  >
+                    {if sweep.by_caller, do: "自動で回す", else: "自動で回さない"}
+                  </button>
                 </td>
                 <td>{sweep.clock}</td>
                 <td>
