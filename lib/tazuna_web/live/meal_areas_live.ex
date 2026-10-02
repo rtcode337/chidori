@@ -13,11 +13,17 @@ defmodule TazunaWeb.MealAreasLive do
 
   四角を決めると、**中にある店の数（辞典ごと）と区画の数の見込み**をその場で出す ——
   広すぎる範囲は日本全体と同じことになる（一周のめどが立たない）。
+
+  **作った範囲は地図に名前つきで出し、直せます。** 四角を変えたら、Chiezo の収集へ
+  範囲で決まるところ（名簿の指定・区画）を送り、機械収集から走らせ直す
+  （`Tazuna.Datasets.reshape/1`）—— 送るだけだと、広げたぶんの店が名簿に入らない
+  （機械収集は一度きりの回で、もう走らない）。
   """
 
   use TazunaWeb, :live_view
 
   alias Tazuna.Chiezo
+  alias Tazuna.Datasets
   alias Tazuna.Datasets.MealAreas
   alias Tazuna.Datasets.Meals
 
@@ -32,7 +38,11 @@ defmodule TazunaWeb.MealAreasLive do
     {:ok,
      assign(socket,
        page_title: "食事処の範囲",
+       # データ収集の画面と同じタブ（この画面は「＋ 食事処の範囲」のタブにあたる）
+       datasets: Datasets.list(),
        areas: MealAreas.list(),
+       # 直している範囲（nil なら足している）
+       editing: nil,
        map: Tazuna.Datasets.Map.blank(),
        draft: empty_draft(),
        errors: [],
@@ -117,6 +127,74 @@ defmodule TazunaWeb.MealAreasLive do
     end
   end
 
+  # 作った範囲を直し始める（四角を欄に入れ、地図をその範囲へ寄せる）
+  def handle_event("edit_area", %{"id" => id}, socket) do
+    case find_area(socket, id) do
+      %MealAreas{} = area ->
+        socket =
+          socket
+          |> assign(editing: area, draft: draft_of(area), marker: nil, places: nil)
+          |> set_box(MealAreas.bbox(area))
+
+        {:noreply, frame(socket, MealAreas.bbox(area))}
+
+      nil ->
+        {:noreply, socket}
+    end
+  end
+
+  # 地図をその範囲へ寄せるだけ（直さない）
+  def handle_event("show_area", %{"id" => id}, socket) do
+    case find_area(socket, id) do
+      %MealAreas{} = area -> {:noreply, frame(socket, MealAreas.bbox(area))}
+      nil -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("cancel_edit", _params, socket) do
+    {:noreply, assign(socket, editing: nil, draft: empty_draft(), estimate: nil, errors: [])}
+  end
+
+  def handle_event("save", %{"area" => params}, socket) do
+    draft = Map.merge(socket.assigns.draft, Map.take(params, Map.keys(empty_draft())))
+    before = socket.assigns.editing
+
+    case before && MealAreas.update(before, draft) do
+      {:ok, area} ->
+        socket =
+          assign(socket,
+            areas: MealAreas.list(),
+            datasets: Datasets.list(),
+            editing: nil,
+            draft: empty_draft(),
+            estimate: nil,
+            errors: []
+          )
+
+        if MealAreas.box_changed?(before, area) do
+          dataset = Meals.definition(area)
+
+          {:noreply,
+           socket
+           |> put_flash(:info, "範囲「#{area.name}」を直しました。Chiezo に送っています…")
+           |> start_async(:reshape, fn -> {area, Datasets.reshape(dataset)} end)}
+        else
+          {:noreply,
+           put_flash(
+             socket,
+             :info,
+             "範囲「#{area.name}」の名前を直しました（四角は変わっていないので、走らせ直しません）。"
+           )}
+        end
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, draft: draft, errors: error_lines(changeset))}
+
+      nil ->
+        {:noreply, socket}
+    end
+  end
+
   def handle_event("create", %{"area" => params}, socket) do
     draft = Map.merge(socket.assigns.draft, Map.take(params, Map.keys(empty_draft())))
 
@@ -138,10 +216,16 @@ defmodule TazunaWeb.MealAreasLive do
   def handle_event("delete", %{"id" => id}, socket) do
     with {n, ""} <- Integer.parse(id), %MealAreas{} = area <- MealAreas.get(n) do
       MealAreas.delete(area)
+      editing = socket.assigns.editing
+
+      socket =
+        if editing && editing.id == area.id,
+          do: assign(socket, editing: nil, draft: empty_draft(), estimate: nil),
+          else: socket
 
       {:noreply,
        socket
-       |> assign(areas: MealAreas.list())
+       |> assign(areas: MealAreas.list(), datasets: Datasets.list())
        |> put_flash(
          :info,
          "範囲「#{area.name}」を外しました。Chiezo の収集（#{Meals.collection(area)}）は残っているので、要らなければ Chiezo の画面で止めるか消してください。"
@@ -166,6 +250,47 @@ defmodule TazunaWeb.MealAreasLive do
 
   def handle_async(:estimate, {:exit, _}, socket),
     do: {:noreply, assign(socket, estimate: {:error, :chiezo_unavailable})}
+
+  def handle_async(:reshape, {:ok, {area, result}}, socket) do
+    {kind, text} = reshape_message(area, result)
+    {:noreply, put_flash(socket, kind, text)}
+  end
+
+  def handle_async(:reshape, {:exit, _}, socket) do
+    {:noreply,
+     put_flash(
+       socket,
+       :error,
+       "範囲は保存しましたが、Chiezo へ送る途中で止まりました。データ収集の画面で「収集の設定を更新」を押してから、機械収集を走らせてください。"
+     )}
+  end
+
+  @doc "範囲を直したあとの一言（Chiezo へ送った結果ごと）。"
+  def reshape_message(area, :ok),
+    do:
+      {:info,
+       "範囲「#{area.name}」を Chiezo に送り、機械収集から走らせ直しました。" <>
+         "区画は新しい範囲で割り直され、整理は一周目からになります。"}
+
+  def reshape_message(area, {:ok, :not_requested}),
+    do:
+      {:info,
+       "範囲「#{area.name}」を直しました。Chiezo にはまだ収集が無いので、" <>
+         "データ収集の画面で「収集の設定を更新」を押すと新しい範囲で作られます。"}
+
+  def reshape_message(area, {:error, {:not_run, reason}}),
+    do:
+      {:error,
+       "範囲「#{area.name}」を Chiezo に送りましたが、機械収集を走らせられませんでした。" <>
+         TazunaWeb.Collect.reason_text(reason) <>
+         "動かせるようになったら、Chiezo の画面で機械収集を走らせてください（広げたぶんの店は、それまで名簿に入りません）。"}
+
+  def reshape_message(area, {:error, reason}),
+    do:
+      {:error,
+       "範囲「#{area.name}」は保存しましたが、Chiezo へ送れませんでした。" <>
+         TazunaWeb.Collect.reason_text(reason) <>
+         "データ収集の画面で「収集の設定を更新」を押してから、機械収集を走らせてください。"}
 
   defp set_box(socket, [s, w, n, e]) do
     draft =
@@ -208,6 +333,38 @@ defmodule TazunaWeb.MealAreasLive do
   end
 
   defp current_box(socket), do: box_of(socket.assigns.draft)
+
+  defp find_area(socket, id) do
+    with {n, ""} <- Integer.parse(to_string(id)) do
+      Enum.find(socket.assigns.areas, &(&1.id == n))
+    else
+      _other -> nil
+    end
+  end
+
+  defp draft_of(area) do
+    [s, w, n, e] = MealAreas.bbox(area)
+
+    %{
+      "name" => area.name,
+      "south" => fmt(s),
+      "west" => fmt(w),
+      "north" => fmt(n),
+      "east" => fmt(e)
+    }
+  end
+
+  # 地図をその四角へ寄せる（四角が画面に収まる倍率で、真ん中に）
+  defp frame(socket, box) do
+    r = Tazuna.Datasets.Map.box(socket.assigns.map, box)
+
+    push_event(socket, "map_frame", %{
+      x: r.x + r.width / 2,
+      y: r.y + r.height / 2,
+      w: r.width,
+      h: r.height
+    })
+  end
 
   defp box_of(draft) do
     case Enum.map(~w(south west north east), &number(draft[&1])) do

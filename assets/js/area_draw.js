@@ -4,6 +4,7 @@
 // （器に `is-drawing` を付け、共通の仕組みの `skip` に当てて移動を止める）。
 // 描き終えたら緯度経度に直してサーバーへ送り、描く状態を抜けます。
 import {panZoom} from "./pan_zoom"
+import {paintTiles} from "./gsi_tiles"
 
 // 区や駅の細かさまで寄れるようにする（日本全体の図で 1 km はおよそ 0.04 単位）
 const MAX_SCALE = 2000
@@ -12,16 +13,8 @@ const MIN_SCALE = 0.2
 const FOCUS_SCALE = 200
 // ピンを、画面の上で何倍に見せるか
 const PIN_PX = 1.4
-
-// 地理院タイル（標準地図）。**図と同じメルカトル**なので、図の座標へそのまま 1 次で重なる
-const TILE_URL = "https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png"
-// 標準地図が配っている段。これより粗い段（日本全体を見ているとき）は白地図だけにする
-const TILE_MIN_Z = 5
-const TILE_MAX_Z = 18
-// 1 枚のタイルを画面で何 px くらいに見せるか（256 が等倍）
-const TILE_PX = 256
-// 一度に並べる枚数の上限（大きな画面で寄ると増える。これを超えたら 1 段粗くする）
-const TILE_MAX = 120
+// 作った範囲へ寄るとき、四角が画面のどれだけを占めるようにするか
+const FRAME_FILL = 0.7
 
 // 取っ手の太さ（画面の px。倍率で割り戻して、寄っても引いても同じ太さに見せる）
 const HANDLE_PX = 14
@@ -34,12 +27,23 @@ const latOf = (merc) => (2 * Math.atan(Math.exp(merc * Math.PI / 180)) - Math.PI
 export default panZoom({
   // **描いているあいだは図を動かさない**（器ごと skip に当てる）
   // **取っ手をつかんだときも図を動かさない**（四角の大きさを変える操作になる）
-  skip: "[data-zoom], .relation-find, .is-drawing, [data-handle]",
+  // **作った範囲の札も図を動かさない**（押すとその範囲を直し始める）
+  skip: "[data-zoom], .relation-find, .is-drawing, [data-handle], [data-area-label]",
   minScale: MIN_SCALE,
   maxScale: MAX_SCALE,
 
   started() {
     this.handleEvent("map_focus", ({x, y}) => this.centerOn(x, y, FOCUS_SCALE))
+    // 作った範囲へ寄る。**四角が画面に収まる倍率**にする（範囲の大きさはまちまちなので、
+    // 決まった倍率で寄ると、大きい範囲ははみ出し、小さい範囲は点になる）
+    this.handleEvent("map_frame", ({x, y, w, h}) => {
+      const box = this.el.getBoundingClientRect()
+      const vw = this.base && this.base[2]
+      if (!(vw > 0) || !(box.width > 0) || !(w > 0) || !(h > 0)) { return }
+      const fit = FRAME_FILL * Math.min(vw / w, (box.height * vw) / (box.width * h))
+      this.scale = Math.min(this.maxScale, Math.max(this.minScale, fit))
+      this.centerOn(x, y)
+    })
 
     this.onToggle = (ev) => {
       const button = ev.target.closest("[data-zoom='draw']")
@@ -234,94 +238,9 @@ export default panZoom({
     this.svg.querySelectorAll("[data-pin]").forEach(pin => {
       pin.setAttribute("transform", `translate(${pin.dataset.x} ${pin.dataset.y}) scale(${scale})`)
     })
-    this.paintTiles(ppu)
+    paintTiles(this, this.el.querySelector("#area-tiles"), ppu)
     // 引っ張っている最中はサーバーの四角を動かしているので、取っ手もそれに合わせる
     if (!this.resizing) { this.paintHandles() }
   },
 
-  // 見えている範囲に地理院タイルを並べる。**図の座標で位置を出し、画面の座標へ直して置く**
-  // （図の変換をそのまま使うので、引きずりにも拡大にもずれずに付いてくる）
-  paintTiles(ppu) {
-    const layer = this.el.querySelector("#area-tiles")
-    if (!layer) { return }
-    const west = parseFloat(this.svg.dataset.west)
-    const top = parseFloat(this.svg.dataset.top)
-    const scale = parseFloat(this.svg.dataset.scale)
-    // 1 枚が画面で TILE_PX くらいになる段
-    let z = Math.round(Math.log2(360 * scale * ppu / TILE_PX))
-    if (z < TILE_MIN_Z) { return this.clearTiles(layer) }
-    z = Math.min(z, TILE_MAX_Z)
-
-    const ctm = this.svg.getScreenCTM()
-    if (!ctm) { return }
-    const inverse = ctm.inverse()
-    const box = this.el.getBoundingClientRect()
-    const corner = (x, y) => {
-      const p = this.svg.createSVGPoint()
-      p.x = x
-      p.y = y
-      return p.matrixTransform(inverse)
-    }
-    // 器の隅を図の座標へ（viewBox より器のほうが広いことがあるので、器で測る）
-    const a = corner(box.left, box.top)
-    const b = corner(box.right, box.bottom)
-
-    let n, x0, x1, y0, y1
-    for (;;) {
-      n = 2 ** z
-      const tileX = (x) => Math.floor((west + x / scale + 180) / 360 * n)
-      const tileY = (y) => Math.floor((180 - (top - y / scale)) / 360 * n)
-      ;[x0, x1, y0, y1] = [tileX(a.x), tileX(b.x), tileY(a.y), tileY(b.y)]
-      if ((x1 - x0 + 1) * (y1 - y0 + 1) <= TILE_MAX || z <= TILE_MIN_Z) { break }
-      z -= 1
-    }
-
-    const unit = 360 / n * scale
-    const wanted = new Set()
-    for (let tx = Math.max(x0, 0); tx <= Math.min(x1, n - 1); tx++) {
-      for (let ty = Math.max(y0, 0); ty <= Math.min(y1, n - 1); ty++) {
-        const key = `${z}/${tx}/${ty}`
-        wanted.add(key)
-        let img = layer.querySelector(`img[data-key="${key}"]`)
-        if (!img) {
-          img = document.createElement("img")
-          img.dataset.key = key
-          img.alt = ""
-          img.decoding = "async"
-          img.referrerPolicy = "no-referrer"
-          img.onerror = () => { img.style.visibility = "hidden" }
-          img.src = TILE_URL.replace("{z}", z).replace("{x}", tx).replace("{y}", ty)
-          layer.appendChild(img)
-        }
-        // タイルの左上と右下を図の座標で出し、画面の座標へ
-        const sx = ((tx / n) * 360 - 180 - west) * scale
-        const sy = (top - (180 - (ty / n) * 360)) * scale
-        const p = this.svg.createSVGPoint()
-        p.x = sx
-        p.y = sy
-        const q = this.svg.createSVGPoint()
-        q.x = sx + unit
-        q.y = sy + unit
-        const s1 = p.matrixTransform(ctm)
-        const s2 = q.matrixTransform(ctm)
-        // 隣と端を合わせる（小数のまま置くと継ぎ目に細い隙間が出る）
-        const left = Math.floor(s1.x - box.left)
-        const topPx = Math.floor(s1.y - box.top)
-        img.style.left = `${left}px`
-        img.style.top = `${topPx}px`
-        img.style.width = `${Math.ceil(s2.x - box.left) - left}px`
-        img.style.height = `${Math.ceil(s2.y - box.top) - topPx}px`
-      }
-    }
-    // 見えなくなったものは外す（段が変わったときも）
-    layer.querySelectorAll("img").forEach(img => {
-      if (!wanted.has(img.dataset.key)) { img.remove() }
-    })
-    this.el.classList.toggle("has-tiles", wanted.size > 0)
-  },
-
-  clearTiles(layer) {
-    layer.replaceChildren()
-    this.el.classList.remove("has-tiles")
-  },
 })

@@ -115,21 +115,28 @@ defmodule TazunaWeb.DatasetsLive do
         # **本棚は覚え書きから出す**（開くたびには Chiezo へ取りに行かない）
         shelf: cached && cached.shelf,
         shelf_checked_at: cached && cached.checked_at,
-        # 対象を切り替えたら設定は閉じる（別の収集のもの。開けば読み直す）
-        settings_open: false
+        # 対象を切り替えたら、設定は対象ごとの既定に戻す（別の収集のもの）
+        settings_open: open_settings?(dataset)
       )
       |> assign_plan(dataset)
       |> assign(places: nil, place_query: "")
 
-    # **開いただけでは Chiezo と話さない。** 本棚は覚え書きを出し、設定は開いたときに
-    # 読む。**まだ 1 度も本棚を読んでいないときだけ**取りに行く（関連図の図と同じ）
+    # **本棚のある対象は、開いただけでは Chiezo と話さない。** 本棚は覚え書きを出し、
+    # 設定は開いたときに読む。**まだ 1 度も本棚を読んでいないときだけ**取りに行く
+    # （関連図の図と同じ）。本棚の無い対象は設定を開いて出すので、ここで読む
     {:noreply,
-     if (connected?(socket) and dataset[:derived]) && cached == nil do
-       read_shelf(socket, dataset)
-     else
-       socket
+     cond do
+       not connected?(socket) -> socket
+       socket.assigns.settings_open -> load_settings(socket)
+       dataset[:derived] && cached == nil -> read_shelf(socket, dataset)
+       true -> socket
      end}
   end
+
+  # 設定を開いた状態で出すか。**本棚を持たない対象（食事処の範囲）は開いて出す** ——
+  # 本棚が無いので、この画面で見るものは設定（区画の地図・巡回・依頼）しか無い。
+  # 畳んでおくと、開くたびに 1 手余計にかかる
+  defp open_settings?(dataset), do: is_nil(dataset[:derived])
 
   # 設定欄を開く・閉じる。**開いたときに Chiezo から読む** —— 設定は見たいときだけ
   # 見るもので、本棚を見に来るたびに収集の状態・巡回・相手の一覧まで運ぶ理由が無い。

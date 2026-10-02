@@ -56,6 +56,17 @@ defmodule Tazuna.Datasets.MealAreas do
   def create(attrs), do: %__MODULE__{} |> changeset(attrs) |> Repo.insert()
 
   @doc """
+  範囲を直します（名前と四角）。`{:ok, 範囲}` か `{:error, changeset}`。
+
+  **Chiezo へ送るのは呼ぶ側**（`Tazuna.Datasets.reshape/1`）。四角が変わったかは
+  `box_changed?/2` で見る —— 名前を直しただけで機械収集から走らせ直すことはない。
+  """
+  def update(%__MODULE__{} = area, attrs), do: area |> changeset(attrs) |> Repo.update()
+
+  @doc "四角が変わったか。"
+  def box_changed?(before, changed), do: bbox(before) != bbox(changed)
+
+  @doc """
   範囲を外します。**Chiezo の収集は消しません** —— 溜めたものを消すかは Chiezo の
   画面で決める（取り消せないため）。
   """

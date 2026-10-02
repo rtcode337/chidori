@@ -214,6 +214,17 @@ defmodule Tazuna.Datasets.TravelLogTest do
       assert TravelLog.row(doc, Tazuna.Datasets.Meals.definition(@area))["key"] == "3-1234"
     end
 
+    test "範囲の外の店は書き出さず、exclude.txt に回す（範囲を狭めたあと）" do
+      # Chiezo は四角の外の文書を消さないので、狭めた範囲の外の店が収集に残る
+      inside = %{"lat" => 35.681, "lng" => 139.767, "key" => "3-1"}
+      outside = %{"lat" => 35.70, "lng" => 139.767, "key" => "3-2"}
+      definition = Tazuna.Datasets.Meals.definition(@area)
+
+      assert TravelLog.split_outside([inside, outside], definition) == {[inside], [outside]}
+      # 範囲を持たない収集は全部が中
+      assert TravelLog.split_outside([inside, outside], %{}) == {[inside, outside], []}
+    end
+
     test "シリーズは語彙の順に固定する（読み込むたびに並びも色も入れ替わらない）" do
       rows = [%{"series" => "和食"}, %{"series" => "和食"}, %{"series" => "カレー"}]
       order = Tazuna.Datasets.Meals.genre_order()

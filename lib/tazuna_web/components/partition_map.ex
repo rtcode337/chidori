@@ -2,8 +2,10 @@ defmodule TazunaWeb.PartitionMap do
   @moduledoc """
   区画を地図として描くところ。**押せる四角**にして、そこから頼めるようにします。
 
-  **地図の絵は敷きません**（`Tazuna.Datasets.Map` に理由）。区画そのものが日本の形に
-  なるので、外の地図を読みに行かずに済みます。
+  **全体は手元の白地図、寄ったら地理院タイル**（国土地理院の標準地図。`gsi_tiles.js`
+  が図の下に敷く）。区画そのものが日本の形になるので全体は白地図で足りるが、
+  範囲の収集は区や駅の細かさなので、白地図だけではどの区画がどこなのか読めない。
+  タイルを出しているあいだは区画を薄く塗り、下の地図を透かす。
 
   **見終わった区画は色を変えます。** 進み具合は数では読めません ——
   「8,185 区画のうち 2 つ」と出しても、それがどこなのかは分からないので。
@@ -33,6 +35,8 @@ defmodule TazunaWeb.PartitionMap do
       <%!-- **操作は関連図と同じ**（引きずって移動、Ctrl+ホイールで拡大縮小、
            指 2 本でつまむ）—— 図ごとに操作が違うと、画面を移るたびに覚え直すことになる --%>
       <div class="map-canvas" id="partition-canvas" phx-hook="PartitionMap">
+        <%!-- 地理院タイルの層（台本が置く。寄ったときだけ。**参照元は送らない**） --%>
+        <div id="partition-tiles" class="tile-layer" phx-update="ignore" aria-hidden="true"></div>
         <%!-- **地名で探して寄る口**（関連図・トピックの図と同じく左上）。探すのは
              起点と同じ地図辞典。候補を選ぶとその場所へ寄って印を立てる --%>
         <div class="relation-find">
@@ -95,6 +99,9 @@ defmodule TazunaWeb.PartitionMap do
           viewBox={"0 0 #{@map.width} #{@map.height}"}
           role="img"
           aria-label="区画の広がり"
+          data-west={@map.frame.west}
+          data-top={@map.frame.top}
+          data-scale={@map.frame.scale}
         >
           <%!-- 白地図。**手元に持っている輪郭**（外の地図を読みに行かない）。
                区画の下に敷くので、押す口は四角のまま --%>
@@ -153,7 +160,11 @@ defmodule TazunaWeb.PartitionMap do
       </div>
       <p class="muted-note map-hint">
         <span class="only-touch">指で動かし、2 本の指でつまんで拡大縮小。</span><span class="only-mouse">引きずって移動、Ctrl+ホイールで拡大縮小。</span>
-        海岸線は {Tazuna.Geo.Japan.source()}。
+        寄ったときの地図は<a
+          href="https://maps.gsi.go.jp/development/ichiran.html"
+          target="_blank"
+          rel="noreferrer"
+        >地理院タイル</a>（出典：国土地理院）。海岸線は {Tazuna.Geo.Japan.source()}。
       </p>
     </section>
     """

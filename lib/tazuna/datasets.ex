@@ -94,6 +94,39 @@ defmodule Tazuna.Datasets do
   end
 
   @doc """
+  範囲を変えたあとで、**範囲で決まるところだけを Chiezo へ送り、機械収集から
+  走らせ直します**（範囲を持つ対象だけ）。
+
+  送るのは説明・名簿の指定・区画だけ（`shape`）。巡回まで送り直すと、画面で選んだ
+  相手が既定に戻る。区画の四角が変わると Chiezo は区画の台帳を捨てるので、整理は
+  新しい区画で一周目からになる。
+
+  返すのは次のどれか:
+
+  - `:ok` —— 送って、機械収集を頼んだ
+  - `{:ok, :not_requested}` —— まだ収集が無い（作るときに新しい範囲が載る）
+  - `{:error, {:not_run, 理由}}` —— 送れたが、機械収集を頼めなかった（止まっているなど）
+  - `{:error, 理由}` —— 送れなかった
+  """
+  def reshape(%{collection: name, area: area, module: module} = dataset) when not is_nil(area) do
+    with {:ok, base} <- base_url(),
+         {:ok, existing} <- Chiezo.collection(base, name) do
+      if existing do
+        attrs = dataset |> call(:shape) |> with_origin(dataset)
+
+        with :ok <- Chiezo.patch(base, name, attrs) do
+          case Chiezo.run(base, name, sweep: module.roster_sweep_name()) do
+            :ok -> :ok
+            {:error, reason} -> {:error, {:not_run, reason}}
+          end
+        end
+      else
+        {:ok, :not_requested}
+      end
+    end
+  end
+
+  @doc """
   起点と時刻（tazuna が持つもの）。**起点を決めていなければ、対象の既定**
   （食事処なら東京駅）を入れて返します。
   """

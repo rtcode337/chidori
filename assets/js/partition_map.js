@@ -1,7 +1,9 @@
 // 区画の地図の操作。**共通の仕組み**（`./pan_zoom`）に、この図だけの事情を足したもの。
 //
-// 足しているのは倍率の幅と、境目を出す近さと、起点のピンの大きさの 3 つです。
+// 足しているのは倍率の幅と、境目を出す近さと、起点のピンの大きさと、寄ったときに敷く
+// 地理院タイル（`./gsi_tiles`）です。
 import {panZoom} from "./pan_zoom"
+import {paintTiles} from "./gsi_tiles"
 
 // **深く寄れるようにする。** 区画は件数が揃うように切られているので、
 // 都心の区画は外海の区画の何万分の一の広さしかありません（実測で、いちばん細い
@@ -36,7 +38,7 @@ export default panZoom({
     this.handleEvent("map_focus", ({x, y}) => this.centerOn(x, y, FOCUS_SCALE))
   },
 
-  // ピン（起点と、探して寄った場所）を、倍率で割り戻した大きさに置き直す
+  // ピン（起点と、探して寄った場所）を、倍率で割り戻した大きさに置き直す。タイルも置き直す
   painted() {
     const ppu = this.view && this.view.ppu
     if (!this.svg || !(ppu > 0)) { return }
@@ -44,5 +46,6 @@ export default panZoom({
     this.svg.querySelectorAll("[data-pin]").forEach(pin => {
       pin.setAttribute("transform", `translate(${pin.dataset.x} ${pin.dataset.y}) scale(${scale})`)
     })
+    paintTiles(this, this.el.querySelector("#partition-tiles"), ppu)
   },
 })

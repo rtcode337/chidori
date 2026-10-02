@@ -67,7 +67,8 @@ defmodule Tazuna.Datasets.TravelLog do
   @doc """
   travel-log 用の ZIP を組み立てます。`{:ok, 名前, 中身, 内訳}` か `{:error, 理由}`。
 
-  内訳は `%{rows: 書き出した件数, skipped: 落とした件数, excluded: 消えたものの件数}`。
+  内訳は `%{rows: 書き出した件数, skipped: 落とした件数, outside: 範囲の外の件数,
+  excluded: 消えたもの（範囲の外を含む）の件数}`。
   """
   def bundle(%{key: zip_name, collection: collection, module: module} = dataset) do
     # **種別の key と名前は、範囲の収集では範囲によらず同じ**（`dining`）。書き出しは
@@ -80,8 +81,10 @@ defmodule Tazuna.Datasets.TravelLog do
          {:ok, docs} <- fetch_all(base, collection, module.kind_tag()),
          {:ok, removed} <-
            fetch_all(base, collection, Chiezo.removed_tag(), include_removed: true) do
-      rows = docs |> Enum.map(&row(&1, dataset)) |> Enum.reject(&is_nil/1)
-      excluded = excluded_keys(removed, dataset)
+      {rows, outside} =
+        docs |> Enum.map(&row(&1, dataset)) |> Enum.reject(&is_nil/1) |> split_outside(dataset)
+
+      excluded = Enum.uniq(excluded_keys(removed, dataset) ++ Enum.map(outside, & &1["key"]))
 
       files =
         [
@@ -98,7 +101,8 @@ defmodule Tazuna.Datasets.TravelLog do
           {:ok, "#{zip_name}.zip", binary,
            %{
              rows: length(rows),
-             skipped: length(docs) - length(rows),
+             skipped: length(docs) - length(rows) - length(outside),
+             outside: length(outside),
              excluded: length(excluded)
            }}
 
@@ -108,6 +112,28 @@ defmodule Tazuna.Datasets.TravelLog do
     else
       {:error, reason} -> {:error, reason}
       false -> {:error, :not_exportable}
+    end
+  end
+
+  @doc """
+  範囲の外の行を分けます（`{範囲の中, 範囲の外}`）。**範囲を持つ対象だけ**で、
+  持たなければ全部が中。
+
+  **範囲を狭めると、外した場所の店が収集に残る**（Chiezo は四角の外の文書を
+  消さない。どの区画にも入らないので、AI にも回ってこない）。書き出しでは落とし、
+  前に読み込んだぶんが travel-log に残らないよう exclude.txt にも載せる。
+  """
+  def split_outside(rows, dataset) do
+    case dataset[:area] do
+      nil ->
+        {rows, []}
+
+      area ->
+        [s, w, n, e] = Tazuna.Datasets.MealAreas.bbox(area)
+
+        Enum.split_with(rows, fn %{"lat" => lat, "lng" => lon} ->
+          lat >= s and lat <= n and lon >= w and lon <= e
+        end)
     end
   end
 

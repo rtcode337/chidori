@@ -16,10 +16,26 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
   # 画面を開き、**設定欄も開いて読み終えるまで進める**。設定は開いたときに初めて
   # Chiezo から読むので、設定の中身を見るテストはここを通る
+  # 設定を開いた状態にして読み終えるまで待つ（本棚の無い対象は、はじめから開いている）
   defp open_live(conn, path) do
     {:ok, live, _html} = live(conn, path)
-    live |> element("#settings-toggle") |> render_click()
+
+    unless has_element?(live, "#chiezo-settings"),
+      do: live |> element("#settings-toggle") |> render_click()
+
     {:ok, live, render_async(live)}
+  end
+
+  test "食事処の範囲のタブは、設定を開いた状態で出す（技術書は本棚が主役なので畳む）", %{conn: conn} do
+    Tazuna.AreaFixture.area!()
+
+    {:ok, _live, html} = live(conn, ~p"/datasets?view=dining-1")
+    assert html =~ ~s(aria-expanded="true")
+    assert html =~ ~s(id="chiezo-settings")
+
+    {:ok, _live, html} = live(conn, ~p"/datasets?view=books")
+    assert html =~ ~s(aria-expanded="false")
+    refute html =~ ~s(id="chiezo-settings")
   end
 
   test "データ収集のページを表示する（既定は技術書）", %{conn: conn} do

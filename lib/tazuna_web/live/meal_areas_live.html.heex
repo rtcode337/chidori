@@ -3,38 +3,65 @@
   <div>
     <TazunaWeb.MainNav.main_nav active={:datasets} />
 
+    <%!-- データ収集の画面と同じタブ。**この画面は「＋ 食事処の範囲」のタブ**として出す
+         （別の画面へ飛んだように見えると、戻る口を探すことになる） --%>
+    <nav
+      id="dataset-tabs"
+      class="relation-tabs"
+      phx-hook="ScrollTabs"
+      aria-label="集めるもの"
+    >
+      <.link :for={dataset <- @datasets} navigate={~p"/datasets?view=#{dataset.key}"}>
+        {dataset.name}
+      </.link>
+      <.link patch={~p"/datasets/areas"} class="add-tab selected" aria-current="page">
+        ＋ 食事処の範囲
+      </.link>
+    </nav>
+
     <section class="relations-intro">
       <p>EATERIES IN AN AREA</p>
       <h1>食事処の範囲</h1>
       <p>
         食事処は、範囲を決めてその中だけを集めます。範囲 1 つにつき Chiezo の収集が 1 つで、データ収集の画面にタブが増えます。離れた場所は、別の範囲にしてください（1 つの四角で囲むと、あいだの見たくない土地まで AI が回ります）。
       </p>
-      <p><.link navigate={~p"/datasets"}>データ収集の画面へ戻る</.link></p>
     </section>
 
     <section class="settings-block" aria-label="作った範囲">
       <h3>作った範囲</h3>
       <p :if={@areas == []} class="muted-note">まだありません。下の地図で四角を描いて足してください。</p>
       <ul :if={@areas != []} class="area-list">
-        <li :for={area <- @areas}>
+        <li :for={area <- @areas} class={@editing && @editing.id == area.id && "is-editing"}>
           <.link navigate={~p"/datasets?view=#{Tazuna.Datasets.Meals.definition(area).key}"}>
             {area.name}
           </.link>
           <span class="muted-note">{bbox_text(area)}</span>
-          <button
-            type="button"
-            phx-click="delete"
-            phx-value-id={area.id}
-            data-confirm={"範囲「#{area.name}」を外します。Chiezo の収集は消えません。よろしいですか？"}
-          >
-            外す
-          </button>
+          <span class="area-actions">
+            <button type="button" phx-click="show_area" phx-value-id={area.id}>地図で見る</button>
+            <button type="button" phx-click="edit_area" phx-value-id={area.id}>範囲を直す</button>
+            <button
+              type="button"
+              phx-click="delete"
+              phx-value-id={area.id}
+              data-confirm={"範囲「#{area.name}」を外します。Chiezo の収集は消えません。よろしいですか？"}
+            >
+              外す
+            </button>
+          </span>
         </li>
       </ul>
     </section>
 
-    <section class="settings-block" aria-label="範囲を足す">
-      <h3>範囲を足す</h3>
+    <section
+      class="settings-block"
+      aria-label={if @editing, do: "範囲を直す", else: "範囲を足す"}
+    >
+      <h3 :if={!@editing}>範囲を足す</h3>
+      <h3 :if={@editing}>範囲「{@editing.name}」を直す</h3>
+      <p :if={@editing} class="warn-note">
+        四角を変えて保存すると、Chiezo の区画を新しい範囲で割り直し、機械収集から走らせ直します（整理は一周目からになります）。
+        外した場所の店は、travel-log へは書き出さなくなります。
+      </p>
       <p class="muted-note">
         地名で探して寄り（寄ると地理院の地図に切り替わります）、「四角を描く」を押してから地図の上をドラッグしてください。描いた四角は、四辺と四隅を引っ張って大きさを変えられます。数でも直せます。探した場所のまわりで手早く作ることもできます。
       </p>
@@ -104,8 +131,13 @@
         >
           <path :for={ring <- @map.coast} d={ring} class="coast" />
 
-          <%!-- 作った範囲（押す口ではない） --%>
-          <% rects = Enum.map(@areas, &{&1, rect(@map, &1)}) %>
+          <%!-- 作った範囲。**名前の札は倍率で割り戻して置く**（日本全体を見ているときは
+               四角が点より小さくなるので、札が無いとどこに作ったのか分からない）。
+               札を押すと、その範囲を直し始める。直している範囲は下の四角が代わりに出る --%>
+          <% rects =
+            for area <- @areas,
+                !(@editing && @editing.id == area.id),
+                do: {area, rect(@map, area)} %>
           <rect
             :for={{area, r} <- rects}
             x={r.x}
@@ -116,6 +148,22 @@
           >
             <title>{area.name}</title>
           </rect>
+          <g
+            :for={{area, r} <- rects}
+            class="area-label"
+            data-pin
+            data-area-label
+            data-x={r.x + r.width / 2}
+            data-y={r.y}
+            transform={"translate(#{r.x + r.width / 2} #{r.y})"}
+            phx-click="edit_area"
+            phx-value-id={area.id}
+          >
+            <title>{area.name}（押すと直せます）</title>
+            <path d="M0 0 C-4 -6 -7 -9.5 -7 -14 A7 7 0 1 1 7 -14 C7 -9.5 4 -6 0 0 Z" />
+            <circle cx="0" cy="-14" r="2.6" />
+            <text x="9" y="-11">{area.name}</text>
+          </g>
 
           <%!-- いま決めている四角 --%>
           <% draft = draft_rect(@map, @draft) %>
@@ -162,7 +210,12 @@
         </button>
       </div>
 
-      <form id="area-form" phx-change="edit" phx-submit="create" class="area-form">
+      <form
+        id="area-form"
+        phx-change="edit"
+        phx-submit={if @editing, do: "save", else: "create"}
+        class="area-form"
+      >
         <label>
           <span>名前</span>
           <input
@@ -211,7 +264,11 @@
         <ul :if={@errors != []} class="area-errors">
           <li :for={line <- @errors}>{line}</li>
         </ul>
-        <button type="submit" phx-disable-with="作っています…">この範囲を作る</button>
+        <div class="button-row">
+          <button :if={!@editing} type="submit" phx-disable-with="作っています…">この範囲を作る</button>
+          <button :if={@editing} type="submit" phx-disable-with="直しています…">この範囲に直す</button>
+          <button :if={@editing} type="button" phx-click="cancel_edit">直すのをやめる</button>
+        </div>
       </form>
     </section>
   </div>

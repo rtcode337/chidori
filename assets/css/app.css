@@ -605,6 +605,13 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .map-canvas.is-close rect { stroke: rgba(255, 255, 255, .55); stroke-width: .5; vector-effect: non-scaling-stroke; }
 .map-canvas.is-close rect.is-seen { stroke: #d97706; }
 .map-canvas.is-close rect.is-done { stroke: #15803d; }
+/* **地理院タイルを出しているあいだは、区画を薄く塗って下の地図を透かす。**
+   濃さ（詰まり具合）は寄ったときには要らない —— そのときに読みたいのは、
+   どの区画がどの通りや駅にかかっているか。白地図は消す（線も引かない） */
+.partition-map .has-tiles path.coast { fill: transparent; stroke: none; }
+.partition-map .has-tiles rect { opacity: .28 !important; }
+.partition-map .has-tiles rect.is-seen, .partition-map .has-tiles rect.is-done { opacity: .5 !important; }
+.partition-map .has-tiles rect.is-picked { opacity: .7 !important; }
 .partition-map rect.is-picked { fill: #f97316; opacity: 1 !important; stroke: #7c2d12; stroke-width: 2; }
 /* 指しているところ。**面の色が何であれ同じ**に見せる —— 見終わった区画の上で
    色が変わらないと、押せるものだと分からない。あとの規則ほど強いので最後に置き、
@@ -1026,13 +1033,18 @@ body.digest-open { overflow: hidden; }
 .area-canvas path.coast { fill: #fff; stroke: none; pointer-events: none; }
 /* 地理院タイルの層。**図（svg）の下に敷く**。タイルを出しているあいだは白地図の陸地を
    透かす（白く塗ったままだとタイルを覆う） */
-.area-canvas .tile-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.area-canvas .tile-layer img { position: absolute; max-width: none; user-select: none; }
-.area-canvas > svg { position: relative; }
+.map-canvas .tile-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.map-canvas .tile-layer img { position: absolute; max-width: none; user-select: none; }
+.map-canvas .tile-layer ~ svg { position: relative; }
 .area-canvas.has-tiles path.coast { fill: transparent; }
 .area-canvas.is-drawing { cursor: crosshair; }
 .area-canvas .draw-toggle[aria-pressed="true"] { background: #554bc0; color: #fff; }
 .area-canvas .area-rect { fill: rgba(85, 75, 192, .22); stroke: none; }
+/* 作った範囲の札（倍率で割り戻して置くので、どこまで引いても同じ大きさ） */
+.area-canvas .area-label { cursor: pointer; }
+.area-canvas .area-label path { fill: #554bc0; }
+.area-canvas .area-label circle { fill: #fff; }
+.area-canvas .area-label text { font-size: 11px; font-weight: 600; fill: #3b3486; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
 /* 四角にも縁の線は引かない（深く寄ると崩れる。陸地と同じ理由） */
 .area-canvas .draft-rect, .area-canvas .drawing-rect { fill: rgba(234, 88, 12, .28); stroke: none; }
 /* 四角の取っ手。辺は四角の色を濃くした帯、隅は白い角。カーソルで引っ張る向きを示す */
@@ -1044,7 +1056,9 @@ body.digest-open { overflow: hidden; }
 .area-canvas .rect-handle.at-ne, .area-canvas .rect-handle.at-sw { cursor: nesw-resize; }
 .area-list { list-style: none; padding: 0; margin: .4rem 0; }
 .area-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .8rem; padding: .35rem 0; border-bottom: 1px solid #e4e7f0; }
-.area-list button { margin-left: auto; padding: .2rem .7rem; font-size: .8rem; }
+.area-list .area-actions { margin-left: auto; display: flex; flex-wrap: wrap; gap: .3rem; }
+.area-list button { padding: .2rem .7rem; font-size: .8rem; }
+.area-list li.is-editing { background: #fff7ed; }
 .area-form { display: flex; flex-direction: column; gap: .6rem; margin-top: .8rem; }
 .area-form label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; }
 .area-box { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: .5rem; }
