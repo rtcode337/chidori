@@ -92,6 +92,16 @@ defmodule Tazuna.Datasets.MealsTest do
       assert Meals.survey_prompt() =~ "片割れ"
     end
 
+    test "ざっと見るでは、1 件ずつ営業しているかを確かめさせる" do
+      # 1 区画を 1 件 1 秒に満たない速さで見ていた（名前と座標を眺めただけ）
+      assert Meals.scan_prompt() =~ "1 件ずつ、いまも営業しているかを web で確かめて"
+
+      # 見つからないだけでは消させない（小さな店は web に情報が無いことが多い）
+      assert Meals.scan_prompt() =~ "見つからないだけでは消さないで"
+      # 確かめきれなかった店は申告させる（次の回にもう一度渡る）
+      assert Meals.scan_prompt() =~ "not_reviewed"
+    end
+
     test "足す前に営業しているかを確かめさせる" do
       # 閉店した店の記事や口コミの頁は何年も残る
       assert Meals.survey_prompt() =~ "いまも営業しているか"
