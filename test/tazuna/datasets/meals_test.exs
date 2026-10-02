@@ -514,9 +514,9 @@ defmodule Tazuna.Datasets.MealsTest do
       # 整理のほうが遅い（AI の枠の節約）
       assert tidy.interval_minutes > scan.interval_minutes
       assert tidy.cover_days > scan.cover_days
-      # やることは同じ（依頼文は収集のものを使う）
+      # ざっと見るは収集の依頼文、整理は自分の依頼文
       refute Map.has_key?(scan, :prompt)
-      refute Map.has_key?(tidy, :prompt)
+      assert tidy.prompt == :tidy
     end
 
     test "割り込みも travel-log からの依頼も整理が引き受け、時刻を決めて起こす回は持たない" do
@@ -528,8 +528,8 @@ defmodule Tazuna.Datasets.MealsTest do
       assert definition.survey_plan_sweep == nil
     end
 
-    test "依頼文は、1 件ずつ営業を確かめさせ、足りない店も足させる（ざっと見るも整理も同じ）" do
-      prompt = Meals.tidy_prompt()
+    test "ざっと見るは、1 件ずつ営業を確かめさせ、足りない店も足させる" do
+      prompt = Meals.check_prompt()
 
       assert prompt =~ "1 件ずつ確かめる"
       assert prompt =~ "web で確かめて"
@@ -543,7 +543,27 @@ defmodule Tazuna.Datasets.MealsTest do
       assert prompt =~ "時間切れで手を付けられなかった店だけ"
       assert prompt =~ "情報も閉店の情報も見つからなかった店は、申告しないで"
       assert Meals.attrs(%{}, @area).prompt == prompt
-      assert Meals.prompts(@area) == [{"ざっと見る", prompt}, {"整理", prompt}]
+    end
+
+    test "整理は、報告・まだ目を通していない店・足りない店を先にし、見直しは残りの時間で" do
+      prompt = Meals.tidy_prompt()
+      order = fn needle -> prompt |> :binary.match(needle) |> elem(0) end
+
+      # travel-log からの報告が第一
+      assert order.("1. 地図を使っている人からの報告") < order.("2. まだ目を通していない店")
+      assert order.("2. まだ目を通していない店") < order.("3. 足りない店を足す")
+      assert order.("3. 足りない店を足す") < order.("4. 時間が残っていたら")
+      assert prompt =~ Tazuna.Chiezo.unreviewed_tag()
+      # 閉店の取りこぼしは多いので、見直しもやめない
+      assert prompt =~ "とくに閉店です"
+      # 一度確かめた店を申告させない（区画が毎回先頭に戻ってくる）
+      assert prompt =~ "見直せなかった店は申告しないで"
+      # 範囲の外の店は隣の区画にいるので挙げない
+      assert prompt =~ "足すのは範囲の中の店だけ"
+
+      attrs = Meals.attrs(%{}, @area)
+      assert Enum.find(attrs.sweeps, &(&1.name == "整理")).prompt == prompt
+      assert Meals.prompts(@area) == [{"ざっと見る", Meals.check_prompt()}, {"整理", prompt}]
     end
 
     test "範囲で決まるところだけを取り出せる（範囲を直したときに送る）" do
