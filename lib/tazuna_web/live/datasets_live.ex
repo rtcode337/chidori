@@ -663,22 +663,24 @@ defmodule TazunaWeb.DatasetsLive do
   travel-log からの依頼の一言。**何区画で頼んだか**と、**どの区画にも入らなかった座標**を
   言います —— 外れた座標を黙って落とすと、その依頼だけが誰にも読まれません。
   """
-  def request_message(%{keys: keys, points: points, missed: missed}, _requested) do
-    "座標 #{length(points)} 件を含む区画 #{length(keys)} つで、情報収集を頼んでいます" <>
+  def request_message(requesting, requested, sweep \\ "情報収集")
+
+  def request_message(%{keys: keys, points: points, missed: missed}, _requested, sweep) do
+    "座標 #{length(points)} 件を含む区画 #{length(keys)} つで、#{sweep}を頼んでいます" <>
       "（取り込み中なら空くまで最長 1 時間待ちます。画面を閉じても頼み続けます）。" <>
       missed_text(missed)
   end
 
-  def request_message(nil, {:refused, reason}), do: Requests.error_text(reason)
+  def request_message(nil, {:refused, reason}, _sweep), do: Requests.error_text(reason)
 
-  def request_message(nil, {:ok, plan}) do
-    "区画 #{length(plan.keys)} つで情報収集を頼みました（座標 #{length(plan.points)} 件）。" <>
+  def request_message(nil, {:ok, plan}, sweep) do
+    "区画 #{length(plan.keys)} つで#{sweep}を頼みました（座標 #{length(plan.points)} 件）。" <>
       "区画はふつうの回として見られ、依頼は区画ごとに、その区画に入るぶんだけが補足として読まれます。" <>
       missed_text(plan.missed)
   end
 
-  def request_message(nil, {{:error, reason}, _plan}), do: reason_text(reason)
-  def request_message(_requesting, _requested), do: nil
+  def request_message(nil, {{:error, reason}, _plan}, _sweep), do: reason_text(reason)
+  def request_message(_requesting, _requested, _sweep), do: nil
 
   defp missed_text([]), do: ""
 
@@ -855,7 +857,7 @@ defmodule TazunaWeb.DatasetsLive do
 
   # **まだ Chiezo に無い収集では、対象の側の雛形を出す。** 巡回の名前も文も
   # 対象ごとに違うので、ここで決め打つと対象を足すたびに画面が食い違う
-  defp default_prompts(%{dataset: dataset}), do: dataset.module.prompts()
+  defp default_prompts(%{dataset: dataset}), do: Datasets.call(dataset, :prompts)
 
   @doc "詳細を開いている本（本棚に無くなっていれば nil）。"
   def opened_book(%{opened_book: title, shelf: {:ok, books}}) when is_binary(title),

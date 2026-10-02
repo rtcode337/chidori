@@ -45,6 +45,10 @@ defmodule Tazuna.Datasets.Meals do
 
   ## 巡回は 3 本
 
+  **範囲ごとの収集は、ざっと見るの代わりに整理を置きます**（`sweeps/1`・
+  `tidy_prompt/0`）。区画が 20 件まで小さいので、1 回で全件を確かめたうえで
+  足りない店も探せる。情報収集は下の全国版と同じです。
+
   | 巡回 | やること | 誰が |
   |---|---|---|
   | 名簿 | 3 つの辞典から機械的に引く | 機械 |
@@ -86,8 +90,11 @@ defmodule Tazuna.Datasets.Meals do
   # 「見切れた」と出ても名前と座標を眺めただけの回だった。確かめるには 1 件に
   # 10〜30 秒かかるので、1 回の持ち時間（十数分）に収まる 20 件にする
   @area_partition_target 20
-  # 範囲ごとの収集のざっと見るの一周（既定の間隔のとき）。範囲は小さいので数日で回る
-  @area_scan_days_at_default 7
+  # 範囲ごとの収集の整理の一周（既定の間隔のとき）。**ざっと見ると情報収集は置かない**
+  # —— 区画が 20 件まで小さくなったので、1 回で全件を確かめたうえで足りない店も
+  # 探せる。2 本に分けると同じ区画を 2 回渡して、同じ店を 2 回読ませることになる。
+  # Chiezo は 1 回に 5 区画までなので、区画が 70 を超える範囲では書いた日数より延びる
+  @area_tidy_days_at_default 7
   # travel-log の種別。**範囲が違っても同じ種別に入る**（書き出しは範囲ごと、
   # 読み込み先は 1 つ）。全国版（`meals`）とは別の種別にする
   @area_export_key "dining"
@@ -162,6 +169,10 @@ defmodule Tazuna.Datasets.Meals do
   # 決めた時刻にしか走らないので、割り込み（「この店が違う」「この区画を先に」）も
   # こちらが引き受ける
   @scan_sweep Tazuna.SweepNames.scan()
+
+  # 範囲ごとの収集で区画を回る回（`sweeps/1`）。**Chiezo の時計で端から回る**ので、
+  # ほかの収集の整理と同じ名前・同じ間隔にする
+  @tidy_sweep Tazuna.SweepNames.tidy()
 
   # 出典の目印。**travel-log と AI の両方が読む** —— 同じ店が 2 つに分かれているとき、
   # どちらの座標を残すかはここで決まる（1 軒に複数付くこともある）
@@ -297,8 +308,14 @@ defmodule Tazuna.Datasets.Meals do
   def genre_order, do: @genres |> Enum.map(&elem(&1, 1)) |> Enum.uniq()
 
   @doc """
-  範囲 1 つぶんのタブ。**収集も溜まる先も範囲ごと**で、依頼文・巡回の組み方は
-  全国版と同じです。travel-log へは同じ種別（`dining`）に書き出し、スポットの key に
+  範囲 1 つぶんのタブ。**収集も溜まる先も範囲ごと**です。
+
+  **巡回は機械収集・整理・情報収集の 3 本**（`sweeps/1`）。整理がざっと見るの
+  代わりに Chiezo の時計で区画を回り、1 件ずつ確かめて直し・消し、足りない店を
+  足します。情報収集は全国版と同じく、tazuna が決めた時刻と起点から起こします。
+  割り込みは整理が、travel-log からの依頼は情報収集が引き受けます。
+
+  travel-log へは同じ種別（`dining`）に書き出し、スポットの key に
   範囲の番号を付けます（収集ごとに `doc_id` が 1 から振られるので、付けないと
   範囲どうしで key がぶつかり、あとから読み込んだ範囲が前の範囲を上書きする）。
   """
@@ -307,6 +324,8 @@ defmodule Tazuna.Datasets.Meals do
   def definition(%{id: id, name: name} = area) do
     definition()
     |> Map.merge(%{
+      survey_sweep: @tidy_sweep,
+      partition_sweeps: [@tidy_sweep, @survey_sweep],
       key: "dining-#{id}",
       name: name,
       eyebrow: "EATERIES IN AN AREA",
@@ -356,14 +375,18 @@ defmodule Tazuna.Datasets.Meals do
       closed_twins: true,
       # **tazuna が起点と時刻を決めて起こす巡回**（`Tazuna.Datasets.SurveyScheduler`）
       survey_plan_sweep: @survey_sweep,
+      # **travel-log からの依頼を走らせる巡回**（`Tazuna.Datasets.Requests`）
+      request_sweep: @survey_sweep,
       # **区画を回る巡回を、回る順に。** 進み具合はこの順で深くなる
       # （ざっとが一周してから、じっくりが回り始める）
       partition_sweeps: [@scan_sweep, @survey_sweep]
     }
   end
 
-  @doc "巡回ごとの依頼文（画面に出すため）。"
+  @doc "巡回ごとの依頼文（画面に出すため）。範囲を渡すと範囲の収集のもの。"
   def prompts, do: [{@scan_sweep, scan_prompt()}, {@survey_sweep, survey_prompt()}]
+  def prompts(nil), do: prompts()
+  def prompts(_area), do: [{@tidy_sweep, tidy_prompt()}, {@survey_sweep, survey_prompt()}]
 
   @doc """
   travel-log がスポットにするときに読む項目。
@@ -603,73 +626,120 @@ defmodule Tazuna.Datasets.Meals do
   巡回 3 本。**仕事が違うものは 1 本にまとめません** ——
   1 つの文で全部を頼むと、どの回も同じ薄さの仕事になります。
   """
-  def sweeps(area \\ nil) do
-    scan_days = if area, do: @area_scan_days_at_default, else: @scan_days_at_default
+  def sweeps(area \\ nil)
 
+  # **範囲の収集は、ざっと見るの代わりに整理を置く。** 区画が 20 件まで小さく
+  # なったので、1 回で全件を確かめ、足りない店も探せる（`tidy_prompt/0`）。
+  # **一周しても止めない** —— 閉店も開店も続くので、回り続けて追いかける。
+  # 情報収集は全国版と同じ（tazuna が時刻と起点を決めて起こす）
+  def sweeps(area) when not is_nil(area) do
     [
-      # **機械で引く回。** AI を呼ばず、抽出の指定を走らせるだけ。
-      # **一度きり** —— 地図辞典が焼き直されない限り何度やっても同じで、
-      # その 1 回ぶんの取り込みが無駄になる（焼き直したら押して走らせる）。
-      # **足すだけ**（`only_new`）にしないと、AI が肉付けしたぶんを
-      # 名前と住所しか持たない名簿で上書きする
+      roster_sweep(),
       %{
-        name: @roster_sweep,
-        interval_minutes: @roster_minutes,
-        use_extract: true,
-        only_new: true,
-        once: true
+        name: @tidy_sweep,
+        interval_minutes: Tazuna.SweepNames.tidy_minutes(),
+        cover_days: Tazuna.CollectPace.days(:tidy, @area_tidy_days_at_default),
+        after: @roster_sweep
       },
+      survey_sweep()
+    ]
+  end
+
+  def sweeps(nil) do
+    [
+      roster_sweep(),
       %{
         name: @scan_sweep,
         interval_minutes: Tazuna.SweepNames.scan_minutes(),
-        cover_days: Tazuna.CollectPace.days(:scan, scan_days),
+        cover_days: Tazuna.CollectPace.days(:scan, @scan_days_at_default),
         after: @roster_sweep,
         one_lap: true
       },
-      # **tazuna が起こす回。** Chiezo 側では止めておき（自分の時計では走らない）、
-      # tazuna が決めた時刻に、決めた起点のまわりの区画を名指しで 1 回走らせる
-      # （`Tazuna.Datasets.Survey`）。名指しの回もふつうの回として走るので、
-      # 見た印は Chiezo 側に付く。
-      #
-      # **起点と時刻を利用者が決めるのは、この仕事が遅いから。** 「この範囲にあって
-      # 並んでいない店」を探すのは web を何度も引く仕事で、1 区画に 6〜14 分かかる
-      # （実測）。全国 4,000 区画を順に回すと一周に何か月もかかるので、見たいところの
-      # まわりから広げる。
-      #
-      # **待ち合わせは名簿まで**（座標が直る前に漏れを問うと、別の区画に居るだけの
-      # 店を挙げることがあるが、重複として弾かれるだけで害が小さい）。
-      # **1 回に見る区画の数は巡回の設定のまま**（`cover_days` から Chiezo が決める）
-      %{
-        name: @survey_sweep,
-        prompt: :survey,
-        partitions_per_run: @survey_per_run,
-        enabled: false,
-        after: @roster_sweep
-      }
+      survey_sweep()
     ]
+  end
+
+  # **機械で引く回。** AI を呼ばず、抽出の指定を走らせるだけ。
+  # **一度きり** —— 地図辞典が焼き直されない限り何度やっても同じで、
+  # その 1 回ぶんの取り込みが無駄になる（焼き直したら押して走らせる。範囲を
+  # 変えたときは tazuna が名指しで走らせ直す: `Tazuna.Datasets.reshape/1`）。
+  # **足すだけ**（`only_new`）にしないと、AI が肉付けしたぶんを
+  # 名前と住所しか持たない名簿で上書きする
+  defp roster_sweep do
+    %{
+      name: @roster_sweep,
+      interval_minutes: @roster_minutes,
+      use_extract: true,
+      only_new: true,
+      once: true
+    }
+  end
+
+  @doc "名簿の回の名前（範囲を変えたときに走らせ直す）。"
+  def roster_sweep_name, do: @roster_sweep
+
+  # **tazuna が起こす回。** Chiezo 側では止めておき（自分の時計では走らない）、
+  # tazuna が決めた時刻に、決めた起点のまわりの区画を名指しで 1 回走らせる
+  # （`Tazuna.Datasets.Survey`）。名指しの回もふつうの回として走るので、
+  # 見た印は Chiezo 側に付く。
+  #
+  # **起点と時刻を利用者が決めるのは、この仕事が遅いから。** 「この範囲にあって
+  # 並んでいない店」を探すのは web を何度も引く仕事で、1 区画に 6〜14 分かかる
+  # （実測）。全国 4,000 区画を順に回すと一周に何か月もかかるので、見たいところの
+  # まわりから広げる。
+  #
+  # **待ち合わせは名簿まで**（座標が直る前に漏れを問うと、別の区画に居るだけの
+  # 店を挙げることがあるが、重複として弾かれるだけで害が小さい）。
+  # **1 回に見る区画の数は巡回の設定のまま**（`cover_days` から Chiezo が決める）
+  #
+  # **時計を持たないことは `by_caller` で伝える**（Chiezo の時計では走らず、名前で
+  # 起こせばふつうの回として走る）。止めるだけで伝えていた頃は、Chiezo の画面に
+  # 収集の間隔が「720 分ごと」と出て、時計で回っているように読めた。
+  # **止めて送るのもやめない** —— `by_caller` を知らない Chiezo では、止めておかないと
+  # 収集の間隔で走り出す
+  defp survey_sweep do
+    %{
+      name: @survey_sweep,
+      prompt: :survey,
+      partitions_per_run: @survey_per_run,
+      enabled: false,
+      by_caller: true,
+      after: @roster_sweep
+    }
   end
 
   @doc """
   Chiezo へ送る依頼の中身（作るときも、送り直すときも同じもの）。
   """
   def attrs(choices \\ %{}, area \\ nil) do
+    %{
+      name: collection(area),
+      prompt: if(area, do: tidy_prompt(), else: scan_prompt()),
+      interval_minutes:
+        if(area, do: Tazuna.SweepNames.tidy_minutes(), else: Tazuna.SweepNames.scan_minutes()),
+      sweeps: with_choices(sweeps(area), choices),
+      # **網羅。** ある括りの全部が対象で、古いものが要らなくなることはない
+      kind: "stock",
+      requested_by: "tazuna"
+    }
+    |> Map.merge(shape(area))
+  end
+
+  @doc """
+  範囲で決まるところ（説明・名簿の指定・区画）。**範囲を変えたときはこれだけを
+  送ります** —— 巡回まで送り直すと、画面で選んだ相手が既定に戻る。
+  """
+  def shape(area \\ nil) do
     origin = with(%{lat: lat, lon: lon} <- default_origin(area), do: [lat, lon])
 
     %{
-      name: collection(area),
       description:
         if(area,
           do: "tazuna のデータ収集（#{area.name}の食事処 / travel-log 向け）",
           else: "tazuna のデータ収集（日本の食事処 / travel-log 向け）"
         ),
-      prompt: scan_prompt(),
-      interval_minutes: Tazuna.SweepNames.scan_minutes(),
       extract: extract(area),
-      partition: partition(origin, area),
-      sweeps: with_choices(sweeps(area), choices),
-      # **網羅。** ある括りの全部が対象で、古いものが要らなくなることはない
-      kind: "stock",
-      requested_by: "tazuna"
+      partition: partition(origin, area)
     }
   end
 
@@ -762,6 +832,91 @@ defmodule Tazuna.Datasets.Meals do
     #{item_format()}
 
     **触ったものだけ返してください。** 触れなかったものはそのまま残ります。
+    """
+  end
+
+  @doc """
+  範囲の収集の整理の依頼文。**並んでいる店を 1 件ずつ確かめ、足りない店を足す**
+  —— 全国版でざっと見ると情報収集に分けていた 2 つの仕事を 1 回で頼みます。
+
+  分けていたのは、全国の区画が 150 件あって 1 回では両方をやりきれなかったから。
+  範囲の区画は 20 件なので、1 件ずつ web で確かめても持ち時間に収まり、そのあと
+  足りない店を探す余裕もある。分けたままだと同じ区画を 2 回渡し、同じ店を 2 回
+  読ませることになる。
+  """
+  def tidy_prompt do
+    """
+    「食事処」の一覧を、**この区画ぶんだけ仕上げてください**。
+    travel-log という地図アプリのスポットとして使います。
+
+    **今回見る範囲**
+    {partition}
+
+    {current}
+
+    **上に並んでいるのが、この範囲の全部です。** 名簿は 3 つの辞典
+    （Wikipedia・OpenStreetMap・Overture Maps）から機械的に作ってあり、
+    1 件ごとに**どこから来たかのタグ**が付いています。
+    **1 区画の件数は少なくしてあります。1 件ずつ、細かく確かめてください。**
+    やってほしいことは 2 つで、**1 から順に**進めてください。
+
+    **1. 並んでいる店を 1 件ずつ確かめる。** 次のことを、店ごとに全部見てください。
+
+    - **いまも営業しているか。** web で確かめてください（公式サイト・口コミサイトの
+      店の頁・地図サービスの店の情報など）。名前と住所を眺めるだけでは閉店は
+      見分けられません。もう営業していない店は墓標で消してください
+      （tags に "#{Chiezo.tombstone_tag()}" を入れ、body に「◯年に閉店」のように理由を1行）。
+      **消すのは閉店の証拠が見つかったときだけです**（閉店・閉業の告知、口コミサイトの
+      「閉店」の表示、跡地に別の店が入っている、など）。**見つからないだけでは消さないで
+      ください** —— 小さな店は web に情報が無いことも多く、それは閉店の証拠になりません
+    - **食べに行く先か。** 事務所・商業施設そのもの・カラオケ店のような
+      「食べに行く先ではないもの」も墓標で消してください
+    - **座標が所在地と合っているか。** 本文の「座標:」が食い違っていれば、正しい緯度・
+      経度を `lat` と `lon` に数で入れて返します。**確かめられなかった座標は触らない
+      でください** —— 書き換えると、正しかった座標が当てずっぽうの値に置き換わります
+    - **同じ店が 2 つに分かれていないか。** 辞典ごとに名前の書き方が違うので
+      （「AFURI 新宿店」と「阿夫利 新宿」のように）、機械では畳めていません。
+      残すほうに中身をまとめて返し、消すほうに墓標を付けてください。
+      **逆に、1 件に別々の店が混ざっていたら分けてください**（同じ名前の別の店が
+      1 件に潰れていることがあります。片方を新しい見出しで足し、店名のうしろに
+      市区町村を添える）
+    - **中身が埋まっているか。** 説明・ジャンル・地域・ランク・特徴の空いている
+      ところを、下の形で埋めてください。**とくに地域（都道府県）は必ず埋めてください**
+      —— 空のままだと travel-log はそのスポットを地図に置けません（本文の「住所:」と
+      座標から分かります）
+    #{closed_twin_rule()}
+    #{move_by_fixing()}
+    #{eat_in_rule()}
+    #{merge_rule()}
+
+    **2. 足りない店を足す。** 1 が済んだら、この範囲にあって上に並んでいない店を
+    探してください。名簿の元は地図の辞典なので、**新しい店・小さい店・地図に
+    載っていない店**は入っていません。行列のできる店、地元で名の通った店、
+    その土地の名物を出す店が、まるごと抜けていることがあります。
+    **手元の知識サーバー（chiezo の MCP）を先に引いてください** ——
+    レート制限が無く、入っている地物は実在が確かめられています。足りなければ web で。
+    **確信が持てるものだけを挙げてください。** 思い当たらなければ足さなくて構いません
+    —— 既にあるものを挙げ直しても名簿は変わらず、AI の枠だけが減ります。
+    **足す前に、いまも営業しているかを確かめてください。** 閉店した店の記事や
+    口コミの頁は何年も残るので、見つかったことは開いている証拠になりません。
+    **直近 1 年ほどの口コミ・公式の告知・営業時間の更新**のどれかで営業が確かめられた
+    店だけを足してください。
+    **足すものには必ず座標を入れてください**（`lat` と `lon` に数で）。
+    **座標の無いものはどの区画にも入らず**、次に同じ区画を見たときには
+    「まだ無い」と見えるので、同じ店を何度も足すことになります。
+
+    **時間が足りなければ、1 を優先してください。** 確かめきれなかった店は返さず、
+    見られなかったものとして申告してください（答えの `not_reviewed` に見出しを入れる）。
+    申告した店は次の回にもう一度渡ります —— 確かめていない店を確かめたように扱うと、
+    閉店した店がそのまま地図に残ります。
+
+    **消す理由は必ず body に書いてください。** 消したものは名前が並ぶだけなので、
+    理由が無いと消し間違いに気づけません。
+
+    #{item_format()}
+
+    **直した店・消す店・足す店だけを返してください。** 確かめて直すところが無かった店は
+    返さなくて構いません（そのまま残ります）。
     """
   end
 

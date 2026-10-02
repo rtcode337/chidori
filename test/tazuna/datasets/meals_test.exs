@@ -235,6 +235,9 @@ defmodule Tazuna.Datasets.MealsTest do
       survey = Enum.find(sweeps, &(&1.name == "情報収集"))
 
       assert survey.enabled == false
+
+      # 時計を持たないことを Chiezo に伝える（止めるだけだと収集の間隔が出る）
+      assert survey.by_caller
       refute Map.get(survey, :by_hand)
       assert Meals.definition().survey_plan_sweep == "情報収集"
 
@@ -494,6 +497,54 @@ defmodule Tazuna.Datasets.MealsTest do
       assert attrs.name == "tazuna_dining_3"
       assert attrs.partition.bbox == [35.67, 139.75, 35.69, 139.78]
       assert Enum.all?(attrs.extract, &(&1.bbox == [35.67, 139.75, 35.69, 139.78]))
+    end
+
+    test "ざっと見るの代わりに整理を置き、情報収集は全国版と同じく tazuna が起こす" do
+      # 区画が 20 件まで小さいので、整理は 1 回で全件を確かめたうえで足りない店も探せる
+      sweeps = Meals.sweeps(@area)
+
+      assert Enum.map(sweeps, & &1.name) == ["機械収集", "整理", "情報収集"]
+      tidy = Enum.find(sweeps, &(&1.name == "整理"))
+      assert tidy.after == "機械収集"
+      assert tidy.interval_minutes == Tazuna.SweepNames.tidy_minutes()
+      assert tidy.cover_days
+      # 閉店も開店も続くので、一周しても止めない
+      refute Map.get(tidy, :one_lap)
+
+      survey = Enum.find(sweeps, &(&1.name == "情報収集"))
+      assert survey.enabled == false
+      assert survey.after == "機械収集"
+    end
+
+    test "割り込みは整理、travel-log からの依頼と時刻で起こすのは情報収集" do
+      definition = Meals.definition(@area)
+
+      assert definition.survey_sweep == "整理"
+      assert definition.request_sweep == "情報収集"
+      assert definition.survey_plan_sweep == "情報収集"
+      assert definition.partition_sweeps == ["整理", "情報収集"]
+    end
+
+    test "整理の依頼文は、1 件ずつ営業を確かめさせ、足りない店も足させる" do
+      prompt = Meals.tidy_prompt()
+
+      assert prompt =~ "1 件ずつ確かめる"
+      assert prompt =~ "web で確かめて"
+      assert prompt =~ "見つからないだけでは消さないで"
+      assert prompt =~ "足りない店を足す"
+      assert prompt =~ "足すものには必ず座標を入れて"
+      assert prompt =~ "not_reviewed"
+      # 収集の依頼文として送る（整理の巡回は自分の依頼文を持たない）
+      assert Meals.attrs(%{}, @area).prompt == prompt
+      assert Meals.prompts(@area) == [{"整理", prompt}, {"情報収集", Meals.survey_prompt()}]
+    end
+
+    test "範囲で決まるところだけを取り出せる（範囲を直したときに送る）" do
+      shape = Meals.shape(@area)
+
+      assert Map.keys(shape) |> Enum.sort() == [:description, :extract, :partition]
+      assert shape.partition.bbox == [35.67, 139.75, 35.69, 139.78]
+      assert shape.description =~ "東京駅"
     end
 
     test "travel-log へは範囲によらず同じ種別に書き出し、key に範囲の番号を付ける" do

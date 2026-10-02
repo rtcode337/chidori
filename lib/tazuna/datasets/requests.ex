@@ -175,7 +175,7 @@ defmodule Tazuna.Datasets.Requests do
   取り込み中なら空くまで待ちます（`deadline` は `System.monotonic_time(:millisecond)` の値）。
   """
   def run(%{collection: name} = dataset, %{keys: keys, notes: notes}, deadline) do
-    sweep = dataset.survey_plan_sweep
+    sweep = sweep(dataset)
     notes = Map.new(notes, fn {key, text} -> {key, with_preface(text)} end)
 
     with {:ok, base} <- Datasets.base_url() do
@@ -185,6 +185,12 @@ defmodule Tazuna.Datasets.Requests do
       )
     end
   end
+
+  @doc """
+  依頼を走らせる巡回。**範囲の収集は整理、全国版は情報収集**（対象の定義の
+  `request_sweep`）。どちらも「確かめて直す・消す・足す」を引き受ける回です。
+  """
+  def sweep(dataset), do: dataset[:request_sweep] || dataset[:survey_plan_sweep]
 
   @doc """
   依頼の頭に付ける前置き。**依頼を、情報収集のいつもの仕事より先に済ませてもらう**
@@ -332,7 +338,7 @@ defmodule Tazuna.Datasets.Requests do
 
     changes =
       with {:ok, base} <- Datasets.base_url(),
-           {:ok, rows} <- Chiezo.changes(base, name, sweep: dataset.survey_plan_sweep, limit: 50) do
+           {:ok, rows} <- Chiezo.changes(base, name, sweep: sweep(dataset), limit: 50) do
         rows
       else
         _unavailable -> []

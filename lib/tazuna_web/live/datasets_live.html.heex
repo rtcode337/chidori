@@ -637,7 +637,7 @@
             </p>
             <p class="muted-note">
               travel-log の管理画面の「渡すテキスト」をそのまま貼ってください。
-              座標を含む区画（1 回に {Requests.max_partitions()} まで）で「{@dataset.survey_plan_sweep}」を
+              座標を含む区画（1 回に {Requests.max_partitions()} まで）で「{Requests.sweep(@dataset)}」を
               1 回走らせ、依頼を区画ごとに振り分けて、その区画に入るぶんだけを依頼文の補足として載せます。ふつうの回として走るので、
               区画には印が付きます。取り込み中なら空くまで待ちます。
             </p>
@@ -652,8 +652,13 @@
             </div>
           </form>
         </details>
-        <p :if={request_message(@requesting, @requested)} class="muted-note" aria-live="polite">
-          {request_message(@requesting, @requested)}
+        <% sweep = Requests.sweep(@dataset) %>
+        <p
+          :if={request_message(@requesting, @requested, sweep)}
+          class="muted-note"
+          aria-live="polite"
+        >
+          {request_message(@requesting, @requested, sweep)}
         </p>
 
         <%!-- **依頼と、その結果を並べる。** 結果は Chiezo の変更履歴から、頼んだ後に

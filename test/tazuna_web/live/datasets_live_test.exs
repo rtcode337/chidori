@@ -112,13 +112,13 @@ defmodule TazunaWeb.DatasetsLiveTest do
         %{
           "key" => "35.0,135.7/35.1,135.8",
           "count" => 120,
-          "visits" => %{"ざっと見る" => "2026-09-20T00:00:00Z"}
+          "visits" => %{"整理" => "2026-09-20T00:00:00Z"}
         },
         %{
           "key" => "34.6,135.4/34.8,135.6",
           "count" => 150,
           "visits" => %{
-            "ざっと見る" => "2026-08-20T00:00:00Z",
+            "整理" => "2026-08-20T00:00:00Z",
             "情報収集" => "2026-09-01T00:00:00Z"
           }
         },
@@ -135,7 +135,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
           "use_extract" => true,
           "enabled" => true
         },
-        %{"name" => "ざっと見る", "interval_minutes" => 60, "cover_days" => 3, "enabled" => true},
+        %{"name" => "整理", "interval_minutes" => 720, "cover_days" => 7, "enabled" => true},
         # tazuna が起こす回。Chiezo 側では止めてあり、間隔は収集のものが入って返る
         %{
           "name" => "情報収集",
@@ -218,7 +218,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
       {_live, html} = shown(conn)
 
       assert html =~ "sweep-table"
-      assert html =~ ~s(name="sweep|ざっと見る|backend")
+      assert html =~ ~s(name="sweep|整理|backend")
       assert html =~ "収集の設定を更新"
     end
 
@@ -228,14 +228,6 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
       refute html =~ ~s(name="sweep|機械収集|backend")
       assert html =~ "AI を使いません"
-    end
-
-    test "手で回す巡回にも相手を選ばせない", %{conn: conn} do
-      # 走らせるのは、人が持ち帰った答えを読み込んだとき —— Chiezo から相手へ
-      # 投げる道が無いので、ここで選んでも読まれない
-      {_live, html} = shown(conn)
-
-      refute html =~ ~s(name="sweep|整理|backend")
     end
 
     test "集め方は網羅だと出す", %{conn: conn} do
@@ -257,11 +249,11 @@ defmodule TazunaWeb.DatasetsLiveTest do
     end
 
     test "区画の見出しは「いま回っている巡回が見終わった数 / 総数」", %{conn: conn} do
-      # ざっと見るが一周するまでは、ざっと見るの数（4 区画のうち 2 つ）
+      # 整理が一周するまでは、整理の数（4 区画のうち 2 つ）
       {_live, html} = shown(conn)
 
       assert html =~ ~r|区画（<span[^>]*>2 / </span>4）|
-      assert html =~ "「ざっと見る」が見終わった区画の数です"
+      assert html =~ "「整理」が見終わった区画の数です"
       assert html =~ "まだ見ていないものが先に表示されます"
       refute html =~ "— まだ見ていないものが先"
     end
@@ -296,7 +288,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
         |> element(~s|.partition-table tbody tr:first-child button|)
         |> render_click()
 
-      assert html =~ ~s(<option value="ざっと見る")
+      assert html =~ ~s(<option value="整理")
       assert html =~ ~s(<option value="情報収集")
       refute html =~ ~s(<option value="機械収集")
     end
@@ -342,21 +334,21 @@ defmodule TazunaWeb.DatasetsLiveTest do
     end
 
     test "色は、どの巡回まで見たかで決まる", %{conn: conn} do
-      # ざっと見るだけが見た区画は薄い黄色、情報収集まで見た区画は薄い緑。
+      # 整理だけが見た区画は薄い黄色、情報収集まで見た区画は薄い緑。
       # 何本が見たかで濃さを変えていた頃は、どちらの巡回が済んだのかが読めなかった
       {_live, html} = shown(conn)
 
-      # ざっと見るだけ
+      # 整理だけ
       assert html =~ ~r|<rect[^>]*is-seen[^>]*phx-value-key="35.0,135.7/35.1,135.8"|
       # 両方
       assert html =~ ~r|<rect[^>]*is-done[^>]*phx-value-key="34.6,135.4/34.8,135.6"|
       # 情報収集だけ（情報収集が済んでいれば緑）
       assert html =~ ~r|<rect[^>]*is-done[^>]*phx-value-key="43.0,141.3/43.1,141.4"|
-      assert html =~ "薄い黄色が「ざっと見る」まで、薄い緑が「情報収集」まで見終わった区画"
+      assert html =~ "薄い黄色が「整理」まで、薄い緑が「情報収集」まで見終わった区画"
       # 起点にピンが立つ（決めていなければ範囲の真ん中）
       assert html =~ ~s(class="origin-pin")
       assert html =~ "起点：テスト範囲の真ん中"
-      assert html =~ "ざっと見る 済み"
+      assert html =~ "整理 済み"
     end
 
     test "地図の上で地名を探すと、その場所へ寄って印を立てる", %{conn: conn} do
@@ -419,14 +411,14 @@ defmodule TazunaWeb.DatasetsLiveTest do
       # 押しても画面が変わらず「何が起きたのか分からない」になっていた
       live
       |> form(~s|.partition-picked form|, %{
-        "sweep" => "ざっと見る",
+        "sweep" => "整理",
         "run|backend" => "antigravity"
       })
       |> render_submit()
 
       assert_receive {:posted, url, sent}, 2_000
       assert url =~ "/run"
-      assert url =~ "sweep=%E3%81%96%E3%81%A3%E3%81%A8%E8%A6%8B%E3%82%8B"
+      assert url =~ URI.encode_query(%{"sweep" => "整理"})
       assert sent["partitions"] == ["43.0,141.3/43.1,141.4"]
       assert sent["backend"] == "antigravity"
     end
