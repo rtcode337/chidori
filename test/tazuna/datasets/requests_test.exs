@@ -143,6 +143,8 @@ defmodule Tazuna.Datasets.RequestsTest do
     preface = Requests.preface()
 
     assert preface =~ "足りない店を探すより先に"
+    # 答えたあともいつもの仕事を続けさせる（報告だけで終えていた）
+    assert preface =~ "報告に答えただけで終えないで"
     assert preface =~ "営業していると\n  確かめられない限り、墓標で消して"
     assert preface =~ "残す理由になりません"
     assert preface =~ "戻さないでください"

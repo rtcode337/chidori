@@ -560,6 +560,11 @@ defmodule Tazuna.Datasets.MealsTest do
       assert prompt =~ "見直せなかった店は申告しないで"
       # 範囲の外の店は隣の区画にいるので挙げない
       assert prompt =~ "足すのは範囲の中の店だけ"
+      # 探し方・見直し方を具体的に書く（漠然と頼むと最小限で終える）
+      assert prompt =~ "その町名・丁目の飲食店の一覧"
+      assert prompt =~ "「閉店」「閉業」「移転」の表示が無いか"
+      # 何を調べたかを残させる（あとで確かめられるように）
+      assert prompt =~ "`checked`"
 
       attrs = Meals.attrs(%{}, @area)
       assert Enum.find(attrs.sweeps, &(&1.name == "整理")).prompt == prompt
