@@ -270,7 +270,7 @@ defmodule TazunaWeb.MealAreasLive do
     do:
       {:info,
        "範囲「#{area.name}」を Chiezo に送り、機械収集から走らせ直しました。" <>
-         "区画は新しい範囲で割り直され、整理は一周目からになります。"}
+         "区画は次の回に新しい範囲で割り直されます。見終わった区画の印は残り、広げたところだけをざっと見るが見に行きます。"}
 
   def reshape_message(area, {:ok, :not_requested}),
     do:
