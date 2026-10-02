@@ -1024,14 +1024,24 @@ body.digest-open { overflow: hidden; }
 /* 縁取りは引かない。**線の太さを倍率で割り戻す指定（non-scaling-stroke）は、深く寄ると
    陸地の塗りが黒く崩れる**（区や駅の細かさまで寄るこの地図では必ず踏む）。陸と海の塗り分けで見せる */
 .area-canvas path.coast { fill: #fff; stroke: none; pointer-events: none; }
+/* 地理院タイルの層。**図（svg）の下に敷く**。タイルを出しているあいだは白地図の陸地を
+   透かす（白く塗ったままだとタイルを覆う） */
+.area-canvas .tile-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.area-canvas .tile-layer img { position: absolute; max-width: none; user-select: none; }
+.area-canvas > svg { position: relative; }
+.area-canvas.has-tiles path.coast { fill: transparent; }
 .area-canvas.is-drawing { cursor: crosshair; }
 .area-canvas .draw-toggle[aria-pressed="true"] { background: #554bc0; color: #fff; }
 .area-canvas .area-rect { fill: rgba(85, 75, 192, .22); stroke: none; }
 /* 四角にも縁の線は引かない（深く寄ると崩れる。陸地と同じ理由） */
 .area-canvas .draft-rect, .area-canvas .drawing-rect { fill: rgba(234, 88, 12, .28); stroke: none; }
-.area-canvas .landmark circle { fill: #1f2937; }
-.area-canvas .landmark text { display: none; font-size: 11px; fill: #1f2937; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
-.area-canvas.is-close .landmark text { display: block; }
+/* 四角の取っ手。辺は四角の色を濃くした帯、隅は白い角。カーソルで引っ張る向きを示す */
+.area-canvas .rect-handle { fill: rgba(234, 88, 12, .55); touch-action: none; }
+.area-canvas .rect-handle.is-corner { fill: #fff; stroke: none; }
+.area-canvas .rect-handle.at-n, .area-canvas .rect-handle.at-s { cursor: ns-resize; }
+.area-canvas .rect-handle.at-w, .area-canvas .rect-handle.at-e { cursor: ew-resize; }
+.area-canvas .rect-handle.at-nw, .area-canvas .rect-handle.at-se { cursor: nwse-resize; }
+.area-canvas .rect-handle.at-ne, .area-canvas .rect-handle.at-sw { cursor: nesw-resize; }
 .area-list { list-style: none; padding: 0; margin: .4rem 0; }
 .area-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .8rem; padding: .35rem 0; border-bottom: 1px solid #e4e7f0; }
 .area-list button { margin-left: auto; padding: .2rem .7rem; font-size: .8rem; }

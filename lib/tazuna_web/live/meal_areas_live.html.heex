@@ -36,10 +36,14 @@
     <section class="settings-block" aria-label="範囲を足す">
       <h3>範囲を足す</h3>
       <p class="muted-note">
-        地名で探して寄り、「四角を描く」を押してから地図の上をドラッグしてください。数でも直せます。探した場所のまわりで手早く作ることもできます。
+        地名で探して寄り（寄ると地理院の地図に切り替わります）、「四角を描く」を押してから地図の上をドラッグしてください。描いた四角は、四辺と四隅を引っ張って大きさを変えられます。数でも直せます。探した場所のまわりで手早く作ることもできます。
       </p>
 
       <div class="map-canvas area-canvas" id="area-canvas" phx-hook="AreaDraw">
+        <%!-- **地理院タイル**（国土地理院の標準地図）を図の下に敷く。白地図だけでは駅や道が
+             分からず、四角を決められない。置くのは台本（`area_draw.js`）で、寄ったときだけ
+             出す。**参照元は送らない**（`referrerpolicy`。この画面のアドレスを外へ出さない） --%>
+        <div id="area-tiles" class="tile-layer" phx-update="ignore" aria-hidden="true"></div>
         <div class="relation-find">
           <form
             id="area-search"
@@ -62,6 +66,7 @@
                   <li :for={{place, index} <- Enum.with_index(places)}>
                     <button type="button" phx-click="focus_place" phx-value-index={index}>
                       {place.name}
+                      <span class="match-years">{TazunaWeb.DatasetsLive.place_label(place)}</span>
                     </button>
                   </li>
                 </ul>
@@ -123,20 +128,6 @@
             class="draft-rect"
           />
 
-          <%!-- 目印の駅。**寄っても同じ大きさに見せる**（`area_draw.js` が倍率で割り戻す）。
-               名前は寄ったときだけ出す --%>
-          <g
-            :for={point <- landmark_points(@map, @landmarks)}
-            class="landmark"
-            data-pin
-            data-x={point.x}
-            data-y={point.y}
-            transform={"translate(#{point.x} #{point.y})"}
-          >
-            <circle r="3" />
-            <text x="5" y="4">{point.name}</text>
-          </g>
-
           <g
             :if={@marker}
             class="find-pin"
@@ -152,11 +143,18 @@
 
           <%!-- 描いている最中の四角（台本が描く。LiveView に描き直させない） --%>
           <g id="area-draw-layer" phx-update="ignore"></g>
+          <%!-- 決めた四角の取っ手（四辺と四隅）。引っ張ると大きさを変えられる。
+               これも台本が置く（決めた四角に合わせて、倍率で割り戻した太さで描く） --%>
+          <g id="area-handles" phx-update="ignore"></g>
         </svg>
       </div>
       <p class="muted-note map-hint">
         <span class="only-touch">指で動かし、2 本の指でつまんで拡大縮小。</span><span class="only-mouse">引きずって移動、Ctrl+ホイールで拡大縮小。</span>
-        海岸線は {Tazuna.Geo.Japan.source()}。駅は地図辞典（OpenStreetMap）から。
+        寄ったときの地図は<a
+          href="https://maps.gsi.go.jp/development/ichiran.html"
+          target="_blank"
+          rel="noreferrer"
+        >地理院タイル</a>（出典：国土地理院）。全体の白地図の海岸線は {Tazuna.Geo.Japan.source()}。
       </p>
       <div :if={@marker} class="button-row">
         <button type="button" phx-click="around_marker">

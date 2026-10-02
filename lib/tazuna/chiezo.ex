@@ -200,42 +200,6 @@ defmodule Tazuna.Chiezo do
   end
 
   @doc """
-  四角の中で、そのタグを持つ地物の名前と座標（`[%{name, lat, lon}]`）。
-  範囲を描く地図に**目印として重ねる**（白地図だけでは、区や駅の細かさで場所が読めない）。
-  """
-  def points_in(base, source, tag, [_s, _w, _n, _e] = box, limit \\ 200) do
-    query =
-      URI.encode_query(%{
-        "tag" => tag,
-        "bbox" => Enum.join(box, ","),
-        "limit" => limit,
-        "fields" => "title,extra"
-      })
-
-    case get(base <> "/v1/" <> URI.encode(source) <> "/filter?" <> query) do
-      {:ok, %{status: 200, body: body}} ->
-        case Jason.decode(body) do
-          {:ok, %{"results" => results}} when is_list(results) ->
-            points =
-              for %{"title" => name, "extra" => %{"lat" => lat, "lon" => lon}} <- results,
-                  is_number(lat) and is_number(lon),
-                  do: %{name: name, lat: lat, lon: lon}
-
-            {:ok, points}
-
-          _other ->
-            {:error, :chiezo_unexpected_body}
-        end
-
-      {:ok, %{status: status}} ->
-        {:error, {:chiezo_status, status}}
-
-      {:error, _reason} ->
-        {:error, :chiezo_unavailable}
-    end
-  end
-
-  @doc """
   巡回 1 本の**間隔だけ**を変えます（`PATCH /v1/collect/{name}/sweeps/{sweep}`）。
   **相手や依頼文には触りません** —— 巡回を並びごと送り直すと、画面で選んだ相手まで
   送り直すことになる。**一周の日数も同じ比で伸ばしてもらいます**（`keep_per_run`）。
@@ -463,26 +427,45 @@ defmodule Tazuna.Chiezo do
   検索の結果には座標が付いてこないためです。座標を持たないものは落とします。
   """
   def places(base, q) when is_binary(q) do
-    query = URI.encode_query(%{"q" => q, "limit" => @place_limit})
+    # **「〇〇駅」は「駅」を外した語でも探し、駅を先に並べる。** 地図辞典（OSM）は駅名に
+    # 「駅」を付けない決まりで、本物の東京駅は「東京」として入っている —— 「東京駅」で
+    # 引けるのは、名前に「駅」の付いた別のもの（日光の模型や、駅前の店）だけだった
+    stem = String.replace_suffix(q, "駅", "")
 
-    with {:ok, %{status: 200, body: body}} <-
-           get(base <> "/v1/" <> @place_source <> "/search?" <> query),
-         {:ok, %{"results" => results}} when is_list(results) <- Jason.decode(body) do
+    with {:ok, titles} <- place_titles(base, q),
+         {:ok, stations} <- station_titles(base, q, stem) do
       found =
-        results
-        |> Enum.map(& &1["title"])
-        |> Enum.filter(&is_binary/1)
+        (stations ++ titles)
         |> Enum.uniq()
         |> Task.async_stream(&place_of(base, &1), max_concurrency: 4, timeout: @timeout)
         |> Enum.flat_map(fn
           {:ok, {:ok, place}} -> [place]
           _other -> []
         end)
+        # 「駅」を外した語で引いたものは、駅だけを残す（「東京」で引くと区や会社も並ぶ）
+        |> Enum.reject(&(&1.title in stations and not station?(&1)))
         # **同じ名前・地域・種別は 1 つにまとめる。** 駅はホームや路線ごとに別の地物に
         # なっていて、「銀座 東京都・駅」が 3 つ並んでも選び分けようがない
         |> Enum.uniq_by(&{&1.name, &1.area, &1.feature})
 
       {:ok, found}
+    end
+  end
+
+  defp station_titles(_base, q, q), do: {:ok, []}
+  defp station_titles(_base, _q, ""), do: {:ok, []}
+  defp station_titles(base, _q, stem), do: place_titles(base, stem)
+
+  defp station?(%{feature: feature}),
+    do: feature in ["railway=station", "public_transport=station", "railway=halt"]
+
+  defp place_titles(base, q) do
+    query = URI.encode_query(%{"q" => q, "limit" => @place_limit})
+
+    with {:ok, %{status: 200, body: body}} <-
+           get(base <> "/v1/" <> @place_source <> "/search?" <> query),
+         {:ok, %{"results" => results}} when is_list(results) <- Jason.decode(body) do
+      {:ok, results |> Enum.map(& &1["title"]) |> Enum.filter(&is_binary/1)}
     else
       {:ok, %{status: status}} -> {:error, {:chiezo_status, status}}
       {:error, _reason} -> {:error, :chiezo_unavailable}

@@ -80,9 +80,12 @@ defmodule Tazuna.Datasets.Meals do
   # 59.7 万件・4,105 区画で一周のめどが立たず、AI の費用もかさみ、抜け漏れと
   # 間違いが多すぎて地図として使えなかった。見たい範囲だけを、細かい区画で回す
   @area_collection_prefix "tazuna_dining_"
-  # 範囲ごとの収集の区画の大きさ。**全国の 150 件より小さくする** —— AI が 1 回に
-  # 読む量が減るほど見落としが減る（抜け漏れを減らすのがこの作り替えの目的）
-  @area_partition_target 50
+  # 範囲ごとの収集の区画の大きさ。**AI が 1 回で 1 件ずつ確かめられる数にする**。
+  # 全国の 150 件の区画では、AI は 1 区画を 90〜135 秒で見ていた（実測の中央値。
+  # 1 件 1 秒に満たない）—— 閉店や実在を web で確かめる見方にはなっておらず、
+  # 「見切れた」と出ても名前と座標を眺めただけの回だった。確かめるには 1 件に
+  # 10〜30 秒かかるので、1 回の持ち時間（十数分）に収まる 20 件にする
+  @area_partition_target 20
   # 範囲ごとの収集のざっと見るの一周（既定の間隔のとき）。範囲は小さいので数日で回る
   @area_scan_days_at_default 7
   # travel-log の種別。**範囲が違っても同じ種別に入る**（書き出しは範囲ごと、
@@ -592,7 +595,7 @@ defmodule Tazuna.Datasets.Meals do
     %{by: "geo", target: @partition_target, bbox: @japan_bbox, origin: origin}
   end
 
-  @doc "範囲の区画。**範囲の四角だけを、全国より細かく割ります**（1 区画 50 件）。"
+  @doc "範囲の区画。**範囲の四角だけを、全国より細かく割ります**（1 区画 20 件）。"
   def partition(origin, nil), do: partition(origin)
 
   def partition(origin, area) do

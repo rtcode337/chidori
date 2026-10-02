@@ -6,10 +6,10 @@ defmodule TazunaWeb.MealAreasLive do
   日本全体を 1 つの収集で回していた頃は、費用がかさみ、抜け漏れと間違いが多すぎて
   地図として使えなかった。見たい範囲だけを細かい区画で回す。
 
-  **地図は手元の白地図**（`Tazuna.Datasets.Map.blank/0`）。外の地図は読まない
-  （開くたびに知らないサイトへ繋がず、何を見ているかを誰にも知らせないため）。
-  白地図だけでは区や駅の細かさで場所が読めないので、**地名で探して寄り**、
-  **描いた四角のまわりの駅を地図辞典から重ねて**目印にする。
+  **全体は手元の白地図**（`Tazuna.Datasets.Map.blank/0`）、**寄ったら地理院タイル**
+  （国土地理院の標準地図。`area_draw.js` が図の下に敷く）。白地図だけでは区や駅の
+  細かさで場所が読めず、四角を決められなかった。タイルを取りに行くときは
+  **参照元を送らない**（この画面のアドレスを外へ出さない）。地名で探して寄れる。
 
   四角を決めると、**中にある店の数（辞典ごと）と区画の数の見込み**をその場で出す ——
   広すぎる範囲は日本全体と同じことになる（一周のめどが立たない）。
@@ -24,9 +24,6 @@ defmodule TazunaWeb.MealAreasLive do
   # 数える辞典とタグ（名簿を引く指定と同じもの）。**見込みは上限**で、同じ店が
   # 2 つの辞典に居れば 2 と数える（畳んだあとの数は名簿の回が引くまで分からない）
   @counted [{"osm_japan", "amenity=restaurant"}, {"overture_japan", "restaurant"}]
-  # 目印の駅。四角より少し広く引く（端の駅も見えるように）
-  @landmark {"osm_japan", "railway=station"}
-  @margin 0.3
   # 地名の場所から四角を作るときの大きさ（片側。およそ 1.5 km）
   @around 0.014
 
@@ -40,7 +37,6 @@ defmodule TazunaWeb.MealAreasLive do
        draft: empty_draft(),
        errors: [],
        estimate: nil,
-       landmarks: [],
        query: "",
        places: nil,
        marker: nil
@@ -161,10 +157,10 @@ defmodule TazunaWeb.MealAreasLive do
   def handle_async(:places, {:exit, _}, socket),
     do: {:noreply, assign(socket, places: {:error, :chiezo_unavailable})}
 
-  def handle_async(:estimate, {:ok, {box, estimate, landmarks}}, socket) do
+  def handle_async(:estimate, {:ok, {box, estimate}}, socket) do
     # **古い四角の答えは捨てる**（描き直しが続くと、遅れて届いた前の答えで上書きされる）
     if box == current_box(socket),
-      do: {:noreply, assign(socket, estimate: estimate, landmarks: landmarks)},
+      do: {:noreply, assign(socket, estimate: estimate)},
       else: {:noreply, socket}
   end
 
@@ -194,8 +190,8 @@ defmodule TazunaWeb.MealAreasLive do
     end
   end
 
-  # 中にある店の数（辞典ごと）・区画の見込み・まわりの駅
-  defp estimate(base, [s, w, n, e] = box) do
+  # 中にある店の数（辞典ごと）と区画の見込み
+  defp estimate(base, box) do
     counts =
       for {source, tag} <- @counted do
         case Chiezo.count_in(base, source, tag, box) do
@@ -204,22 +200,11 @@ defmodule TazunaWeb.MealAreasLive do
         end
       end
 
-    dy = (n - s) * @margin
-    dx = (e - w) * @margin
-    {source, tag} = @landmark
-
-    landmarks =
-      case Chiezo.points_in(base, source, tag, [s - dy, w - dx, n + dy, e + dx]) do
-        {:ok, points} -> points
-        {:error, _reason} -> []
-      end
-
     total = counts |> Enum.map(&elem(&1, 1)) |> Enum.reject(&is_nil/1) |> Enum.sum()
 
     {box,
      {:ok,
-      %{counts: counts, total: total, partitions: ceil(total / Meals.area_partition_target())}},
-     landmarks}
+      %{counts: counts, total: total, partitions: ceil(total / Meals.area_partition_target())}}}
   end
 
   defp current_box(socket), do: box_of(socket.assigns.draft)
@@ -269,14 +254,6 @@ defmodule TazunaWeb.MealAreasLive do
       nil -> nil
       box -> Tazuna.Datasets.Map.box(map, box)
     end
-  end
-
-  @doc "目印を図の点に。"
-  def landmark_points(map, landmarks) do
-    for %{name: name, lat: lat, lon: lon} <- landmarks,
-        %{x: x, y: y} <- [Tazuna.Datasets.Map.point(map, lat, lon)],
-        # 見分けの札（「八丁畷 (node:123)」）は目印には要らない
-        do: %{name: String.replace(name, ~r/\s*\((node|way|relation):\d+\)$/, ""), x: x, y: y}
   end
 
   @doc "辞典の呼び名。"
