@@ -470,14 +470,9 @@ defmodule Tazuna.Datasets.MealsTest do
       for spec <- specs, do: assert(spec.bbox == [35.67, 139.75, 35.69, 139.78])
     end
 
-    test "全国版が残っていれば、AI が直した中身を最初の辞典として引き継ぐ" do
-      [carry | _rest] = Meals.extract(Map.put(@area, :carry, true))
-
-      assert carry.source == Meals.carry_from()
-      assert carry.bbox == [35.67, 139.75, 35.69, 139.78]
-      # 中身で勝つ（辞典の定型の本文より、AI が書いた説明を採る）
-      assert "body" in carry.provides
-      assert carry.body == "body"
+    test "全国版の収集からは引かない（範囲の収集は独立した収集にする）" do
+      # 別の収集を名簿の辞典に加えると、Chiezo はその収集から作られたものとして扱う
+      refute Enum.any?(Meals.extract(@area), &(&1.source == Meals.collection()))
     end
 
     test "区画は範囲の四角を、全国より細かく割る" do

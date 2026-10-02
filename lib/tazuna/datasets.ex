@@ -88,23 +88,10 @@ defmodule Tazuna.Datasets do
          {:ok, existing} <- Chiezo.collection(base, name) do
       # **起点は tazuna が持っているものを送る**（画面で決め直したもの）。定義の既定を
       # 送ると、送り直すたびに東京駅へ戻る
-      attrs = dataset |> carrying(base) |> call(:attrs, [choices]) |> with_origin(dataset)
+      attrs = dataset |> call(:attrs, [choices]) |> with_origin(dataset)
       if existing, do: Chiezo.patch(base, name, attrs), else: Chiezo.request(base, attrs)
     end
   end
-
-  # **引き継ぐ元が Chiezo に残っていれば、範囲の名簿に加える**（`Meals.carry_from/0`）。
-  # 残っていないのに名簿に書くと、名簿の回が「ソースがありません」で落ちる
-  defp carrying(%{area: area, module: module} = dataset, base) when not is_nil(area) do
-    Code.ensure_loaded(module)
-
-    if function_exported?(module, :carry_from, 0) and
-         Chiezo.docs_count(base, module.carry_from()) > 0,
-       do: %{dataset | area: Map.put(area, :carry, true)},
-       else: dataset
-  end
-
-  defp carrying(dataset, _base), do: dataset
 
   @doc """
   起点と時刻（tazuna が持つもの）。**起点を決めていなければ、対象の既定**

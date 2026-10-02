@@ -290,13 +290,6 @@ defmodule Tazuna.Datasets.Meals do
   def collection(nil), do: collection()
   def collection(%{id: id}), do: @area_collection_prefix <> to_string(id)
 
-  @doc """
-  AI が直した中身を引き継ぐ元（全国版の収集）。範囲の収集を作るときに、
-  **Chiezo にこれが残っていれば**、名簿の最初の辞典として範囲で絞って読む
-  （`Tazuna.Datasets.push/2`）。
-  """
-  def carry_from, do: collection()
-
   @doc "範囲ごとの収集の区画の大きさ（1 区画あたりの件数の目安）。"
   def area_partition_target, do: @area_partition_target
 
@@ -460,32 +453,15 @@ defmodule Tazuna.Datasets.Meals do
   範囲の名簿。**3 つの辞典を範囲の四角で絞ります**（Chiezo の抽出の `bbox`）。
   座標を持たない 1 件は範囲に入りません。
 
-  `carry: true` の範囲では、**全国版の収集を最初の辞典として加えます**。AI が目を
-  通して直した中身（説明・ジャンル・座標の直し・足した店）を、見出しが同じ辞典の
-  1 件より先に採るため。引けるのは目を通した生きている店だけで、消した店（墓標）は
-  引けません（閉店した店は、新しい収集の AI がもう一度見つけて消す）。
+  **全国版の収集からは引きません**（範囲の収集は 1 つの独立した収集にする）。
+  別の収集を名簿の辞典に加えると、Chiezo はその収集から作られたものとして扱い、
+  親の下に並べる。
   """
   def extract(nil), do: extract()
 
   def extract(area) do
     box = Tazuna.Datasets.MealAreas.bbox(area)
-    dictionaries = Enum.map(extract(), &Map.put(&1, :bbox, box))
-    if Map.get(area, :carry), do: [carry_extract(box) | dictionaries], else: dictionaries
-  end
-
-  # 全国版の収集から、範囲の中で AI が目を通したものを引き継ぐ。**中身で勝つ**
-  # （説明・URL・脇書き）。タグは機械の印（`_chiezo_`）を除いてそのまま写す
-  defp carry_extract(box) do
-    %{
-      source: carry_from(),
-      tag: kind_tag(),
-      bbox: box,
-      provides: ~w(body url extra),
-      body: "body",
-      extra:
-        ~w(lat lon area address website phone opening_hours pageviews_month image record_keys),
-      tags: [%{pattern: "^((?!_chiezo_).+)$", format: "{1}"}]
-    }
+    Enum.map(extract(), &Map.put(&1, :bbox, box))
   end
 
   # 百科事典。**説明で勝つ**（読み物になる紹介文があるのはここだけ）。
