@@ -50,7 +50,8 @@ defmodule Tazuna.Datasets.SurveyTest do
       System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
       on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
 
-      dataset = Tazuna.AreaFixture.area!() && Datasets.get("dining-1")
+      # 時刻を決めて起こすのは全国版だけ（範囲の収集はざっと見ると整理が Chiezo の時計で回る）
+      dataset = Tazuna.Datasets.Meals.definition()
 
       {:ok, _plan} =
         SurveyPlans.put_place(dataset.collection, %{name: "東京駅", lat: 35.681, lon: 139.767})

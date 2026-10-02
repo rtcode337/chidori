@@ -45,9 +45,10 @@ defmodule Tazuna.Datasets.Meals do
 
   ## 巡回は 3 本
 
-  **範囲ごとの収集は、ざっと見るの代わりに整理を置きます**（`sweeps/1`・
-  `tidy_prompt/0`）。区画が 20 件まで小さいので、1 回で全件を確かめたうえで
-  足りない店も探せる。情報収集は下の全国版と同じです。
+  **範囲ごとの収集は、機械収集・ざっと見る・整理の 3 本です**（`sweeps/1`・
+  `tidy_prompt/0`）。区画が 20 件まで小さいので、どちらの回も 1 回で全件を確かめた
+  うえで足りない店も探せる。ざっと見るは早めに一周して止まり、整理がそのあと
+  ゆっくり回る。以下は全国版（タブには出さない）の組み方です。
 
   | 巡回 | やること | 誰が |
   |---|---|---|
@@ -90,11 +91,13 @@ defmodule Tazuna.Datasets.Meals do
   # 「見切れた」と出ても名前と座標を眺めただけの回だった。確かめるには 1 件に
   # 10〜30 秒かかるので、1 回の持ち時間（十数分）に収まる 20 件にする
   @area_partition_target 20
-  # 範囲ごとの収集の整理の一周（既定の間隔のとき）。**ざっと見ると情報収集は置かない**
-  # —— 区画が 20 件まで小さくなったので、1 回で全件を確かめたうえで足りない店も
-  # 探せる。2 本に分けると同じ区画を 2 回渡して、同じ店を 2 回読ませることになる。
-  # Chiezo は 1 回に 5 区画までなので、区画が 70 を超える範囲では書いた日数より延びる
-  @area_tidy_days_at_default 7
+  # 範囲ごとの収集の一周（既定の間隔のとき）。**ざっと見るで早めに一周し、そのあとは
+  # 整理がゆっくり回る** —— 名簿を引いた直後は閉店・重複・空欄が溜まっているので
+  # 早く一周したいが、一度見たあとは同じ速さで回り続けても AI の枠を使うだけ。
+  # やることはどちらも同じ（`tidy_prompt/0`）。Chiezo は 1 回に 5 区画までなので、
+  # 区画が多い範囲では書いた日数より延びる
+  @area_scan_days_at_default 3
+  @area_tidy_days_at_default 14
   # travel-log の種別。**範囲が違っても同じ種別に入る**（書き出しは範囲ごと、
   # 読み込み先は 1 つ）。全国版（`meals`）とは別の種別にする
   @area_export_key "dining"
@@ -310,10 +313,11 @@ defmodule Tazuna.Datasets.Meals do
   @doc """
   範囲 1 つぶんのタブ。**収集も溜まる先も範囲ごと**です。
 
-  **巡回は機械収集・整理・情報収集の 3 本**（`sweeps/1`）。整理がざっと見るの
-  代わりに Chiezo の時計で区画を回り、1 件ずつ確かめて直し・消し、足りない店を
-  足します。情報収集は全国版と同じく、tazuna が決めた時刻と起点から起こします。
-  割り込みは整理が、travel-log からの依頼は情報収集が引き受けます。
+  **巡回は機械収集・ざっと見る・整理の 3 本**（`sweeps/1`）。ざっと見るが早めに
+  一周し、そのあとは整理がゆっくり回ります。**やることはどちらも同じ**で、区画の店を
+  1 件ずつ確かめて直し・消し、足りない店を足します（`tidy_prompt/0`）。
+  割り込みも travel-log からの依頼も整理が引き受けます（tazuna が時刻を決めて
+  起こす回は持たない）。
 
   travel-log へは同じ種別（`dining`）に書き出し、スポットの key に
   範囲の番号を付けます（収集ごとに `doc_id` が 1 から振られるので、付けないと
@@ -325,7 +329,9 @@ defmodule Tazuna.Datasets.Meals do
     definition()
     |> Map.merge(%{
       survey_sweep: @tidy_sweep,
-      partition_sweeps: [@tidy_sweep, @survey_sweep],
+      survey_plan_sweep: nil,
+      request_sweep: @tidy_sweep,
+      partition_sweeps: [@scan_sweep, @tidy_sweep],
       key: "dining-#{id}",
       name: name,
       eyebrow: "EATERIES IN AN AREA",
@@ -386,7 +392,7 @@ defmodule Tazuna.Datasets.Meals do
   @doc "巡回ごとの依頼文（画面に出すため）。範囲を渡すと範囲の収集のもの。"
   def prompts, do: [{@scan_sweep, scan_prompt()}, {@survey_sweep, survey_prompt()}]
   def prompts(nil), do: prompts()
-  def prompts(_area), do: [{@tidy_sweep, tidy_prompt()}, {@survey_sweep, survey_prompt()}]
+  def prompts(_area), do: [{@scan_sweep, tidy_prompt()}, {@tidy_sweep, tidy_prompt()}]
 
   @doc """
   travel-log がスポットにするときに読む項目。
@@ -628,20 +634,26 @@ defmodule Tazuna.Datasets.Meals do
   """
   def sweeps(area \\ nil)
 
-  # **範囲の収集は、ざっと見るの代わりに整理を置く。** 区画が 20 件まで小さく
-  # なったので、1 回で全件を確かめ、足りない店も探せる（`tidy_prompt/0`）。
-  # **一周しても止めない** —— 閉店も開店も続くので、回り続けて追いかける。
-  # 情報収集は全国版と同じ（tazuna が時刻と起点を決めて起こす）
+  # **範囲の収集は、ざっと見るで早めに一周し、そのあとは整理がゆっくり回る。**
+  # 区画が 20 件まで小さくなったので、どちらの回も 1 回で全件を確かめ、足りない店も
+  # 探せる（依頼文は収集のもの = `tidy_prompt/0`。巡回に持たせない）。
+  # 整理は**一周しても止めない** —— 閉店も開店も続くので、回り続けて追いかける
   def sweeps(area) when not is_nil(area) do
     [
       roster_sweep(),
       %{
+        name: @scan_sweep,
+        interval_minutes: Tazuna.SweepNames.scan_minutes(),
+        cover_days: Tazuna.CollectPace.days(:scan, @area_scan_days_at_default),
+        after: @roster_sweep,
+        one_lap: true
+      },
+      %{
         name: @tidy_sweep,
         interval_minutes: Tazuna.SweepNames.tidy_minutes(),
         cover_days: Tazuna.CollectPace.days(:tidy, @area_tidy_days_at_default),
-        after: @roster_sweep
-      },
-      survey_sweep()
+        after: @scan_sweep
+      }
     ]
   end
 
@@ -836,8 +848,9 @@ defmodule Tazuna.Datasets.Meals do
   end
 
   @doc """
-  範囲の収集の整理の依頼文。**並んでいる店を 1 件ずつ確かめ、足りない店を足す**
-  —— 全国版でざっと見ると情報収集に分けていた 2 つの仕事を 1 回で頼みます。
+  範囲の収集の依頼文（ざっと見るも整理も同じ）。**並んでいる店を 1 件ずつ確かめ、
+  足りない店を足す** —— 全国版でざっと見ると情報収集に分けていた 2 つの仕事を
+  1 回で頼みます。
 
   分けていたのは、全国の区画が 150 件あって 1 回では両方をやりきれなかったから。
   範囲の区画は 20 件なので、1 件ずつ web で確かめても持ち時間に収まり、そのあと

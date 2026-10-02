@@ -128,20 +128,20 @@ defmodule TazunaWeb.DatasetsLiveTest do
         %{
           "key" => "35.0,135.7/35.1,135.8",
           "count" => 120,
-          "visits" => %{"整理" => "2026-09-20T00:00:00Z"}
+          "visits" => %{"ざっと見る" => "2026-09-20T00:00:00Z"}
         },
         %{
           "key" => "34.6,135.4/34.8,135.6",
           "count" => 150,
           "visits" => %{
-            "整理" => "2026-08-20T00:00:00Z",
-            "情報収集" => "2026-09-01T00:00:00Z"
+            "ざっと見る" => "2026-08-20T00:00:00Z",
+            "整理" => "2026-09-01T00:00:00Z"
           }
         },
         %{
           "key" => "43.0,141.3/43.1,141.4",
           "count" => 90,
-          "visits" => %{"情報収集" => "2026-08-01T00:00:00Z"}
+          "visits" => %{"整理" => "2026-08-01T00:00:00Z"}
         }
       ],
       "sweeps" => [
@@ -151,15 +151,8 @@ defmodule TazunaWeb.DatasetsLiveTest do
           "use_extract" => true,
           "enabled" => true
         },
-        %{"name" => "整理", "interval_minutes" => 720, "cover_days" => 7, "enabled" => true},
-        # tazuna が起こす回。Chiezo 側では止めてあり、間隔は収集のものが入って返る
-        %{
-          "name" => "情報収集",
-          "interval_minutes" => 60,
-          "partitions_per_run" => 5,
-          "enabled" => false,
-          "blocked" => "止めている"
-        }
+        %{"name" => "ざっと見る", "interval_minutes" => 120, "cover_days" => 3, "enabled" => true},
+        %{"name" => "整理", "interval_minutes" => 720, "cover_days" => 14, "enabled" => true}
       ]
     }
 
@@ -185,7 +178,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
                 %{
                   "at" => "2099-01-01T00:00:00+00:00",
                   "status" => "ok",
-                  "sweep" => "情報収集",
+                  "sweep" => "整理",
                   "scope" => ["35.6,139.7/35.7,139.8"],
                   "added" => 25,
                   "updated" => 1,
@@ -199,7 +192,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
                 %{
                   "at" => "2099-01-01T01:00:00+00:00",
                   "status" => "ok",
-                  "sweep" => "情報収集",
+                  "sweep" => "整理",
                   "scope" => ["35.0,135.7/35.1,135.8"],
                   "added" => 9
                 }
@@ -234,7 +227,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
       {_live, html} = shown(conn)
 
       assert html =~ "sweep-table"
-      assert html =~ ~s(name="sweep|整理|backend")
+      assert html =~ ~s(name="sweep|ざっと見る|backend")
       assert html =~ "収集の設定を更新"
     end
 
@@ -265,11 +258,11 @@ defmodule TazunaWeb.DatasetsLiveTest do
     end
 
     test "区画の見出しは「いま回っている巡回が見終わった数 / 総数」", %{conn: conn} do
-      # 整理が一周するまでは、整理の数（4 区画のうち 2 つ）
+      # ざっと見るが一周するまでは、ざっと見るの数（4 区画のうち 2 つ）
       {_live, html} = shown(conn)
 
       assert html =~ ~r|区画（<span[^>]*>2 / </span>4）|
-      assert html =~ "「整理」が見終わった区画の数です"
+      assert html =~ "「ざっと見る」が見終わった区画の数です"
       assert html =~ "まだ見ていないものが先に表示されます"
       refute html =~ "— まだ見ていないものが先"
     end
@@ -293,9 +286,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert length(sent["sweeps"]) == 3
     end
 
-    test "tazuna が起こす回も「どの巡回として」に出す（機械で引く回は出さない）", %{conn: conn} do
-      # 情報収集は Chiezo 側では止めてあるが、名前で起こせばふつうの回として走る ——
-      # 選んだ区画を情報収集で 1 回見てもらうことはできる。
+    test "区画を回る巡回を「どの巡回として」に出す（機械で引く回は出さない）", %{conn: conn} do
       # 機械で引く回は区画を回らないので、選べるのに効かない欄になる
       {live, _html} = shown(conn)
 
@@ -304,26 +295,17 @@ defmodule TazunaWeb.DatasetsLiveTest do
         |> element(~s|.partition-table tbody tr:first-child button|)
         |> render_click()
 
+      assert html =~ ~s(<option value="ざっと見る")
       assert html =~ ~s(<option value="整理")
-      assert html =~ ~s(<option value="情報収集")
       refute html =~ ~s(<option value="機械収集")
     end
 
-    test "tazuna が起こす回は、要約と同じく時計なし・頼まれたときと出す", %{conn: conn} do
-      # Chiezo 側では止めてあるので、そのまま出すと間隔と「止めている」が並び、
-      # 動かないように読める。いつ起こすかは「情報収集の時刻」の欄が出す
-      {live, _html} = shown(conn)
+    test "範囲の収集には、時刻を決める欄も起点の欄も出さない", %{conn: conn} do
+      # ざっと見るも整理も Chiezo の時計で回り、区画は範囲の真ん中から広げる
+      {_live, html} = shown(conn)
 
-      row =
-        live
-        |> element(~s|#collect-form .sweep-table tbody tr:nth-child(3)|)
-        |> render()
-
-      assert row =~ "情報収集"
-      assert row =~ "時計なし"
-      assert row =~ "頼まれたとき"
-      refute row =~ "60 分ごと"
-      refute row =~ "止めている"
+      refute html =~ ~s(id="survey-times")
+      refute html =~ ~s(aria-label="起点")
     end
 
     test "一覧からも、その区画を選べる", %{conn: conn} do
@@ -350,21 +332,18 @@ defmodule TazunaWeb.DatasetsLiveTest do
     end
 
     test "色は、どの巡回まで見たかで決まる", %{conn: conn} do
-      # 整理だけが見た区画は薄い黄色、情報収集まで見た区画は薄い緑。
+      # ざっと見るだけが見た区画は薄い黄色、整理まで見た区画は薄い緑。
       # 何本が見たかで濃さを変えていた頃は、どちらの巡回が済んだのかが読めなかった
       {_live, html} = shown(conn)
 
-      # 整理だけ
+      # ざっと見るだけ
       assert html =~ ~r|<rect[^>]*is-seen[^>]*phx-value-key="35.0,135.7/35.1,135.8"|
       # 両方
       assert html =~ ~r|<rect[^>]*is-done[^>]*phx-value-key="34.6,135.4/34.8,135.6"|
-      # 情報収集だけ（情報収集が済んでいれば緑）
+      # 整理だけ（整理が済んでいれば緑）
       assert html =~ ~r|<rect[^>]*is-done[^>]*phx-value-key="43.0,141.3/43.1,141.4"|
-      assert html =~ "薄い黄色が「整理」まで、薄い緑が「情報収集」まで見終わった区画"
-      # 起点にピンが立つ（決めていなければ範囲の真ん中）
-      assert html =~ ~s(class="origin-pin")
-      assert html =~ "起点：テスト範囲の真ん中"
-      assert html =~ "整理 済み"
+      assert html =~ "薄い黄色が「ざっと見る」まで、薄い緑が「整理」まで見終わった区画"
+      assert html =~ "ざっと見る 済み"
     end
 
     test "地図の上で地名を探すと、その場所へ寄って印を立てる", %{conn: conn} do
@@ -427,19 +406,19 @@ defmodule TazunaWeb.DatasetsLiveTest do
       # 押しても画面が変わらず「何が起きたのか分からない」になっていた
       live
       |> form(~s|.partition-picked form|, %{
-        "sweep" => "整理",
+        "sweep" => "ざっと見る",
         "run|backend" => "antigravity"
       })
       |> render_submit()
 
       assert_receive {:posted, url, sent}, 2_000
       assert url =~ "/run"
-      assert url =~ URI.encode_query(%{"sweep" => "整理"})
+      assert url =~ URI.encode_query(%{"sweep" => "ざっと見る"})
       assert sent["partitions"] == ["43.0,141.3/43.1,141.4"]
       assert sent["backend"] == "antigravity"
     end
 
-    test "travel-log からの依頼を、座標を含む区画の情報収集として頼める", %{conn: conn} do
+    test "travel-log からの依頼を、座標を含む区画の整理として頼める", %{conn: conn} do
       {live, _html} = shown(conn)
 
       text = """
@@ -458,7 +437,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
       # 同じ区画に入る 2 件は 1 つにまとめる。補足は**区画ごと**に渡す
       assert_receive {:posted, url, sent}, 2_000
       assert url =~ "/v1/collect/tazuna_dining_1/run"
-      assert url =~ URI.encode_query(%{"sweep" => "情報収集"})
+      assert url =~ URI.encode_query(%{"sweep" => "整理"})
       assert sent["partitions"] == ["35.6,139.7/35.7,139.8"]
       note = sent["notes"]["35.6,139.7/35.7,139.8"]
       assert note =~ "閉店している"
@@ -469,7 +448,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
       # **外れた座標を黙って落とさない**
       html = render_async(live, 2_000)
-      assert html =~ "区画 1 つで情報収集を頼みました"
+      assert html =~ "区画 1 つで整理を頼みました"
       assert html =~ "(26.2,127.68)"
 
       # **依頼と、その結果を並べる**（頼んだ区画をちょうど見た回を引き当てる）
@@ -712,96 +691,6 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
       assert idle =~ "読んでいません"
       assert none =~ "まだ Chiezo にありません"
-    end
-  end
-
-  describe "起点と情報収集の時刻" do
-    # 起点は区画の地図の下、時刻は Chiezo の収集の下（巡回の表の近く）に分けて置く
-    setup do
-      System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
-      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
-
-      Tazuna.HttpStub.stub(fn %{url: url} ->
-        cond do
-          String.contains?(url, "/v1/osm_japan/search?") ->
-            Tazuna.HttpStub.ok(
-              Jason.encode!(%{
-                "results" => [%{"title" => "銀座 (node:1)"}, %{"title" => "座標の無い銀座"}]
-              })
-            )
-
-          String.contains?(url, "/v1/osm_japan/doc?") and String.contains?(url, "node") ->
-            Tazuna.HttpStub.ok(
-              Jason.encode!(%{
-                "title" => "銀座 (node:1)",
-                "extra" => %{
-                  "lat" => 35.6728,
-                  "lon" => 139.7631,
-                  "area" => "東京都",
-                  "feature" => "railway=station"
-                }
-              })
-            )
-
-          String.contains?(url, "/v1/osm_japan/doc?") ->
-            Tazuna.HttpStub.ok(Jason.encode!(%{"title" => "座標の無い銀座", "extra" => %{}}))
-
-          true ->
-            Tazuna.HttpStub.ok(~s({"collections":[],"backends":[],"sources":[]}))
-        end
-      end)
-
-      :ok
-    end
-
-    test "地名で探して起点を決め、時刻を保存する", %{conn: conn} do
-      {:ok, live, html} = open_live(conn, ~p"/datasets?view=dining-1")
-      assert html =~ ~s(aria-label="起点")
-      assert html =~ ~s(aria-label="情報収集の時刻")
-      # 並びは 起点 → Chiezo の収集 → 情報収集の時刻（地図は起点の上）
-      at = fn needle -> html |> :binary.match(needle) |> elem(0) end
-      assert at.(~s(aria-label="起点")) < at.("<h3>Chiezo の収集</h3>")
-      assert at.("<h3>Chiezo の収集</h3>") < at.(~s(aria-label="情報収集の時刻"))
-      # 決めていなければ範囲の真ん中
-      assert html =~ "テスト範囲の真ん中（35.7, 139.7）"
-
-      # 座標を Google マップで開ける（同じ名前の別の場所を選んでいないか確かめるため）
-      assert html =~ "https://www.google.com/maps/search/?api=1&amp;query=35.7%2C139.7"
-      assert html =~ "既定のままです"
-
-      live |> form("#place-search", %{"q" => "銀座"}) |> render_submit()
-      html = render_async(live)
-
-      # 座標の取れない候補は出さない。見出しの重複を避ける番号も見せない
-      assert html =~ ~s(phx-click="pick_place")
-      refute html =~ "座標の無い銀座"
-      refute html =~ "node:1"
-
-      html = live |> element(~s([phx-click="pick_place"])) |> render_click()
-      assert html =~ "銀座（35.6728, 139.7631）"
-      assert Tazuna.Datasets.SurveyPlans.get("tazuna_dining_1").place_set_at
-
-      # 収集がまだ無いので Chiezo へは送らない（作るときに載る）。送れなかった旨も出さない
-      refute html =~ "Chiezo へ送れませんでした"
-
-      html =
-        live
-        |> form("#survey-times", %{"survey_plan" => %{"run_at" => "3:00"}})
-        |> render_submit()
-
-      assert Tazuna.Datasets.SurveyPlans.get("tazuna_dining_1").run_at == "03:00"
-      refute html =~ "時刻が決まっていません"
-    end
-
-    test "読めない時刻は保存せず、理由を出す", %{conn: conn} do
-      {:ok, live, _html} = open_live(conn, ~p"/datasets?view=dining-1")
-
-      html =
-        live
-        |> form("#survey-times", %{"survey_plan" => %{"run_at" => "朝"}})
-        |> render_submit()
-
-      assert html =~ "24 時間制で書いてください"
     end
   end
 end

@@ -499,33 +499,36 @@ defmodule Tazuna.Datasets.MealsTest do
       assert Enum.all?(attrs.extract, &(&1.bbox == [35.67, 139.75, 35.69, 139.78]))
     end
 
-    test "ざっと見るの代わりに整理を置き、情報収集は全国版と同じく tazuna が起こす" do
-      # 区画が 20 件まで小さいので、整理は 1 回で全件を確かめたうえで足りない店も探せる
+    test "ざっと見るで早めに一周し、そのあとは整理がゆっくり回る" do
       sweeps = Meals.sweeps(@area)
 
-      assert Enum.map(sweeps, & &1.name) == ["機械収集", "整理", "情報収集"]
+      assert Enum.map(sweeps, & &1.name) == ["機械収集", "ざっと見る", "整理"]
+      scan = Enum.find(sweeps, &(&1.name == "ざっと見る"))
       tidy = Enum.find(sweeps, &(&1.name == "整理"))
-      assert tidy.after == "機械収集"
-      assert tidy.interval_minutes == Tazuna.SweepNames.tidy_minutes()
-      assert tidy.cover_days
-      # 閉店も開店も続くので、一周しても止めない
-      refute Map.get(tidy, :one_lap)
 
-      survey = Enum.find(sweeps, &(&1.name == "情報収集"))
-      assert survey.enabled == false
-      assert survey.after == "機械収集"
+      assert scan.after == "機械収集"
+      assert scan.one_lap
+      assert tidy.after == "ざっと見る"
+      # 閉店も開店も続くので、整理は一周しても止めない
+      refute Map.get(tidy, :one_lap)
+      # 整理のほうが遅い（AI の枠の節約）
+      assert tidy.interval_minutes > scan.interval_minutes
+      assert tidy.cover_days > scan.cover_days
+      # やることは同じ（依頼文は収集のものを使う）
+      refute Map.has_key?(scan, :prompt)
+      refute Map.has_key?(tidy, :prompt)
     end
 
-    test "割り込みは整理、travel-log からの依頼と時刻で起こすのは情報収集" do
+    test "割り込みも travel-log からの依頼も整理が引き受け、時刻を決めて起こす回は持たない" do
       definition = Meals.definition(@area)
 
       assert definition.survey_sweep == "整理"
-      assert definition.request_sweep == "情報収集"
-      assert definition.survey_plan_sweep == "情報収集"
-      assert definition.partition_sweeps == ["整理", "情報収集"]
+      assert definition.request_sweep == "整理"
+      assert definition.partition_sweeps == ["ざっと見る", "整理"]
+      assert definition.survey_plan_sweep == nil
     end
 
-    test "整理の依頼文は、1 件ずつ営業を確かめさせ、足りない店も足させる" do
+    test "依頼文は、1 件ずつ営業を確かめさせ、足りない店も足させる（ざっと見るも整理も同じ）" do
       prompt = Meals.tidy_prompt()
 
       assert prompt =~ "1 件ずつ確かめる"
@@ -534,9 +537,8 @@ defmodule Tazuna.Datasets.MealsTest do
       assert prompt =~ "足りない店を足す"
       assert prompt =~ "足すものには必ず座標を入れて"
       assert prompt =~ "not_reviewed"
-      # 収集の依頼文として送る（整理の巡回は自分の依頼文を持たない）
       assert Meals.attrs(%{}, @area).prompt == prompt
-      assert Meals.prompts(@area) == [{"整理", prompt}, {"情報収集", Meals.survey_prompt()}]
+      assert Meals.prompts(@area) == [{"ざっと見る", prompt}, {"整理", prompt}]
     end
 
     test "範囲で決まるところだけを取り出せる（範囲を直したときに送る）" do
