@@ -537,6 +537,11 @@ defmodule Tazuna.Datasets.MealsTest do
       assert prompt =~ "足りない店を足す"
       assert prompt =~ "足すものには必ず座標を入れて"
       assert prompt =~ "not_reviewed"
+
+      # 申告するのは時間切れの店だけ。情報が見つからなかった店は見たうえで残す
+      # （申告すると地図に出ないまま、次の回も同じく見つからずに残り続ける）
+      assert prompt =~ "時間切れで手を付けられなかった店だけ"
+      assert prompt =~ "情報も閉店の情報も見つからなかった店は、申告しないで"
       assert Meals.attrs(%{}, @area).prompt == prompt
       assert Meals.prompts(@area) == [{"ざっと見る", prompt}, {"整理", prompt}]
     end
