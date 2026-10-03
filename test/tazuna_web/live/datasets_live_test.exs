@@ -465,6 +465,32 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert html =~ "ほか 24 件"
     end
 
+    test "最近の回は、自動で回った回も並べ、依頼で走った回には印を付ける", %{conn: conn} do
+      # 依頼の結果は依頼ごとに回を引き当てるので、自動の回は出てこなかった
+      {:ok, _log} =
+        %Tazuna.Datasets.RequestLog{}
+        |> Tazuna.Datasets.RequestLog.changeset(%{
+          collection: "tazuna_dining_1",
+          keys: ["35.6,139.7/35.7,139.8"],
+          text: "- [修正] 駅前うどん (35.65,139.75): 閉店している",
+          points: 1,
+          missed: 0,
+          requested_at: ~U[2098-12-31 00:00:00Z],
+          status: "sent"
+        })
+        |> Tazuna.Repo.insert()
+
+      {_live, html} = shown(conn)
+
+      assert html =~ ~s(aria-label="最近の回")
+      # 依頼で走った回（頼んだ区画をちょうど見た回）
+      assert html =~ "足した 25 ・直した 1 ・消した 1"
+      assert html =~ ~s(class="run-by-request")
+      # 自動の回（Chiezo が選んだ別の区画）も出る
+      assert html =~ "足した 9 ・直した 0 ・消した 0"
+      assert html =~ "整理・区画 1 つ"
+    end
+
     test "座標の無いテキストでは頼まない", %{conn: conn} do
       {live, _html} = shown(conn)
 

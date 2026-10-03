@@ -710,35 +710,7 @@
                     "（#{entry.result.backend}#{if entry.result.model, do: " / #{entry.result.model}", else: ""}）",
                   else: ""}。見出しを押すと、Chiezo の画面で直す前との違いが開きます。
               </p>
-              <div
-                :for={
-                  {label, titles, count, class} <- [
-                    {"足した", entry.result.added_titles, entry.result.added, "is-added"},
-                    {"直した", entry.result.updated_titles, entry.result.updated, "is-updated"},
-                    {"消した", entry.result.removed_titles, entry.result.removed, "is-removed"}
-                  ]
-                }
-                :if={count > 0}
-                class={["request-changes", class]}
-              >
-                <h4>{label}（{count} 件）</h4>
-                <ul>
-                  <li :for={title <- titles}>
-                    <a
-                      :if={Tazuna.Chiezo.doc_page_url(@dataset.collection, title)}
-                      href={Tazuna.Chiezo.doc_page_url(@dataset.collection, title)}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {title}
-                    </a>
-                    <span :if={!Tazuna.Chiezo.doc_page_url(@dataset.collection, title)}>{title}</span>
-                  </li>
-                  <li :if={more_than_shown(count, titles) > 0} class="muted-note">
-                    ほか {more_than_shown(count, titles)} 件（Chiezo の控えは頭のほうだけ）
-                  </li>
-                </ul>
-              </div>
+              <.change_lists change={entry.result} collection={@dataset.collection} />
               <p
                 :if={entry.result.added + entry.result.updated + entry.result.removed == 0}
                 class="muted-note"
@@ -751,6 +723,44 @@
               <summary>依頼の中身</summary>
               <pre>{entry.log.text}</pre>
             </details>
+          </details>
+        </section>
+
+        <%!-- **最近の回**（自動で回った回も、依頼で走った回も）。依頼の結果は依頼ごとに
+           回を引き当てるので、整理やざっと見るが何を直したのかはここで見る。
+           依頼で走った回には印を付ける（同じ回が上の依頼の結果にも出る）。
+           **どれも畳んで出す**（依頼の結果と同じ理由） --%>
+        <section :if={@recent_runs != []} class="request-results" aria-label="最近の回">
+          <header class="request-results-head">
+            <h3>最近の回</h3>
+            <button type="button" phx-click="reload_recent_runs">読み直す</button>
+          </header>
+          <details
+            :for={%{change: run, by_request: by_request} <- @recent_runs}
+            class="request-result"
+          >
+            <summary>
+              <span class="request-when">{Jst.format(run.at)}</span>
+              <span class="request-scope">
+                {run.sweep}{if run_scope(run) != "", do: "・#{run_scope(run)}", else: ""}
+              </span>
+              <span :if={by_request} class="run-by-request">依頼</span>
+              <span class={[
+                "request-state",
+                run.status == "ok" && run.added + run.updated + run.removed > 0 && "has-result"
+              ]}>
+                {run_state(run)}
+              </span>
+            </summary>
+            <p :if={run.status == "ok" and run.error != ""} class="muted-note">
+              Chiezo の控え: {run.error}
+            </p>
+            <p class="muted-note">
+              {if run.backend,
+                do: "#{run.backend}#{if run.model, do: " / #{run.model}", else: ""}。",
+                else: ""}見出しを押すと、Chiezo の画面で直す前との違いが開きます。
+            </p>
+            <.change_lists change={run} collection={@dataset.collection} />
           </details>
         </section>
 

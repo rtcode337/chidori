@@ -237,6 +237,8 @@ defmodule Tazuna.Datasets.Requests do
 
   # 画面に並べる依頼の数
   @shown_logs 5
+  # 画面に並べる最近の回の数（自動の回も含む）
+  @shown_runs 10
   # 焼くところで落ちて戻した行が、もとの回からどこまで遅れて残るか。焼くのは集め終えた
   # 直後なので数十分で足りるが、取り込みが混んでいる日を見込んで広めに取る
   @rewind_window_s 3 * 60 * 60
@@ -353,6 +355,38 @@ defmodule Tazuna.Datasets.Requests do
 
     with_results(logs, changes)
   end
+
+  @doc """
+  最近の回（**自動で回った回も、依頼で走った回も**）。新しい順に `limit` 件。
+  `{:ok, [%{change: 回, by_request: 依頼で走った回か}]}` か `{:error, 理由}`。
+
+  依頼の結果（`results/1`）は、tazuna が控えた依頼ごとに回を引き当てるので、
+  自動の回は出てこない —— 整理やざっと見るが何を直したのかを見るには、Chiezo の
+  画面まで行くしかなかった。**依頼で走った回は見分けて印を付ける**（同じ回が
+  依頼の結果にも出るので、どちらで見ているのかが分かるように）。
+  """
+  def runs(%{collection: name} = dataset, limit \\ @shown_runs) do
+    logs = recent(name, @shown_runs * 2)
+    sweep = sweep(dataset)
+
+    with {:ok, base} <- Datasets.base_url(),
+         {:ok, rows} <- Chiezo.changes(base, name, limit: limit) do
+      {:ok, Enum.map(rows, &%{change: &1, by_request: by_request?(&1, logs, sweep)})}
+    end
+  end
+
+  # 依頼で走った回か。**頼んだ区画の組がそっくり同じで、頼んだあとの回**
+  # （`with_results/2` と同じ引き当て方）
+  defp by_request?(%{at: %DateTime{} = at, scope: scope, sweep: run_sweep}, logs, sweep)
+       when scope != [] do
+    run_sweep == sweep and
+      Enum.any?(logs, fn log ->
+        MapSet.new(log.keys) == MapSet.new(scope) and
+          DateTime.compare(at, log.requested_at) != :lt
+      end)
+  end
+
+  defp by_request?(_change, _logs, _sweep), do: false
 
   @doc "見積もりの段で断った理由の言い方（Chiezo が断った理由は画面の側が言う）。"
   def error_text(:no_points),

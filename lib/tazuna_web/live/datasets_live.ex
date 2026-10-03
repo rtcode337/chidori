@@ -69,6 +69,8 @@ defmodule TazunaWeb.DatasetsLive do
        requested: nil,
        # 直近の依頼と、その結果（Chiezo の変更履歴から引き当てたもの）
        request_results: [],
+       # 最近の回（自動の回も依頼の回も。Chiezo の変更履歴から）
+       recent_runs: [],
        # 地図で選んでいる区画。**選ぶのと頼むのを分ける** —— 押した瞬間に走ると、
        # どこを押したのか確かめる前に AI が動く
        picked: nil,
@@ -402,6 +404,9 @@ defmodule TazunaWeb.DatasetsLive do
   def handle_event("reload_request_results", _params, socket),
     do: {:noreply, load_request_results(socket)}
 
+  def handle_event("reload_recent_runs", _params, socket),
+    do: {:noreply, load_recent_runs(socket)}
+
   # 定時の巡回とは別に、1 回だけ頼む
   @impl true
   def handle_async(:read, {:ok, result}, socket),
@@ -510,6 +515,11 @@ defmodule TazunaWeb.DatasetsLive do
 
   def handle_async(:request_results, {:exit, _reason}, socket), do: {:noreply, socket}
 
+  def handle_async(:recent_runs, {:ok, {:ok, runs}}, socket),
+    do: {:noreply, assign(socket, recent_runs: runs)}
+
+  def handle_async(:recent_runs, _result, socket), do: {:noreply, socket}
+
   # travel-log からの依頼が終わった（頼めた・断られた・待ちきれなかった）。
   # 見積もりは一言に使うので、結果と組にして残す
   @impl true
@@ -560,6 +570,7 @@ defmodule TazunaWeb.DatasetsLive do
     |> read_derived(dataset)
     |> start_async(:backends, &Datasets.backends/0)
     |> load_request_results()
+    |> load_recent_runs()
   end
 
   @doc "次に頼む予定（JST の文字列）。時刻を書いていなければ nil。"
@@ -789,6 +800,65 @@ defmodule TazunaWeb.DatasetsLive do
     do: start_async(socket, :request_results, fn -> Requests.results(dataset) end)
 
   defp load_request_results(socket), do: socket
+
+  defp load_recent_runs(%{assigns: %{dataset: dataset}} = socket),
+    do: start_async(socket, :recent_runs, fn -> Requests.runs(dataset) end)
+
+  @doc "最近の回の一言（足した・直した・消した数。失敗ならその理由）。"
+  def run_state(%{status: "ok", added: 0, updated: 0, removed: 0}), do: "変化なし"
+
+  def run_state(%{status: "ok"} = run),
+    do: "足した #{run.added} ・直した #{run.updated} ・消した #{run.removed}"
+
+  def run_state(%{error: error}), do: "失敗（#{error}）"
+
+  @doc "最近の回が見た範囲（区画の数。区画を回らない回は空）。"
+  def run_scope(%{visited: [_ | _] = visited, scope: scope}) when visited != scope,
+    do: "区画 #{length(visited)} / #{length(scope)} つ"
+
+  def run_scope(%{scope: [_ | _] = scope}), do: "区画 #{length(scope)} つ"
+  def run_scope(_run), do: ""
+
+  @doc """
+  1 回ぶんの「足した・直した・消した」の見出しの一覧。**依頼の結果と最近の回で
+  同じものを出す**（見出しを押すと、Chiezo の画面で直す前との違いが開く）。
+  """
+  attr :change, :map, required: true
+  attr :collection, :string, required: true
+
+  def change_lists(assigns) do
+    ~H"""
+    <div
+      :for={
+        {label, titles, count, class} <- [
+          {"足した", @change.added_titles, @change.added, "is-added"},
+          {"直した", @change.updated_titles, @change.updated, "is-updated"},
+          {"消した", @change.removed_titles, @change.removed, "is-removed"}
+        ]
+      }
+      :if={count > 0}
+      class={["request-changes", class]}
+    >
+      <h4>{label}（{count} 件）</h4>
+      <ul>
+        <li :for={title <- titles}>
+          <a
+            :if={Tazuna.Chiezo.doc_page_url(@collection, title)}
+            href={Tazuna.Chiezo.doc_page_url(@collection, title)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {title}
+          </a>
+          <span :if={!Tazuna.Chiezo.doc_page_url(@collection, title)}>{title}</span>
+        </li>
+        <li :if={more_than_shown(count, titles) > 0} class="muted-note">
+          ほか {more_than_shown(count, titles)} 件（Chiezo の控えは頭のほうだけ）
+        </li>
+      </ul>
+    </div>
+    """
+  end
 
   @doc "依頼の状態の言い方。"
   def request_state(%{log: %{status: "failed", error: error}}),
