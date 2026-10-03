@@ -655,7 +655,7 @@
               </label>
             </p>
             <p class="muted-note">
-              travel-log の管理画面の「渡すテキスト」をそのまま貼ってください。
+              travel-log の管理画面の「渡すテキスト」をそのまま貼ってください。「[位置確認]」の行（位置は正しい）は AI には渡さず、その店の座標を Chiezo に固定させます。
               座標を含む区画（1 回に {Requests.max_partitions()} まで）で「{Requests.sweep(@dataset)}」を
               1 回走らせ、依頼を区画ごとに振り分けて、その区画に入るぶんだけを依頼文の補足として載せます。ふつうの回として走るので、
               区画には印が付きます。取り込み中なら空くまで待ちます。
@@ -671,6 +671,9 @@
             </div>
           </form>
         </details>
+        <p :if={held_message(@held)} class="muted-note" aria-live="polite">
+          {held_message(@held)}
+        </p>
         <% sweep = Requests.sweep(@dataset) %>
         <p
           :if={request_message(@requesting, @requested, sweep)}

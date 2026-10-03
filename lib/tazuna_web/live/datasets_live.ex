@@ -76,6 +76,8 @@ defmodule TazunaWeb.DatasetsLive do
        request_results: [],
        # 最近の回（自動の回も依頼の回も。Chiezo の変更履歴から）
        recent_runs: [],
+       # 「位置は正しい」の行を Chiezo に固定させた結果（`Requests.hold/2`）
+       held: nil,
        # 地図で選んでいる区画。**選ぶのと頼むのを分ける** —— 押した瞬間に走ると、
        # どこを押したのか確かめる前に AI が動く
        picked: nil,
@@ -410,7 +412,16 @@ defmodule TazunaWeb.DatasetsLive do
     dataset = socket.assigns.dataset
     partitions = get_in(socket.assigns, [:state, :collection, :partitions]) || []
 
-    case Requests.plan(text, partitions) do
+    # **「位置は正しい」の行は AI に渡さず、Chiezo に座標を固定させる**（頼むだけでは
+    # 守れない）。残りの行だけを、いつもどおり区画の補足として頼む
+    confirms = Requests.confirms(text)
+    socket = hold_locations(socket, dataset, confirms)
+
+    case Requests.plan(Requests.without_confirms(text), partitions) do
+      # 位置確認の行だけのテキストなら、AI に頼むものは無い（断ったことにしない）
+      {:error, :no_points} when confirms != [] ->
+        {:noreply, assign(socket, requested: nil)}
+
       {:error, reason} ->
         {:noreply, assign(socket, requested: {:refused, reason})}
 
@@ -429,6 +440,14 @@ defmodule TazunaWeb.DatasetsLive do
 
         {:noreply, socket |> assign(requesting: plan, requested: nil) |> load_request_results()}
     end
+  end
+
+  defp hold_locations(socket, _dataset, []), do: assign(socket, held: nil)
+
+  defp hold_locations(socket, dataset, confirms) do
+    socket
+    |> assign(held: :holding)
+    |> start_async(:hold, fn -> Requests.hold(dataset, confirms) end)
   end
 
   # 依頼の結果を読み直す（Chiezo の変更履歴は回が終わってから 1 行になる）
@@ -545,6 +564,11 @@ defmodule TazunaWeb.DatasetsLive do
     do: {:noreply, assign(socket, request_results: results)}
 
   def handle_async(:request_results, {:exit, _reason}, socket), do: {:noreply, socket}
+
+  def handle_async(:hold, {:ok, result}, socket), do: {:noreply, assign(socket, held: result)}
+
+  def handle_async(:hold, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, held: {:error, :chiezo_unavailable})}
 
   def handle_async(:recent_runs, {:ok, {:ok, runs}}, socket),
     do: {:noreply, assign(socket, recent_runs: runs)}
@@ -834,6 +858,25 @@ defmodule TazunaWeb.DatasetsLive do
 
   defp load_recent_runs(%{assigns: %{dataset: dataset}} = socket),
     do: start_async(socket, :recent_runs, fn -> Requests.runs(dataset) end)
+
+  @doc "「位置は正しい」の行を固定した結果の一言。"
+  def held_message(nil), do: nil
+  def held_message(:holding), do: "位置確認の店の座標を、Chiezo に固定させています…"
+  def held_message({:error, reason}), do: "位置を固定できませんでした。" <> reason_text(reason)
+
+  def held_message({:ok, %{held: held, missed: missed, failed: failed}}) do
+    [
+      held != [] &&
+        "位置を固定しました: #{Enum.join(held, "、")}（AI に座標を動かさせません。次に焼くときから効きます）。",
+      missed != [] &&
+        "近くに同じ名前の店が見つからず、固定できなかった: #{Enum.join(missed, "、")}。",
+      failed != [] &&
+        "固定を断られた: " <>
+          Enum.map_join(failed, "、", fn {shop, reason} -> "#{shop}（#{reason_text(reason)}）" end)
+    ]
+    |> Enum.filter(&is_binary/1)
+    |> Enum.join(" ")
+  end
 
   @doc "最近の回の一言（足した・直した・消した数。失敗ならその理由）。"
   def run_state(%{status: "ok", added: 0, updated: 0, removed: 0}), do: "変化なし"

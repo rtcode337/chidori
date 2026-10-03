@@ -32,6 +32,99 @@ defmodule Tazuna.Datasets.Requests do
   # 座標の書き方は travel-log のテキストの `(35.68123,139.76712)`。空白は許す
   @point ~r/\(\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*\)/u
 
+  # 「位置は正しい」の行（travel-log の `- [位置確認] 名前 (緯度,経度)`）。**AI には渡さない**
+  # —— 頼むだけでは守れないので、Chiezo に座標を固定させる（`hold/2`）
+  @confirm_mark "[位置確認]"
+  # 位置確認の行の店を探す広さ（メートル）。地図に出ている座標そのものなので狭くてよい
+  @hold_meters 60
+
+  @doc """
+  「位置は正しい」の行（`- [位置確認] 名前 (緯度,経度)`）。`%{name, lat, lon}` の並び。
+  """
+  def confirms(text) when is_binary(text) do
+    text
+    |> String.split("\n")
+    |> Enum.filter(&String.contains?(&1, @confirm_mark))
+    |> Enum.flat_map(fn line ->
+      with {lat, lon} <- point_of(line),
+           name when name != "" <- confirm_name(line) do
+        [%{name: name, lat: lat, lon: lon}]
+      else
+        _none -> []
+      end
+    end)
+  end
+
+  def confirms(_text), do: []
+
+  @doc "「位置は正しい」の行を除いたテキスト（AI に渡す依頼のぶん）。"
+  def without_confirms(text) when is_binary(text) do
+    text
+    |> String.split("\n")
+    |> Enum.reject(&String.contains?(&1, @confirm_mark))
+    |> Enum.join("\n")
+  end
+
+  def without_confirms(_text), do: ""
+
+  defp confirm_name(line) do
+    line
+    |> String.split(@confirm_mark, parts: 2)
+    |> List.last()
+    |> String.split("(", parts: 2)
+    |> List.first()
+    |> String.trim()
+  end
+
+  @doc """
+  「位置は正しい」の店の座標を、Chiezo に固定させます（AI を通さない）。
+
+  店は**その座標の近くにある、同じ名前の 1 件**で探します（`Tazuna.Datasets.ClosedTwins`
+  と同じ名前の比べ方。travel-log は見分けの番号「 (1470114)」を落として出すので、
+  名前だけでは引けない）。見つからなかった・断られた店も黙って落とさずに返します。
+
+  返すのは `{:ok, %{held: [名前], missed: [名前], failed: [{名前, 理由}]}}` か
+  `{:error, 理由}`（Chiezo の場所が無いなど）。
+  """
+  def hold(%{collection: name}, confirms) when is_list(confirms) do
+    with {:ok, base} <- Datasets.base_url() do
+      results =
+        Enum.map(confirms, fn %{name: shop, lat: lat, lon: lon} ->
+          with {:ok, docs} <- Chiezo.nearby(base, name, lat, lon, @hold_meters),
+               %{"title" => title} <- same_shop(docs, shop, lat, lon) || :missed,
+               :ok <- Chiezo.lock(base, name, title, lat, lon) do
+            {:held, shop}
+          else
+            :missed -> {:missed, shop}
+            {:error, reason} -> {:failed, {shop, reason}}
+          end
+        end)
+
+      {:ok,
+       %{
+         held: for({:held, shop} <- results, do: shop),
+         missed: for({:missed, shop} <- results, do: shop),
+         failed: for({:failed, one} <- results, do: one)
+       }}
+    end
+  end
+
+  # 近くの同じ名前の 1 件（消えたものは除く。いちばん近いもの）
+  defp same_shop(docs, shop, lat, lon) do
+    want = Tazuna.Datasets.ClosedTwins.normalize(shop)
+
+    docs
+    |> Enum.reject(&(Chiezo.removed_tag() in (&1["tags"] || [])))
+    |> Enum.filter(&(Tazuna.Datasets.ClosedTwins.normalize(&1["title"]) == want))
+    |> Enum.min_by(&distance(&1, lat, lon), fn -> nil end)
+  end
+
+  defp distance(%{"extra" => %{"lat" => la, "lon" => lo}}, lat, lon)
+       when is_number(la) and is_number(lo),
+       do: :math.pow(la - lat, 2) + :math.pow(lo - lon, 2)
+
+  defp distance(_doc, _lat, _lon), do: 1.0e9
+
   @doc "1 回に頼める区画の数。"
   def max_partitions, do: @max_partitions
 

@@ -60,6 +60,12 @@ defmodule Tazuna.Chiezo do
   @doc "AI がまだ目を通していないものの印（機械で入ったばかりのもの）。"
   def unreviewed_tag, do: "_chiezo_unreviewed"
 
+  @doc """
+  人が確かめた座標を持つ 1 件の印（Chiezo の `LOCKED_TAG`）。**座標は焼くたびに
+  確かめた値へ戻る**ので、AI に「この印の店の座標は直さない」と頼める。
+  """
+  def locked_tag, do: "座標確認済み"
+
   @doc "Chiezo の画面へのリンク。相対パスをルートURLに繋ぐだけです。"
   def url(path) when is_binary(path) do
     case base_url() do
@@ -271,6 +277,21 @@ defmodule Tazuna.Chiezo do
 
       {:error, _reason} ->
         {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
+  1 件の座標を固定します（`POST /v1/collect/{name}/locks`）。**次に焼くときから効き**、
+  AI の回が動かしても名簿を引き直しても、その座標に戻ります。
+  """
+  def lock(base, name, title, lat, lon) do
+    body = Jason.encode!(%{title: title, lat: lat, lon: lon})
+
+    case post(base <> "/v1/collect/" <> URI.encode(name) <> "/locks", body) do
+      {:ok, %{status: status}} when status in 200..299 -> :ok
+      {:ok, %{status: 404}} -> {:error, :not_found}
+      {:ok, %{status: status, body: raw}} -> {:error, {:chiezo_refused, status, reason_of(raw)}}
+      {:error, _reason} -> {:error, :chiezo_unavailable}
     end
   end
 

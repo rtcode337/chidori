@@ -358,6 +358,17 @@ defmodule Tazuna.Datasets.MealsTest do
       end
     end
 
+    test "人が確かめた位置の店は、座標を直させない" do
+      for prompt <- [
+            Meals.scan_prompt(),
+            Meals.survey_prompt(),
+            Meals.check_prompt(),
+            Meals.tidy_prompt()
+          ] do
+        assert prompt =~ ~s(tags に "#{Chiezo.locked_tag()}" が付いた店は、人が現地で確かめた位置です)
+      end
+    end
+
     test "「本来の区画へ移す」ために消させない" do
       # 移す手立ては座標を直すことだけ。消すと、移った先の回はその店を知らず、
       # 墓標が機械の名簿からの復帰も止める
