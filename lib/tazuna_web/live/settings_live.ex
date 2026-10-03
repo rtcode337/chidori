@@ -2,20 +2,26 @@ defmodule TazunaWeb.SettingsLive do
   @moduledoc """
   設定ページ。**タブで仕事を分けます**。
 
+  - トップページ —— トップに並べる枠と、その順（`Tazuna.Home`）
   - Chiezo 収集 —— tazuna が Chiezo に頼んでいる収集の一覧（巡回の間隔・相手・
     前回・次回）と、ワーカーと取り込みの待ち行列。**待ち行列が溜まってきたときに、
-    何がどれだけの間隔で回っているかを 1 枚で読むため**（`Tazuna.CollectOverview`）
-  - トップページ —— トップに並べる枠と、その順（`Tazuna.Home`）
+    何がどれだけの間隔で回っているかを 1 枚で読むため**（`Tazuna.CollectOverview`）。
+    **収集ごとに、巡回の相手と整理を自動で回すかを選んで送れる**
   """
 
   use TazunaWeb, :live_view
 
+  import TazunaWeb.Collect, only: [sweep_choices: 1, models_for: 2, by_kind: 1]
+
+  alias Tazuna.Chiezo
+  alias Tazuna.CollectCatalog
   alias Tazuna.CollectOverview
   alias Tazuna.CollectPace
   alias Tazuna.Home
   alias Tazuna.News
 
-  @tabs [{"chiezo", "Chiezo 収集"}, {"home", "トップページ"}]
+  # **トップページを先頭に**（いちばん触る設定。開いたときに出る）
+  @tabs [{"home", "トップページ"}, {"chiezo", "Chiezo 収集"}]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -26,13 +32,18 @@ defmodule TazunaWeb.SettingsLive do
        overview: nil,
        home_keys: [],
        pace_message: nil,
-       tidy_message: nil
+       # 収集ごとに選んでいるもの（`%{収集 => %{"sweeps" => 巡回ごとの相手, "tidy" => bool}}`）。
+       # **覚えておく** —— 表を読み直すとフォームは Chiezo の値に戻るので、覚えていないと
+       # 選んだところが勝手に元へ戻る
+       picks: %{},
+       # 収集ごとに、送った結果の一言
+       sent: %{}
      )}
   end
 
   @impl true
   def handle_params(params, _uri, socket) do
-    tab = if params["tab"] in Enum.map(@tabs, &elem(&1, 0)), do: params["tab"], else: "chiezo"
+    tab = if params["tab"] in Enum.map(@tabs, &elem(&1, 0)), do: params["tab"], else: "home"
 
     {:noreply,
      socket
@@ -48,9 +59,11 @@ defmodule TazunaWeb.SettingsLive do
 
       base ->
         if connected?(socket) do
+          # **読めている表は読み直すあいだも出しておく**（消すと、送った結果の一言も
+          # 表と一緒に消える）
           socket
-          |> assign(overview: :loading)
-          |> start_async(:overview, fn -> CollectOverview.load(base) end)
+          |> update(:overview, &if(match?({:ok, _}, &1), do: &1, else: :loading))
+          |> start_async(:overview, fn -> load_overview(base) end)
         else
           assign(socket, overview: :loading)
         end
@@ -58,6 +71,13 @@ defmodule TazunaWeb.SettingsLive do
   end
 
   defp load(socket, _tab), do: socket
+
+  # 収集の表は **tazuna の画面の並び**で、Chiezo にまだ無い収集も出す（`CollectCatalog`）
+  defp load_overview(base) do
+    with {:ok, overview} <- CollectOverview.load(base) do
+      {:ok, %{overview | collections: CollectCatalog.rows(overview.collections)}}
+    end
+  end
 
   @impl true
   def handle_async(:overview, {:ok, result}, socket),
@@ -70,12 +90,16 @@ defmodule TazunaWeb.SettingsLive do
     {:noreply, socket |> assign(pace_message: pace_text(result)) |> load("chiezo")}
   end
 
-  def handle_async(:tidy, {:ok, {name, stop?, result}}, socket) do
-    {:noreply, socket |> assign(tidy_message: tidy_text(name, stop?, result)) |> load("chiezo")}
+  def handle_async({:send, name}, {:ok, results}, socket) do
+    {:noreply,
+     socket
+     |> update(:sent, &Map.put(&1, name, send_text(results)))
+     |> update(:picks, &Map.delete(&1, name))
+     |> load("chiezo")}
   end
 
-  def handle_async(:tidy, {:exit, _reason}, socket),
-    do: {:noreply, assign(socket, tidy_message: "保存できませんでした。")}
+  def handle_async({:send, name}, {:exit, _reason}, socket),
+    do: {:noreply, update(socket, :sent, &Map.put(&1, name, "送れませんでした。"))}
 
   def handle_async(:pace, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, pace_message: pace_text({:error, :chiezo_unavailable}))}
@@ -110,16 +134,26 @@ defmodule TazunaWeb.SettingsLive do
     end
   end
 
-  # 整理を自動で回すか。**保存してから Chiezo へ送る**（送れなくても、次に各画面で
-  # 「収集の設定を更新」を押したときに載る）
-  def handle_event("toggle_tidy", %{"name" => name, "stop" => stop}, socket) do
-    stop? = stop == "true"
-    base = News.chiezo_base_url()
+  # 選び直したところを覚える（送るまでは Chiezo に触らない）
+  def handle_event("pick", %{"collection" => name} = params, socket) do
+    {:noreply, update(socket, :picks, &Map.put(&1, name, form_picks(params)))}
+  end
 
-    {:noreply,
-     socket
-     |> assign(tidy_message: nil)
-     |> start_async(:tidy, fn -> {name, stop?, CollectPace.stop_tidy(name, stop?, base)} end)}
+  # **収集ごとに送る。** 相手は選び直した巡回だけ、整理は切り替えたときだけ送る
+  # （同じ値を送り直すと、押していない巡回まで「直した」ことになる）
+  def handle_event("send_collection", %{"collection" => name} = params, socket) do
+    with {:ok, overview} <- socket.assigns.overview,
+         %{} = collection <- Enum.find(overview.collections, &(&1.name == name)),
+         base when is_binary(base) <- News.chiezo_base_url() do
+      picked = form_picks(params)
+
+      {:noreply,
+       socket
+       |> update(:sent, &Map.put(&1, name, "送っています…"))
+       |> start_async({:send, name}, fn -> send_collection(base, collection, picked) end)}
+    else
+      _ -> {:noreply, update(socket, :sent, &Map.put(&1, name, "送れませんでした（Chiezo が読めていません）。"))}
+    end
   end
 
   # **並びは送られてきた順**（チェックした枠の順番の欄で決める）
@@ -139,6 +173,102 @@ defmodule TazunaWeb.SettingsLive do
      |> put_flash(:info, "トップページに並べる枠を保存しました。")}
   end
 
+  defp form_picks(params),
+    do: %{"sweeps" => sweep_choices(params), "tidy" => params["tidy"] == "true"}
+
+  @doc """
+  1 つの収集に、選んだものを送ります。返すのは `[{巡回 | :all, :settings | :backend | :tidy, 結果}]`。
+
+  **tazuna の画面にある収集は、その画面の「収集の設定を更新」と同じものを丸ごと送る**
+  （`push`。依頼文を含む tazuna の今の定義に、選んだ相手を載せる）。整理を自動で
+  回すかは先に tazuna に覚えさせる —— 丸ごと送る設定に、それが載る（`with_stops`）。
+
+  **画面に無い収集**（Chiezo にだけ残っているもの）は定義を持たないので、**選び直した
+  巡回の相手だけ**を送り、整理は切り替えたときだけ送る。
+  """
+  def send_collection(base, %{push: push} = collection, %{"sweeps" => sweeps, "tidy" => tidy})
+      when is_function(push, 2) do
+    tidies =
+      for sweep <- collection.sweeps, tidy_sweep?(sweep), tidy != sweep.by_caller do
+        result =
+          case CollectPace.stop_tidy(collection.name, tidy, nil) do
+            {:ok, :not_sent} -> :ok
+            other -> other
+          end
+
+        {sweep.name, :tidy, result}
+      end
+
+    tidies ++ [{:all, :settings, push.(base, sweeps)}]
+  end
+
+  def send_collection(base, collection, %{"sweeps" => sweeps, "tidy" => tidy}) do
+    backends =
+      for sweep <- collection.sweeps,
+          !sweep.mechanical,
+          %{backend: backend} = choice <- [sweeps[sweep.name]],
+          model = Map.get(choice, :model, sweep.pick_model),
+          {backend, model} != {sweep.pick, sweep.pick_model} do
+        # 相手を替えたら、前の相手のモデルは持ち越さない
+        model = if backend != sweep.pick and model == sweep.pick_model, do: "", else: model
+
+        {sweep.name, :backend,
+         Chiezo.set_sweep_backend(base, collection.name, sweep.name, backend, model)}
+      end
+
+    tidies =
+      for sweep <- collection.sweeps, tidy_sweep?(sweep), tidy != sweep.by_caller do
+        {sweep.name, :tidy, CollectPace.stop_tidy(collection.name, tidy, base)}
+      end
+
+    backends ++ tidies
+  end
+
+  @doc "収集ごとに送った結果の言い方。"
+  def send_text([]), do: "変わったところはありませんでした。"
+
+  def send_text(results) do
+    case Enum.reject(results, fn {_sweep, _what, result} -> result == :ok end) do
+      [] ->
+        "送りました（" <> Enum.map_join(results, "・", &sent_what/1) <> "）。"
+
+      failed ->
+        "送れなかったもの: " <>
+          Enum.map_join(failed, "・", fn {_s, _w, result} = one ->
+            sent_what(one) <> failed_why(result)
+          end)
+    end
+  end
+
+  defp sent_what({_all, :settings, _result}), do: "依頼文と巡回の相手を含む設定"
+  defp sent_what({sweep, :backend, _result}), do: "#{sweep}の相手"
+  defp sent_what({sweep, :tidy, _result}), do: "#{sweep}を自動で回すか"
+
+  defp failed_why({:error, reason}), do: "（" <> TazunaWeb.Collect.reason_text(reason) <> "）"
+  defp failed_why(_result), do: ""
+
+  @doc "表の欄に出す選択（覚えているほうを先に見る）。"
+  def picked_backend(picks, collection, sweep) do
+    case get_in(picks, [collection, "sweeps", sweep.name]) do
+      %{backend: backend} -> backend
+      _ -> sweep.pick
+    end
+  end
+
+  def picked_model(picks, collection, sweep) do
+    case get_in(picks, [collection, "sweeps", sweep.name]) do
+      %{model: model} -> model
+      _ -> sweep.pick_model
+    end
+  end
+
+  def picked_tidy(picks, collection, sweep) do
+    case get_in(picks, [collection, "tidy"]) do
+      nil -> sweep.by_caller
+      tidy -> tidy
+    end
+  end
+
   defp order(value) do
     case Integer.parse(to_string(value || "")) do
       {n, _} -> n
@@ -146,18 +276,7 @@ defmodule TazunaWeb.SettingsLive do
     end
   end
 
-  @doc "整理を止めた・戻した結果の言い方。"
-  def tidy_text(name, true, :ok),
-    do: "#{name} の整理を自動で回さないようにしました（割り込みや依頼では今までどおり走ります）。"
-
-  def tidy_text(name, false, :ok), do: "#{name} の整理を自動で回すように戻しました。"
-
-  def tidy_text(name, _stop?, {:ok, :not_sent}),
-    do: "#{name} の選択は保存しましたが、Chiezo へ送れませんでした。その収集の画面で「収集の設定を更新」を押すと送られます。"
-
-  def tidy_text(_name, _stop?, {:error, _reason}), do: "保存できませんでした。"
-
-  @doc "整理の巡回か（止める・戻す口を出す）。"
+  @doc "整理の巡回か（自動で回すかを選ぶ口を出す）。"
   def tidy_sweep?(sweep), do: sweep.name == Tazuna.SweepNames.tidy()
 
   @doc "間隔を送った結果の言い方。"

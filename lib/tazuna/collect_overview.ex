@@ -33,9 +33,10 @@ defmodule Tazuna.CollectOverview do
       # ワーカーの名前。**待ち行列の口と、相手の一覧の両方から引く** —— 待ち行列の口を
       # 持たない Chiezo では前者が空で、巡回には id で書いてあるので名前が引けない
       # （画面に「w-58a4f85c」のような鍵がそのまま出ていた）
+      backends = Chiezo.backends(base)
+
       names =
-        base
-        |> Chiezo.backends()
+        backends
         |> Enum.filter(&(&1.kind == "worker"))
         |> Map.new(fn backend ->
           {String.replace_prefix(backend.id, "worker:", ""), backend.label}
@@ -44,6 +45,8 @@ defmodule Tazuna.CollectOverview do
 
       {:ok,
        %{
+         # 巡回ごとに選べる相手（収集の表の欄）
+         backends: backends,
          collections:
            collections
            |> Enum.filter(&ours?/1)
@@ -84,6 +87,21 @@ defmodule Tazuna.CollectOverview do
                 worker_names
               ),
             model: sweep["model"] || collection["model"],
+            # 選ぶ欄に入れる値（相手の一覧の id。ワーカーは `worker:<id>`）。
+            # **収集の既定に任せている巡回は空**（既定の名前を入れると、送り直したときに
+            # 既定ではなく名指しに変わる）
+            pick:
+              if(blank(sweep["worker"] || ""),
+                do: "worker:" <> sweep["worker"],
+                else: sweep["backend"] || ""
+              ),
+            pick_model: sweep["model"] || "",
+            # **機械で引く回は相手を選ばせない**（AI を呼ばないので、選んでも読まれない）。
+            # 検索文を考えさせる回（依頼文に `{queries}`）は例外
+            mechanical:
+              sweep["use_extract"] == true or sweep["by_hand"] == true or
+                (sweep["use_feed"] == true and
+                   not String.contains?(to_string(sweep["prompt"] || ""), "{queries}")),
             last_run_at: sweep["last_run_at"],
             next_run_at: if(sweep["on_demand"], do: nil, else: sweep["next_run_at"]),
             last_status: sweep["last_status"],

@@ -1056,7 +1056,10 @@ a.top-book-cover { display: block; }
 /* 巡回の間隔（設定ページ）。狭い画面では縦に積む */
 .pace-form { display: flex; flex-wrap: wrap; align-items: end; gap: .6rem 1rem; margin: .6rem 0; }
 .pace-form label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; }
-.collect-overview .tidy-toggle { margin-top: .25rem; padding: .1rem .55rem; font-size: .75rem; }
+.collect-overview .tidy-toggle { display: flex; align-items: center; gap: .3rem; margin-top: .25rem; font-size: .78rem; white-space: nowrap; }
+.collect-overview td.pick select { display: block; max-width: 13rem; margin: .1rem 0; padding: .2rem .35rem; border: 1px solid #dcdff0; border-radius: .4rem; background: #fff; font: inherit; font-size: .8rem; }
+.collect-overview .collection-send { margin-top: .5rem; }
+.collect-overview .collection-send button { padding: .25rem .7rem; font-size: .78rem; }
 
 /* 食事処の範囲を描く地図 */
 .area-canvas { aspect-ratio: 4 / 3; background: #dbeafe; }

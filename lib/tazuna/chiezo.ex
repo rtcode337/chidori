@@ -225,6 +225,14 @@ defmodule Tazuna.Chiezo do
     patch_sweep(base, name, sweep, %{by_caller: on})
   end
 
+  @doc """
+  巡回 1 本の**頼む相手だけ**を選び直します（依頼文も時計も触らない）。
+  `backend` は相手の一覧の id（ワーカーは `worker:<id>`）。空なら収集の既定へ戻す。
+  """
+  def set_sweep_backend(base, name, sweep, backend, model) do
+    patch_sweep(base, name, sweep, %{backend: backend || "", model: model})
+  end
+
   defp patch_sweep(base, name, sweep, attrs) do
     body = Jason.encode!(attrs)
 

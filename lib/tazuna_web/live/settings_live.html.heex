@@ -56,9 +56,6 @@
         <button type="button" phx-click="reload" phx-disable-with="読んでいます…">読み直す</button>
       </div>
 
-      <%!-- 整理を止めた・戻した結果。**表の外に置く**（送ったあと表を読み直すので、
-           表の中だと読み直しているあいだ消える） --%>
-      <p :if={@tidy_message} class="muted-note" aria-live="polite">{@tidy_message}</p>
       <p :if={@overview in [nil, :loading]} class="muted-note">読み込んでいます…</p>
       <p :if={match?({:error, _}, @overview)} class="muted-note">{error_text(@overview)}</p>
 
@@ -129,8 +126,9 @@
         <section class="settings-block">
           <h3>収集（{length(overview.collections)} 本）</h3>
           <p class="muted-note">
-            AI の枠を節約したい収集は、整理の「自動で回さない」を押すと、整理だけが自動では回らなくなります（巡回は消さないので、割り込みや travel-log からの依頼では今までどおり走ります）。選んだものは tazuna が覚えていて、収集の設定を送り直すたびに載せ直します。
+            tazuna の画面の並びで、各画面が Chiezo に送る収集を並べます（Chiezo にまだ送っていないものも出ます）。巡回ごとに頼む相手を選び、収集ごとの「Chiezo に送る」で送ります。送るのは各画面の「収集の設定を更新」と同じもので、tazuna の今の依頼文も一緒に届きます。整理の「自動で回さない」にチェックを入れて送ると、整理だけが自動では回らなくなります（巡回は消さないので、割り込みや travel-log からの依頼では今までどおり走ります）。これは tazuna も覚えていて、収集の設定を送り直すたびに載せ直します。
           </p>
+          <% {plain, hands} = by_kind(overview.backends) %>
           <table class="collect-overview">
             <thead>
               <tr>
@@ -142,15 +140,43 @@
                 <th>次回（JST）</th>
               </tr>
             </thead>
+            <%!-- **収集ごとに 1 つのフォーム。** 表の行をフォームで囲めないので、欄は
+                 `form` 属性でそのフォームにつなぐ --%>
             <tbody :for={collection <- overview.collections}>
+              <% form_id = "send-#{collection.name}" %>
               <tr :for={{sweep, index} <- Enum.with_index(collection.sweeps)}>
                 <td :if={index == 0} rowspan={max(length(collection.sweeps), 1)}>
                   <strong>{collection.label}</strong>
                   <br /><span class="muted-note">{collection.name}</span>
-                  <br :if={!collection.enabled} /><span
-                    :if={!collection.enabled}
+                  <br :if={collection.screen} /><a
+                    :if={collection.screen}
+                    href={collection.screen}
+                    class="muted-note"
+                  >画面を開く</a>
+                  <br :if={!collection.in_chiezo} /><span
+                    :if={!collection.in_chiezo}
+                    class="muted-note"
+                  >Chiezo にまだありません（送ると、止まった状態で作られます）</span>
+                  <br :if={collection.in_chiezo and !collection.enabled} /><span
+                    :if={collection.in_chiezo and !collection.enabled}
                     class="muted-note"
                   >止まっています</span>
+                  <br :if={!collection.push} /><span
+                    :if={!collection.push}
+                    class="muted-note"
+                  >tazuna の画面に無い収集です（相手と整理だけを送ります）</span>
+                  <form
+                    id={form_id}
+                    class="collection-send"
+                    phx-change="pick"
+                    phx-submit="send_collection"
+                  >
+                    <input type="hidden" name="collection" value={collection.name} />
+                    <button type="submit" phx-disable-with="送っています…">Chiezo に送る</button>
+                  </form>
+                  <p :if={@sent[collection.name]} class="muted-note" aria-live="polite">
+                    {@sent[collection.name]}
+                  </p>
                 </td>
                 <td>
                   {sweep.name}<span
@@ -159,22 +185,48 @@
                   >（止めています）</span>
                   <%!-- **整理だけは、ここで自動で回すかを決められる**（AI の枠の節約）。
                        時計を外すだけなので、割り込みや依頼の行き先としては走る --%>
-                  <br :if={tidy_sweep?(sweep)} />
-                  <button
-                    :if={tidy_sweep?(sweep)}
-                    type="button"
-                    class="tidy-toggle"
-                    phx-click="toggle_tidy"
-                    phx-value-name={collection.name}
-                    phx-value-stop={to_string(!sweep.by_caller)}
-                    phx-disable-with="送っています…"
-                  >
-                    {if sweep.by_caller, do: "自動で回す", else: "自動で回さない"}
-                  </button>
+                  <label :if={tidy_sweep?(sweep)} class="tidy-toggle">
+                    <input type="hidden" name="tidy" value="false" form={form_id} />
+                    <input
+                      type="checkbox"
+                      name="tidy"
+                      value="true"
+                      form={form_id}
+                      checked={picked_tidy(@picks, collection.name, sweep)}
+                    /> 自動で回さない
+                  </label>
                 </td>
                 <td>{sweep.clock}</td>
-                <td>
-                  {sweep.backend}<span :if={sweep.model} class="muted-note">{sweep.model}</span>
+                <td class="pick">
+                  <span :if={sweep.mechanical} class="muted-note">AI を使いません</span>
+                  <%= if !sweep.mechanical do %>
+                    <% backend = picked_backend(@picks, collection.name, sweep) %>
+                    <% models = models_for(overview.backends, backend) %>
+                    <select name={"sweep|#{sweep.name}|backend"} form={form_id}>
+                      <option value="">Chiezo の既定にまかせる</option>
+                      <option :for={b <- plain} value={b.id} selected={b.id == backend}>
+                        {b.label}
+                      </option>
+                      <optgroup
+                        :if={hands != []}
+                        label="ワーカー（枠を見て振り替える）"
+                      >
+                        <option :for={b <- hands} value={b.id} selected={b.id == backend}>
+                          {b.label}
+                        </option>
+                      </optgroup>
+                    </select>
+                    <select :if={models != []} name={"sweep|#{sweep.name}|model"} form={form_id}>
+                      <option value="">モデルは相手の既定</option>
+                      <option
+                        :for={m <- models}
+                        value={m}
+                        selected={m == picked_model(@picks, collection.name, sweep)}
+                      >
+                        {m}
+                      </option>
+                    </select>
+                  <% end %>
                 </td>
                 <td>
                   {at(sweep.last_run_at)}<span

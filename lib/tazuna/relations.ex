@@ -1304,6 +1304,12 @@ defmodule Tazuna.Relations do
   defp nothing_reason(nil), do: :collection_missing
   defp nothing_reason(_collection), do: :nothing_collected
 
+  @doc """
+  画家の収集に送る設定（関連図の画面の「収集の設定を更新」と同じもの）。
+  `choices` は巡回ごとに選んだ相手。
+  """
+  def painters_attrs(choices \\ %{}), do: base_attrs(painters_collection(), choices)
+
   defp base_attrs(name, choices \\ %{}) do
     %{
       name: name,
