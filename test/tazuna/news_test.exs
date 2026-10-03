@@ -634,6 +634,35 @@ defmodule Tazuna.NewsTest do
       refute News.digest_prompt(defined_topic("tazuna_tech")) =~ "販促"
     end
 
+    test "市況ニュースの要約は、売買提案の AI が読む決まった形で直近 24 時間を書かせる" do
+      # 売買提案のアプリ は最新の 1 本だけを売買提案に渡す。前回からの差分（{recent}）だと、
+      # 1 日 2 回まとめたときに 12 時間ぶんしか届かない
+      market = News.digest_prompt(defined_topic("tazuna_market"))
+
+      assert market =~ "{recent:24h}"
+      refute market =~ "{recent}\n"
+
+      for section <- ~w(## 要旨 相場の数字 マクロ・政策 業種・テーマ 個別銘柄 これからの予定 未確認・食い違い) do
+        assert market =~ section
+      end
+
+      # 読み物の論評ではなく事実。無い節も消さない（無かったのか書き忘れたのかを読めるように）
+      assert market =~ "解説・感想・見通しは書かず"
+      assert market =~ "`- なし` と書いてください"
+      assert market =~ "コードを推測しない"
+      refute market =~ "読み物のレポート"
+
+      # 共通の決まり（見出しの {now}・URL を名乗らない・タグ）は残る
+      assert market =~ "{now}"
+      assert market =~ "url: **空のままにしてください。**"
+      assert market =~ ~s(tags: "まとめ")
+
+      # ほかの話題は今までどおり読み物のレポート
+      tech = News.digest_prompt(defined_topic("tazuna_tech"))
+      assert tech =~ "読み物のレポート"
+      refute tech =~ "相場の数字"
+    end
+
     test "映画は整理と要約の回を持つ" do
       names = defined_topic("tazuna_movies") |> News.sweeps() |> Enum.map(& &1.name)
       assert "要約" in names

@@ -239,6 +239,16 @@ defmodule Tazuna.Topics do
             "経済指標、海外市場の大きな動き、業種全体に効く規制や制度の変更、" <>
             "個別企業の決算・業績修正・大型の受注や提携・M&A・不祥事を優先する。" <>
             "株価に関係の薄い一般のニュースは入れない",
+        # **要約は、売買提案の AI が読む決まった形にする**（`Tazuna.News.MarketDigest`）。
+        # 売買提案のアプリ は最新の 1 本をそのまま提案の材料に渡すので、読み物の論評より、日付・数字・
+        # 銘柄コードの付いた事実が決まった節に並んでいるほうが効く。**人が読むのも同じ 1 本**
+        # —— AI 用と人間用を別々に書かせると、AI に何が伝わったのかを人が確かめられない。
+        # **材料は直近 24 時間**（`{recent:24h}`）。前回からの差分にすると、回す間隔が
+        # そのまま幅になり（1 日 2 回なら 12 時間）、最新の 1 本だけを読む 売買提案のアプリ に半日ぶん
+        # しか届かない
+        digest_intro: Tazuna.News.MarketDigest.intro(),
+        digest_material: Tazuna.News.MarketDigest.material(),
+        digest_format: Tazuna.News.MarketDigest.format(),
         themes: true,
         theme_examples: %{
           fields: ["金融政策", "為替", "決算", "半導体", "資源"],
