@@ -637,6 +637,7 @@ defmodule Tazuna.News do
     cond do
       module = Topics.sweeps_from(topic) -> module.prompt(topic)
       works = Topics.works(topic) -> works.survey_prompt(interest_of(topic))
+      only_look_ahead?(topic) -> hd(look_ahead_sweeps(topic)).prompt
       true -> prompt(topic)
     end
   end
@@ -693,35 +694,58 @@ defmodule Tazuna.News do
   end
 
   defp article_sweeps(topic) do
-    [
-      intake(topic),
-      %{
-        name: @focus_sweep,
-        # **溜める回が 1 回走るまで待つ**（`after`）。巡回はそれぞれ別の時計で動くので、
-        # 有効にした直後は両方が「いますぐ」になり、整理が空の収集を相手に走ることがある
-        # （ワーカーを経由する整理が、機械収集より先に取り込みへ届く）
-        after: intake(topic).name,
-        interval_minutes: Tazuna.SweepNames.tidy_minutes(),
-        prompt: refine_prompt(topic)
-      }
-    ] ++ digest_sweeps(topic) ++ look_ahead_sweeps(topic)
+    # **配信元を持たず、先を探す回で集める話題**（お笑いイベント）には溜める回を置かない ——
+    # 置くと、ニュースを集める文で記事を溜め始める。整理は先を探す回を待つ
+    {intakes, first} =
+      if only_look_ahead?(topic),
+        do: {[], hd(look_ahead_sweeps(topic))},
+        else: {[intake(topic)], intake(topic)}
+
+    intakes ++
+      [
+        %{
+          name: @focus_sweep,
+          # **溜める回が 1 回走るまで待つ**（`after`）。巡回はそれぞれ別の時計で動くので、
+          # 有効にした直後は両方が「いますぐ」になり、整理が空の収集を相手に走ることがある
+          # （ワーカーを経由する整理が、機械収集より先に取り込みへ届く）
+          after: first.name,
+          interval_minutes: Tazuna.SweepNames.tidy_minutes(),
+          prompt: refine_prompt(topic)
+        }
+      ] ++ digest_sweeps(topic) ++ look_ahead_sweeps(topic)
   end
+
+  # 配信元を持たず、先を探す回だけで集める話題か
+  defp only_look_ahead?(topic) when is_map(topic),
+    do: Map.get(topic, :feeds) in [nil, []] and look_ahead_of(topic) != nil
+
+  defp only_look_ahead?(_topic), do: false
+
+  # 先を探す回の作り方。`look_ahead: true` は技術イベントのもの（`Tazuna.News.Events`）、
+  # モジュールを書けばそのモジュールのもの（お笑いイベント）
+  defp look_ahead_of(%{look_ahead: true}), do: Events
+  defp look_ahead_of(%{look_ahead: module}) when is_atom(module) and module != nil, do: module
+  defp look_ahead_of(_topic), do: nil
 
   # 先の月を探す回（技術イベント。`Tazuna.Topics` の `look_ahead`）。巡回の名前は
   # 「情報収集」—— 食事処と同じく、足りないものを外から探して足す仕事。
   # **足すだけ**（今あるものは整理が見る）
-  defp look_ahead_sweeps(%{look_ahead: true} = topic) do
-    [
-      %{
-        name: Tazuna.SweepNames.survey(),
-        interval_minutes: Events.look_ahead_minutes(),
-        only_new: true,
-        prompt: Events.look_ahead_prompt(interest_of(topic), interests_of(topic))
-      }
-    ]
-  end
+  defp look_ahead_sweeps(topic) do
+    case look_ahead_of(topic) do
+      nil ->
+        []
 
-  defp look_ahead_sweeps(_topic), do: []
+      module ->
+        [
+          %{
+            name: Tazuna.SweepNames.survey(),
+            interval_minutes: module.look_ahead_minutes(),
+            only_new: true,
+            prompt: module.look_ahead_prompt(interest_of(topic), interests_of(topic))
+          }
+        ]
+    end
+  end
 
   # 要約の回。**要約を作らない話題には置かない**（`Tazuna.Topics.digest?/1`）——
   # 置いたままだと、時刻を決めた拍子に読まれない要約を作らせて枠を食う

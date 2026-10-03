@@ -403,8 +403,13 @@ defmodule Tazuna.News.Events do
   @doc "開催地の絞り込みで、海外をまとめて選ぶ値。"
   def abroad, do: @abroad
 
-  @doc "開催地が国内（`:japan`）・海外（`:abroad`）・オンライン（`:online`）のどれか。"
+  @doc """
+  開催地が国内（`:japan`）・海外（`:abroad`）・オンライン（`:online`）のどれか。
+  **テレビと配信はオンラインと同じ扱い**（お笑いイベントの放送。家で観るもので、
+  海外に数えると「行けない」と読まれる）。
+  """
   def region(@online), do: :online
+  def region(place) when place in ["テレビ", "配信"], do: :online
   def region(place) when place in @prefectures, do: :japan
   def region(_place), do: :abroad
 

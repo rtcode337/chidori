@@ -59,6 +59,29 @@ defmodule Tazuna.News.Movies do
   @doc "公開日のタグの頭（カレンダーはこのタグで引く）。"
   def date_tag, do: @date_tag
 
+  @doc "カレンダーの日付に添える言葉（「9月11日 公開」）。"
+  def date_word, do: "公開"
+
+  @doc "注目作の一覧の見出し（始まっているもの / これから始まるもの）。"
+  def group_labels, do: {"公開中", "これから公開"}
+
+  @doc "注目作の一覧に、始まってから何日前のものまで並べるか（整理の回が落とす長さと同じ）。"
+  def recent_days, do: @keep_after_release_days
+
+  @doc "日付のあとに並べる事実（上映形式・配信開始）。"
+  def facts(entry) do
+    [
+      case formats(entry) do
+        [] -> nil
+        formats -> Enum.join(formats, "・")
+      end,
+      case streaming(entry) do
+        nil -> nil
+        date -> "#{date.month}月#{date.day}日から配信"
+      end
+    ]
+  end
+
   @doc "配信開始のタグの頭。"
   def stream_tag, do: @stream_tag
 

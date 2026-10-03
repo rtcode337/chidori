@@ -521,6 +521,37 @@ defmodule Tazuna.NewsTest do
   end
 
   describe "巡回" do
+    test "お笑いイベントは配信元を持たず、月ごとに探す回と整理だけで回す" do
+      topic = defined_topic("tazuna_comedy")
+      sweeps = News.sweeps(topic)
+      names = Enum.map(sweeps, & &1.name)
+
+      # ニュースを集める回は置かない（置くと記事を溜め始める）
+      refute Tazuna.SweepNames.machine() in names
+      refute Tazuna.SweepNames.collect() in names
+      survey = Enum.find(sweeps, &(&1.name == Tazuna.SweepNames.survey()))
+      tidy = Enum.find(sweeps, &(&1.name == Tazuna.SweepNames.tidy()))
+      assert tidy.after == survey.name
+
+      # テレビ番組も入れ、放送日で並べる。出演者は関連図とつなぐ書き方で
+      assert survey.prompt =~ "今回探すのは「{cursor}」"
+      assert survey.prompt =~ "開催地:テレビ"
+      assert survey.prompt =~ "出演:"
+      assert tidy.prompt =~ "next_cursor は返さないでください"
+
+      attrs = News.attrs("tazuna_comedy", topic)
+      assert attrs.thumbs == true
+      assert attrs.keep_days == 0
+      # 名指ししない回に落ちる文も、ニュースではなく先を探す文
+      assert attrs.prompt == survey.prompt
+    end
+
+    test "テレビと配信は、海外ではなくオンラインと同じ扱い" do
+      assert Tazuna.News.Events.region("テレビ") == :online
+      assert Tazuna.News.Events.region("配信") == :online
+      refute Tazuna.News.Events.abroad?(%{places: ["テレビ"]})
+    end
+
     test "仕事ごとに別の時計で回す" do
       names = defined_topic("tazuna_news") |> News.sweeps() |> Enum.map(& &1.name)
 
@@ -901,7 +932,7 @@ defmodule Tazuna.NewsTest do
       topics = Enum.filter(Tazuna.Topics.defined(), &Tazuna.Topics.digest?/1)
 
       assert Enum.map(topics, & &1.name) |> Enum.sort() ==
-               Enum.sort(["一般ニュース", "技術ニュース", "映画", "市況ニュース"])
+               Enum.sort(["一般ニュース", "技術ニュース", "映画", "アニメ", "市況ニュース"])
 
       for topic <- topics do
         assert News.digest_prompt(topic) =~ "要点ごとに、すぐ下の行へ根拠にした記事を",

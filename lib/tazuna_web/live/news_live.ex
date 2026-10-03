@@ -322,7 +322,8 @@ defmodule TazunaWeb.NewsLive do
 
     with %{} <- topic,
          base when is_binary(base) <- News.chiezo_base_url(),
-         {:ok, count} <- Movies.fill_images(base, topic) do
+         works when works != nil <- Topics.works(topic),
+         {:ok, count} <- works.fill_images(base, topic) do
       message =
         if count > 0,
           do: "絵の無い注目作 #{count} 本の絵を探すよう頼みました（数分かかります）。",
@@ -951,11 +952,14 @@ defmodule TazunaWeb.NewsLive do
   """
   attr :entry, :map, required: true
 
+  # 作品の作り方のモジュール（映画・アニメ）。事実の並べ方が作品ごとに違う
+  attr :works, :atom, default: Movies
+
   def work_detail(assigns) do
     ~H"""
-    <p class="event-item-facts">{work_facts(@entry)}</p>
+    <p class="event-item-facts">{work_facts(@entry, @works)}</p>
     <div class="event-item-detail">
-      <p :for={line <- Movies.body_lines(@entry)}>
+      <p :for={line <- @works.body_lines(@entry)}>
         <%= for part <- link_parts(line) do %>
           <a :if={match?({:url, _}, part)} href={elem(part, 1)} target="_blank" rel="noreferrer">
             {elem(part, 1)}
@@ -1359,17 +1363,16 @@ defmodule TazunaWeb.NewsLive do
   def attention_label(:low), do: "低"
   def attention_label(_attention), do: ""
 
-  # 注目作の一覧で、公開から何日前までを「公開中」として残すか。**整理の回が
-  # 落とすのと同じ長さ**（それより前のものは、落とし損ねていても並べない）
-  @works_recent_days 60
-
   @doc """
   注目作の一覧の並び。**公開中（新しい順）とこれから（近い順）に分けます** ——
   公開中のものは口コミで観るかを決め、これからのものは公開日で予定を立てるので、
   読み方が違います。
   """
-  def works_groups(entries, today \\ Tazuna.Jst.today()) do
-    from = Date.add(today, -@works_recent_days)
+  def works_groups(entries, today \\ Tazuna.Jst.today(), works \\ Movies) do
+    # 始まってから何日前までを並べるか。**整理の回が落とすのと同じ長さ**
+    # （それより前のものは、落とし損ねていても並べない）
+    from = Date.add(today, -works.recent_days())
+    {started, upcoming} = works.group_labels()
 
     {showing, coming} =
       entries
@@ -1377,8 +1380,8 @@ defmodule TazunaWeb.NewsLive do
       |> Enum.split_with(&(Date.compare(&1.date, today) != :gt))
 
     [
-      {"公開中", Enum.sort_by(showing, &{rank(&1.attention), -Date.to_gregorian_days(&1.date)})},
-      {"これから公開", Enum.sort_by(coming, & &1.date, Date)}
+      {started, Enum.sort_by(showing, &{rank(&1.attention), -Date.to_gregorian_days(&1.date)})},
+      {upcoming, Enum.sort_by(coming, & &1.date, Date)}
     ]
     |> Enum.reject(fn {_label, list} -> list == [] end)
   end
@@ -1411,19 +1414,9 @@ defmodule TazunaWeb.NewsLive do
   def hero?(nil), do: false
   def hero?(topic), do: Topics.works(topic) != nil or Map.get(topic, :thumbs) != nil
 
-  @doc "作品の事実（公開日・上映形式・配信開始）を 1 行で。"
-  def work_facts(entry) do
-    [
-      "#{day_label(entry.date)} 公開",
-      case Movies.formats(entry) do
-        [] -> nil
-        formats -> Enum.join(formats, "・")
-      end,
-      case Movies.streaming(entry) do
-        nil -> nil
-        date -> "#{date.month}月#{date.day}日から配信"
-      end
-    ]
+  @doc "作品の事実（公開日・上映形式・配信開始、放送開始・曜日・放送局など）を 1 行で。"
+  def work_facts(entry, works \\ Movies) do
+    ["#{day_label(entry.date)} #{works.date_word()}" | works.facts(entry)]
     |> Enum.filter(&is_binary/1)
     |> Enum.join(" / ")
   end

@@ -222,7 +222,7 @@
                 <strong :if={!entry.url}>{entry.title}</strong>
               </div>
               <%= if Tazuna.Topics.works(@topic) do %>
-                <.work_detail entry={entry} />
+                <.work_detail entry={entry} works={Tazuna.Topics.works(@topic)} />
               <% else %>
                 <p class="event-item-facts">
                   <span :if={Events.abroad?(entry)} class="event-abroad-mark">海外</span>
@@ -262,10 +262,18 @@
       <p :if={match?({:error, _}, @works)} class="muted-note">{cal_error(@works)}</p>
       <%= if match?({:ok, _}, @works) do %>
         <% {:ok, all} = @works %>
-        <p :if={works_groups(all) == []} class="muted-note">
+        <p
+          :if={works_groups(all, Tazuna.Jst.today(), Tazuna.Topics.works(@topic)) == []}
+          class="muted-note"
+        >
           注目度が中以上の作品はまだありません（情報収集と整理が回ると並びます）。
         </p>
-        <section :for={{label, list} <- works_groups(all)} class="event-day-list">
+        <section
+          :for={
+            {label, list} <- works_groups(all, Tazuna.Jst.today(), Tazuna.Topics.works(@topic))
+          }
+          class="event-day-list"
+        >
           <h3>{label}（{length(list)} 本）</h3>
           <ul>
             <li :for={entry <- list} class={["event-item", "is-#{entry.attention}"]}>
@@ -285,7 +293,7 @@
                 </a>
                 <strong :if={!entry.url}>{entry.title}</strong>
               </div>
-              <.work_detail entry={entry} />
+              <.work_detail entry={entry} works={Tazuna.Topics.works(@topic)} />
             </li>
           </ul>
         </section>
