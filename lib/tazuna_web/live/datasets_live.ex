@@ -23,6 +23,8 @@ defmodule TazunaWeb.DatasetsLive do
 
   alias Tazuna.Chiezo
   alias Tazuna.Datasets
+  alias Tazuna.Datasets.BookMark
+  alias Tazuna.Datasets.BookMarks
   alias Tazuna.Datasets.Requests
   alias Tazuna.Datasets.ShelfCache
   alias Tazuna.Datasets.Survey
@@ -58,6 +60,9 @@ defmodule TazunaWeb.DatasetsLive do
        book_posts: %{},
        # 詳細を開いている本（見出し）。本を押すとモーダルで開く
        opened_book: nil,
+       # 本に付けた「読んだ」印とメモ（tazuna が持つ。本の見出しで引く）
+       book_marks: %{},
+       book_mark_saved: nil,
        book_asking: false,
        book_asked: nil,
        # 興味トピックに近い本だけを並べるか
@@ -118,7 +123,9 @@ defmodule TazunaWeb.DatasetsLive do
         shelf: cached && cached.shelf,
         shelf_checked_at: cached && cached.checked_at,
         # 対象を切り替えたら、設定は対象ごとの既定に戻す（別の収集のもの）
-        settings_open: open_settings?(dataset)
+        settings_open: open_settings?(dataset),
+        book_marks: if(dataset[:derived], do: BookMarks.all(), else: %{}),
+        book_mark_saved: nil
       )
       |> assign_plan(dataset)
       |> assign(places: nil, place_query: "")
@@ -325,6 +332,30 @@ defmodule TazunaWeb.DatasetsLive do
          with {:ok, base} <- Datasets.base_url(),
               do: Tazuna.Datasets.Books.recommending(base, title)
        end)}
+    end
+  end
+
+  # 「読んだ」印とメモを書く。**空にしたら消える**（関連図の「見た」と同じ）
+  def handle_event("save_book_mark", %{"title" => title} = params, socket) do
+    attrs = %{
+      # チェックが外れているとキーごと来ない（HTML のチェックボックス）
+      "read" => params["read"] == "on",
+      "read_on" => blank_to_nil(params["read_on"]),
+      "note" => params["note"] || ""
+    }
+
+    case BookMarks.put(title, attrs) do
+      {:ok, mark} ->
+        marks =
+          if mark,
+            do: Map.put(socket.assigns.book_marks, title, mark),
+            else: Map.delete(socket.assigns.book_marks, title)
+
+        {:noreply, assign(socket, book_marks: marks, book_mark_saved: title)}
+
+      {:error, _changeset} ->
+        # 書けなかったことは黙って捨てない
+        {:noreply, put_flash(socket, :error, "読んだ記録を保存できませんでした。")}
     end
   end
 
@@ -935,6 +966,25 @@ defmodule TazunaWeb.DatasetsLive do
   # **まだ Chiezo に無い収集では、対象の側の雛形を出す。** 巡回の名前も文も
   # 対象ごとに違うので、ここで決め打つと対象を足すたびに画面が食い違う
   defp default_prompts(%{dataset: dataset}), do: Datasets.call(dataset, :prompts)
+
+  @doc "読んだ本の見出し（上位の枠から外す）。"
+  def read_titles(marks),
+    do: for({title, %BookMark{read: true}} <- marks, into: MapSet.new(), do: title)
+
+  @doc "その本の「読んだ」印。まだ無ければ空の印（フォームを 2 通り書かずに済ませる）。"
+  def book_mark_of(marks, title), do: Map.get(marks, title) || %BookMark{}
+
+  @doc "「読んだ日」の欄に最初から入れておく日付（書いてあればそれ、無ければ JST の今日）。"
+  def read_on_value(%BookMark{read_on: %Date{} = date}), do: Date.to_iso8601(date)
+  def read_on_value(_mark), do: Jst.today() |> Date.to_iso8601()
+
+  @doc "印を 1 行で言う（本棚の一覧と詳細の見出しに出す）。"
+  def book_mark_summary(%BookMark{read: true, read_on: %Date{} = date}),
+    do: "読んだ（#{Date.to_iso8601(date)}）"
+
+  def book_mark_summary(%BookMark{read: true}), do: "読んだ"
+  def book_mark_summary(%BookMark{note: note}) when is_binary(note) and note != "", do: "メモあり"
+  def book_mark_summary(_mark), do: nil
 
   @doc "詳細を開いている本（本棚に無くなっていれば nil）。"
   def opened_book(%{opened_book: title, shelf: {:ok, books}}) when is_binary(title),

@@ -966,6 +966,9 @@ body.digest-open { overflow: hidden; }
 .top-book-rank { display: inline-block; width: 2.6em; color: #4f46b9; font-weight: 800; white-space: nowrap; }
 .top-book-cover { flex: none; width: 72px; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 4px; background: #eef0f7; }
 .top-book-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* 読んだ本（本棚の一覧）。**消さずに薄くする** —— 本棚には残し、読んだことが一目で分かる */
+.book-card.is-read { opacity: .6; }
+.read-badge { margin-left: .35rem; padding: 0 .45rem; border-radius: .5rem; background: #dcfce7; color: #166534; font-size: .72rem; font-weight: 700; vertical-align: middle; }
 a.top-book-cover { display: block; }
 .top-book-cover img.is-missing { visibility: hidden; }
 .top-book-body { min-width: 0; }

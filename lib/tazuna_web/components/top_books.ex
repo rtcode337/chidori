@@ -19,6 +19,10 @@ defmodule TazunaWeb.TopBooks do
   attr :books, :list, required: true
   attr :more_href, :string, default: nil
 
+  # **読んだ本は並べない**（`Tazuna.Datasets.BookMarks.read_titles/0`。本の見出しの集まり）。
+  # この枠は次に何を読むかを決めるためのもので、読み終えた本が残ると押し出される
+  attr :read, :any, default: MapSet.new()
+
   # **押すとその本を勧めている記事をたどれる**（画面が受ける event の名前。`title` を渡す）。
   # 書名のリンクは本の頁へ行くので、たどる口は札そのものに置く
   attr :open_event, :string, default: nil
@@ -28,7 +32,8 @@ defmodule TazunaWeb.TopBooks do
   attr :posts, :any, default: nil
 
   def top_books(assigns) do
-    assigns = assign(assigns, shown: Enum.with_index(Enum.take(assigns.books, @count), 1))
+    unread = Enum.reject(assigns.books, &MapSet.member?(assigns.read, &1.title))
+    assigns = assign(assigns, shown: Enum.with_index(Enum.take(unread, @count), 1))
 
     ~H"""
     <ol class="top-books">

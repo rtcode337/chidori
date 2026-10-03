@@ -665,6 +665,55 @@ defmodule TazunaWeb.DatasetsLiveTest do
       refute body["prompt"] =~ "{unreviewed}"
     end
 
+    test "読んだ印を付けると、本棚で分かり、未読の上位の枠から外れる", %{conn: conn} do
+      {:ok, live, html} = open_live(conn, ~p"/datasets?view=books")
+      html = render_async(live) || html
+
+      assert html =~ "いま勧められている未読の上位"
+      assert html =~ ~r|<ol[^>]*class="top-books">.*本:リーダブルコード|s
+
+      live
+      |> element(~s(button.book-name[phx-value-title="本:リーダブルコード"]))
+      |> render_click()
+
+      html =
+        live
+        |> element("#book-mark")
+        |> render_submit(%{
+          "title" => "本:リーダブルコード",
+          "read" => "on",
+          "read_on" => "2026-10-01",
+          "note" => "命名の章が役に立った"
+        })
+
+      assert html =~ "保存しました。"
+      assert Tazuna.Datasets.BookMarks.get("本:リーダブルコード").read
+
+      # 本棚の一覧には残し、読んだことが分かる印を付ける
+      assert html =~ ~s(class="book-card is-read")
+      assert html =~ "読んだ（2026-10-01）"
+      # 未読の上位の枠からは外れる
+      [top] = Regex.run(~r|<ol[^>]*class="top-books">.*?</ol>|s, html)
+      refute top =~ "本:リーダブルコード"
+    end
+
+    test "印もメモも空にして保存すると、記録ごと消える", %{conn: conn} do
+      {:ok, _mark} = Tazuna.Datasets.BookMarks.put("本:リーダブルコード", %{"read" => true})
+      {:ok, live, _html} = open_live(conn, ~p"/datasets?view=books")
+      render_async(live)
+
+      live
+      |> element(~s(button.book-name[phx-value-title="本:リーダブルコード"]))
+      |> render_click()
+
+      live
+      |> element("#book-mark")
+      # チェックを外す（外したチェックボックスは値を送らない。ここでは空で上書きする）
+      |> render_submit(%{"title" => "本:リーダブルコード", "read" => "", "read_on" => "", "note" => ""})
+
+      refute Tazuna.Datasets.BookMarks.get("本:リーダブルコード")
+    end
+
     test "「いま頼む」の欄は出さず、依頼文は収集ごとの節に出す", %{conn: conn} do
       {:ok, live, _html} = open_live(conn, ~p"/datasets?view=books")
       html = render_async(live)

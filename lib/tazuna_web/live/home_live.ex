@@ -31,6 +31,8 @@ defmodule TazunaWeb.HomeLive do
        panels: Home.selected(),
        news: nil,
        books: nil,
+       # 読んだ本（上位の枠から外す。`Tazuna.Datasets.BookMarks`）
+       read_books: MapSet.new(),
        events: nil,
        # 押した本（書名の見出し。`本:<書名>`）と、それを勧めている記事
        opened_book: nil,
@@ -65,6 +67,8 @@ defmodule TazunaWeb.HomeLive do
     do: assign(socket, news: News.current(News.server(topic.collection)))
 
   defp load(socket, %{kind: :books}) do
+    socket = assign(socket, read_books: Tazuna.Datasets.BookMarks.read_titles())
+
     case News.chiezo_base_url() do
       nil ->
         assign(socket, books: {:error, :chiezo_not_configured})

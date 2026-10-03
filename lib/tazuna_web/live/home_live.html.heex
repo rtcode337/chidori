@@ -105,6 +105,7 @@
       <TazunaWeb.TopBooks.top_books
         :if={match?({:ok, _}, @books)}
         books={elem(@books, 1)}
+        read={@read_books}
         open_event="open_book"
         opened={@opened_book}
         posts={@book_posts}

@@ -38,6 +38,17 @@ defmodule TazunaWeb.TopBooksTest do
     assert html =~ ~r|<p class="top-book-title">\s*<span class="top-book-rank">1位</span>|
   end
 
+  test "読んだ本は並べず、そのぶん次の本が繰り上がる" do
+    books = Enum.map(1..12, &book/1)
+    html = render_component(&TopBooks.top_books/1, books: books, read: MapSet.new(["本1"]))
+
+    refute html =~ ">\n      本1\n"
+    refute html =~ ~s(href="https://example.com/book/1")
+    # 10 冊は保つ（11 冊目が繰り上がる）
+    assert html =~ "本11"
+    assert html =~ "10位"
+  end
+
   test "表紙を押しても、書名と同じく本の頁へ行く（札を開かない）" do
     html = render_component(&TopBooks.top_books/1, books: [book(1)], open_event: "open_book")
 
