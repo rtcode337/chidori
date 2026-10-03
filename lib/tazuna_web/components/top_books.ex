@@ -4,12 +4,14 @@ defmodule TazunaWeb.TopBooks do
 
   本棚ぜんたいは何百冊にもなるので、「いま何が勧められているか」を一目で見るには
   長すぎます —— 勧めている記事の多い順に数冊だけ出し、続きは技術書の画面で読みます。
+  **1 冊 1 行で縦に並べます。** 何列かの札に並べていた頃は、順位が左右と上下の
+  どちらに進むのかが読みにくかった —— 上から順に読めば順位どおりになるようにする。
   """
 
   use Phoenix.Component
 
-  # 並べる数
-  @count 8
+  # 並べる数。**切りのいい数にする**（8 冊だと、何の区切りなのかが読めない）
+  @count 10
 
   @doc "並べる数。"
   def count, do: @count
@@ -44,9 +46,27 @@ defmodule TazunaWeb.TopBooks do
         tabindex={@open_event && "0"}
         aria-label={@open_event && "#{book.name}を勧めている記事を見る"}
       >
-        <span class="top-book-rank" aria-label={"#{rank} 位"}>{rank}</span>
-        <%!-- 表紙の無い本は 404 が返る。**壊れた画像の印を出さず、枠だけ残す** --%>
-        <div class={["top-book-cover", !book.cover_url && "is-empty"]}>
+        <%!-- 表紙の無い本は 404 が返る。**壊れた画像の印を出さず、枠だけ残す**。
+             **表紙を押したときは書名と同じく本の頁へ**（札を開くのは札のほうの口。
+             表紙は本そのものに見えるので、押して記事の一覧が開くと戸惑う） --%>
+        <a
+          :if={book.page_url}
+          href={book.page_url}
+          target="_blank"
+          rel="noreferrer"
+          class={["top-book-cover", !book.cover_url && "is-empty"]}
+          aria-label={"#{book.name}の頁を開く"}
+          onclick="event.stopPropagation()"
+        >
+          <img
+            :if={book.cover_url}
+            src={book.cover_url}
+            alt=""
+            loading="lazy"
+            onerror="this.classList.add('is-missing')"
+          />
+        </a>
+        <div :if={!book.page_url} class={["top-book-cover", !book.cover_url && "is-empty"]}>
           <img
             :if={book.cover_url}
             src={book.cover_url}
@@ -57,6 +77,9 @@ defmodule TazunaWeb.TopBooks do
         </div>
         <div class="top-book-body">
           <p class="top-book-title">
+            <%!-- **順位は書名の左に文字で出す**（丸い印にすると未読の数のように見え、
+                 表紙の左に欄を取ると、その下が空いたままになる） --%>
+            <span class="top-book-rank">{rank}位</span>
             <a
               :if={book.page_url}
               href={book.page_url}
