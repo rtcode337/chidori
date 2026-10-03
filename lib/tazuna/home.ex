@@ -3,9 +3,11 @@ defmodule Tazuna.Home do
   トップページ。**設定ページで選んだ枠を、選んだ順にタブで並べます**
   （最初の枠が開いたときに出る）。
 
-  並べられる枠は 3 種類です。
+  並べられる枠は次のとおりです。
 
   - 話題の要約（`topic:<収集>`）—— 最新情報の話題のうち、要約を作るもの
+  - 興味トピックの要約（`interest:<収集>`）—— 同じ話題を、選んだ興味トピックに
+    絞って書いたもの（トピックの網を育てる話題だけ。「技術興味ニュース」など）
   - これからの注目イベント（`events:<収集>`）—— 要約を作らず、開催日のカレンダーを
     持つ話題（技術イベント）。注目度が中以上で、これから 2 か月のもの
   - 関連図（`relations:<種類>`）—— 関連図の画面をそのまま埋め込む
@@ -28,17 +30,20 @@ defmodule Tazuna.Home do
   """
   def catalog do
     topics =
-      for topic <- Topics.list(), Topics.digest?(topic) or Topics.calendar?(topic) do
-        # **要約を作る話題は要約、作らずにカレンダーを持つ話題は注目イベント**
-        if Topics.digest?(topic),
-          do: %{key: "topic:" <> topic.collection, name: topic.name, kind: :topic, topic: topic},
-          else: %{
-            key: "events:" <> topic.collection,
-            name: topic.name,
-            kind: :events,
-            topic: topic
-          }
-      end
+      Enum.flat_map(Topics.list(), fn topic ->
+        cond do
+          # **要約を作る話題は要約、作らずにカレンダーを持つ話題は注目イベント**
+          Topics.digest?(topic) ->
+            [%{key: "topic:" <> topic.collection, name: topic.name, kind: :topic, topic: topic}] ++
+              interest_panel(topic)
+
+          Topics.calendar?(topic) ->
+            [%{key: "events:" <> topic.collection, name: topic.name, kind: :events, topic: topic}]
+
+          true ->
+            []
+        end
+      end)
 
     relations =
       for {key, name} <- Tazuna.Relations.views() do
@@ -46,6 +51,31 @@ defmodule Tazuna.Home do
       end
 
     topics ++ relations ++ [%{key: "books", name: "技術書", kind: :books}]
+  end
+
+  # 興味トピックの要約。**トピックの網を育てる話題だけ**（興味トピックは網の札から選ぶ）。
+  # 元の話題のすぐ後ろに並べる
+  defp interest_panel(topic) do
+    if Topics.themes?(topic),
+      do: [
+        %{
+          key: "interest:" <> topic.collection,
+          name: interest_name(topic.name),
+          kind: :interest,
+          topic: topic
+        }
+      ],
+      else: []
+  end
+
+  @doc """
+  興味トピックの要約の枠の名前。「技術ニュース」なら「技術興味ニュース」。
+  「ニュース」で終わらない話題は後ろに「（興味）」を付ける。
+  """
+  def interest_name(name) do
+    if String.ends_with?(name, "ニュース"),
+      do: String.replace_suffix(name, "ニュース", "興味ニュース"),
+      else: name <> "（興味）"
   end
 
   @doc "いま並べている枠（選んだ順）。選んでいなければ既定。"

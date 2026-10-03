@@ -569,7 +569,9 @@ defmodule Tazuna.NewsTest do
       assert News.attrs("tazuna_events", defined_topic("tazuna_events")).thumbs ==
                %{pages_from: ["connpass.com"]}
 
-      refute Map.has_key?(News.attrs("tazuna_tech", defined_topic("tazuna_tech")), :thumbs)
+      # ニュースは記事のページの og:image を拾わせる。市況には持たせない
+      assert News.attrs("tazuna_tech", defined_topic("tazuna_tech")).thumbs.pages_from != []
+      refute Map.has_key?(News.attrs("tazuna_market", defined_topic("tazuna_market")), :thumbs)
       # 整理の回はカーソルを動かさない（動かすと次に探す月が飛ぶ）
       assert Tazuna.News.Events.refine_note() =~ "next_cursor は返さないでください"
       # タグの決まりは整理と同じ文

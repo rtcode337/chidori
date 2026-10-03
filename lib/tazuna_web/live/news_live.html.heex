@@ -63,6 +63,7 @@
         kind="interest"
         label="興味トピック"
         articles={@news.articles}
+        hero={hero?(@topic)}
       />
     </section>
 
@@ -291,65 +292,16 @@
       <% end %>
     </section>
 
-    <%!-- 全画面の要約。**左右のスワイプで前後の要約へ**（`DigestSwipe`）。
-         **古いほうを左に置く** —— 右へ払う（左のものを引き出す）のは「戻る」の
-         動きなので、戻る先が古いほう。新しいほうへは左へ払う --%>
-    <% viewing = digests_of(@news, @digest_kind) %>
-    <%= if viewed = opened_digest(@digest_open, @news, @digest_full, @digest_kind) do %>
-      <div
-        id="digest-viewer"
-        class="digest-viewer"
-        role="dialog"
-        aria-modal="true"
-        aria-label="要約"
-        phx-hook="DigestSwipe"
-        phx-window-keydown="digest_key"
-        data-index={@digest_open}
-        data-section={@digest_section}
-      >
-        <nav class="digest-viewer-bar" aria-label="要約の切り替え">
-          <button
-            type="button"
-            phx-click="digest_step"
-            phx-value-by="1"
-            disabled={@digest_open >= length(viewing) - 1}
-            aria-label="古い要約"
-          >
-            ← 古い
-          </button>
-          <span class="digest-viewer-count">{@digest_open + 1} / {length(viewing)}</span>
-          <button
-            type="button"
-            phx-click="digest_step"
-            phx-value-by="-1"
-            disabled={@digest_open == 0}
-            aria-label="新しい要約"
-          >
-            新しい →
-          </button>
-          <button
-            type="button"
-            class="digest-viewer-close"
-            phx-click="close_digest"
-            aria-label="閉じる"
-          >
-            ×
-          </button>
-        </nav>
-        <div class="digest-viewer-body">
-          <.report
-            title={viewed.title}
-            at={viewed.collected_at}
-            body={viewed.summary}
-            label={if @digest_kind == :interest, do: "興味トピック", else: @topic && @topic.name}
-            articles={@news.articles}
-            cited={viewed.cited}
-            id_prefix="digest-viewer"
-            hero={@digest_kind == :main and hero?(@topic)}
-          />
-        </div>
-      </div>
-    <% end %>
+    <%!-- 全画面の要約。**左右のスワイプで前後の要約へ**（`digest_viewer/1`） --%>
+    <.digest_viewer
+      news={@news}
+      open={@digest_open}
+      full={@digest_full}
+      kind={@digest_kind}
+      section={@digest_section}
+      label={if @digest_kind == :interest, do: "興味トピック", else: @topic && @topic.name}
+      hero={hero?(@topic)}
+    />
 
     <%!-- 記事から育った話題の網。**まとめのすぐ下** —— まとめが「この期間に何が
          あったか」を文で言うのに対して、図は同じことを語のつながりで見せる。

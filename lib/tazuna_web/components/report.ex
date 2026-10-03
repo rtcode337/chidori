@@ -60,6 +60,7 @@ defmodule TazunaWeb.Report do
       assigns.articles
       |> Map.new(&{&1.url, &1})
       |> Map.merge(assigns.cited || %{})
+      |> without_shared_images()
 
     sections =
       document.sections
@@ -252,6 +253,36 @@ defmodule TazunaWeb.Report do
     end)
     |> Enum.uniq_by(& &1.image)
     |> Enum.take(@hero_count)
+  end
+
+  # 何件もの記事が同じ絵を指していたら、それは記事の絵ではなく配信元の共通の絵
+  # （ロゴや既定の OGP 画像）。添えても何の話か分からないので外す
+  @shared_image_min 3
+
+  @doc false
+  def without_shared_images(known) do
+    shared =
+      known
+      |> Map.values()
+      |> Enum.flat_map(fn
+        %{image: image} when is_binary(image) and image != "" -> [image]
+        _article -> []
+      end)
+      |> Enum.frequencies()
+      |> Enum.filter(fn {_image, count} -> count >= @shared_image_min end)
+      |> MapSet.new(&elem(&1, 0))
+
+    if MapSet.size(shared) == 0 do
+      known
+    else
+      Map.new(known, fn
+        {url, %{image: image} = article} ->
+          {url, if(MapSet.member?(shared, image), do: %{article | image: nil}, else: article)}
+
+        other ->
+          other
+      end)
+    end
   end
 
   @doc false

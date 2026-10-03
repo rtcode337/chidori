@@ -160,7 +160,10 @@ defmodule TazunaWeb.NewsLiveTest do
 
       assert [%{label: "作品A"}, %{label: "作品C"}] = TazunaWeb.Report.hero_figures(sources, known)
       assert NewsLive.hero?(Tazuna.Topics.get("tazuna_movies"))
-      refute NewsLive.hero?(Tazuna.Topics.get("tazuna_tech"))
+
+      # 記事の絵を持たせている話題（ニュース）も並べ、持たせない話題（市況）は並べない
+      assert NewsLive.hero?(Tazuna.Topics.get("tazuna_tech"))
+      refute NewsLive.hero?(Tazuna.Topics.get("tazuna_market"))
     end
 
     test "本文の URL はリンクにする" do

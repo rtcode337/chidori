@@ -48,7 +48,11 @@ article p:last-child { color: #475569; line-height: 1.7; }
    折り返さないと、その 1 件に合わせて並び全体が広がり、スマホで画面の外へはみ出す */
 .news-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
 .news-list article { display: flex; justify-content: space-between; align-items: start; gap: 1rem; padding: 1.4rem; }
-.news-list article > div { min-width: 0; overflow-wrap: anywhere; }
+/* 文の塊は**残りの幅を全部取る**。取らないと、絵のある札では絵・文・重さの印の 3 つが
+   両端揃え（space-between）で散らばり、文が札の真ん中から始まる */
+.news-list article > div { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+/* 絵のある札が並ぶ一覧では、**絵の無い札も絵の幅だけ空けて文を始める**（札ごとに文の頭がずれない） */
+.news-list:has(.news-thumb) article:not(:has(> .news-thumb)) > div { margin-left: calc(92px + 1rem); }
 .news-list h2 { margin: .4rem 0; font-size: 1.1rem; line-height: 1.55; }
 .news-list h2 a { color: #0f172a; text-decoration: none; }
 .news-list h2 a:hover { color: #554bc0; text-decoration: underline; }
@@ -64,7 +68,12 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .news-page footer a { color: #554bc0; }
 
 .relations-page { min-height: 100vh; background: #f6f7fb; color: #182033; }
-.relations-page > div { max-width: 72rem; }
+/* 器の幅は**画面の幅に合わせて広げる**（どの画面も。頭のメニューも中身も同じ幅）。
+   決め打ちの上限だと、広い画面で両脇が大きく空く。画面いっぱいまでは広げない ——
+   端まで届くと文が読みにくく、どこからが本文かも分かりにくい。広い画面では 75%、
+   狭い画面では 90%（余白は幅の残りが持つ） */
+.relations-page > div { width: 90%; max-width: none; padding-left: 0; padding-right: 0; }
+@media (min-width: 64rem) { .relations-page > div { width: 75%; } }
 .relations-page .brand { display: flex; align-items: center; gap: .65rem; color: #182033; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
 .relations-page .brand span { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; border-radius: 1rem; background: #6254d6; color: white; font-weight: 900; }
 .relations-page header nav { display: flex; gap: 1rem; }
@@ -443,8 +452,9 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .artwork-source a::after, .edge-links a::after, .artwork-figure figcaption a::after, .artwork-search a::after { content: " ↗"; text-decoration: none; display: inline-block; margin-left: .15em; }
 .edge-links { list-style: none; padding-left: 0; }
 .edge-links li + li { margin-top: .2rem; }
-/* 画家の姿。説明の横に小さく置く（狭い画面では上に回す） */
-.portrait { float: right; width: 7.5rem; margin: .2rem 0 .6rem .9rem; }
+/* 画家の姿。説明の横に小さく置く（狭い画面では上に回す）。**左に置く** —— 右に置くと、
+   広い画面では文の頭から絵が遠く、どの文に添えた絵なのかが読みにくい */
+.portrait { float: left; width: 7.5rem; margin: .2rem .9rem .6rem 0; }
 .portrait img { display: block; width: 100%; margin: 0; max-height: 10rem; object-fit: cover; object-position: top; border-radius: .5rem; box-shadow: 0 .3rem .8rem rgba(24, 22, 51, .18); }
 .portrait figcaption { margin-top: .25rem; color: #98a0ba; font-size: .68rem; text-align: center; }
 @media (max-width: 30rem) { .portrait { float: none; width: 9rem; margin: .2rem auto .6rem; } }
@@ -707,8 +717,8 @@ body.digest-open { overflow: hidden; }
 .report-number { display: grid; place-items: center; flex: none; width: 1.7rem; height: 1.7rem; border-radius: 99px; background: #ece9ff; color: #4338a8; font-size: .82rem; font-weight: 800; }
 
 /* 記事の絵。本文の脇に置く —— 段落の上に挟むと、読む前に大きな絵で章が切れる。
-   絵を持っているのは配信元が配っているものだけなので、無い章のほうが多い */
-.report-figure { float: right; width: 190px; margin: .2rem 0 1rem 1.4rem; }
+   **左に置く** —— 右に置くと、広い画面では文の頭から絵が遠く、どの章の絵なのかが読みにくい */
+.report-figure { float: left; width: 190px; margin: .2rem 1.4rem 1rem 0; }
 .report-figure img { display: block; width: 100%; border: 1px solid #e6e8ef; border-radius: .7rem; background: #f1f2f8; }
 
 /* 印は書き直す。素の ul は印も余白も消してある（Tailwind の下敷き） */
@@ -832,8 +842,15 @@ body.digest-open { overflow: hidden; }
 .event-day-list h3 { margin: 0 0 .5rem; font-size: 1rem; }
 .event-day-list ul { margin: 0; padding: 0; list-style: none; }
 .event-item { padding: .55rem 0; border-bottom: 1px solid #eef0f7; min-width: 0; display: flow-root; }
-/* 絵は右に小さく（ポスターは縦長。説明の読みを邪魔しない大きさ） */
-.event-thumb { float: right; width: 96px; max-height: 136px; object-fit: cover; margin: 0 0 .3rem .6rem; border-radius: 4px; background: #eef0f7; }
+/* 絵は左に小さく（ポスターは縦長。説明の読みを邪魔しない大きさ）。右に置くと、広い画面では
+   見出しから絵が遠い */
+.event-thumb { float: left; width: 96px; max-height: 136px; object-fit: cover; margin: 0 .6rem .3rem 0; border-radius: 4px; background: #eef0f7; }
+/* 絵のある札が 1 つでも並ぶ一覧は、**絵の列と文の列に分ける**（絵の無い札も絵の列を空ける）。
+   回り込みのままだと、絵の無い札と、絵が読めずに高さを持たない札で、題名と公開日の頭が
+   札ごとに左右へずれて縦に見比べられない。絵の高さの余りは最後の行が受ける（文の行の間は空かない） */
+ul:has(> .event-item > .event-thumb) > .event-item { display: grid; grid-template-columns: 96px minmax(0, 1fr); grid-template-rows: auto auto auto 1fr; column-gap: .6rem; }
+ul:has(> .event-item > .event-thumb) > .event-item > * { grid-column: 2; }
+ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column: 1; grid-row: 1 / -1; float: none; margin: 0; }
 .event-item-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .5rem; overflow-wrap: anywhere; }
 .event-item-head .event-chip { display: inline-block; }
 .event-item-facts { margin: .2rem 0 0; color: #4b5068; font-size: .82rem; }
@@ -943,17 +960,20 @@ body.digest-open { overflow: hidden; }
 
 /* トップページ */
 .home-panel { margin-top: 1.2rem; }
+/* 要約の全画面のアイコンは右上に重ねる（関連図の全画面と同じ形） */
+.home-digest { position: relative; }
+.home-digest-full { position: absolute; top: .6rem; right: .6rem; z-index: 1; }
+.home-digest .report-head { padding-right: 2.8rem; }
 /* 高さは中身に合わせる（`AutoHeight`）。読み込むまでの仮の高さだけ持つ */
-/* 埋め込まれた関連図は画面の高さを取らない（枠を中身に合わせて縮められるように） */
+/* 埋め込まれた関連図は画面の高さを取らない（枠を中身に合わせて縮められるように）。
+   **横の余白も持たない** —— 外の枠（トップの器）の余白だけにして、図の端を頭のメニューの端に揃える */
 .relations-page.is-embed { min-height: 0; }
-.relations-page.is-embed > div { max-width: none; padding: 0 .5rem; }
-/* 関連図は**画面の幅いっぱい**に広げる（トップの器の幅の上限と余白の外まで）。
-   はみ出したぶんでページが横に揺れないよう、トップの器は横をはみ出させない */
+.relations-page.is-embed > div { width: auto; max-width: none; padding: 0; }
+/* トップの関連図は器と同じ幅にする —— 画面の端まではみ出させると、頭のメニューと端が揃わない */
 .home-page { overflow-x: clip; }
-.home-embed { margin-left: calc(50% - 50vw); max-width: none; }
 /* 全画面（埋め込みの中の「全画面」を押したとき）。枠ごと画面いっぱいにする */
 .home-embed.frame-fullscreen { position: fixed; inset: 0; z-index: 100; width: 100vw !important; height: 100dvh !important; margin: 0; background: #f6f7fb; }
-.home-embed { display: block; width: 100vw; height: 70vh; border: 0; overflow: hidden; background: transparent; }
+.home-embed { display: block; width: 100%; height: 70vh; border: 0; overflow: hidden; background: transparent; }
 
 /* 技術書の上位（技術書の画面とトップページ）。**見比べやすいよう札を揃える** ——
    順位・表紙・書名・勧めている数・分野・説明（3 行まで）を同じ位置に */
@@ -994,9 +1014,12 @@ a.top-book-cover { display: block; }
 .drag-handle:active { cursor: grabbing; }
 
 /* 要約の頭のおすすめの絵（映画）。ポスターは縦長なので、横に並べて名前を下に */
-.report-hero { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: .8rem; margin: .8rem 0 1rem; padding: 0; list-style: none; }
+/* 頭の絵は**切らずにそのまま見せる**（縦横の比も元のまま）。ポスターの比（2:3）に揃えて
+   切ると、横長のニュースの写真では肝心のところが落ちて、何の絵か分からなくなる。
+   高すぎる絵だけは上限の中に縮めて収める（切らない） */
+.report-hero { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); align-items: start; gap: .8rem; margin: .8rem 0 1rem; padding: 0; list-style: none; }
 .report-hero a { display: block; color: #28235e; text-decoration: none; }
-.report-hero img { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: .5rem; background: #eef0f7; box-shadow: 0 2px 8px rgba(24, 32, 51, .12); }
+.report-hero img { display: block; width: 100%; height: auto; max-height: 16rem; object-fit: contain; border-radius: .5rem; background: #eef0f7; box-shadow: 0 2px 8px rgba(24, 32, 51, .12); }
 .report-hero span { display: -webkit-box; margin-top: .35rem; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: .8rem; font-weight: 700; line-height: 1.35; }
 
 /* 技術書の札を押せるとき（勧めている記事をたどる） */

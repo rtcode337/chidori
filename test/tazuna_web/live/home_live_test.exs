@@ -138,6 +138,32 @@ defmodule TazunaWeb.HomeLiveTest do
     assert "books" in keys
   end
 
+  test "興味トピックの要約は、網を育てる話題のすぐ後ろに「〜興味ニュース」で並ぶ" do
+    catalog = Home.catalog()
+    keys = Enum.map(catalog, & &1.key)
+    at = Enum.find_index(keys, &(&1 == "topic:tazuna_tech"))
+
+    assert Enum.at(keys, at + 1) == "interest:tazuna_tech"
+    assert Enum.find(catalog, &(&1.key == "interest:tazuna_tech")).name == "技術興味ニュース"
+    # 網を育てない話題（映画）には無い
+    refute "interest:tazuna_movies" in keys
+    assert Home.interest_name("映画") == "映画（興味）"
+  end
+
+  test "枠の中を左右に払うと隣のタブへ移る（端より先へは回り込まない）", %{conn: conn} do
+    Home.put(["books", "relations:painters"])
+    {:ok, live, _html} = live(conn, ~p"/")
+
+    render_hook(live, "panel_step", %{"by" => -1})
+    refute_patched(live)
+
+    render_hook(live, "panel_step", %{"by" => 1})
+    assert_patch(live, "/?panel=relations%3Apainters")
+
+    render_hook(live, "panel_step", %{"by" => 1})
+    refute_patched(live)
+  end
+
   test "設定ページで、並べ替えた順に保存する", %{conn: conn} do
     # 順番は画面の中で並べ替え、各行の hidden の欄に書き込まれて届く（`SortableList`）
     {:ok, live, _html} = live(conn, ~p"/settings?tab=home")

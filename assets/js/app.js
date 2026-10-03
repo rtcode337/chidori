@@ -32,6 +32,7 @@ import RelationMap from "./relation_map"
 import DownloadLink from "./download_link"
 // 全画面の要約を左右に払って前後へ動かす
 import DigestSwipe from "./digest_swipe"
+import PanelSwipe from "./panel_swipe"
 // トピックの網を関連図と同じ操作で動かす
 import TopicMap from "./topic_map"
 import SortableList from "./sortable_list"
@@ -43,7 +44,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, PartitionMap, AreaDraw, RelationMap, DownloadLink, DigestSwipe, TopicMap, SortableList, ScrollTabs, AutoHeight},
+  hooks: {...colocatedHooks, PartitionMap, AreaDraw, RelationMap, DownloadLink, DigestSwipe, PanelSwipe, TopicMap, SortableList, ScrollTabs, AutoHeight},
 })
 
 // Show progress bar on live navigation and form submits

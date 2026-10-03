@@ -862,6 +862,88 @@ defmodule TazunaWeb.NewsLive do
     """
   end
 
+  attr :news, :map, required: true
+  # 開いている要約の位置（新しい順の何番目か）。nil なら閉じている
+  attr :open, :integer, default: nil
+  attr :full, :map, default: %{}
+  attr :kind, :atom, default: :main
+  attr :section, :integer, default: nil
+  attr :label, :string, default: nil
+  attr :hero, :boolean, default: false
+
+  @doc """
+  全画面の要約。**左右のスワイプで前後の要約へ**（`DigestSwipe`）。最新情報の画面と
+  トップページで同じもの（押したときの動き —— `open_digest` / `digest_step` /
+  `close_digest` / `digest_key` —— は、置いた画面の側が受ける）。
+
+  **古いほうを左に置く** —— 右へ払う（左のものを引き出す）のは「戻る」の
+  動きなので、戻る先が古いほう。新しいほうへは左へ払う。
+  """
+  def digest_viewer(assigns) do
+    assigns =
+      assign(assigns,
+        viewing: digests_of(assigns.news, assigns.kind),
+        viewed: opened_digest(assigns.open, assigns.news, assigns.full, assigns.kind)
+      )
+
+    ~H"""
+    <div
+      :if={@viewed}
+      id="digest-viewer"
+      class="digest-viewer"
+      role="dialog"
+      aria-modal="true"
+      aria-label="要約"
+      phx-hook="DigestSwipe"
+      phx-window-keydown="digest_key"
+      data-index={@open}
+      data-section={@section}
+    >
+      <nav class="digest-viewer-bar" aria-label="要約の切り替え">
+        <button
+          type="button"
+          phx-click="digest_step"
+          phx-value-by="1"
+          disabled={@open >= length(@viewing) - 1}
+          aria-label="古い要約"
+        >
+          ← 古い
+        </button>
+        <span class="digest-viewer-count">{@open + 1} / {length(@viewing)}</span>
+        <button
+          type="button"
+          phx-click="digest_step"
+          phx-value-by="-1"
+          disabled={@open == 0}
+          aria-label="新しい要約"
+        >
+          新しい →
+        </button>
+        <button
+          type="button"
+          class="digest-viewer-close"
+          phx-click="close_digest"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+      </nav>
+      <div class="digest-viewer-body">
+        <.report
+          title={@viewed.title}
+          at={@viewed.collected_at}
+          body={@viewed.summary}
+          label={@label}
+          articles={@news.articles}
+          cited={@viewed.cited}
+          id_prefix="digest-viewer"
+          hero={@hero}
+        />
+      </div>
+    </div>
+    """
+  end
+
   @doc """
   作品 1 本の中身（公開日・上映形式・配信開始の 1 行と、本文の全部）。
   **本文は切らずに出します** —— 口コミは本文の末尾にあるので、頭だけで切ると
@@ -1319,10 +1401,15 @@ defmodule TazunaWeb.NewsLive do
   def missing_images(entries), do: Enum.count(entries, &(is_nil(&1.thumb) and is_nil(&1.image)))
 
   @doc """
-  要約の頭におすすめの絵を並べる話題か。**作品を育てる話題だけ**（映画。ポスターが
-  あると、どれを観るかを要旨より先に決められる）。
+  要約の頭に絵を並べる話題か。**作品を育てる話題**（映画。ポスターがあると、
+  どれを観るかを要旨より先に決められる）と、**記事の絵を Chiezo に持たせている話題**
+  （ニュース。絵があると、どの出来事の話かが読む前に掴める）。
+
+  絵を持たせない話題（市況）は並べない —— 売買提案の AI が読む決まった形の要約で、
+  記事の絵がほとんど無い。
   """
-  def hero?(topic), do: topic != nil and Topics.works(topic) != nil
+  def hero?(nil), do: false
+  def hero?(topic), do: Topics.works(topic) != nil or Map.get(topic, :thumbs) != nil
 
   @doc "作品の事実（公開日・上映形式・配信開始）を 1 行で。"
   def work_facts(entry) do
