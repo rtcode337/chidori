@@ -56,15 +56,15 @@ defmodule Tazuna.CollectCatalog do
   end
 
   defp relations do
-    [
+    for {key, title} <- Relations.views() do
       %{
-        name: Relations.painters_collection(),
-        label: Relations.views() |> List.first() |> elem(1),
-        screen: "/relations?view=painters",
-        attrs: &Relations.painters_attrs/1
+        name: Relations.collection_of(key),
+        label: title,
+        screen: "/relations?view=#{key}",
+        attrs: &Relations.attrs_of(key, &1)
       }
       |> upserting()
-    ]
+    end
   end
 
   defp datasets do

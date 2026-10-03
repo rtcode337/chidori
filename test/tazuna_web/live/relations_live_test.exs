@@ -13,10 +13,10 @@ defmodule TazunaWeb.RelationsLiveTest do
     assert html =~ "画家の影響と時代"
   end
 
-  test "人物の関連図を表示する", %{conn: conn} do
+  test "芸能人の関連図を表示する", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/relations?view=people")
 
-    assert html =~ "人物のつながり"
+    assert html =~ "芸能人のつながり"
 
     # **表示例の図は描かない。** 本物と見分けが付かないので、読み込みが終わるまで
     # 手書きの関連図が出て「これは何」になる（実際にそう言われた）
@@ -1221,9 +1221,9 @@ defmodule TazunaWeb.RelationsLiveTest do
                "接続できません"
     end
 
-    test "出どころは画家の図にだけ出す" do
+    test "出どころは Chiezo で育てる図に出す（収集の名前つき）" do
       assert RelationsLive.origin_note("painters") =~ "Chiezo に溜まった内容から作っています"
-      assert RelationsLive.origin_note("people") == nil
+      assert RelationsLive.origin_note("people") =~ "tazuna_people"
     end
   end
 

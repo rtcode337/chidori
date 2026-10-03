@@ -268,7 +268,14 @@ defmodule TazunaWeb.RelationsLive do
   # 根拠を確かめたい人が記事へ行けることが、いま渡せる最良のもの。
   def handle_event("show_edge", %{"from" => from, "to" => to} = params, socket) do
     nodes = Map.new(socket.assigns.relation.nodes, &{&1.id, &1})
-    kind = if params["kind"] == "influence", do: :influence, else: :related
+
+    # **知っている種類だけ読む**（画面から来る値なので、そのまま atom にしない）
+    kind =
+      Map.get(
+        %{"influence" => :influence, "family" => :family, "duo" => :duo},
+        params["kind"],
+        :related
+      )
 
     edges = socket.assigns.relation.edges
     edge = Enum.find(edges, fn e -> e.from == from and e.to == to and e.kind == kind end)
@@ -601,10 +608,13 @@ defmodule TazunaWeb.RelationsLive do
   AI に頼んでいる本文。**依頼した後は Chiezo が持っているものを出す** ——
   向こうの画面から直せるので、tazuna の雛形を出し続けると食い違う。
   """
-  def prompt_text(%{collection: %{prompt: prompt}}) when is_binary(prompt) and prompt != "",
-    do: prompt
+  def prompt_text(relation, view \\ "painters")
 
-  def prompt_text(_relation), do: Tazuna.Relations.painters_prompt()
+  def prompt_text(%{collection: %{prompt: prompt}}, _view)
+      when is_binary(prompt) and prompt != "",
+      do: prompt
+
+  def prompt_text(_relation, view), do: Tazuna.Relations.prompt_of(view)
 
   @doc """
   最初の 1 回を機械的に埋める指定（持っていなければ nil）。
@@ -852,9 +862,22 @@ defmodule TazunaWeb.RelationsLive do
       {"様式", for(t <- tags, v = strip(t, "様式:"), do: v)},
       {"代表作", for(t <- tags, v = strip(t, "代表作:"), do: v)},
       {"影響元", for(t <- tags, v = strip(t, "影響元:"), do: v)},
+      # 芸能人の図のタグ
+      {"種別", for(t <- tags, v = strip(t, "種別:"), do: v)},
+      {"メンバー", for(t <- tags, v = strip(t, "メンバー:"), do: v)},
+      {"元メンバー", for(t <- tags, v = strip(t, "元メンバー:"), do: v)},
+      {"家族", for(t <- tags, v = strip(t, "家族:"), do: family_text(v))},
       {"その他", for(t <- tags, plain_tag?(t), do: t)}
     ]
     |> Enum.reject(fn {_label, values} -> values == [] end)
+  end
+
+  # 「相手:親子」を「相手（親子）」に（続柄が無ければ相手だけ）
+  defp family_text(value) do
+    case String.split(value, ":", parts: 2) do
+      [name, relation] -> "#{name}（#{relation}）"
+      [name] -> name
+    end
   end
 
   defp strip(tag, prefix) do
@@ -867,7 +890,10 @@ defmodule TazunaWeb.RelationsLive do
   # 頭に区分の付いていないタグ（「画家」など）。**関連は出さない**（線で見えている）
   defp plain_tag?(tag) do
     # **機械の印（`_chiezo_…`）も出さない** —— 未レビューかどうかは見出しの横に出す
-    not Enum.any?(~w(年代: 地域: 様式: 代表作: 影響元: 関連: _chiezo_), &String.starts_with?(tag, &1))
+    not Enum.any?(
+      ~w(年代: 地域: 様式: 代表作: 影響元: 関連: 種別: メンバー: 元メンバー: 家族: 区分: _chiezo_),
+      &String.starts_with?(tag, &1)
+    )
   end
 
   @doc "その画家の Wikipedia の記事。**代表作ではなく画家を指す**。"
@@ -1163,22 +1189,23 @@ defmodule TazunaWeb.RelationsLive do
   集めて整理するのは Chiezo の役目で、tazuna は図の形に読み直して見せるだけです。
   人物のほうは、まだその場で AI に聞く形のままです。
   """
-  def source_note("painters"),
-    do: "このボタンは、tazuna が持っている依頼文と回り方を Chiezo へ送り直すだけで、集めさせはしません。"
-
-  def source_note(_view), do: "「関連図を収集」を押すと、その場で AI に調べさせて図を作り直します。"
+  def source_note(view) do
+    if Tazuna.Relations.chiezo_view?(view),
+      do: "このボタンは、tazuna が持っている依頼文と回り方を Chiezo へ送り直すだけで、集めさせはしません。",
+      else: "「関連図を収集」を押すと、その場で AI に調べさせて図を作り直します。"
+  end
 
   @doc """
   設定欄の頭に置く、この図の出どころ。**ボタンの説明とは分ける** ——
   出どころは図そのものの話で、ボタンを押すかどうかに関わらず読むもの。
   人物の図は溜め先を持たないので出さない。
   """
-  def origin_note("painters"),
-    do:
-      "この図は Chiezo に溜まった内容から作っています（収集「#{Tazuna.Relations.painters_collection()}」）。" <>
-        "集めるのは Chiezo で、決まった間隔で回します。"
-
-  def origin_note(_view), do: nil
+  def origin_note(view) do
+    if Tazuna.Relations.chiezo_view?(view),
+      do:
+        "この図は Chiezo に溜まった内容から作っています（収集「#{Tazuna.Relations.collection_of(view)}」）。" <>
+          "集めるのは Chiezo で、決まった間隔で回します。"
+  end
 
   @doc """
   図を読めなかったときの一文。**読めているときは何も出しません**

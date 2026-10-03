@@ -191,6 +191,31 @@ defmodule Tazuna.Relations.Graph do
   # （時代区分のカテゴリしか持たない人など）は必ずいるので、落とすと図から消える
   @other_band "その他"
 
+  @doc """
+  画家の図の読み方（`from_docs/2` の既定）。**図の種類ごとに違うのは、どのタグで札・帯・
+  色・線を作るかだけ**で、並べ方（縦は年代、横は帯）と大きさの決め方は同じです。
+
+  - `kind_tag` —— 図に載せる文書の印（読み込みもこのタグで引く）
+  - `kinds` / `default_kind` —— 札の種類（`{タグ, 種類}` の並び。当たらなければ既定）
+  - `style_prefix` —— 色と凡例に使うタグの頭
+  - `band_prefix` / `bands` —— 横の帯に使うタグの頭と、`{帯, 値の並び}`
+  - `works?` —— 代表作を持つか
+  - `edge_rules` —— 線にするタグ。`from: :named` は名指しされた側から文書の主へ
+    （影響元）、`:owner` は文書の主から名指しされた側へ。`undirected` は向きを持たない
+    線で、同じ組は 1 本に畳む。`label` は 3 つ目の区切りが無いときの線の字
+  """
+  def painters_spec,
+    do: %{
+      kind_tag: @kind_tag,
+      kinds: [],
+      default_kind: :artist,
+      style_prefix: @style_prefix,
+      band_prefix: @region_prefix,
+      bands: @region_bands,
+      works?: true,
+      edge_rules: [%{prefix: @influence_prefix, kind: :influence, from: :named}]
+    }
+
   @doc "代表作を載せるタグの頭。"
   def work_tag, do: @work_prefix
 
@@ -308,7 +333,7 @@ defmodule Tazuna.Relations.Graph do
   defp relaid(relation, kept, edges) do
     # 升目が変わるので、大きさも付け直す（知名度は `sized` が残しておいたものを使う）
     bare = Enum.map(kept, &Map.drop(&1, [:cell]))
-    laid = layout(bare, edges, fitted_columns(bare))
+    laid = layout(bare, edges, fitted_columns(bare), relation[:band_order] || region_bands())
     fame = Map.new(laid.nodes, &{&1.article, &1[:views] || 0})
 
     %{
@@ -330,19 +355,31 @@ defmodule Tazuna.Relations.Graph do
   複数の地域に跨る画家（移り住んだ人）はいますが、横軸は 1 人 1 か所でないと
   軸として読めません。**先に出てきた帯を採る**ので、並びが優先順位になります。
   """
-  def band_of(node) do
-    regions = tag_values(node[:tags] || [], @region_prefix)
+  def band_of(%{band: band}) when is_binary(band), do: band
+  def band_of(node), do: band_in(node[:tags] || [], painters_spec())
 
-    Enum.find_value(@region_bands, @other_band, fn {band, members} ->
-      if Enum.any?(regions, &(&1 in members)), do: band
+  # 図の種類の帯（`spec.bands`）で、タグから帯を決める
+  defp band_in(tags, spec) do
+    values = tag_values(tags, spec.band_prefix)
+
+    Enum.find_value(spec.bands, @other_band, fn {band, members} ->
+      if Enum.any?(values, &(&1 in members)), do: band
     end)
   end
 
-  @doc "Chiezo の `filter` が返した文書の並びを、図のデータにします。"
-  def from_docs(docs) when is_list(docs) do
+  # 帯の並び（図の種類の帯の順に、最後に「その他」）
+  defp band_order(spec), do: Enum.map(spec.bands, &elem(&1, 0)) ++ [@other_band]
+
+  @doc """
+  Chiezo の `filter` が返した文書の並びを、図のデータにします。`spec` は図の読み方
+  （既定は画家。`painters_spec/0`）。
+  """
+  def from_docs(docs, spec \\ painters_spec())
+
+  def from_docs(docs, spec) when is_list(docs) do
     nodes =
       docs
-      |> Enum.flat_map(&to_node/1)
+      |> Enum.flat_map(&to_node(&1, spec))
       |> Enum.uniq_by(& &1.name)
       |> Enum.sort_by(&sort_key/1)
       |> Enum.with_index()
@@ -352,8 +389,9 @@ defmodule Tazuna.Relations.Graph do
 
     # **線を先に組む。** 置き方が線の形を見るようになったので、順序が逆だと
     # 何も繋がっていない前提で並べることになる
-    edges = edges(docs, by_name)
-    laid = layout(nodes, edges)
+    edges = edges(docs, by_name, spec)
+    order = band_order(spec)
+    laid = layout(nodes, edges, nil, order)
     hues = style_hues(laid.nodes)
     counts = laid.nodes |> Enum.flat_map(&styles_of/1) |> Enum.frequencies()
 
@@ -378,7 +416,9 @@ defmodule Tazuna.Relations.Graph do
       edges: edges,
       # **消えた画家。** 図には出さないが、消し間違いを戻す頼みごとは
       # ここからしか出せない（名簿から消えると、押せる丸が無くなる）
-      removed: removed_of(docs),
+      removed: removed_of(docs, spec),
+      # 横の帯の並び（絞り込んで置き直すときにも同じ並びを使う）
+      band_order: order,
       ticks: ticks(laid.nodes),
       bands: laid.bands,
       # 色の凡例に使う（様式・人数・色相）。**図に出ているものだけ**を数える
@@ -392,7 +432,7 @@ defmodule Tazuna.Relations.Graph do
     }
   end
 
-  def from_docs(_docs), do: empty()
+  def from_docs(_docs, _spec), do: empty()
 
   def empty,
     do: %{
@@ -684,14 +724,14 @@ defmodule Tazuna.Relations.Graph do
   @doc "丸に出す代表作の上限。"
   def max_works, do: @max_works
 
-  defp to_node(%{"title" => title} = doc) when is_binary(title) do
+  defp to_node(%{"title" => title} = doc, spec) when is_binary(title) do
     name = String.trim(title)
     tags = tags_of(doc)
 
     # **消えたものは出さない。** 未レビューのものを見るために、読み口の既定の
     # 外し方をやめて両方を受け取っている（`Tazuna.Relations` の読み込み）ので、
     # 消えたほうはここで落とす
-    if name == "" or @kind_tag not in tags or Tazuna.Chiezo.removed_tag() in tags do
+    if name == "" or spec.kind_tag not in tags or Tazuna.Chiezo.removed_tag() in tags do
       []
     else
       [
@@ -699,13 +739,17 @@ defmodule Tazuna.Relations.Graph do
           name: name,
           # **様式は 1 人にいくつでも付く。** ピカソのように時期で作風が変わる画家を
           # 1 つに決めると、どれを選んでも間違いになる（キュビスムだけの人ではない）
-          styles: tag_values(tags, @style_prefix),
-          note: styles_note(tags),
+          styles: tag_values(tags, spec.style_prefix),
+          note: styles_note(tags, spec.style_prefix),
           years: tag_value(tags, @years_prefix),
           # **代表作は複数持つ。** 抽出が人気の順に何枚か拾ってくるので、
           # そのまま並べる（`@max_works` まで）。**記事の無い作品名も入ってくる**
           # （絵が見つからなければ、画面は画像検索へのリンクにする）
-          works: tags |> tag_values(@work_prefix) |> Enum.take(@max_works),
+          works:
+            if(spec.works?,
+              do: tags |> tag_values(@work_prefix) |> Enum.take(@max_works),
+              else: []
+            ),
           # 押したときに出す、その画家の短い説明（記事の冒頭）
           summary: summary_of(doc),
           # 出典（Wikipedia の記事）。知名度を引くのと、絵を探すのに使う
@@ -727,24 +771,30 @@ defmodule Tazuna.Relations.Graph do
           # **AI がまだ目を通していないか。** 機械で名簿に入っただけの人は、説明も
           # 影響元もまだ無いことが多い。図には出すが、見分けられるようにする
           unreviewed?: Tazuna.Chiezo.unreviewed_tag() in tags,
-          kind: :artist
+          kind: kind_in(tags, spec),
+          # 横の帯（図の種類の帯で決める。置いたあとも同じ帯に入る）
+          band: band_in(tags, spec)
         }
       ]
     end
   end
 
-  defp to_node(_doc), do: []
+  defp to_node(_doc, _spec), do: []
+
+  defp kind_in(tags, spec) do
+    Enum.find_value(spec.kinds, spec.default_kind, fn {tag, kind} -> if tag in tags, do: kind end)
+  end
 
   # 消えた画家（名前・消した理由・いつ）。**新しく消えた順** —— 見直したいのは
   # たいてい直近の回が消したもの
-  defp removed_of(docs) do
+  defp removed_of(docs, spec) do
     docs
     |> Enum.flat_map(fn
       %{"title" => title} = doc when is_binary(title) ->
         tags = tags_of(doc)
         extra = if is_map(doc["extra"]), do: doc["extra"], else: %{}
 
-        if @kind_tag in tags and Tazuna.Chiezo.removed_tag() in tags do
+        if spec.kind_tag in tags and Tazuna.Chiezo.removed_tag() in tags do
           [
             %{
               name: String.trim(title),
@@ -831,8 +881,8 @@ defmodule Tazuna.Relations.Graph do
 
   # 丸の下に出す様式。**いくつあっても並べる** —— 1 つに切り詰めると、
   # 枠が 2 つ掛かっている画家の丸だけ、片方の様式しか書かれていないことになる
-  defp styles_note(tags) do
-    case tag_values(tags, @style_prefix) do
+  defp styles_note(tags, prefix) do
+    case tag_values(tags, prefix) do
       [] -> nil
       styles -> Enum.join(styles, "・")
     end
@@ -841,29 +891,37 @@ defmodule Tazuna.Relations.Graph do
   # 年代の始まりで並べる。左から右へ時代が流れる図なので、並びがそのまま意味になる
   defp sort_key(node), do: {year_of(node) || 9999, node.name}
 
-  defp edges(docs, by_name) do
-    influence =
-      for doc <- docs,
-          to = by_name[String.trim(to_string(doc["title"] || ""))],
-          to != nil,
-          {from_name, label} <- influences(tags_of(doc)),
-          from = by_name[from_name],
-          from != nil,
-          from.id != to.id do
-        %{
-          from: from.id,
-          to: to.id,
-          label: label,
-          kind: :influence,
-          # 受けた側の説明のうち、相手の名前が出てくる文。**線を押したときに出す** ——
-          # AI の一言だけでは、何を根拠にした線なのかが読めない
-          excerpt: mentions(doc["body"], from.name)
-        }
-      end
-      # 同じ向きの線は 1 本に畳む（同じ相手を 2 つのタグで挙げても重ならない）
-      |> Enum.uniq_by(&{&1.from, &1.to})
+  defp edges(docs, by_name, spec) do
+    labelled = Enum.flat_map(spec.edge_rules, &rule_edges(docs, by_name, &1))
+    labelled ++ related(docs, by_name, labelled)
+  end
 
-    influence ++ related(docs, by_name, influence)
+  # 1 つの決まりぶんの線。**名指しされた側か、文書の主か**から向きを決める
+  defp rule_edges(docs, by_name, rule) do
+    for doc <- docs,
+        owner = by_name[String.trim(to_string(doc["title"] || ""))],
+        owner != nil,
+        {other_name, label} <- labelled(tags_of(doc), rule.prefix),
+        other = by_name[other_name],
+        other != nil,
+        other.id != owner.id do
+      {from, to} = if rule.from == :named, do: {other, owner}, else: {owner, other}
+
+      %{
+        from: from.id,
+        to: to.id,
+        label: label || rule[:label],
+        kind: rule.kind,
+        # 文書の主の説明のうち、相手の名前が出てくる文。**線を押したときに出す** ——
+        # AI の一言だけでは、何を根拠にした線なのかが読めない
+        excerpt: mentions(doc["body"], other.name)
+      }
+    end
+    # 同じ組の線は 1 本に畳む（同じ相手を 2 つのタグで挙げても重ならない）。
+    # **向きを持たない線は、両側の文書に書かれていても 1 本**
+    |> Enum.uniq_by(fn edge ->
+      if rule[:undirected], do: Enum.sort([edge.from, edge.to]), else: {edge.from, edge.to}
+    end)
   end
 
   # 相互リンクの線。**古いほうから新しいほうへ向ける** —— 記事どうしのリンクに
@@ -871,8 +929,8 @@ defmodule Tazuna.Relations.Graph do
   #
   # **影響の線がある組には引かない。** AI が「何を受けたか」まで書いた組は、
   # そちらのほうが濃い情報なので、上に薄い線を重ねない。
-  defp related(docs, by_name, influence) do
-    known = MapSet.new(influence, fn edge -> Enum.sort([edge.from, edge.to]) end)
+  defp related(docs, by_name, labelled) do
+    known = MapSet.new(labelled, fn edge -> Enum.sort([edge.from, edge.to]) end)
 
     for doc <- docs,
         node = by_name[String.trim(to_string(doc["title"] || ""))],
@@ -923,8 +981,8 @@ defmodule Tazuna.Relations.Graph do
     end
   end
 
-  defp influences(tags) do
-    for tag <- tags, String.starts_with?(tag, @influence_prefix <> ":") do
+  defp labelled(tags, prefix) do
+    for tag <- tags, String.starts_with?(tag, prefix <> ":") do
       case String.split(tag, ":", parts: 3) do
         [_, name, label] -> {String.trim(name), trimmed(label)}
         [_, name] -> {String.trim(name), nil}
@@ -969,15 +1027,15 @@ defmodule Tazuna.Relations.Graph do
   # 目盛りの間隔が一定でないのは元からの性質で、そこは変わらない。
   #
   # **帯の幅は人数の比で決める。** 等分すると、人数の多い帯だけが縦に伸びる。
-  defp layout(nodes, edges, columns \\ nil)
+  defp layout(nodes, edges, columns, order)
 
-  defp layout([], _edges, _columns),
+  defp layout([], _edges, _columns, _order),
     do: %{nodes: [], height: @canvas_height + 2 * @canvas_margin, bands: []}
 
-  defp layout(nodes, edges, wanted) do
+  defp layout(nodes, edges, wanted, order) do
     %{columns: from_aspect, cell: cell} = grid(length(nodes))
     columns = wanted || from_aspect
-    plan = band_plan(nodes, columns)
+    plan = band_plan(nodes, columns, order)
     ranks = style_ranks(nodes)
     caps = Map.new(plan, &{&1.band, &1.columns})
     offsets = Map.new(plan, &{&1.band, &1.offset})
@@ -1053,11 +1111,11 @@ defmodule Tazuna.Relations.Graph do
 
   # 帯ごとの列数と、左からの位置。**人数の比で割る**（等分すると多い帯だけ縦に伸びる）。
   # 1 人でもいる帯には必ず 1 列は与える —— 0 列だと置き場が無くなる
-  defp band_plan(nodes, columns) do
+  defp band_plan(nodes, columns, order) do
     counts = Enum.frequencies_by(nodes, &band_of/1)
     total = Enum.sum(Map.values(counts))
 
-    region_bands()
+    order
     |> Enum.filter(&Map.has_key?(counts, &1))
     |> Enum.map_reduce(0, fn band, offset ->
       members = Map.fetch!(counts, band)

@@ -24,18 +24,12 @@
       aria-label="関連図の種類"
     >
       <.link
-        patch={~p"/relations?view=painters"}
-        class={if @view == "painters", do: "selected"}
-        aria-current={if @view == "painters", do: "page"}
+        :for={{key, title} <- Tazuna.Relations.views()}
+        patch={~p"/relations?view=#{key}"}
+        class={if @view == key, do: "selected"}
+        aria-current={if @view == key, do: "page"}
       >
-        画家の影響と時代
-      </.link>
-      <.link
-        patch={~p"/relations?view=people"}
-        class={if @view == "people", do: "selected"}
-        aria-current={if @view == "people", do: "page"}
-      >
-        人物のつながり
+        {title}
       </.link>
     </nav>
 
@@ -83,8 +77,8 @@
             type="search"
             name="q"
             value={@query}
-            placeholder="画家を探す"
-            aria-label="画家を探す"
+            placeholder={"#{unit_of(@view)}を探す"}
+            aria-label={"#{unit_of(@view)}を探す"}
           />
           <button
             :if={@query != ""}
@@ -213,8 +207,14 @@
             phx-value-kind={edge.kind}
           />
           <%!-- **画家の図では線の上に文字を置かない。** どの線の説明か読めないうえ、
-               札に重なって名前を隠していた。何を受けたかは、線を押すと出る --%>
-          <text :if={@view != "painters"} x={edge.mid_x} y={edge.mid_y} class="edge-label">
+               札に重なって名前を隠していた。何を受けたかは、線を押すと出る。
+               芸能人の図は「親子」「メンバー」のような短い語なので置く（字の無い線は置かない） --%>
+          <text
+            :if={@view != "painters" and edge[:label]}
+            x={edge.mid_x}
+            y={edge.mid_y}
+            class="edge-label"
+          >
             {edge.label}
           </text>
         <% end %>
@@ -313,7 +313,7 @@
          説明も影響元もまだ無いことが多い）。押すとその人たちだけになる --%>
     <section
       :if={
-        !@embed and @view == "painters" and is_integer(@relation[:unreviewed]) and
+        !@embed and Tazuna.Relations.chiezo_view?(@view) and is_integer(@relation[:unreviewed]) and
           @relation.unreviewed > 0
       }
       class="changed-note review-note"
@@ -341,7 +341,7 @@
          その人たちだけになるので、絞り込みの仲間として並べたほうが見つかる。
          動いたものが無ければ出さない（最初の一括作成では全部が同じ刻みになる）--%>
     <section
-      :if={!@embed and @view == "painters" and changed_note(@relation)}
+      :if={!@embed and Tazuna.Relations.chiezo_view?(@view) and changed_note(@relation)}
       class="changed-note"
     >
       <p>{changed_note(@relation)}</p>
@@ -358,7 +358,7 @@
     <%!-- 色の凡例。**図の真下に置く** —— 色を見てから凡例を探すので、間に何かを
          挟むと目が行き来する。**押すとその様式だけになる**（もう一度押すと戻る）--%>
     <section
-      :if={!@embed and @view == "painters" and style_legend(@relation) != []}
+      :if={!@embed and Tazuna.Relations.chiezo_view?(@view) and style_legend(@relation) != []}
       class="style-legend"
     >
       <ul>
@@ -424,7 +424,17 @@
           8,000 人を一度に並べると読めないので、拡大すると出てきます。
         </p>
       <% else %>
-        <p>実線は家族、点線はコンビとメンバーの関係です。</p>
+        <p>
+          <strong>縦は年代</strong>です（上から下へ。人は生年、コンビ・グループは結成年）。 <strong>横は種別</strong>で、お笑いと俳優に分けて並べます。 <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、 <strong>色は種別</strong>です。
+        </p>
+        <p>
+          <strong>実線は家族</strong>（親子・配偶者・きょうだい）、 <strong>点線はコンビ・グループとメンバー</strong>です。どちらも AI が公表されている情報から書いたもので、
+          未成年の家族と、芸能人でない家族は載せていません。
+          薄い線は記事どうしが互いにリンクしているというだけの関係で、Wikipedia から機械的に引いたものです。
+        </p>
+        <p>
+          <strong>どの名前も、どの線も押せます。</strong> もとになった記事・Chiezo に入っているタグと、線の根拠が出ます。
+        </p>
       <% end %>
     </section>
 
@@ -562,12 +572,12 @@
 
             <%!-- **消えた画家。** 図に丸が無いので、戻すよう頼む口はここにしか無い --%>
             <details
-              :if={@view == "painters" and (@relation[:removed] || []) != []}
+              :if={Tazuna.Relations.chiezo_view?(@view) and (@relation[:removed] || []) != []}
               class="partition-list"
             >
-              <summary>消えた画家（{length(@relation[:removed])}）</summary>
+              <summary>消えた{unit_of(@view)}（{length(@relation[:removed])}）</summary>
               <p class="muted-note">
-                Chiezo の整理が「画家ではない」「重複」などの理由で消した人です。新しく消えた順に並びます。
+                Chiezo の整理が「対象ではない」「重複」などの理由で消した人です。新しく消えた順に並びます。
                 消し間違いなら「戻すよう頼む」を押すと、その人を名指しして Chiezo に確かめ直してもらいます（定時の巡回には影響しません）。
               </p>
               <%!-- **表にしない。** 理由は長い文なので、列に並べると横へはみ出す --%>
@@ -597,7 +607,7 @@
 
             <%!-- **どちらも Chiezo が持っているもの**なので、1 つにまとめる。
                  機械で引いたものと AI が書いたものの線引きが、この図でいちばん大事なところ --%>
-            <details :if={@view == "painters"} class="news-prompt">
+            <details :if={Tazuna.Relations.chiezo_view?(@view)} class="news-prompt">
               <summary>Chiezo への依頼文</summary>
               <p class="news-prompt-note">{prompt_note(cfg)}</p>
 
@@ -614,7 +624,7 @@
                 AI が書くのは<strong>影響関係と説明</strong>と、カテゴリに無い様式です。
                 誰を見るかは Chiezo が区画で渡すので、指示文には書いてありません。
               </p>
-              <pre>{prompt_text(cfg)}</pre>
+              <pre>{prompt_text(cfg, @view)}</pre>
             </details>
         <% end %>
       </div>
@@ -650,7 +660,13 @@
           <p :if={@edge.label} class="edge-label-text">{@edge.label}</p>
           <p :if={!@edge.label} class="muted-note">AI は中身を書いていません（線だけがあります）。</p>
         <% else %>
-          <p class="edge-reason">
+          <p :if={@edge.kind == :family} class="edge-reason">
+            <strong>{@edge.from.name}と{@edge.to.name}は家族です</strong>（{@edge.label || "家族"}）。AI が公表されている情報から書いています。
+          </p>
+          <p :if={@edge.kind == :duo} class="edge-reason">
+            <strong>{@edge.to.name}は{@edge.from.name}の{@edge.label || "メンバー"}です。</strong>AI が公表されている情報から書いています。
+          </p>
+          <p :if={@edge.kind == :related} class="edge-reason">
             <strong>{@edge.from.name}と{@edge.to.name}は、記事どうしが互いにリンクしています。</strong>
           </p>
         <% end %>
@@ -682,13 +698,13 @@
               <td>{@edge.from[:years] || "—"}</td>
               <td>{@edge.to[:years] || "—"}</td>
             </tr>
-            <tr>
+            <tr :if={@view == "painters"}>
               <th>地域</th>
               <td>{regions_of(@edge.from) |> Enum.join("、") |> blank_dash()}</td>
               <td>{regions_of(@edge.to) |> Enum.join("、") |> blank_dash()}</td>
             </tr>
             <tr>
-              <th>様式</th>
+              <th>{if @view == "painters", do: "様式", else: "種別"}</th>
               <td>{Enum.join(@edge.from[:styles] || [], "、") |> blank_dash()}</td>
               <td>{Enum.join(@edge.to[:styles] || [], "、") |> blank_dash()}</td>
             </tr>
@@ -704,17 +720,23 @@
           {@edge.to.name}の影響元はほかに: {Enum.join(@edge.others, "、")}
         </p>
 
+        <%= if @edge.kind in [:family, :duo] do %>
+          <p class="muted-note">
+            <strong>AI が書いたものです。</strong> 確かめるには、それぞれの記事を読んでください。
+          </p>
+        <% end %>
         <%= if @edge.kind == :influence do %>
           <p class="muted-note">
             <strong>これは AI の判断です。</strong>
             名簿・年代・様式・相互リンクは Wikipedia から機械的に引いていますが、 <strong>誰が誰から何を受けたのかは記事に書いていない</strong>ので引けません。
             確かめるには、それぞれの記事を読んでください。
           </p>
-        <% else %>
+        <% end %>
+        <%= if @edge.kind == :related do %>
           <p class="muted-note">
-            これは Wikipedia から機械的に引いた線で、<strong>影響関係ではありません</strong>。
+            これは Wikipedia から機械的に引いた線で、<strong>{if @view == "painters", do: "影響関係", else: "家族やコンビの関係"}ではありません</strong>。
             <strong>片側だけのリンクは採りません</strong>
-            —— 有名な画家は多くの記事から
+            —— 有名な人は多くの記事から
             名前を出されるので、片側で繋ぐと有名どうしが軒並み繋がって図が読めなくなります。
             互いに名前を出している組だけを残しています。 <strong>何の関係かまでは、リンクの有無からは分かりません</strong>。
           </p>
@@ -757,7 +779,7 @@
              同じ地域・同じ時代の未レビューの人がまとめて片付く --%>
         <div :if={@detail[:unreviewed?]} class="review-ask">
           <p class="muted-note">
-            AI がまだ目を通していない画家です（機械で名簿に入っただけで、説明や影響元が空のことがあります）。
+            AI がまだ目を通していない{unit_of(@view)}です（機械で名簿に入っただけで、説明やつながりが空のことがあります）。
           </p>
           <%!-- 区画は押したときに割り出す（区画の一覧は設定なので、開いただけでは読まない） --%>
           <% asked = focus_state(@relation, Tazuna.Relations.partition_focus_id(@detail.name)) %>
@@ -773,7 +795,7 @@
             phx-value-name={@detail.name}
             phx-disable-with="頼んでいます…"
           >
-            この画家の区画を先にざっと見てもらう
+            この{unit_of(@view)}の区画を先にざっと見てもらう
           </button>
         </div>
 
@@ -836,6 +858,8 @@
                 </a>
               </p>
             <% end %>
+          <% works_of(@detail) == [] and @view != "painters" -> %>
+            <%!-- 代表作を持たない図（芸能人）では何も出さない --%>
           <% works_of(@detail) == [] -> %>
             <p class="muted-note">この画家には、まだ代表作が入っていません。</p>
           <% true -> %>
@@ -881,8 +905,8 @@
         <%!-- **この人を詳しく調べて、を頼める。** 巡回は 8,000 人を順に回るので、
              気になった 1 人に当たるのは何日も先になる。割り込みは定時の巡回の
              進み具合にも次の予定にも触らない --%>
-        <details :if={@view == "painters"} class="ask-more">
-          <summary>この画家を詳しく調べてもらう</summary>
+        <details :if={Tazuna.Relations.chiezo_view?(@view)} class="ask-more">
+          <summary>この{unit_of(@view)}を詳しく調べてもらう</summary>
           <% asked = focus_state(@relation, @detail.name) %>
           <%= if asked && asked.state == :failed do %>
             <%!-- **断られたことは必ず出す。** 黙って捨てると「頼んだのに何も
@@ -908,9 +932,9 @@
               </p>
               <p class="muted-note">
                 定時の巡回とは別の道で頼みます（進み具合も次の予定も動きません）。
-                名指しするので、この画家は必ず AI に見せられます。
+                名指しするので、この{unit_of(@view)}は必ず AI に見せられます。
               </p>
-              <button type="submit" phx-disable-with="頼んでいます…">この画家を頼む</button>
+              <button type="submit" phx-disable-with="頼んでいます…">この{unit_of(@view)}を頼む</button>
             </form>
           <% end %>
         </details>

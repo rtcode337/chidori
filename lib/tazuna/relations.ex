@@ -18,6 +18,7 @@ defmodule Tazuna.Relations do
   alias Tazuna.Http
   alias Tazuna.Relations.Graph
   alias Tazuna.Relations.Partitions
+  alias Tazuna.Relations.People
 
   # 図を描く面の大きさ。サンプルの座標もこの中に収めてある
   @canvas_width 980
@@ -154,6 +155,9 @@ defmodule Tazuna.Relations do
   # 区画への割り込みで名指しできる巡回
   @partition_sweeps [@survey_sweep, @rough_sweep]
 
+  # Chiezo に名簿を持たせて育てる図。**並びが関連図のタブとトップの枠の並び**
+  @chiezo_views ["painters", "people"]
+
   # 押すたびに AI へ投げると枠を使い切る。こちら側で間隔を空ける
   @min_interval_ms 15_000
   # 取り込み中かを確かめ直す間隔。走っているあいだだけ動く
@@ -168,12 +172,12 @@ defmodule Tazuna.Relations do
 
   @views %{
     "people" => %{
-      title: "人物のつながり",
+      title: "芸能人のつながり",
       eyebrow: "FAMILY & DUO",
       # **これは手書きの表示例**。Chiezo（や AI）から読めたものに差し替わるまで、
       # 図は描かない —— 本物と見分けが付かない図が出ると、何を見ているのか分からない
       sample?: true,
-      description: "家族とコンビを、関係の種類ごとにたどれます。",
+      description: "芸人と俳優の家族とコンビ・グループを、上から下へ年代順にたどれます。",
       width: @canvas_width,
       height: @canvas_height,
       collection: nil,
@@ -363,10 +367,33 @@ defmodule Tazuna.Relations do
   def keys, do: Map.keys(@views)
 
   @doc """
-  トップページに並べられる図（`{キー, 見出し}`）。**Chiezo から読む図だけ**（いまは画家）
+  トップページに並べられる図（`{キー, 見出し}`）。**Chiezo から読む図だけ**
   —— 手書きの表示例しか無い図を並べても、読むものが無い。
   """
-  def views, do: [{"painters", @views["painters"].title}]
+  def views, do: Enum.map(@chiezo_views, &{&1, @views[&1].title})
+
+  @doc "Chiezo に名簿を持たせて育てる図か（画家・芸能人）。"
+  def chiezo_view?(key), do: key in @chiezo_views
+
+  @doc "その図の収集の名前。"
+  def collection_of("people"), do: People.collection()
+  def collection_of(_key), do: painters_collection()
+
+  @doc "その図の、Chiezo に送る設定（関連図の画面の「収集の設定を更新」と同じもの）。"
+  def attrs_of("people", choices), do: People.attrs(choices)
+  def attrs_of(_key, choices), do: painters_attrs(choices)
+
+  @doc "その図の、依頼文（ざっと見る回の文。画面の設定欄に出す）。"
+  def prompt_of("people"), do: People.prompt()
+  def prompt_of(_key), do: painters_prompt()
+
+  # 図の読み方（`Graph.from_docs/2`）
+  defp graph_spec("people"), do: People.graph_spec()
+  defp graph_spec(_key), do: Graph.painters_spec()
+
+  # 区画を割り出すタグの頭（`Partitions.locator/3`）
+  defp partition_tags("people"), do: {People.category_tag(), Graph.years_tag()}
+  defp partition_tags(_key), do: {Graph.region_tag(), Graph.years_tag()}
 
   @doc """
   Chiezo で頼める相手の一覧（画面の選択肢に使う）。
@@ -442,27 +469,27 @@ defmodule Tazuna.Relations do
 
   # 読むだけ。**間隔の制限を掛けない**（AI は動かず、相手は手元にいる）
   @impl true
-  def handle_cast({:refresh, "painters"}, state) do
-    if state.statuses["painters"] == :loading do
+  def handle_cast({:refresh, key}, state) when key in @chiezo_views do
+    if state.statuses[key] == :loading do
       {:noreply, state}
     else
-      fallback = Map.fetch!(state.relations, "painters")
+      fallback = Map.fetch!(state.relations, key)
       base_url = chiezo_base_url()
 
       if base_url do
         task =
           Task.Supervisor.async_nolink(Tazuna.TaskSupervisor, fn ->
-            fetch_painters(base_url, fallback)
+            fetch_view(key, base_url, fallback)
           end)
 
-        check_busy("painters")
+        check_busy(key)
 
         state =
           state
-          |> put_in([:statuses, "painters"], :loading)
-          |> put_in([:tasks, task.ref], "painters")
+          |> put_in([:statuses, key], :loading)
+          |> put_in([:tasks, task.ref], key)
 
-        {:noreply, broadcast(state, "painters")}
+        {:noreply, broadcast(state, key)}
       else
         {:noreply, state}
       end
@@ -484,7 +511,7 @@ defmodule Tazuna.Relations do
         me = self()
 
         Task.Supervisor.start_child(Tazuna.TaskSupervisor, fn ->
-          send(me, {:focus_done, key, painter, ask_focus(base_url, painter, note)})
+          send(me, {:focus_done, key, painter, ask_focus(base_url, painter, note, key)})
         end)
 
         {:noreply, broadcast(put_in(state.focus[key], %{painter: painter, state: :sending}), key)}
@@ -501,7 +528,10 @@ defmodule Tazuna.Relations do
         me = self()
 
         Task.Supervisor.start_child(Tazuna.TaskSupervisor, fn ->
-          send(me, {:focus_done, key, partition, ask_partition(base_url, partition, note, sweep)})
+          send(
+            me,
+            {:focus_done, key, partition, ask_partition(base_url, partition, note, sweep, key)}
+          )
         end)
 
         {:noreply,
@@ -520,7 +550,7 @@ defmodule Tazuna.Relations do
         me = self()
 
         Task.Supervisor.start_child(Tazuna.TaskSupervisor, fn ->
-          send(me, {:focus_done, key, id, ask_painter_partition(base_url, name, tags)})
+          send(me, {:focus_done, key, id, ask_painter_partition(base_url, name, tags, key)})
         end)
 
         {:noreply, broadcast(put_in(state.focus[key], %{painter: id, state: :sending}), key)}
@@ -760,10 +790,10 @@ defmodule Tazuna.Relations do
   # 引き方は `filter`（タグでの一括抽出）。図は流れではなく**一枚もの**なので、
   # 新しい順に何件かではなく全部が要る。
   # 「収集」を押したとき。**まだ無ければ依頼し、その場で 1 回集めさせて**読み直す
-  defp fetch_relation("painters", fallback, choices) do
+  defp fetch_relation(key, fallback, choices) when key in @chiezo_views do
     case chiezo_base_url() do
       nil -> {:error, :chiezo_not_configured}
-      base_url -> push_painters(base_url, fallback, choices)
+      base_url -> push_view(key, base_url, fallback, choices)
     end
   end
 
@@ -787,25 +817,30 @@ defmodule Tazuna.Relations do
   **GenServer を通さずに呼べる形にしてあります** —— 引き方と図への読み直しは
   ここで完結するので、状態を持つ入れ物を跨がずに確かめられます。
   """
-  def fetch_painters(base_url, fallback) do
+  def fetch_painters(base_url, fallback), do: fetch_view("painters", base_url, fallback)
+
+  @doc "Chiezo に溜まっている図（画家・芸能人）を読みます。**読むだけ**（`fetch_painters/2`）。"
+  def fetch_view(key, base_url, fallback) do
     # **収集の設定は読まない。** 図に要るのは溜まった文書だけで、設定（巡回・区画・
     # 依頼文）は画面の設定欄を開いたときに読む（`settings/1`）。一緒に読んでいた頃は、
     # 図を開くたびに 400 区画ぶんの台帳まで運んでいた。
     # **読めなかったときだけ設定を見る** —— 「収集が無い」のか「まだ溜まっていない」
     # のかで、押した人が次にすることが違う
-    case collected_docs(base_url, painters_collection()) do
+    spec = graph_spec(key)
+
+    case collected_docs(base_url, collection_of(key), spec.kind_tag) do
       {:error, :nothing_collected} ->
-        collection = collection_or_nil(base_url)
+        collection = collection_or_nil(base_url, key)
         {:error, {nothing_reason(collection), collection}}
 
       {:error, reason} ->
         {:error, reason}
 
       {:ok, docs} ->
-        graph = Graph.from_docs(docs)
+        graph = Graph.from_docs(docs, spec)
 
         if graph.nodes == [] do
-          collection = collection_or_nil(base_url)
+          collection = collection_or_nil(base_url, key)
           {:error, {nothing_reason(collection), collection}}
         else
           # 丸の大きさは知名度で決める。**AI に有名かどうかを判断させない** ——
@@ -821,8 +856,8 @@ defmodule Tazuna.Relations do
     end
   end
 
-  defp collection_or_nil(base_url) do
-    case Chiezo.collection(base_url, painters_collection()) do
+  defp collection_or_nil(base_url, key) do
+    case Chiezo.collection(base_url, collection_of(key)) do
       {:ok, found} -> found
       {:error, _reason} -> nil
     end
@@ -843,13 +878,13 @@ defmodule Tazuna.Relations do
       base_url ->
         # 2 つは別の問い合わせなので並べて待つ
         backends = Task.async(fn -> Chiezo.backends(base_url) end)
-        collection = if key == "painters", do: collection_or_nil(base_url)
+        collection = if chiezo_view?(key), do: collection_or_nil(base_url, key)
 
         {:ok,
          %{
            collection: collection,
            backends: Task.await(backends, 30_000),
-           partition_unreviewed: unreviewed_by_partition(collection, nodes)
+           partition_unreviewed: unreviewed_by_partition(collection, nodes, key)
          }}
     end
   end
@@ -858,8 +893,11 @@ defmodule Tazuna.Relations do
   区画ごとの、AI がまだ目を通していない人の数（`%{鍵 => 人数}`）。
   区画の所属は Chiezo と同じ規則で割り出します（`Partitions`）。
   """
-  def unreviewed_by_partition(%{partitions: [_ | _] = partitions}, nodes) do
-    find = Partitions.locator(partitions, Graph.region_tag(), Graph.years_tag())
+  def unreviewed_by_partition(collection, nodes, key \\ "painters")
+
+  def unreviewed_by_partition(%{partitions: [_ | _] = partitions}, nodes, key) do
+    {prefix, value} = partition_tags(key)
+    find = Partitions.locator(partitions, prefix, value)
 
     nodes
     |> Enum.filter(& &1[:unreviewed?])
@@ -868,7 +906,7 @@ defmodule Tazuna.Relations do
     |> Enum.frequencies()
   end
 
-  def unreviewed_by_partition(_collection, _nodes), do: %{}
+  def unreviewed_by_partition(_collection, _nodes, _key), do: %{}
 
   @doc """
   Chiezo に収集を依頼して、そのまま読み直します。
@@ -877,7 +915,7 @@ defmodule Tazuna.Relations do
   動かすかは Chiezo 側で決めます。
   """
   def request_painters(base_url, fallback) do
-    with :ok <- ensure_collection(base_url, painters_collection()) do
+    with :ok <- ensure_collection(base_url, "painters") do
       fetch_painters(base_url, fallback)
     end
   end
@@ -891,10 +929,14 @@ defmodule Tazuna.Relations do
   止まっている収集は Chiezo が断ります（有効にできるのは Chiezo の画面だけ）。
   そのときも溜まっているものは読み直したうえで、断られたことを理由として返します。
   """
-  def push_painters(base_url, fallback, choices \\ %{}) do
-    name = painters_collection()
+  def push_painters(base_url, fallback, choices \\ %{}),
+    do: push_view("painters", base_url, fallback, choices)
 
-    with {:ok, existing} <- ensure_collection_once(base_url, name) do
+  @doc "依頼したうえで読み直します（画家・芸能人。`push_painters/3`）。"
+  def push_view(key, base_url, fallback, choices \\ %{}) do
+    name = collection_of(key)
+
+    with {:ok, existing} <- ensure_collection_once(base_url, key) do
       # **既にある収集には設定を送り直す。** 作るときの `POST` は「もうある」で
       # 断られるので、それだけだと tazuna 側で指示文や区画を直しても永遠に届かない
       # （画面には Chiezo の中身が出るので、直したはずのものが出ないことになる）。
@@ -904,13 +946,13 @@ defmodule Tazuna.Relations do
       # 「押したのに何も変わらない」としか映らない（送れていないことに気づけない）
       pushed =
         if existing do
-          progress(:pushing)
-          Chiezo.patch(base_url, name, base_attrs(name, choices))
+          progress(key, :pushing)
+          Chiezo.patch(base_url, name, attrs_of(key, choices))
         else
           :ok
         end
 
-      case {pushed, reading(fetch_painters(base_url, fallback))} do
+      case {pushed, reading(key, fetch_view(key, base_url, fallback))} do
         {:ok, read} -> read
         {{:error, reason}, {:ok, relation}} -> {:ok, relation, reason}
         {{:error, reason}, _unreadable} -> {:error, reason}
@@ -924,21 +966,25 @@ defmodule Tazuna.Relations do
   **区画ではなく名指しで渡します** —— 区画を渡すだけでは、直してほしい 1 人が
   差し込みに載る保証がありません。
   """
-  def ask_partition(base_url, key, note, sweep \\ @survey_sweep) do
+  def ask_partition(base_url, partition, note, sweep \\ @survey_sweep, key \\ "painters") do
     # **区画を名指しした割り込み。** その区画に印が付くので、巡回が同じところを
     # もう一度見ることはない —— 「ここを先に見てほしい」を頼む口
-    Chiezo.focus(base_url, painters_collection(), note, [], sweep, key)
+    Chiezo.focus(base_url, collection_of(key), note, [], sweep, partition)
   end
 
   @doc """
   その画家の区画を割り出して、ざっと見るの回として割り込ませます。
   成功すれば `{:ok, 区画の鍵}`。
   """
-  def ask_painter_partition(base_url, name, tags) do
-    with %{partitions: [_ | _] = partitions} <- collection_or_nil(base_url) || :no_partitions,
-         find = Partitions.locator(partitions, Graph.region_tag(), Graph.years_tag()),
+  def ask_painter_partition(base_url, name, tags, key \\ "painters") do
+    {prefix, value} = partition_tags(key)
+
+    with %{partitions: [_ | _] = partitions} <-
+           collection_or_nil(base_url, key) || :no_partitions,
+         find = Partitions.locator(partitions, prefix, value),
          partition when is_binary(partition) <- find.(tags, name) || :no_partition,
-         :ok <- ask_partition(base_url, partition, rough_note(partition), @rough_sweep) do
+         :ok <-
+           ask_partition(base_url, partition, rough_note(partition, key), @rough_sweep, key) do
       {:ok, partition}
     else
       :no_partitions -> {:error, :no_partitions}
@@ -949,27 +995,28 @@ defmodule Tazuna.Relations do
   end
 
   @doc "ざっと見るの割り込みの指示文。**必ず区画の名前で始めます**。"
-  def rough_note(partition),
-    do: "#{partition} の区画を先にざっと見てください。まだ目を通していない画家が残っています。"
+  def rough_note(partition, key \\ "painters"),
+    do:
+      "#{partition} の区画を先にざっと見てください。まだ目を通していない#{if key == "people", do: "人", else: "画家"}が残っています。"
 
-  def ask_focus(base_url, name, note) do
+  def ask_focus(base_url, name, note, key \\ "painters") do
     # **調査の回に頼む。** 割り込み専用の巡回は置いていない —— 同じ仕事
     # （漏れ探し・磨き・削除）を頼むのだから、設定も依頼文もそこのものでよい
-    case Chiezo.focus(base_url, painters_collection(), note, [name], @survey_sweep) do
+    case Chiezo.focus(base_url, collection_of(key), note, [name], @survey_sweep) do
       :ok -> :ok
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp reading(result) do
-    progress(:reading)
+  defp reading(key, result) do
+    progress(key, :reading)
     result
   end
 
   # **押しても数分は Chiezo 側に何も出ない**（先に AI へ指定を書かせるため）。
   # どこで待っているのかが分からないと、押せていないのと区別が付かない
-  defp progress(step) do
-    if pid = Process.whereis(__MODULE__), do: send(pid, {:progress, "painters", step})
+  defp progress(key, step) do
+    if pid = Process.whereis(__MODULE__), do: send(pid, {:progress, key, step})
     :ok
   end
 
@@ -977,12 +1024,12 @@ defmodule Tazuna.Relations do
   # 押すたびに書かせに行かないよう、先に有無を確かめる
   # 戻り値の真偽は「もとからあったか」。作った直後かどうかで、このあと
   # 指定を書かせに行くかが変わる
-  defp ensure_collection_once(base_url, name) do
-    progress(:checking)
+  defp ensure_collection_once(base_url, key) do
+    progress(key, :checking)
 
-    case Chiezo.collection(base_url, name) do
+    case Chiezo.collection(base_url, collection_of(key)) do
       {:ok, nil} ->
-        with :ok <- ensure_collection(base_url, name), do: {:ok, false}
+        with :ok <- ensure_collection(base_url, key), do: {:ok, false}
 
       {:ok, _found} ->
         {:ok, true}
@@ -1195,9 +1242,9 @@ defmodule Tazuna.Relations do
 
   # まだ無ければ依頼する。**止まった状態で作られる**ので、これで AI が動き出す
   # ことはない（動かすかは Chiezo 側で決める）。すでにあれば何もしない
-  defp ensure_collection(base_url, name) do
-    progress(:requesting)
-    Chiezo.request(base_url, base_attrs(name))
+  defp ensure_collection(base_url, key) do
+    progress(key, :requesting)
+    Chiezo.request(base_url, attrs_of(key, %{}))
   end
 
   @doc """
@@ -1310,7 +1357,7 @@ defmodule Tazuna.Relations do
   """
   def painters_attrs(choices \\ %{}), do: base_attrs(painters_collection(), choices)
 
-  defp base_attrs(name, choices \\ %{}) do
+  defp base_attrs(name, choices) do
     %{
       name: name,
       description: "tazuna の関連図（画家の影響と時代）",
@@ -1370,21 +1417,22 @@ defmodule Tazuna.Relations do
   # 成り立っていなかった —— 収集ソースには rank_score が入らないので、Chiezo の
   # `ORDER BY rank_score DESC, title` は title のタイブレークだけが効き、返るのは
   # 名前順の先頭 200 人になる（実測では、有名な画家が 1 人も入らなかった）。
-  defp collected_docs(base_url, name) do
-    collect_pages(base_url, name, 0, [])
+  defp collected_docs(base_url, name, kind_tag) do
+    collect_pages(base_url, name, kind_tag, 0, [])
   end
 
-  defp collect_pages(_base_url, _name, offset, acc) when offset >= @page_size * @max_pages,
-    do: {:ok, acc}
+  defp collect_pages(_base_url, _name, _kind_tag, offset, acc)
+       when offset >= @page_size * @max_pages,
+       do: {:ok, acc}
 
-  defp collect_pages(base_url, name, offset, acc) do
+  defp collect_pages(base_url, name, kind_tag, offset, acc) do
     url =
       base_url <>
         "/v1/" <>
         name <>
         "/filter?limit=#{@page_size}&offset=#{offset}&fields=title,body,tags,extra,updated_at" <>
         "&include_removed=true&tag=" <>
-        URI.encode_www_form(Graph.kind_tag())
+        URI.encode_www_form(kind_tag)
 
     case Http.get(url,
            headers: [{"user-agent", @user_agent}],
@@ -1401,7 +1449,7 @@ defmodule Tazuna.Relations do
             # total を信じて回数を決めるより、途中で件数が変わっても破綻しない
             if length(docs) < @page_size,
               do: {:ok, acc},
-              else: collect_pages(base_url, name, offset + @page_size, acc)
+              else: collect_pages(base_url, name, kind_tag, offset + @page_size, acc)
 
           _ ->
             {:error, :chiezo_unexpected_body}
