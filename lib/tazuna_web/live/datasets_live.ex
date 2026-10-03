@@ -78,6 +78,9 @@ defmodule TazunaWeb.DatasetsLive do
        recent_runs: [],
        # 「位置は正しい」の行を Chiezo に固定させた結果（`Requests.hold/2`）
        held: nil,
+       # 控えている依頼（区画ごと。`Requests.pending/2`）と、控えた・頼んだ結果の一言
+       pending: [],
+       stashed: nil,
        # 地図で選んでいる区画。**選ぶのと頼むのを分ける** —— 押した瞬間に走ると、
        # どこを押したのか確かめる前に AI が動く
        picked: nil,
@@ -404,42 +407,59 @@ defmodule TazunaWeb.DatasetsLive do
      )}
   end
 
-  # **travel-log からの依頼**を、その場所を含む区画の情報収集として頼む。
-  # 区画は画面が読み込んである一覧から引く（押した直後に何区画で頼むかを出すため）。
-  # **待つのは画面ではなく tazuna** —— 取り込みが空くまで最長 1 時間待つので、
-  # 画面を閉じても頼み続けられるよう `Tazuna.TaskSupervisor` の下で走らせる
+  # **travel-log からの依頼は、すぐには頼まずに控える**（`Requests.stash/2`）。貼った
+  # その場で頼むと、1 件しか依頼の無い区画にも AI の回が 1 回走って枠を使い潰す ——
+  # 区画ごとに溜まった件数を見て、「この区画を頼む」で頼む（`send_pending`）。
+  # **「位置は正しい」の行はこれまでどおりその場で固定させる**（AI を使わないので待つ理由が無い）
   def handle_event("travel_log_request", %{"text" => text}, socket) do
     dataset = socket.assigns.dataset
-    partitions = get_in(socket.assigns, [:state, :collection, :partitions]) || []
-
-    # **「位置は正しい」の行は AI に渡さず、Chiezo に座標を固定させる**（頼むだけでは
-    # 守れない）。残りの行だけを、いつもどおり区画の補足として頼む
     confirms = Requests.confirms(text)
     socket = hold_locations(socket, dataset, confirms)
+    rest = Requests.without_confirms(text)
 
-    case Requests.plan(Requests.without_confirms(text), partitions) do
-      # 位置確認の行だけのテキストなら、AI に頼むものは無い（断ったことにしない）
-      {:error, :no_points} when confirms != [] ->
-        {:noreply, assign(socket, requested: nil)}
+    stashed =
+      case Requests.items(rest) do
+        [] when confirms != [] -> nil
+        [] -> {:refused, :no_points}
+        _items -> Requests.stash(dataset, rest)
+      end
 
-      {:error, reason} ->
-        {:noreply, assign(socket, requested: {:refused, reason})}
+    {:noreply, socket |> assign(stashed: stashed, requested: nil) |> assign_pending()}
+  end
 
-      {:ok, plan} ->
+  # 1 つの区画に溜まった依頼を頼む。**待つのは画面ではなく tazuna** —— 取り込みが空くまで
+  # 最長 1 時間待つので、画面を閉じても頼み続けられるよう `Tazuna.TaskSupervisor` の下で走らせる
+  def handle_event("send_pending", %{"key" => key}, socket) do
+    dataset = socket.assigns.dataset
+
+    case Enum.find(socket.assigns.pending, &(&1.key == key)) do
+      %{items: items} when items != [] ->
         live = self()
         deadline = System.monotonic_time(:millisecond) + @request_wait_ms
-
-        # **頼む前に控える**（結果を依頼と並べて見せるため。待っている間も出せるように）
-        {:ok, log} = Requests.record(dataset, plan, text)
+        plan = %{keys: [key], points: items, missed: []}
 
         Task.Supervisor.start_child(Tazuna.TaskSupervisor, fn ->
-          result = Requests.run(dataset, plan, deadline)
-          Requests.mark(log, result)
+          {_log, result} = Requests.send_partition(dataset, key, items, deadline)
           send(live, {:travel_log_request, result})
         end)
 
-        {:noreply, socket |> assign(requesting: plan, requested: nil) |> load_request_results()}
+        {:noreply, socket |> assign(requesting: plan, requested: nil, stashed: nil)}
+
+      _none ->
+        {:noreply, assign_pending(socket)}
     end
+  end
+
+  # 控えを取り消す（頼まずに捨てる）。**区画の外の依頼もここで捨てられる**
+  def handle_event("drop_pending", %{"key" => key}, socket) do
+    key = if key == "", do: nil, else: key
+
+    case Enum.find(socket.assigns.pending, &(&1.key == key)) do
+      %{items: items} -> Requests.drop(socket.assigns.dataset, Enum.map(items, & &1.id))
+      nil -> 0
+    end
+
+    {:noreply, socket |> assign(stashed: nil) |> assign_pending()}
   end
 
   defp hold_locations(socket, _dataset, []), do: assign(socket, held: nil)
@@ -460,7 +480,9 @@ defmodule TazunaWeb.DatasetsLive do
   # 定時の巡回とは別に、1 回だけ頼む
   @impl true
   def handle_async(:read, {:ok, result}, socket),
-    do: {:noreply, assign(socket, state: applied(socket.assigns.state, result))}
+    do:
+      {:noreply,
+       socket |> assign(state: applied(socket.assigns.state, result)) |> assign_pending()}
 
   def handle_async(:read, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, state: crashed(socket.assigns.state))}
@@ -582,6 +604,7 @@ defmodule TazunaWeb.DatasetsLive do
     {:noreply,
      socket
      |> assign(requesting: nil, requested: {result, socket.assigns.requesting})
+     |> assign_pending()
      |> load_request_results()}
   end
 
@@ -755,6 +778,16 @@ defmodule TazunaWeb.DatasetsLive do
   def request_message(nil, {{:error, reason}, _plan}, _sweep), do: reason_text(reason)
   def request_message(_requesting, _requested, _sweep), do: nil
 
+  @doc "依頼を控えた結果の一言。"
+  def stashed_message({:ok, %{added: added, skipped: 0}}),
+    do: "#{added} 件を控えました。下の「控えている依頼」から、区画ごとに頼んでください。"
+
+  def stashed_message({:ok, %{added: added, skipped: skipped}}),
+    do: "#{added} 件を控えました（#{skipped} 件は控え済みの依頼と同じなので足していません）。"
+
+  def stashed_message({:refused, reason}), do: Requests.error_text(reason)
+  def stashed_message(_stashed), do: nil
+
   defp missed_text([]), do: ""
 
   defp missed_text(missed) do
@@ -855,6 +888,14 @@ defmodule TazunaWeb.DatasetsLive do
     do: start_async(socket, :request_results, fn -> Requests.results(dataset) end)
 
   defp load_request_results(socket), do: socket
+
+  # 控えている依頼を、いま読めている区画で振り分け直す（travel-log から依頼を受ける対象だけ）
+  defp assign_pending(%{assigns: %{dataset: %{reader: "travel-log"} = dataset}} = socket) do
+    partitions = get_in(socket.assigns, [:state, :collection, :partitions]) || []
+    assign(socket, pending: Requests.pending(dataset, partitions))
+  end
+
+  defp assign_pending(socket), do: socket
 
   defp load_recent_runs(%{assigns: %{dataset: dataset}} = socket),
     do: start_async(socket, :recent_runs, fn -> Requests.runs(dataset) end)

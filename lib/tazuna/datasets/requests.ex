@@ -22,6 +22,7 @@ defmodule Tazuna.Datasets.Requests do
 
   alias Tazuna.Chiezo
   alias Tazuna.Datasets
+  alias Tazuna.Datasets.PendingRequest
   alias Tazuna.Datasets.RequestLog
   alias Tazuna.Repo
 
@@ -124,6 +125,114 @@ defmodule Tazuna.Datasets.Requests do
        do: :math.pow(la - lat, 2) + :math.pow(lo - lon, 2)
 
   defp distance(_doc, _lat, _lon), do: 1.0e9
+
+  @doc """
+  依頼のテキストを、**1 件ずつ**に分けます（`%{text, lat, lon}` の並び）。1 件は座標の行と、
+  その続きの行（座標を持たない行）。**最初の座標より前の行（見出し）は捨てます** ——
+  控えは 1 件ずつ区画に振り分けるので、どの依頼にも属さない行は持てない。
+  """
+  def items(text) when is_binary(text) do
+    text
+    |> String.split("\n")
+    |> Enum.reduce([], fn line, acc ->
+      case {point_of(line), acc} do
+        {{lat, lon}, acc} ->
+          [%{text: String.trim_trailing(line), lat: lat, lon: lon} | acc]
+
+        {nil, []} ->
+          acc
+
+        {nil, [last | rest]} ->
+          [%{last | text: last.text <> "\n" <> String.trim_trailing(line)} | rest]
+      end
+    end)
+    |> Enum.reverse()
+    |> Enum.map(&%{&1 | text: String.trim(&1.text)})
+  end
+
+  def items(_text), do: []
+
+  @doc """
+  依頼を**控えます**（すぐには頼まない）。貼ったその場で頼むと、1 件しか依頼の無い
+  区画にも AI の回が 1 回走り、枠を使い潰す —— 区画ごとに溜まった件数を見てから頼む。
+
+  **同じ依頼を貼り直しても 1 件のまま**（テキストが同じものは足さない）。
+  返すのは `{:ok, %{added: 件数, skipped: 件数}}`。
+  """
+  def stash(%{collection: name}, text) do
+    results =
+      for item <- items(text) do
+        %PendingRequest{}
+        |> PendingRequest.changeset(Map.put(item, :collection, name))
+        |> Repo.insert(on_conflict: :nothing, conflict_target: [:collection, :text])
+        |> case do
+          {:ok, %{id: id}} when not is_nil(id) -> :added
+          _skipped -> :skipped
+        end
+      end
+
+    {:ok,
+     %{
+       added: Enum.count(results, &(&1 == :added)),
+       skipped: Enum.count(results, &(&1 == :skipped))
+     }}
+  end
+
+  @doc """
+  控えている依頼を、**いまの区画ごとに**まとめます。`[%{key, items, since}]` を
+  件数の多い順に（同じなら古い順）。どの区画にも入らない依頼は鍵 `nil` の 1 組に。
+
+  **区画は見るたびに座標から引く**（控えは座標で持っている）—— 区画が割り直されても、
+  控えた依頼は新しい区画に入り直す。
+  """
+  def pending(%{collection: name}, partitions) when is_list(partitions) do
+    boxes = boxes(partitions)
+
+    PendingRequest
+    |> where([p], p.collection == ^name)
+    |> order_by([p], asc: p.inserted_at, asc: p.id)
+    |> Repo.all()
+    |> Enum.group_by(fn item ->
+      Enum.find_value(boxes, fn {key, box} -> if inside?({item.lat, item.lon}, box), do: key end)
+    end)
+    |> Enum.map(fn {key, items} -> %{key: key, items: items, since: hd(items).inserted_at} end)
+    |> Enum.sort_by(&{&1.key == nil, -length(&1.items), DateTime.to_unix(&1.since)})
+  end
+
+  def pending(_dataset, _partitions), do: []
+
+  @doc "控えている依頼の数（区画に関係なく）。"
+  def pending_count(%{collection: name}) do
+    PendingRequest |> where([p], p.collection == ^name) |> select([p], count(p.id)) |> Repo.one()
+  end
+
+  @doc """
+  1 つの区画に溜まった依頼を頼みます（`items` はその区画の控え）。**頼む前に控えを
+  依頼の記録へ移し**（結果を依頼と並べて見せるため）、Chiezo が受けたら控えから消す。
+  断られたら控えに残す（次にまた頼める）。
+
+  取り込み中なら空くまで待ちます（`deadline`）。返すのは `{記録, 結果}`。
+  """
+  def send_partition(dataset, key, items, deadline) when is_binary(key) and items != [] do
+    text = Enum.map_join(items, "\n", & &1.text)
+    plan = %{keys: [key], notes: %{key => text}, points: items, missed: []}
+    {:ok, log} = record(dataset, plan, text)
+    result = run(dataset, plan, deadline)
+    mark(log, result)
+
+    if result == :ok, do: drop(dataset, Enum.map(items, & &1.id))
+    {log, result}
+  end
+
+  @doc "控えを消します（頼んだあと・取り消したとき）。消した件数を返す。"
+  def drop(%{collection: name}, ids) when is_list(ids) do
+    {count, _} =
+      PendingRequest
+      |> where([p], p.collection == ^name and p.id in ^ids)
+      |> Repo.delete_all()
+
+    count
+  end
 
   @doc "1 回に頼める区画の数。"
   def max_partitions, do: @max_partitions

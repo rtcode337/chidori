@@ -637,10 +637,10 @@
         </details>
 
         <%!-- **travel-log からの依頼**（travel-log が読む収集だけ）。管理画面の
-           「修正・追加の依頼」のテキストを貼ると、座標を含む区画の情報収集に、
-           そのテキストを補足として載せて頼む。割り込みと違ってふつうの回として走るので、
-           書かれていない足りないものも探しに行く。**開いた状態で出す** ——
-           この節に来るのはたいてい依頼を貼るためで、畳んであると 1 手余計にかかる --%>
+           「修正・追加の依頼」のテキストを貼ると、**1 件ずつ控える**（すぐには頼まない）。
+           区画ごとに溜まった件数を見て、「この区画を頼む」で、その区画の回に依頼を補足として
+           載せて頼む。**開いた状態で出す** —— この節に来るのはたいてい依頼を貼るためで、
+           畳んであると 1 手余計にかかる --%>
         <details :if={@state.collection && @dataset.reader == "travel-log"} class="ask-more" open>
           <summary>travel-log からの依頼</summary>
           <form phx-submit="travel_log_request">
@@ -655,25 +655,71 @@
               </label>
             </p>
             <p class="muted-note">
-              travel-log の管理画面の「渡すテキスト」をそのまま貼ってください。「[位置確認]」の行（位置は正しい）は AI には渡さず、その店の座標を Chiezo に固定させます。
-              座標を含む区画（1 回に {Requests.max_partitions()} まで）で「{Requests.sweep(@dataset)}」を
-              1 回走らせ、依頼を区画ごとに振り分けて、その区画に入るぶんだけを依頼文の補足として載せます。ふつうの回として走るので、
-              区画には印が付きます。取り込み中なら空くまで待ちます。
+              travel-log の管理画面の「渡すテキスト」をそのまま貼ってください。 <strong>すぐには頼まず、1 件ずつ控えます</strong>（同じ依頼を貼り直しても 1 件のまま）。
+              下の「控えている依頼」で区画ごとの件数を見て、溜まった区画から「この区画を頼む」で頼んでください
+              —— 1 件しか無い区画にも 1 回ずつ AI の回が走ると、枠を使い潰します。
+              「[位置確認]」の行（位置は正しい）は AI を使わないので、貼った時点でその店の座標を Chiezo に固定させます。
             </p>
             <div class="button-row">
-              <button
-                type="submit"
-                disabled={@requesting != nil}
-                phx-disable-with="見積もっています…"
-              >
-                区画を引いて頼む
-              </button>
+              <button type="submit" phx-disable-with="控えています…">控える</button>
             </div>
           </form>
         </details>
         <p :if={held_message(@held)} class="muted-note" aria-live="polite">
           {held_message(@held)}
         </p>
+        <p :if={stashed_message(@stashed)} class="muted-note" aria-live="polite">
+          {stashed_message(@stashed)}
+        </p>
+
+        <%!-- **控えている依頼を、区画ごとに件数の多い順に並べる。** どの区画から頼むかを
+           件数で決められるように。区画は座標から見るたびに引くので、区画を割り直しても迷子にならない --%>
+        <section
+          :if={@dataset.reader == "travel-log" and @pending != []}
+          class="request-results"
+          aria-label="控えている依頼"
+        >
+          <header class="request-results-head">
+            <h3>控えている依頼（{Enum.sum(Enum.map(@pending, &length(&1.items)))} 件）</h3>
+          </header>
+          <p class="muted-note">
+            「この区画を頼む」で、その区画の「{Requests.sweep(@dataset)}」を 1 回走らせ、溜まった依頼を補足として載せます。
+            ふつうの回として走るので、区画には印が付きます。Chiezo が受けたら控えから消えます（断られたら残ります）。
+          </p>
+          <details :for={group <- @pending} class="request-result">
+            <summary>
+              <span class="request-scope">
+                {if group.key, do: group.key, else: "どの区画にも入らない"}
+              </span>
+              <span class="request-state">{length(group.items)} 件</span>
+              <span class="request-when">{Jst.format(group.since)} から</span>
+            </summary>
+            <pre>{Enum.map_join(group.items, "\n", & &1.text)}</pre>
+            <div class="button-row">
+              <button
+                :if={group.key}
+                type="button"
+                phx-click="send_pending"
+                phx-value-key={group.key}
+                disabled={@requesting != nil}
+                phx-disable-with="頼んでいます…"
+              >
+                この区画を頼む
+              </button>
+              <button
+                type="button"
+                phx-click="drop_pending"
+                phx-value-key={group.key || ""}
+                data-confirm={"この#{length(group.items)} 件の控えを、頼まずに捨てます。よいですか？"}
+              >
+                控えを捨てる
+              </button>
+            </div>
+            <p :if={!group.key} class="muted-note">
+              範囲の外の座標です。範囲を広げると、その区画に入り直します。
+            </p>
+          </details>
+        </section>
         <% sweep = Requests.sweep(@dataset) %>
         <p
           :if={request_message(@requesting, @requested, sweep)}

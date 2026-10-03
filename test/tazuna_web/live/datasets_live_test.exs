@@ -418,7 +418,18 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert sent["backend"] == "antigravity"
     end
 
-    test "travel-log からの依頼を、座標を含む区画の整理として頼める", %{conn: conn} do
+    # 裏の処理から届く知らせで画面が変わるのを待つ（render_async は async の処理しか待たない）
+    defp wait_for(live, text, tries \\ 40) do
+      html = render_async(live, 2_000)
+
+      cond do
+        html =~ text -> html
+        tries == 0 -> html
+        true -> Process.sleep(50) && wait_for(live, text, tries - 1)
+      end
+    end
+
+    test "travel-log からの依頼はすぐには頼まず控え、区画ごとに頼める", %{conn: conn} do
       {live, _html} = shown(conn)
 
       text = """
@@ -429,12 +440,33 @@ defmodule TazunaWeb.DatasetsLiveTest do
       - [追加] (26.20000,127.68000): 区画の外
       """
 
-      live
-      |> form(~s|form[phx-submit="travel_log_request"]|, %{text: text})
-      |> render_submit()
+      html =
+        live
+        |> form(~s|form[phx-submit="travel_log_request"]|, %{text: text})
+        |> render_submit()
 
-      # **ふつうの回として走らせる**（割り込みではない）。区画は座標から引き、
-      # 同じ区画に入る 2 件は 1 つにまとめる。補足は**区画ごと**に渡す
+      # **貼っただけでは頼まない**（1 件しか無い区画にも回が走ると枠を使い潰す）
+      refute_receive {:posted, _url, _sent}, 300
+      assert html =~ "3 件を控えました"
+      assert html =~ "控えている依頼（3 件）"
+
+      # 区画ごとに件数の多い順。区画の外は最後に「どの区画にも入らない」として
+      assert html =~ "35.6,139.7/35.7,139.8"
+      assert html =~ "どの区画にも入らない"
+
+      # 同じ依頼を貼り直しても増えない
+      html =
+        live
+        |> form(~s|form[phx-submit="travel_log_request"]|, %{text: text})
+        |> render_submit()
+
+      assert html =~ "0 件を控えました（3 件は控え済みの依頼と同じなので足していません）"
+
+      # **区画を選んで頼む。** ふつうの回として走らせ、その区画の控えだけを補足に載せる
+      live
+      |> element(~s|button[phx-click="send_pending"][phx-value-key="35.6,139.7/35.7,139.8"]|)
+      |> render_click()
+
       assert_receive {:posted, url, sent}, 2_000
       assert url =~ "/v1/collect/tazuna_dining_1/run"
       assert url =~ URI.encode_query(%{"sweep" => "整理"})
@@ -442,14 +474,13 @@ defmodule TazunaWeb.DatasetsLiveTest do
       note = sent["notes"]["35.6,139.7/35.7,139.8"]
       assert note =~ "閉店している"
       assert note =~ "そば屋がある"
-      # 区画の外の依頼は、どの区画にも渡さない
       refute note =~ "区画の外"
-      refute Map.has_key?(sent, "note")
 
-      # **外れた座標を黙って落とさない**
-      html = render_async(live, 2_000)
-      assert html =~ "区画 1 つで整理を頼みました"
-      assert html =~ "(26.2,127.68)"
+      # 頼み終えた知らせ（裏の処理から届く）を待ってから読む
+      html = wait_for(live, "区画 1 つで整理を頼みました")
+
+      # 頼んだ区画の控えは消え、区画の外の 1 件だけが残る
+      assert html =~ "控えている依頼（1 件）"
 
       # **依頼と、その結果を並べる**（頼んだ区画をちょうど見た回を引き当てる）
       assert [log] = Tazuna.Datasets.Requests.recent("tazuna_dining_1")
@@ -457,12 +488,15 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert log.status == "sent"
       assert html =~ "依頼の結果"
       assert html =~ "足した 25 ・直した 1 ・消した 1"
-      assert html =~ "そば屋"
-      assert html =~ "閉店した店"
-      # 見出しは Chiezo の画面の「直す前との違い」へ
       assert html =~ "/admin/collect/tazuna_dining_1/doc?title="
-      # Chiezo の控えは頭のほうだけ（足した 25 件のうち 1 件だけ並ぶ）
-      assert html =~ "ほか 24 件"
+
+      # 控えは頼まずに捨てられる
+      html =
+        live
+        |> element(~s|button[phx-click="drop_pending"][phx-value-key=""]|)
+        |> render_click()
+
+      refute html =~ "控えている依頼（"
     end
 
     test "最近の回は、自動で回った回も並べ、依頼で走った回には印を付ける", %{conn: conn} do
