@@ -13,6 +13,12 @@ defmodule Tazuna.Digest.Scheduler do
   **走らせるのは 1 本ずつです。** Chiezo の取り込みは 1 本ずつしか走らないので、
   同時に頼んでも待たされるだけです（しかも断られます）。
 
+  **同じ時刻に来た回は、並べて順に走らせます**（`queue`）。予定を過ぎたと気づいた
+  時点で控え、前の回が終わるのを待って次を起こす —— 30 分の猶予は「気づくまで」の
+  話で、並んでから待つ時間には掛けない。起きたときに 1 本しか拾わない作りだった頃は、
+  4 つの話題が同じ 07:00 に並ぶと、前の 3 つで 50 分かかり、最後の話題（市況）は
+  猶予を過ぎて捨てられていた。
+
   **取り込みが混んでいても、その回を落としません。** 次の予定の時刻まで、空くのを
   待って頼みます（`Tazuna.Digest.run/2`）。
 
@@ -38,23 +44,24 @@ defmodule Tazuna.Digest.Scheduler do
   @impl true
   def init(_opts) do
     tick()
-    {:ok, %{task: nil}}
+    {:ok, %{task: nil, task_collection: nil, queue: []}}
   end
 
   @impl true
   def handle_info(:tick, state) do
     tick()
-    {:noreply, if(state.task, do: state, else: start_due(state))}
+    {:noreply, state |> enqueue_due() |> start_next()}
   end
 
   # 走り終えた（結果を残すのは `Tazuna.Digest`。ここは次の回に備えるだけ）
+  # 1 本終わったら、待たずに次を起こす（次の起床まで 1 分待たせない）
   def handle_info({ref, _result}, %{task: %{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
-    {:noreply, %{state | task: nil}}
+    {:noreply, start_next(%{state | task: nil})}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, _reason}, %{task: %{ref: ref}} = state) do
-    {:noreply, %{state | task: nil}}
+    {:noreply, start_next(%{state | task: nil})}
   end
 
   def handle_info(_message, state), do: {:noreply, state}
@@ -63,25 +70,41 @@ defmodule Tazuna.Digest.Scheduler do
     Process.send_after(self(), :tick, Application.get_env(:tazuna, :digest_tick_ms, @tick_ms))
   end
 
-  defp start_due(state) do
-    # **要約を作らない話題は見ない**（要約の回を持たないので、起こしても断られる）
-    case Topics.list()
-         |> Enum.filter(&Topics.digest?/1)
-         |> Enum.find_value(&due(&1, DateTime.utc_now())) do
-      nil ->
-        state
+  # 予定を過ぎた回を並べる。**並べた時点で控える**（`last_digest_at`）—— 並んで待っている
+  # あいだに次の起床が来ても、同じ回を二度並べない
+  defp enqueue_due(state) do
+    queued = MapSet.new(state.queue, fn {topic, _at} -> topic.collection end)
+    running = if state.task, do: state.task_collection, else: nil
 
-      {topic, at} ->
-        Settings.mark_digest(topic.collection, at)
+    due =
+      Topics.list()
+      |> Enum.filter(&Topics.digest?/1)
+      |> due_all(MapSet.put(queued, running), DateTime.utc_now())
 
-        # **取り込みが混んでいたら、次の予定まで空くのを待つ**（その回を落とさない）
-        free_by = free_by(topic)
+    for {topic, at} <- due, do: Settings.mark_digest(topic.collection, at)
+    %{state | queue: state.queue ++ due}
+  end
 
-        task =
-          Task.Supervisor.async_nolink(Tazuna.TaskSupervisor, fn -> Digest.run(topic, free_by) end)
+  defp start_next(%{task: nil, queue: [{topic, _at} | rest]} = state) do
+    free_by = free_by(topic)
 
-        %{state | task: task}
-    end
+    task =
+      Task.Supervisor.async_nolink(Tazuna.TaskSupervisor, fn -> Digest.run(topic, free_by) end)
+
+    Map.merge(state, %{task: task, task_collection: topic.collection, queue: rest})
+  end
+
+  defp start_next(state), do: state
+
+  @doc """
+  予定を過ぎた回（`{話題, 予定の時刻}`）を、予定の早い順に。**並んでいる・走っている
+  話題は除きます**（`skip` は収集の名前）。同じ時刻なら話題の並び順。
+  """
+  def due_all(topics, skip, now) do
+    topics
+    |> Enum.reject(&MapSet.member?(skip, &1.collection))
+    |> Enum.flat_map(&List.wrap(due(&1, now)))
+    |> Enum.sort_by(fn {_topic, at} -> DateTime.to_unix(at) end)
   end
 
   @doc """

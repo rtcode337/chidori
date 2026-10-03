@@ -56,6 +56,28 @@ defmodule Tazuna.Digest.SchedulerTest do
     assert at == ~U[2026-09-16 22:10:00Z]
   end
 
+  test "同じ時刻に来た回は全部並べる（並んでいる・走っている話題は除く）" do
+    # 1 本ずつ拾っていた頃は、4 つが同じ 07:00 に並ぶと最後の話題が猶予を過ぎて捨てられた
+    for c <- ~w(tazuna_news tazuna_tech tazuna_market),
+        do: Settings.put(c, %{"digest_at" => "07:00"})
+
+    topics =
+      Enum.filter(
+        Tazuna.Topics.list(),
+        &(&1.collection in ~w(tazuna_news tazuna_tech tazuna_market))
+      )
+
+    now = ~U[2026-09-16 22:01:00Z]
+
+    assert ~w(tazuna_news tazuna_tech tazuna_market) ==
+             topics |> Scheduler.due_all(MapSet.new(), now) |> Enum.map(&elem(&1, 0).collection)
+
+    assert ~w(tazuna_news tazuna_market) ==
+             topics
+             |> Scheduler.due_all(MapSet.new(["tazuna_tech"]), now)
+             |> Enum.map(&elem(&1, 0).collection)
+  end
+
   describe "次に回る予定" do
     test "まだ来ていないいちばん早い時刻を返す" do
       Settings.put(@collection, %{"digest_at" => "07:00,21:00"})
