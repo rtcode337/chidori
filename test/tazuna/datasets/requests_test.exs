@@ -147,7 +147,11 @@ defmodule Tazuna.Datasets.RequestsTest do
     assert preface =~ "報告に答えただけで終えないで"
     assert preface =~ "営業していると\n  確かめられない限り、墓標で消して"
     assert preface =~ "残す理由になりません"
-    assert preface =~ "戻さないでください"
+    assert preface =~ "閉店の報告があった店は、いま消えていても戻さないでください"
+
+    # 閉店していないと報告された店は、消えていたら戻させる（戻す印を付けないと戻らない）
+    assert preface =~ "「閉店していない」「営業している」と書かれた店が、いま消えていたら戻してください"
+    assert preface =~ Tazuna.Chiezo.restore_tag()
     # 書き出すときに落としている見分けの番号
     assert preface =~ "「 (数字)」が落ちている"
   end
