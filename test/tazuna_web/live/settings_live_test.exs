@@ -157,4 +157,15 @@ defmodule TazunaWeb.SettingsLiveTest do
     assert_received {:patched, "http://chiezo.test/v1/collect/tazuna_old/sweeps/整理",
                      %{"backend" => "codex"}}
   end
+
+  test "最後に取得した時刻を出し、「最新の情報を取得」で読み直す", %{conn: conn} do
+    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    html = render_async(live)
+
+    assert html =~ "最後に取得:"
+    assert html =~ "（たった今）"
+
+    live |> element("button", "最新の情報を取得") |> render_click()
+    assert render_async(live) =~ "最新の情報を取得"
+  end
 end

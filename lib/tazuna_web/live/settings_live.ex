@@ -37,7 +37,10 @@ defmodule TazunaWeb.SettingsLive do
        # 選んだところが勝手に元へ戻る
        picks: %{},
        # 収集ごとに、送った結果の一言
-       sent: %{}
+       sent: %{},
+       # 「最後に取得」（Chiezo から表を読めた時刻）と、読み直している最中か
+       checked_at: nil,
+       reloading: false
      )}
   end
 
@@ -63,6 +66,7 @@ defmodule TazunaWeb.SettingsLive do
           # 表と一緒に消える）
           socket
           |> update(:overview, &if(match?({:ok, _}, &1), do: &1, else: :loading))
+          |> assign(reloading: true)
           |> start_async(:overview, fn -> load_overview(base) end)
         else
           assign(socket, overview: :loading)
@@ -81,10 +85,10 @@ defmodule TazunaWeb.SettingsLive do
 
   @impl true
   def handle_async(:overview, {:ok, result}, socket),
-    do: {:noreply, assign(socket, overview: result)}
+    do: {:noreply, assign(socket, overview: result, reloading: false) |> stamp(result)}
 
   def handle_async(:overview, {:exit, _reason}, socket),
-    do: {:noreply, assign(socket, overview: {:error, :chiezo_unavailable})}
+    do: {:noreply, assign(socket, overview: {:error, :chiezo_unavailable}, reloading: false)}
 
   def handle_async(:pace, {:ok, result}, socket) do
     {:noreply, socket |> assign(pace_message: pace_text(result)) |> load("chiezo")}
@@ -103,6 +107,10 @@ defmodule TazunaWeb.SettingsLive do
 
   def handle_async(:pace, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, pace_message: pace_text({:error, :chiezo_unavailable}))}
+
+  # 読めたときだけ「最後に取得」を進める（読めなかったときは前の時刻のまま）
+  defp stamp(socket, {:ok, _overview}), do: assign(socket, checked_at: DateTime.utc_now())
+  defp stamp(socket, _result), do: socket
 
   @impl true
   def handle_event("reload", _params, socket), do: {:noreply, load(socket, "chiezo")}

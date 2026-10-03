@@ -25,9 +25,27 @@
         </p>
       </section>
 
-      <div class="button-row">
-        <button type="button" phx-click="reload" phx-disable-with="読んでいます…">読み直す</button>
-      </div>
+      <%!-- ほかの画面と同じ「最後に取得」の行。**開いたときに 1 回読むだけで、自動では
+           読み直さない**（いつのものを見ているかを出して、取り直すかは読む人が決める） --%>
+      <p class="relation-checked">
+        <span class="muted-note">
+          <%= if @checked_at do %>
+            最後に取得:
+            <strong>{Tazuna.Jst.format(@checked_at)}（{Tazuna.Jst.ago(@checked_at)}）</strong>
+          <% else %>
+            まだ取得していません
+          <% end %>
+        </span>
+        <button
+          type="button"
+          phx-click="reload"
+          disabled={@reloading}
+          aria-busy={if @reloading, do: "true"}
+          class={if @reloading, do: "is-loading"}
+        >
+          {if @reloading, do: "取得しています…", else: "最新の情報を取得"}
+        </button>
+      </p>
 
       <p :if={@overview in [nil, :loading]} class="muted-note">読み込んでいます…</p>
       <p :if={match?({:error, _}, @overview)} class="muted-note">{error_text(@overview)}</p>
