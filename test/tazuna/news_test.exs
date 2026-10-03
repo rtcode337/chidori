@@ -857,6 +857,32 @@ defmodule Tazuna.NewsTest do
       assert prompt =~ "1 行に 1 つのこと"
     end
 
+    test "要旨の要点ごとに、根拠にした記事の出典を書かせる" do
+      # 通知では要点の下にその URL を並べる。最後にまとめて並べていた頃は、
+      # どの URL がどの要点の根拠なのかが読めなかった
+      prompt = News.digest_prompt(defined_topic("tazuna_tech"))
+
+      assert prompt =~ "要点ごとに、すぐ下の行へ根拠にした記事を"
+      assert prompt =~ "・<要点を 1 行で>\n出典: [記事の見出し](URL)"
+    end
+
+    test "要点ごとの出典は、まとめを作るどの話題にも頼む（興味トピックの要約も）" do
+      topics = Enum.filter(Tazuna.Topics.defined(), &Tazuna.Topics.digest?/1)
+
+      assert Enum.map(topics, & &1.name) |> Enum.sort() ==
+               Enum.sort(["一般ニュース", "技術ニュース", "映画", "市況ニュース"])
+
+      for topic <- topics do
+        assert News.digest_prompt(topic) =~ "要点ごとに、すぐ下の行へ根拠にした記事を",
+               "#{topic.name} の要約に要点ごとの出典を頼んでいない"
+
+        topic = Map.put(topic, :interests, ["AI"])
+
+        assert News.interest_digest_prompt(topic) =~ "要点ごとに、すぐ下の行へ根拠にした記事を",
+               "#{topic.name} の興味の要約に要点ごとの出典を頼んでいない"
+      end
+    end
+
     test "まとめは、記事の URL を名乗らない" do
       # 同じ URL の 1 件は Chiezo が弾く。まとめが引いた記事の URL を名乗ると、
       # その記事は既に入っているので、**まとめ自体が落ちる**（出典は本文に書く）

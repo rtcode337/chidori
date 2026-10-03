@@ -186,6 +186,39 @@ defmodule Tazuna.NotifyTest do
       refute text =~ @digest.title
     end
 
+    test "要点ごとの出典は、その要点のすぐ下に並べる" do
+      # レポート全体の出典を最後にまとめて並べると、どの URL がどの要点の根拠
+      # なのかが通知から読めない
+      digest = %{
+        @digest
+        | summary: """
+          ## 要旨
+          この期間は基盤の入れ替えが続きました。
+
+          ・データベースの新版が出ました
+          出典: [新版の告知](https://example.com/db)
+          ・移行の手引きが公開されました
+          出典: [移行の手引き](https://example.com/guide)
+          出典: [手引きの解説](https://example.com/guide-2)
+
+          ## 移行の要点
+          本文。
+          出典: [別の記事](https://example.com/other)
+          """
+      }
+
+      text = News.digest_text(digest)
+
+      assert text =~
+               "・データベースの新版が出ました\n→ https://example.com/db\n" <>
+                 "・移行の手引きが公開されました\n→ https://example.com/guide\n" <>
+                 "→ https://example.com/guide-2"
+
+      # 要旨に無い章の出典は並べない（どの要点の根拠でもない）
+      refute text =~ "https://example.com/other"
+      refute text =~ "**"
+    end
+
     test "要旨の無い古いまとめも、飾りを落として流す" do
       # 溜まったまとめは書き換わらない。要旨を書かせる前のものが空で飛ぶより、
       # 本文を飾りなしで流すほうがまだ読める

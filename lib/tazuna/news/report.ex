@@ -103,6 +103,23 @@ defmodule Tazuna.News.Report do
 
   def to_text(_blocks), do: ""
 
+  @doc """
+  要旨を、通知に流すプレーンテキストにします。**出典の URL は、根拠にした要点の
+  すぐ下に `→ URL` で並べます**（要旨の中で要点の次の行に書かれた出典）。
+
+  `to_text/1` と違うのは出典の置き方だけです —— あちらは URL だけの行になるので、
+  要点の行と見分けが付かず、どれがどの要点の根拠なのかが読めません。
+  """
+  def to_notice(blocks) when is_list(blocks) do
+    blocks
+    |> Enum.flat_map(fn
+      {:source, url, _label} -> ["→ " <> url]
+      block -> text_of(block)
+    end)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n")
+  end
+
   defp text_of({:paragraph, parts}), do: [plain(parts)]
   defp text_of({:note, parts}), do: [plain(parts)]
   defp text_of({:list, items}), do: Enum.map(items, &("・" <> plain(&1)))

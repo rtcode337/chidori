@@ -1439,17 +1439,26 @@ defmodule Tazuna.News do
   通知では逆です —— ntfy が URL を見つけて自分でリンクにするので、見出しに
   差し替えると**行き先が読めないただの文字**になります。
 
+  **要点ごとの出典は、その要点のすぐ下に並べます**（`Report.to_notice/1`）。
+  レポート全体の出典を最後にまとめて並べていた頃は、どの URL がどの要点の
+  根拠なのかが通知から読めなかった。要点に出典の無い古いまとめは、今までどおり
+  最後にまとめて並べます。
+
   **見出しは写しません。** ntfy はタイトルを別に持つので、本文にも入れると
   同じ文字が 2 度並びます。
   """
   def digest_text(%{summary: summary}) when is_binary(summary) do
     document = Report.document(summary)
 
-    urls = document |> Report.sources() |> Enum.take(@notice_sources)
+    if Enum.any?(document.summary, &match?({:source, _url, _label}, &1)) do
+      Report.to_notice(document.summary)
+    else
+      urls = document |> Report.sources() |> Enum.take(@notice_sources)
 
-    [summary_text(document), Enum.map_join(urls, "\n", & &1.url)]
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.join("\n\n")
+      [summary_text(document), Enum.map_join(urls, "\n", & &1.url)]
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.join("\n\n")
+    end
   end
 
   def digest_text(_digest), do: ""
@@ -1519,15 +1528,22 @@ defmodule Tazuna.News do
     <その期間を一言で。1 文>
 
     ・<要点を 1 行で>
+    出典: [記事の見出し](URL)
     ・<要点を 1 行で>
+    出典: [記事の見出し](URL)
     ・<要点を 1 行で>
+    出典: [記事の見出し](URL)
     ```
 
     - **1 行目だけで意味が通るように**書いてください（通知は畳まれて先頭しか
       見えないことがあります）
     - 続けて**空行を 1 つ**置き、要点を「・」で **3〜4 行**。**1 行に 1 つのこと**だけ
       書いてください —— 全部を 1 つの段落に詰めると、通知でも画面でも読めません
-    - 飾りの記号（`**` や行頭の `-`）と URL は入れないでください
+    - **要点ごとに、すぐ下の行へ根拠にした記事を `出典: [記事の見出し](URL)` で
+      1〜2 行**書いてください。通知では要点の下にその URL が並ぶので、どの URL が
+      どの要点の根拠なのかが読めます。**見出しも URL も、上に並んでいるものを
+      そのまま写してください**（上に無い URL を作らない）
+    - 飾りの記号（`**` や行頭の `-`）は入れないでください
       —— 通知は Markdown として描かれないので、記号がそのまま出ます
     - レポート本文の言い直しで構いません（画面では導入として出ます）
 
