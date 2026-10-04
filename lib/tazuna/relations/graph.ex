@@ -1104,7 +1104,9 @@ defmodule Tazuna.Relations.Graph do
     rows = packed |> Enum.flat_map(fn {_unit, seats} -> Enum.map(seats, &elem(&1, 1)) end)
     row_count = Enum.max(rows, fn -> 0 end) + 1
 
-    others = Enum.reject(edges, &(&1[:via] == rule.member_prefix))
+    # 枠の材料にした線（今のメンバー）は寄せる手掛かりにしない（枠の中で隣り合っている）
+    member = rule[:member_prefix]
+    others = Enum.reject(edges, &(member != nil and &1[:via] == member))
     columns_by_id = shift_units(packed, adjacency(others))
 
     drawn_height = max(@canvas_height, row_count * cell)
@@ -1140,7 +1142,8 @@ defmodule Tazuna.Relations.Graph do
     placed =
       packed
       |> Enum.flat_map(fn {%{group: group}, seats} ->
-        List.wrap(group) ++ Enum.map(seats, &elem(&1, 0))
+        # タグから組んだ枠（`tag_units/2`）には札が無い（名前は枠に書く）
+        List.wrap(if group && !group[:tag?], do: group) ++ Enum.map(seats, &elem(&1, 0))
       end)
       |> Enum.with_index(fn node, index ->
         Map.merge(node, Map.fetch!(spots, node.id))
@@ -1154,6 +1157,38 @@ defmodule Tazuna.Relations.Graph do
       end)
 
     %{nodes: placed, height: height, bands: [], clusters: clusters}
+  end
+
+  # **人のタグからかたまりを組む**（`clusters: %{tag_prefix: …}`。芸能人の図）。
+  # グループを文書として持たず、メンバーの「グループ:<名前>」で枠を作る —— グループを
+  # 名簿に入れていた頃は、ざっと見る回がグループの文書ばかり回って、人が育たなかった。
+  # 名簿にいるメンバーが 2 人以上のグループだけを枠にする（1 人の枠は囲む意味が無い）。
+  # **同じ人が 2 つのグループにいたら、名簿にいるメンバーの多いほうに入れる**
+  defp cluster_units(nodes, _edges, %{tag_prefix: prefix}) do
+    groups_of = Map.new(nodes, &{&1.id, tag_values(&1[:tags] || [], prefix)})
+
+    sizes =
+      groups_of |> Map.values() |> List.flatten() |> Enum.frequencies()
+
+    {framed, singles} =
+      nodes
+      |> Enum.group_by(fn node ->
+        groups_of[node.id]
+        |> Enum.filter(&(sizes[&1] >= 2))
+        |> Enum.max_by(&{sizes[&1], &1}, fn -> nil end)
+      end)
+      |> Enum.split_with(fn {name, _members} -> name != nil end)
+
+    frames =
+      for {name, members} <- framed do
+        %{
+          group: %{id: "group:" <> name, name: display_name(name), years: nil, tag?: true},
+          members: Enum.sort_by(members, &sort_key/1)
+        }
+      end
+
+    alone = for {nil, members} <- singles, node <- members, do: %{group: nil, members: [node]}
+    Enum.sort_by(frames ++ alone, &{unit_year(&1), unit_name(&1)})
   end
 
   # かたまりに分ける。グループは今のメンバーと 1 かたまり、ほかの人は 1 人で 1 かたまり。
@@ -1298,6 +1333,9 @@ defmodule Tazuna.Relations.Graph do
     end
   end
 
+  # 枠に書く名前。**記事名の括弧書きは落とす**（「かまいたち (お笑いコンビ)」→「かまいたち」）
+  defp display_name(name), do: name |> String.replace(~r/\s*\([^)]*\)$/u, "") |> String.trim()
+
   # グループの枠（左上・幅・高さ）。行をまたぐかたまりは、その行ぶんの幅いっぱい
   defp frame(group, members, seats, columns_by_id, columns, x_step, y_step) do
     rows = Enum.map(seats, &elem(&1, 1))
@@ -1313,6 +1351,8 @@ defmodule Tazuna.Relations.Graph do
     %{
       id: group.id,
       name: group.name,
+      # 札の無い枠（名前は枠に書く）
+      labelled: group[:tag?] == true,
       x: Float.round(@gutter + left * x_step + inset, 1),
       y: Float.round(@canvas_margin + top * y_step + inset, 1),
       width: Float.round((right - left + 1) * x_step - 2 * inset, 1),

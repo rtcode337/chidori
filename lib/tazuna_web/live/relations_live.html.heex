@@ -169,6 +169,16 @@
           rx="10"
           style={cluster_style(cluster)}
         />
+        <%!-- 札の無い枠（人のタグから組んだグループ）は、名前を枠の左上に書く --%>
+        <text
+          :for={cluster <- shown[:clusters] || []}
+          :if={cluster[:labelled]}
+          class="cluster-name"
+          x={cluster.x + 6}
+          y={cluster.y + 12}
+        >
+          {cluster.name}
+        </text>
         <g :for={tick <- shown[:ticks] || []} class="relation-tick">
           <line x1="70" y1={tick.y} x2={shown.width} y2={tick.y} />
         </g>
@@ -451,10 +461,10 @@
         </p>
       <% else %>
         <p>
-          <strong>縦は年代</strong>です（上から下へ。人は生年。グループはメンバーの生年の中ほど）。 <strong>グループはメンバーを囲む枠</strong>で、名前は枠の上の縁にあります。 <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、 <strong>色は種別</strong>（俳優・歌手・タレント・お笑いなど）です。写真のある人は札に顔写真が出ます（Wikimedia Commons。押すと出典とライセンス）。
+          <strong>縦は年代</strong>です（上から下へ。人は生年。グループはメンバーの生年の中ほど）。 <strong>同じグループ（コンビ・アイドルグループ・バンド）の人は枠で囲み</strong>、名前は枠の左上にあります。 <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、 <strong>色は種別</strong>（俳優・歌手・タレント・お笑いなど）です。写真のある人は札に顔写真が出ます（Wikimedia Commons。押すと出典とライセンス）。
         </p>
         <p>
-          <strong>太い赤の線は夫婦</strong>（元夫婦も）、 <strong>実線は家族</strong>（親子・きょうだい）、 <strong>点線は元メンバー</strong>です。どれも AI が公表されている情報から書いたもので、
+          <strong>太い赤の線は夫婦</strong>（元夫婦も）、 <strong>実線は家族</strong>（親子・きょうだい）です。どれも AI が公表されている情報から書いたもので、
           未成年の家族と、芸能人でない家族は載せていません。
           薄い線は記事どうしが互いにリンクしているというだけの関係で、Wikipedia から機械的に引いたものです。
         </p>

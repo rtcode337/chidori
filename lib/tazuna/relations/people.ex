@@ -1,14 +1,15 @@
 defmodule Tazuna.Relations.People do
   @moduledoc """
   芸能人の関連図（関連図の画面の「芸能人のつながり」）。**いちばん知りたいのは夫婦**で、
-  親子・きょうだいとグループのメンバーがそれに続きます。**画家の図と同じ仕組み**で、
+  親子・きょうだいと、同じグループ（コンビ・アイドルグループ・バンド）の仲間がそれに続きます。**画家の図と同じ仕組み**で、
   Chiezo に名簿を持たせて育てます —— 名簿は Wikipedia のカテゴリから機械で取り込み、
   つながりを AI に足させます。
 
   ## 名簿
 
-  俳優・歌手・タレント・お笑い芸人と、グループ（お笑いコンビ・トリオ、アイドル
-  グループ、バンド）。**知名度で下を切ります**（Wikipedia の月の閲覧数。既定は 1 万。
+  **人だけ**（俳優・歌手・タレント・お笑い芸人）。**グループは名簿に入れません** ——
+  入れていた頃は、ざっと見る回がお笑いコンビの文書ばかり回って、人が育たなかった。
+  グループは人のタグ（「グループ:<名前>」）から枠を組みます。**知名度で下を切ります**（Wikipedia の月の閲覧数。既定は 1 万。
   `Tazuna.Relations.Settings`）—— カテゴリだけで 3 万人に届き、全部を AI に回すと
   一周に何週間もかかる。落ち着いたら下限を下げて広げます。
 
@@ -21,10 +22,9 @@ defmodule Tazuna.Relations.People do
 
   ## 札と線
 
-  - 札は**人**だけ。グループは札ではなく、**メンバーを囲む枠**（クラスタ）として描き、
-    名前は枠の上に出す（メンバーが名簿にいないグループは札のまま）
-  - 線は**夫婦**（配偶者・元配偶者。いちばん目立たせる）、**家族**（親子・きょうだい）、
-    **元メンバー**。今のメンバーは枠で分かるので線を引かない
+  - 札は**人**だけ。グループは**同じ「グループ:<名前>」を持つ人を囲む枠**（クラスタ）で、
+    名前は枠に書く（名簿にいるメンバーが 2 人以上のときだけ）
+  - 線は**夫婦**（配偶者・元配偶者。いちばん目立たせる）と**家族**（親子・きょうだい）
   - 記事どうしが相互にリンクしている組は、AI を待たずに薄い線で引く（画家と同じ「関連」）
 
   ## 並べ方
@@ -45,13 +45,11 @@ defmodule Tazuna.Relations.People do
   alias Tazuna.Relations.Graph
 
   @kind_tag "芸能人"
-  # 札の種類（グループかどうか）。カテゴリから機械で付ける
-  @group_tag "区分:グループ"
   # 色と区画に使う種別
   @category_prefix "種別"
   @family_prefix "家族"
-  @member_prefix "メンバー"
-  @former_prefix "元メンバー"
+  # 今所属しているグループ（枠を組む材料。値は日本語版 Wikipedia の記事名）
+  @group_prefix "グループ"
 
   # 芸能人ではない夫婦の相手の種別（スポーツ選手・政治家・作家など）。**名簿のカテゴリには
   # 無く、AI が夫婦の相手として足したときだけ付く**
@@ -68,14 +66,6 @@ defmodule Tazuna.Relations.People do
     {"日本のタレント", "タレント"},
     {"日本の女性タレント", "タレント"},
     {"お笑い芸人", "お笑い芸人"}
-  ]
-
-  # **グループ**（枠になる）。`{カテゴリの正規表現, 種別}`
-  @group_categories [
-    {"^日本の(?:女性|男女|夫婦)?お笑いコンビ$", "お笑いコンビ", ~w(日本のお笑いコンビ 日本の女性お笑いコンビ 日本の男女お笑いコンビ 日本の夫婦お笑いコンビ)},
-    {"^日本の(?:女性)?お笑いトリオ$", "お笑いトリオ", ~w(日本のお笑いトリオ 日本の女性お笑いトリオ)},
-    {"^日本の(?:女性|男性|ポップ・)アイドルグループ$", "アイドルグループ", ~w(日本の女性アイドルグループ 日本の男性アイドルグループ 日本のポップ・アイドルグループ)},
-    {"^日本のロック・バンド$", "バンド", ~w(日本のロック・バンド)}
   ]
 
   # 区画の割り方。**種別 × 年代で 25 人ずつ**（画家と同じ大きさ。1 回の答えが
@@ -103,27 +93,24 @@ defmodule Tazuna.Relations.People do
   @doc "区画の割り方。"
   def partition, do: @partition
 
-  @doc "名簿の元にするカテゴリ（人とグループ）。"
-  def categories,
-    do:
-      Enum.map(@person_categories, &elem(&1, 0)) ++
-        Enum.flat_map(@group_categories, &elem(&1, 2))
+  @doc "名簿の元にするカテゴリ（人だけ）。"
+  def categories, do: Enum.map(@person_categories, &elem(&1, 0))
 
   @doc """
-  図の読み方（`Tazuna.Relations.Graph.from_docs/2`）。**横の帯は持たず、グループは
-  メンバーを囲む枠にする**（`clusters`）。
+  図の読み方（`Tazuna.Relations.Graph.from_docs/2`）。**横の帯は持たず、同じグループの
+  人を枠で囲む**（`clusters`。人の「グループ:<名前>」から組む）。
   """
   def graph_spec,
     do: %{
       kind_tag: @kind_tag,
-      kinds: [{@group_tag, :group}],
+      kinds: [],
       default_kind: :person,
       style_prefix: @category_prefix,
       band_prefix: @category_prefix,
       bands: [],
       works?: false,
-      # グループ（`:group`）の今のメンバーを、そのグループの枠に入れる
-      clusters: %{kind: :group, member_prefix: @member_prefix},
+      # 同じ「グループ:<名前>」を持つ人を、そのグループの枠に入れる
+      clusters: %{tag_prefix: @group_prefix},
       edge_rules: [
         # 夫婦は線の種類を分ける（いちばん知りたい線なので、いちばん目立たせる）
         %{
@@ -132,9 +119,7 @@ defmodule Tazuna.Relations.People do
           from: :owner,
           undirected: true,
           kinds_by_label: %{"配偶者" => :spouse, "元配偶者" => :spouse}
-        },
-        %{prefix: @member_prefix, kind: :duo, from: :owner, label: "メンバー"},
-        %{prefix: @former_prefix, kind: :duo, from: :owner, label: "元メンバー"}
+        }
       ]
     }
 
@@ -192,9 +177,8 @@ defmodule Tazuna.Relations.People do
   end
 
   @doc """
-  名簿の引き方（Chiezo の「抽出の指定」）。**カテゴリから種別とグループの印を機械で付ける**
-  （色と区画の材料なので、AI に判断させない）。年代は生年のカテゴリから
-  （グループの結成年はカテゴリに無いので、ざっと見る回に埋めさせる）。
+  名簿の引き方（Chiezo の「抽出の指定」）。**人のカテゴリだけ**から引き、**種別を機械で付ける**
+  （色と区画の材料なので、AI に判断させない）。年代は生年のカテゴリから。
 
   **知名度で下を切ります**（`min_pageviews`。月の閲覧数）。顔写真の手掛かりに、
   記事の画像（`image`）も運びます。
@@ -210,7 +194,6 @@ defmodule Tazuna.Relations.People do
         [%{const: @kind_tag}] ++
           years_rules() ++
           person_rules() ++
-          group_rules() ++
           [
             # 相互リンクだけを線にする（画家と同じ。片側だと有名どうしが軒並み繋がる）
             %{linked: "mutual", format: "#{Graph.related_tag()}:{1}"}
@@ -229,15 +212,6 @@ defmodule Tazuna.Relations.People do
         pattern: "^(?:" <> Enum.map_join(names, "|", &Regex.escape/1) <> ")$",
         format: "#{@category_prefix}:#{kind}"
       }
-    end)
-  end
-
-  defp group_rules do
-    Enum.flat_map(@group_categories, fn {pattern, kind, _names} ->
-      [
-        %{pattern: pattern, format: "#{@category_prefix}:#{kind}"},
-        %{pattern: pattern, format: @group_tag}
-      ]
     end)
   end
 
@@ -266,19 +240,17 @@ defmodule Tazuna.Relations.People do
 
     """
     **「#{tag}」は必ず西暦の数で書いてください**（区画はこのタグの最初の数で決まります）。
-    - 人は "#{tag}:生年-没年"（存命なら "#{tag}:1963-"）
-    - グループは結成年で "#{tag}:結成年-解散年"（活動中なら "#{tag}:1991-"）
+    - "#{tag}:生年-没年"（存命なら "#{tag}:1963-"）
     """
   end
 
   # 種別の書き方
   defp kinds_rule do
     people = @person_categories |> Enum.map(&elem(&1, 1)) |> Enum.uniq()
-    groups = Enum.map(@group_categories, &elem(&1, 1))
 
     """
-    種別は、人なら #{Enum.map_join(people, " / ", &~s("#{@category_prefix}:#{&1}"))} のどれか
-    （いくつもで知られる人は全部。芸能人ではない夫婦の相手は "#{@category_prefix}:#{@notable_kind}"）、グループなら #{Enum.map_join(groups, " / ", &~s("#{@category_prefix}:#{&1}"))} のどれかと "#{@group_tag}"。
+    種別は #{Enum.map_join(people, " / ", &~s("#{@category_prefix}:#{&1}"))} のどれか
+    （いくつもで知られる人は全部。芸能人ではない夫婦の相手は "#{@category_prefix}:#{@notable_kind}"）。
     """
   end
 
@@ -297,8 +269,11 @@ defmodule Tazuna.Relations.People do
       "#{@family_prefix}:<名簿の人の名前>:配偶者"（元なら 元配偶者）を付けてください
     - **親子・きょうだいは "#{@family_prefix}:<相手の名前>:<親子|きょうだい>"**（相手も芸能人で、
       日本語版 Wikipedia に記事がある人だけ）
-    - **グループには、今のメンバーを "#{@member_prefix}:<メンバーの名前>"** で付けてください
-      （元メンバーは "#{@former_prefix}:<名前>"）。名前は日本語版 Wikipedia の記事名で
+    - **今所属しているグループ（お笑いコンビ・トリオ、アイドルグループ、バンドなど）は
+      "#{@group_prefix}:<グループの名前>"** で付けてください。**グループの名前は日本語版
+      Wikipedia の記事名そのまま**（「かまいたち (お笑いコンビ)」のような括弧書きも含めて）——
+      同じグループの人どうしで書き方が揃わないと、同じグループだと分かりません。
+      抜けたグループは付けません。**グループそのものは 1 件として足さないでください**（人だけの図です）
     - **関係は両側に書いてください**（夫婦なら、夫の文書にも妻の文書にも）。片側にしか
       書かないと、もう片方を見たときに抜けて見えます
     """
@@ -315,7 +290,7 @@ defmodule Tazuna.Relations.People do
     **今回見る範囲**
     {partition}
 
-    **この範囲の人とグループが、下にすべて並んでいます。** 誰を見るか選ぶ必要は
+    **この範囲の人が、下にすべて並んでいます。** 誰を見るか選ぶ必要は
     ありません —— 並んでいるものを順に詳しくしてください。**範囲の外のものは
     返さないでください**（別の回に回ってきます。**夫婦の相手を足すときだけは例外**です）。
 
@@ -334,7 +309,7 @@ defmodule Tazuna.Relations.People do
 
     **変えないものを返す必要はありません。** 返すものは次の形にしてください。
     - title: 名前（**上に並んでいる表記をそのまま使う**。足す人は日本語版 Wikipedia の記事名）
-    - body: 何をしている人・グループか（1〜2 文）と、夫婦・家族の要点（いつ結婚したか など）
+    - body: 何をしている人か（1〜2 文）と、夫婦・家族の要点（いつ結婚したか など）
     - url: 日本語版 Wikipedia の記事の URL
     - tags: **いま付いているタグをすべて残したうえで**、上のタグを足す
     """
@@ -360,13 +335,13 @@ defmodule Tazuna.Relations.People do
 
     **1. 夫婦の漏れを埋める。** 上の一人ずつについて、**結婚している・していた相手**を
     確かめてください。相手が日本語版 Wikipedia に記事のある有名人（芸能人でなくてよい）なのに
-    名簿にいなければ、**その相手を足してください**（名簿にいない相手への線は出ません）。グループのメンバーで
-    名簿にいない人も足して構いません。**思い当たらなければ足さなくて構いません**。
+    名簿にいなければ、**その相手を足してください**（名簿にいない相手への線は出ません）。
+    **思い当たらなければ足さなくて構いません**。
 
-    **2. つながりを磨く。** 夫婦・家族・メンバーのタグが空のものを埋め、明らかに違うもの
+    **2. つながりを磨く。** 夫婦・家族・グループのタグが空のものを埋め、明らかに違うもの
     （離婚したのに配偶者のままなど）だけ直してください。**確かめられなかったものは触らないでください。**
 
-    **3. 要らないものを消す。** 芸能人でも名簿の人の夫婦の相手でもない人と、表記の揺れで 2 つに分かれた同じ人・同じグループ
+    **3. 要らないものを消す。** 芸能人でも名簿の人の夫婦の相手でもないもの（グループそのものの 1 件も）と、表記の揺れで 2 つに分かれた同じ人
     （残すほうに中身をまとめる）だけを墓標で消してください（tags に "#{Chiezo.tombstone_tag()}"、
     body に理由を 1 行）。
 
@@ -377,16 +352,16 @@ defmodule Tazuna.Relations.People do
 
     足すもの・直すものの形は次のとおりです。
     - title: 名前（**日本語版 Wikipedia の記事名にそろえる**）
-    - body: 何をしている人・グループか（1〜2 文）と、夫婦・家族の要点
+    - body: 何をしている人か（1〜2 文）と、夫婦・家族の要点
     - url: 日本語版 Wikipedia の記事の URL
     - tags:
       - "#{@kind_tag}"
-      - "#{@category_prefix}:<種別>"（**区画の材料**）。グループなら "#{@group_tag}" も
+      - "#{@category_prefix}:<種別>"（**区画の材料**）
         #{String.replace(String.trim_trailing(kinds_rule()), "\n", "\n    ")}
-      - "#{Graph.years_tag()}:<生年- か 結成年->"（**区画の材料**）
+      - "#{Graph.years_tag()}:<生年->"（**区画の材料**）
         #{String.replace(String.trim_trailing(years_rule()), "\n", "\n    ")}
       - "#{@family_prefix}:<相手の名前>:<配偶者|元配偶者|親子|きょうだい>"
-      - グループは "#{@member_prefix}:<メンバーの名前>" / "#{@former_prefix}:<名前>"
+      - "#{@group_prefix}:<今所属しているグループの、日本語版 Wikipedia の記事名>"
       - "#{Graph.related_tag()}" のタグは**そのまま残してください**
     """
   end

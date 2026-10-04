@@ -15,10 +15,11 @@ defmodule Tazuna.Relations.PeopleTest do
   describe "図の読み方" do
     setup do
       docs = [
-        doc("〇〇コンビ", ~w(芸能人 区分:グループ 種別:お笑いコンビ 年代:1991- メンバー:甲山 メンバー:乙川)),
-        doc("甲山", ~w(芸能人 種別:お笑い芸人 年代:1965- 家族:丙田:配偶者)),
-        doc("乙川", ~w(芸能人 種別:お笑い芸人 年代:1966-)),
+        doc("甲山", ["芸能人", "種別:お笑い芸人", "年代:1965-", "グループ:〇〇コンビ (お笑いコンビ)", "家族:丙田:配偶者"]),
+        doc("乙川", ["芸能人", "種別:お笑い芸人", "年代:1966-", "グループ:〇〇コンビ (お笑いコンビ)"]),
         doc("丙田", ~w(芸能人 種別:俳優 年代:1970- 家族:甲山:配偶者)),
+        # 名簿にいるメンバーが 1 人だけのグループは枠にしない
+        doc("丁野", ~w(芸能人 種別:歌手 年代:1980- グループ:△△バンド)),
         # 図に載せる印の無いもの（画家の名簿など）は出さない
         doc("誰か", ~w(画家 年代:1840-1926))
       ]
@@ -26,33 +27,33 @@ defmodule Tazuna.Relations.PeopleTest do
       %{graph: Graph.from_docs(docs, People.graph_spec())}
     end
 
-    test "グループと人を札の種類で分け、印の無いものは載せない", %{graph: graph} do
+    test "札は人だけで、印の無いものは載せない", %{graph: graph} do
       kinds = Map.new(graph.nodes, &{&1.name, &1.kind})
 
-      assert kinds == %{"〇〇コンビ" => :group, "甲山" => :person, "乙川" => :person, "丙田" => :person}
+      assert kinds == %{"甲山" => :person, "乙川" => :person, "丙田" => :person, "丁野" => :person}
     end
 
-    test "メンバーはグループから、家族は向きを持たずに 1 本の線にする", %{graph: graph} do
+    test "夫婦は家族の線と種類を分け、向きを持たずに 1 本の線にする", %{graph: graph} do
       names = Map.new(graph.nodes, &{&1.id, &1.name})
 
       lines =
         for edge <- graph.edges, do: {names[edge.from], names[edge.to], edge.kind, edge.label}
 
-      assert {"〇〇コンビ", "甲山", :duo, "メンバー"} in lines
-      assert {"〇〇コンビ", "乙川", :duo, "メンバー"} in lines
-
-      # 夫婦は家族の線の中で種類を分ける（いちばん目立たせる）。両方の文書に書かれていても 1 本
+      # 両方の文書に書かれていても 1 本
       assert Enum.count(lines, fn {_a, _b, kind, _l} -> kind == :spouse end) == 1
       assert Enum.any?(lines, &match?({_, _, :spouse, "配偶者"}, &1))
     end
 
-    test "横の帯は持たず、グループはメンバーを囲む枠にする", %{graph: graph} do
+    test "横の帯は持たず、同じグループの人を枠で囲む", %{graph: graph} do
       # 種別は色で分かるので、帯に割ると夫婦が左右の端に離れる
       assert graph.bands == []
 
       nodes = Map.new(graph.nodes, &{&1.name, &1})
+
+      # グループは文書として持たず、人の「グループ:<記事名>」から組む。名前は括弧書きを落とす
       assert [frame] = graph.clusters
       assert frame.name == "〇〇コンビ"
+      assert frame.labelled
       assert Enum.sort(frame.members) == Enum.sort([nodes["甲山"].id, nodes["乙川"].id])
 
       # メンバーは隣り合わせで、枠の中にいる
@@ -64,21 +65,6 @@ defmodule Tazuna.Relations.PeopleTest do
 
       assert nodes["甲山"].y == nodes["乙川"].y
       assert abs(nodes["甲山"].seat - nodes["乙川"].seat) == 1
-
-      # グループの札は枠の上の縁（枠の名前になる）
-      assert nodes["〇〇コンビ"].y == frame.y
-
-      # 枠の中のメンバーへの線は描かない印を付ける（線そのものは残す）
-      framed = Enum.filter(graph.edges, & &1[:framed?])
-      assert length(framed) == 2
-    end
-
-    test "メンバーが名簿にいないグループは、札のまま" do
-      docs = [doc("△△トリオ", ~w(芸能人 区分:グループ 種別:お笑いトリオ 年代:2001- メンバー:だれか))]
-      graph = Graph.from_docs(docs, People.graph_spec())
-
-      assert graph.clusters == []
-      assert [%{name: "△△トリオ", kind: :group}] = graph.nodes
     end
 
     test "代表作は持たない", %{graph: graph} do
@@ -96,22 +82,23 @@ defmodule Tazuna.Relations.PeopleTest do
       %{attrs: People.attrs()}
     end
 
-    test "名簿は俳優・歌手・タレント・お笑い芸人とグループから、種別とグループの印を機械で付ける", %{
+    test "名簿は俳優・歌手・タレント・お笑い芸人だけから引き、種別を機械で付ける", %{
       attrs: attrs
     } do
       assert attrs.name == "tazuna_people"
 
-      for category <- ~w(日本の男優 20世紀日本の女優 日本の女性歌手 日本のタレント お笑い芸人
-                         日本のお笑いコンビ 日本の女性アイドルグループ 日本のロック・バンド) do
-        assert attrs.extract.tag =~ category
-      end
+      for category <- ~w(日本の男優 20世紀日本の女優 日本の女性歌手 日本のタレント お笑い芸人),
+          do: assert(attrs.extract.tag =~ category)
+
+      # グループは名簿に入れない（入れていた頃は、ざっと見る回がコンビの文書ばかり回った）
+      refute attrs.extract.tag =~ "お笑いコンビ"
+      refute attrs.extract.tag =~ "アイドルグループ"
 
       formats = Enum.map(attrs.extract.tags, &Map.get(&1, :format))
 
-      for kind <- ~w(俳優 歌手 タレント お笑い芸人 お笑いコンビ アイドルグループ バンド),
-          do: assert("種別:#{kind}" in formats)
+      for kind <- ~w(俳優 歌手 タレント お笑い芸人), do: assert("種別:#{kind}" in formats)
 
-      assert "区分:グループ" in formats
+      refute "区分:グループ" in formats
       # Chiezo の規則の上限（20）に収まる
       assert length(attrs.extract.tags) <= 20
     end
@@ -136,6 +123,11 @@ defmodule Tazuna.Relations.PeopleTest do
         assert prompt =~ "夫婦の相手が上に並んでいなければ、その相手も 1 件として足してください"
         assert prompt =~ "範囲の外でも構いません"
         assert prompt =~ "種別:著名人"
+
+        # グループは人のタグから枠を組む。書き方を揃えさせ、グループ自体は足させない
+        assert prompt =~ "グループ:<グループの名前>"
+        assert prompt =~ "Wikipedia の記事名そのまま"
+        assert prompt =~ "グループそのものは 1 件として足さないでください"
       end
     end
 

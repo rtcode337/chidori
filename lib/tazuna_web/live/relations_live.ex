@@ -542,6 +542,11 @@ defmodule TazunaWeb.RelationsLive do
   # **その画家の姿。** 画家の記事の先頭画像は、たいてい自画像か肖像写真になる
   # （代表作の記事の先頭がその絵になるのと同じ理屈）。引き方は代表作と同じ
   # `Tazuna.Artwork` —— まず Chiezo、無ければ Wikipedia、結果は 1 日覚える
+  # **顔写真の写しがある人は、記事の画像を引き直さない**（芸能人の図）。両方出すと、
+  # 同じ人の写真が詳細に 2 枚並ぶ（写しも記事の先頭画像から取っているので、たいてい同じ写真）
+  defp with_portrait(socket, %{face: face}) when is_binary(face),
+    do: assign(socket, portrait: :none)
+
   defp with_portrait(socket, node) do
     case node[:article] || node[:name] do
       title when is_binary(title) ->
@@ -899,9 +904,8 @@ defmodule TazunaWeb.RelationsLive do
       {"影響元", for(t <- tags, v = strip(t, "影響元:"), do: v)},
       # 芸能人の図のタグ
       {"種別", for(t <- tags, v = strip(t, "種別:"), do: v)},
-      {"メンバー", for(t <- tags, v = strip(t, "メンバー:"), do: v)},
-      {"元メンバー", for(t <- tags, v = strip(t, "元メンバー:"), do: v)},
       {"家族", for(t <- tags, v = strip(t, "家族:"), do: family_text(v))},
+      {"グループ", for(t <- tags, v = strip(t, "グループ:"), do: v)},
       {"その他", for(t <- tags, plain_tag?(t), do: t)}
     ]
     |> Enum.reject(fn {_label, values} -> values == [] end)
@@ -926,7 +930,7 @@ defmodule TazunaWeb.RelationsLive do
   defp plain_tag?(tag) do
     # **機械の印（`_chiezo_…`）も出さない** —— 未レビューかどうかは見出しの横に出す
     not Enum.any?(
-      ~w(年代: 地域: 様式: 代表作: 影響元: 関連: 種別: メンバー: 元メンバー: 家族: 区分: _chiezo_),
+      ~w(年代: 地域: 様式: 代表作: 影響元: 関連: 種別: メンバー: 元メンバー: 家族: グループ: 区分: _chiezo_),
       &String.starts_with?(tag, &1)
     )
   end
