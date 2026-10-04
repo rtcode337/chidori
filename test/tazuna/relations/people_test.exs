@@ -131,6 +131,11 @@ defmodule Tazuna.Relations.PeopleTest do
         assert prompt =~ "家族:<相手の名前>:配偶者"
         assert prompt =~ "元配偶者"
         assert prompt =~ "関係は両側に書いてください"
+
+        # 夫婦の相手は名簿の外からも足させる（知名度で切ると相手が抜ける）。芸能人でなくてよい
+        assert prompt =~ "夫婦の相手が上に並んでいなければ、その相手も 1 件として足してください"
+        assert prompt =~ "範囲の外でも構いません"
+        assert prompt =~ "種別:著名人"
       end
     end
 
@@ -149,7 +154,7 @@ defmodule Tazuna.Relations.PeopleTest do
 
       for prompt <- [attrs.prompt, tidy.prompt] do
         assert prompt =~ "公表されている関係だけ"
-        assert prompt =~ "未成年の家族と、芸能人でない家族（一般の人）は書かないでください"
+        assert prompt =~ "未成年の家族と、日本語版 Wikipedia に記事の無い家族（一般の人）は書かないでください"
         assert prompt =~ "{partition}"
         assert prompt =~ "{current}"
       end
