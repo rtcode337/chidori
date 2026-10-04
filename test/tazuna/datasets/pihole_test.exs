@@ -1,7 +1,7 @@
 defmodule Tazuna.Datasets.PiholeTest do
   @moduledoc """
-  Pi-hole の止めたドメインと気になる通信。見ているのは、**名簿を機械で足すだけで引くこと**
-  （調べた本文を名簿の文で上書きしない）、**整理の回が判定を決まった語で付けること**、
+  Pi-hole の止めたドメインと気になる通信。見ているのは、**機械収集が Chiezo の
+  Pi-hole から引く回で足すだけなこと**（調べた本文を上書きしない）、**集計を脇書きから読むこと**、**整理の回が判定を決まった語で付けること**、
   **一覧がまだ調べていないものも並べ、消えたものは落とすこと**です。
   """
 
@@ -11,19 +11,13 @@ defmodule Tazuna.Datasets.PiholeTest do
   alias Tazuna.HttpStub
 
   describe "依頼の中身" do
-    test "名簿は Chiezo の取り込み（pihole）から、足すだけで引く" do
-      [spec] = Pihole.extract()
-
-      assert spec.source == "pihole"
-      assert spec.tag == "Pi-hole"
-
-      # 回数や端末は引き直すたびに最新へ（脇書きは Chiezo が入れ替える）
-      assert "blocked_count" in spec.extra and "clients" in spec.extra
-      # Chiezo が 1 本の指定で運べる脇書きは 10 個まで
-      assert length(spec.extra) <= 10
-
+    test "機械収集は Chiezo が Pi-hole から引く回で、足すだけ" do
       machine = Enum.find(Pihole.sweeps(), &(&1.name == Tazuna.SweepNames.machine()))
-      assert machine.use_extract and machine.only_new
+      assert machine.use_pihole and machine.only_new
+
+      # 前の版で送った名簿の指定は消す（残ると 1 回目が名簿の回として走る）
+      attrs = Pihole.attrs()
+      assert Map.has_key?(attrs, :extract) and attrs.extract == nil
     end
 
     test "整理は web で調べ、まだ調べていないものを決まった数ずつ、重みの順に渡す" do
@@ -56,31 +50,52 @@ defmodule Tazuna.Datasets.PiholeTest do
           "title" => "beacon.example.com",
           "tags" => ["Pi-hole", "気になる通信", "理由:規則正しい周期", "判定:要注意"],
           "opening" => "■ ひとことでいうと\n見知らぬ機器の定期通信。確かめたほうがよい。\n■ 何のドメインか\n不明",
-          "extra" => %{"queries" => 12, "clients" => ["192.0.2.10: 12 回"], "priority" => 600}
+          "extra" => %{
+            "first_seen" => "2026-10-01T00:00:00+00:00",
+            "last_seen" => "2026-10-04T12:00:00+00:00",
+            "queries" => 12,
+            "clients" => ["192.0.2.10", "192.0.2.20"],
+            "client_counts" => [10, 2],
+            "client_names" => ["tablet", ""],
+            "reasons" => ["192.0.2.10 が 5 分おきに 8 回、規則正しく引いている"],
+            "watched_at" => "2026-10-04T12:00:00+00:00",
+            "priority" => 600
+          }
         })
 
       assert domain.watch and not domain.blocked
       assert domain.reasons == ["規則正しい周期"]
+      assert domain.observed == ["192.0.2.10 が 5 分おきに 8 回、規則正しく引いている"]
       assert domain.verdict == "要注意"
       assert domain.researched
+      assert domain.first_seen == "2026-10-01T00:00:00+00:00"
+
+      # アクセス元ごとの回数は 1 つの並びにする（名前の無いものは nil）
+      assert domain.clients == [
+               %{ip: "192.0.2.10", name: "tablet", count: 10},
+               %{ip: "192.0.2.20", name: nil, count: 2}
+             ]
+
       # 調べたものは「ひとことでいうと」の段だけを一覧に出す
       assert domain.summary == "見知らぬ機器の定期通信。確かめたほうがよい。"
     end
 
-    test "まだ調べていないものは観測の文のまま、判定も無い" do
+    test "いまの状態は脇書きで読む（タグは最初の 1 回にしか付かない）" do
+      # 普通の通信として溜まり始め、あとで止めるようになったドメイン
       domain =
         Pihole.to_domain(%{
           "title" => "ads.example.com",
-          "tags" => ["Pi-hole", "ブロック", "判定:たぶん平気", Tazuna.Chiezo.unreviewed_tag()],
-          "opening" => "Pi-hole がこの 30 日に 120 回止めた。",
-          "extra" => %{"blocked_count" => 120}
+          "tags" => ["Pi-hole", "判定:たぶん平気", Tazuna.Chiezo.unreviewed_tag()],
+          "opening" => "Pi-hole が 120 回止めた。",
+          "extra" => %{"blocked" => 120, "watched_at" => "2026-10-04T12:00:00+00:00"}
         })
 
+      assert domain.blocked and domain.watch
       refute domain.researched
       # 決まった語でない判定は拾わない
       assert domain.verdict == nil
       assert domain.blocked_count == 120
-      assert domain.summary == "Pi-hole がこの 30 日に 120 回止めた。"
+      assert domain.summary == "Pi-hole が 120 回止めた。"
     end
   end
 
@@ -100,7 +115,7 @@ defmodule Tazuna.Datasets.PiholeTest do
                   %{
                     "title" => "ads.example.com",
                     "tags" => ["Pi-hole", "ブロック"],
-                    "extra" => %{"blocked_count" => 5, "priority" => 100}
+                    "extra" => %{"blocked" => 5, "priority" => 100}
                   },
                   %{
                     "title" => "new.example.net",

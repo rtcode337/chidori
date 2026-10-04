@@ -2,16 +2,17 @@ defmodule Tazuna.Datasets.Pihole do
   @moduledoc """
   **家の LAN の DNS で、Pi-hole が止めたドメインと気になる通信**を集めて調べるところ。
 
-  **拾うのは機械、調べるのは AI。** Pi-hole から記録を引くのは Chiezo の取り込み
-  （ソース `pihole`。接続先とパスワードは Chiezo の管理画面の API キーの面に置く）で、
-  止めたドメインと「いつもと違う振る舞い」のドメインを 1 ドメイン 1 文書で焼いてくれます。
-  ここではそれを名簿として引き（機械収集）、**何のドメインか・放置してよいかを
-  AI に web で調べさせます**（整理）。観測した事実（回数・端末・候補に挙げた理由）は
-  機械が持つので、AI に書かせません。
+  **拾うのは機械、調べるのは AI。** 機械収集の回は Chiezo が Pi-hole から新しい問い合わせを
+  読み、**止めたドメインといつもと違う振る舞いのドメインを、ドメインごとの集計として
+  積み上げます**（最初と最後に見た時刻・問い合わせと止めた回数・アクセス元ごとの回数。
+  Chiezo の巡回「Pi-hole から引く」）。接続先とパスワードは Chiezo の管理画面の
+  API キーの面に置き、Chidori は Pi-hole に直接つながりません。整理の回は、
+  **何のドメインか・放置してよいかを AI に web で調べさせます**。
 
-  **名簿は足すだけ**（`only_new`）。調べた中身は AI が本文に書くので、名簿を引き直した
-  回に元の観測の文で上書きされないように。回数のような脇書きは、引き直すたびに
-  最新の値へ入れ替わります（Chiezo が機械の運んだ値で入れ替える）。
+  **集計は機械が持つので、AI に書かせません。** 足すだけの回は既にある 1 件の本文と
+  タグに触らず、集計（脇書き）だけを入れ替えるので、調べた本文は残ります。
+  **タグは最初の 1 回しか付かない**ので、いまの状態（止めているか・気になる通信か）は
+  脇書きで読みます。
   """
 
   alias Tazuna.Chiezo
@@ -19,8 +20,7 @@ defmodule Tazuna.Datasets.Pihole do
 
   @collection "tazuna_pihole"
 
-  # 引く先（Chiezo の取り込みのソース）と、その全文書に付いているタグ
-  @source "pihole"
+  # 全文書に付いているタグ（Chiezo の Pi-hole から引く回が付ける）
   @kind_tag "Pi-hole"
 
   @blocked_tag "ブロック"
@@ -32,14 +32,9 @@ defmodule Tazuna.Datasets.Pihole do
   @verdict_prefix "判定:"
   @verdicts ["問題なし", "要注意", "不明"]
 
-  # 運ぶ脇書き（観測した事実）。`priority` は調べる順の鍵。**Chiezo が 1 本の指定で
-  # 運べるのは 10 個まで**なので、窓の長さのような決まった値（30 日・24 時間）は運ばない
-  @extra ~w(blocked_count queries queries_blocked first_query_at last_query_at
-            clients reasons reason_kinds priority)
-
-  # 名簿の回の間隔。**Chiezo の取り込み（Pi-hole の記録）は日に 1 回焼く**ので、
-  # それより細かく引いても同じものが返るだけ
-  @pick_minutes 1440
+  # 機械収集の回の間隔。**新しい問い合わせだけを読んで足す**ので、細かく回しても
+  # Pi-hole への負担は小さい（AI は呼ばない）
+  @pick_minutes 60
 
   # 整理の 1 回に調べる数。**1 件ずつ web で調べる**ので、多く渡すと調べ切れずに
   # 浅い答えが並ぶ（Chiezo が数を決めて、AI には「載せたものを全部」と頼む）
@@ -83,8 +78,8 @@ defmodule Tazuna.Datasets.Pihole do
       reader: "見る人",
       unit: "ドメイン 1 つ 1 文書",
       note:
-        "Pi-hole の記録は Chiezo が取り込みます（ソース「#{@source}」。接続先とパスワードは" <>
-          " Chiezo の管理画面の API キーの面で登録し、定期再構築を 1 日おきにしておく）。",
+        "Pi-hole の記録は Chiezo の機械収集の回が読みます（接続先とパスワードは" <>
+          " Chiezo の管理画面の API キーの面に「pihole」で登録する）。",
       # **溜まったドメインを一覧で出す**（設定より先に）
       listing: __MODULE__,
       survey_sweep: SweepNames.tidy(),
@@ -96,13 +91,18 @@ defmodule Tazuna.Datasets.Pihole do
   def fields do
     [
       %{field: "ドメイン", stored: "title", who: "Pi-hole（機械）"},
-      %{field: "止めた・気になる通信か", stored: "タグ「#{@blocked_tag}」「#{@watch_tag}」", who: "Pi-hole（機械）"},
-      %{field: "候補に挙げた理由", stored: "タグ「#{@reason_prefix}…」・extra.reasons", who: "Pi-hole（機械）"},
       %{
-        field: "回数・端末",
-        stored: "extra.blocked_count / queries / clients",
-        who: "Pi-hole（機械。引き直すたびに最新へ）"
+        field: "最初と最後に見た時刻",
+        stored: "extra.first_seen / last_seen",
+        who: "Pi-hole（機械。回るたびに積み上げる）"
       },
+      %{field: "問い合わせ・止めた回数", stored: "extra.queries / blocked", who: "Pi-hole（機械。累計）"},
+      %{
+        field: "アクセス元ごとの回数",
+        stored: "extra.clients / client_counts / client_names",
+        who: "Pi-hole（機械。累計の多い順）"
+      },
+      %{field: "気になる通信の理由", stored: "extra.reasons / watched_at", who: "Pi-hole（機械。直近 24 時間で判定）"},
       %{field: "何のドメインか・放置してよいか", stored: "body", who: "AI（web で調べる）"},
       %{
         field: "判定",
@@ -112,33 +112,14 @@ defmodule Tazuna.Datasets.Pihole do
     ]
   end
 
-  @doc """
-  名簿の指定。Chiezo のソース `#{@source}` の全部を引き、タグと観測の脇書きを運びます。
-  """
-  def extract do
-    [
-      %{
-        source: @source,
-        tag: @kind_tag,
-        # 本文は**最初の 1 回だけ**入る（足すだけの回なので、調べた後は AI の本文が残る）
-        body: "opening",
-        extra: @extra,
-        tags: [
-          %{const: @kind_tag},
-          %{pattern: "^(#{@blocked_tag}|#{@watch_tag})$", format: "{1}"},
-          %{pattern: "^#{@reason_prefix}(.+)$", format: "#{@reason_prefix}{1}"}
-        ]
-      }
-    ]
-  end
-
   @doc "巡回 2 本。**拾うのは機械、調べるのは AI**。"
   def sweeps do
     [
+      # **Chiezo が Pi-hole から引く回**（AI は呼ばない）。足すだけで、集計だけを入れ替える
       %{
         name: SweepNames.machine(),
         interval_minutes: @pick_minutes,
-        use_extract: true,
+        use_pihole: true,
         only_new: true
       },
       # **機械収集が 1 回走るまで待つ**（有効にした直後に、空の収集を読ませない）
@@ -168,7 +149,7 @@ defmodule Tazuna.Datasets.Pihole do
 
     次に並んでいるのは、まだ誰も調べていないドメインだけです（ここに載せたものは、
     調べられても調べられなくても次からは並びません）。本文には観測した事実
-    （止めた回数・問い合わせの回数・引いた端末・候補に挙げた理由）が書いてあります。
+    （止めた回数・問い合わせの回数・最初と最後に見た時刻・候補に挙げた理由）が書いてあります。
 
     {unreviewed}
 
@@ -211,7 +192,9 @@ defmodule Tazuna.Datasets.Pihole do
       description: "tazuna のデータ収集（Pi-hole が止めたドメインと気になる通信）",
       prompt: research_prompt(),
       interval_minutes: SweepNames.tidy_minutes(),
-      extract: extract(),
+      # **名簿を引く指定は持たない**（前の版で送ったものを消す。残っていると、
+      # 進み具合が空の 1 回目が名簿の回として走る）
+      extract: nil,
       sweeps: with_choices(sweeps(), choices),
       # **網羅。** 一度調べたドメインは、また出てきたときに読み直さずに済むよう残す
       kind: "stock",
@@ -316,22 +299,37 @@ defmodule Tazuna.Datasets.Pihole do
     tags = Enum.filter(List.wrap(result["tags"]), &is_binary/1)
     extra = if is_map(result["extra"]), do: result["extra"], else: %{}
 
+    # **いまの状態は脇書きで読む**（タグは最初の 1 回にしか付かない）
     %{
       domain: to_string(result["title"] || ""),
-      blocked: @blocked_tag in tags,
-      watch: @watch_tag in tags,
-      reasons: for("#{@reason_prefix}" <> reason <- tags, do: reason),
+      blocked: int(extra["blocked"]) > 0 or @blocked_tag in tags,
+      watch: is_binary(extra["watched_at"]) or @watch_tag in tags,
+      # 一覧の札は理由の種類（タグ）、詳細は観測した事実（脇書き）
+      reasons: for(@reason_prefix <> reason <- tags, do: reason),
+      observed: Enum.filter(List.wrap(extra["reasons"]), &is_binary/1),
       verdict: Enum.find_value(tags, fn tag -> verdict_of(tag) end),
       # **まだ AI が目を通していない**（Chiezo の印）。調べたかどうかはこれで分かる
       researched: Chiezo.unreviewed_tag() not in tags,
       summary: summary(to_string(result["opening"] || "")),
-      blocked_count: int(extra["blocked_count"]),
+      blocked_count: int(extra["blocked"]),
       queries: int(extra["queries"]),
-      clients: Enum.filter(List.wrap(extra["clients"]), &is_binary/1),
-      observed: Enum.filter(List.wrap(extra["reasons"]), &is_binary/1),
-      last_query_at: extra["last_query_at"],
+      first_seen: extra["first_seen"],
+      last_seen: extra["last_seen"],
+      watched_at: extra["watched_at"],
+      clients: clients(extra),
       priority: int(extra["priority"])
     }
+  end
+
+  # アクセス元ごとの回数（並べて持っている 3 本の並びを 1 つにする）
+  defp clients(extra) do
+    ips = List.wrap(extra["clients"])
+    counts = List.wrap(extra["client_counts"])
+    names = List.wrap(extra["client_names"]) ++ List.duplicate("", length(ips))
+
+    for {{ip, count}, name} <- Enum.zip(Enum.zip(ips, counts), names), is_binary(ip) do
+      %{ip: ip, name: if(is_binary(name) and name != "", do: name), count: int(count)}
+    end
   end
 
   defp verdict_of(@verdict_prefix <> verdict) when verdict in @verdicts, do: verdict

@@ -110,6 +110,7 @@
             <span :if={d.verdict} class={verdict_class(d.verdict)}>{d.verdict}</span>
             <span :if={d.watch} class="domain-badge is-watch">気になる通信</span>
             <span :if={d.blocked} class="domain-badge">止めた {d.blocked_count} 回</span>
+            <span :if={d.last_seen} class="muted-note">最後に見たのは {Jst.format(d.last_seen)}</span>
             <span :for={reason <- d.reasons} class="domain-reason">{reason}</span>
           </p>
           <p class="domain-summary">
@@ -955,12 +956,28 @@
         </div>
         <h3>観測したこと</h3>
         <ul class="domain-facts">
-          <li :if={domain.blocked}>Pi-hole がこの 30 日に {domain.blocked_count} 回止めた</li>
-          <li :if={domain.queries > 0}>直近 24 時間に {domain.queries} 回の問い合わせ</li>
-          <li :if={domain.last_query_at}>最後に見たのは {Jst.format(domain.last_query_at)}</li>
-          <li :if={domain.clients != []}>引いた端末: {Enum.join(domain.clients, "、")}</li>
+          <li :if={domain.first_seen}>
+            最初に見たのは {Jst.format(domain.first_seen)}、最後に見たのは {Jst.format(domain.last_seen)}
+          </li>
+          <li>
+            問い合わせ {domain.queries} 回<span :if={domain.blocked}>（うち Pi-hole が止めたのは {domain.blocked_count} 回）</span>
+          </li>
+          <li :if={domain.watched_at}>気になる通信に挙がったのは {Jst.format(domain.watched_at)}</li>
           <li :for={fact <- domain.observed}>{fact}</li>
         </ul>
+        <table :if={domain.clients != []} class="domain-clients">
+          <thead>
+            <tr>
+              <th>アクセス元</th><th>回数</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={c <- domain.clients}>
+              <td>{c.ip}<span :if={c.name} class="muted-note">（{c.name}）</span></td>
+              <td>{c.count}</td>
+            </tr>
+          </tbody>
+        </table>
         <h3>調べたこと</h3>
         <%= case @domain_docs[domain.domain] do %>
           <% {:ok, text} when domain.researched and text != "" -> %>
