@@ -18,6 +18,7 @@ defmodule Tazuna.Datasets do
   alias Tazuna.Datasets.Books
   alias Tazuna.Datasets.MealAreas
   alias Tazuna.Datasets.Meals
+  alias Tazuna.Datasets.Pihole
   alias Tazuna.Datasets.SurveyPlan
   alias Tazuna.Datasets.SurveyPlans
 
@@ -28,7 +29,11 @@ defmodule Tazuna.Datasets do
   足す）。日本全体を 1 つで回していた頃は、費用がかさみ抜け漏れも多すぎた ——
   全国版（`Meals.definition/0`）はタブに出さない（Chiezo の収集は止めて残す）。
   """
-  def defined, do: [Books.definition() | Enum.map(MealAreas.list(), &Meals.definition/1)]
+  def defined,
+    do: [
+      Books.definition(),
+      Pihole.definition() | Enum.map(MealAreas.list(), &Meals.definition/1)
+    ]
 
   @doc """
   対象の関数を呼びます。**範囲を持つ対象（食事処）は、範囲を最後の引数に足して呼ぶ**
@@ -245,7 +250,16 @@ defmodule Tazuna.Datasets do
     end
   end
 
+  # **自分に溜まったものを一覧で出す対象**（Pi-hole のドメイン）。本棚と同じ口で読み、
+  # 同じ覚え書きに置く
+  def shelf(%{listing: listing}) when not is_nil(listing) do
+    with {:ok, base} <- base_url(), do: listing.list(base)
+  end
+
   def shelf(_dataset), do: {:ok, nil}
+
+  @doc "一覧を持つ対象か（本棚、または自分に溜まったものの一覧）。"
+  def listed?(dataset), do: not is_nil(dataset[:derived]) or not is_nil(dataset[:listing])
 
   @doc """
   選んだ区画を、選んだ巡回で **1 回走らせます**（Chiezo の「選んだ区画で 1 回

@@ -67,6 +67,11 @@ defmodule TazunaWeb.DatasetsLive do
        book_asked: nil,
        # 興味トピックに近い本だけを並べるか
        shelf_near_only: false,
+       # Pi-hole のドメインの絞り込み（"all" / "watch" / "blocked" / "caution"）
+       domain_filter: "all",
+       # 詳細を開いているドメインと、開いたものの本文（開いたときに初めて引く）
+       opened_domain: nil,
+       domain_docs: %{},
        asking: false,
        asked: nil,
        # travel-log からの依頼。頼んでいる間は見積もり（何区画で頼むか）を持つ
@@ -117,7 +122,7 @@ defmodule TazunaWeb.DatasetsLive do
   def handle_params(params, _uri, socket) do
     key = Datasets.valid_key(params["view"])
     dataset = Datasets.get(key)
-    cached = if dataset[:derived], do: ShelfCache.get(key)
+    cached = if Datasets.listed?(dataset), do: ShelfCache.get(key)
 
     socket =
       socket
@@ -132,7 +137,9 @@ defmodule TazunaWeb.DatasetsLive do
         # 対象を切り替えたら、設定は対象ごとの既定に戻す（別の収集のもの）
         settings_open: open_settings?(dataset),
         book_marks: if(dataset[:derived], do: BookMarks.all(), else: %{}),
-        book_mark_saved: nil
+        book_mark_saved: nil,
+        opened_domain: nil,
+        domain_filter: "all"
       )
       |> assign_plan(dataset)
       |> assign(places: nil, place_query: "")
@@ -144,7 +151,7 @@ defmodule TazunaWeb.DatasetsLive do
      cond do
        not connected?(socket) -> socket
        socket.assigns.settings_open -> load_settings(socket)
-       dataset[:derived] && cached == nil -> read_shelf(socket, dataset)
+       Datasets.listed?(dataset) && cached == nil -> read_shelf(socket, dataset)
        true -> socket
      end}
   end
@@ -152,7 +159,7 @@ defmodule TazunaWeb.DatasetsLive do
   # 設定を開いた状態で出すか。**本棚を持たない対象（食事処の範囲）は開いて出す** ——
   # 本棚が無いので、この画面で見るものは設定（区画の地図・巡回・依頼）しか無い。
   # 畳んでおくと、開くたびに 1 手余計にかかる
-  defp open_settings?(dataset), do: is_nil(dataset[:derived])
+  defp open_settings?(dataset), do: not Datasets.listed?(dataset)
 
   # 設定欄を開く・閉じる。**開いたときに Chiezo から読む** —— 設定は見たいときだけ
   # 見るもので、本棚を見に来るたびに収集の状態・巡回・相手の一覧まで運ぶ理由が無い。
@@ -254,7 +261,7 @@ defmodule TazunaWeb.DatasetsLive do
   def handle_event("reload", _params, socket) do
     dataset = socket.assigns.dataset
 
-    socket = if dataset[:derived], do: read_shelf(socket, dataset), else: socket
+    socket = if Datasets.listed?(dataset), do: read_shelf(socket, dataset), else: socket
 
     {:noreply, if(socket.assigns.settings_open, do: load_settings(socket), else: socket)}
   end
@@ -370,6 +377,31 @@ defmodule TazunaWeb.DatasetsLive do
         {:noreply, put_flash(socket, :error, "読んだ記録を保存できませんでした。")}
     end
   end
+
+  # **Pi-hole のドメイン。** 絞り込みは押したときだけ（一覧は全部読んである）
+  def handle_event("filter_domains", %{"filter" => filter}, socket)
+      when filter in ~w(all watch blocked caution),
+      do: {:noreply, assign(socket, domain_filter: filter)}
+
+  # 押すと詳細を開く。**調べた中身の全文は開いたときに初めて引く**（一覧は冒頭だけ）
+  def handle_event("open_domain", %{"domain" => domain}, socket) do
+    socket = assign(socket, opened_domain: domain)
+
+    if Map.has_key?(socket.assigns.domain_docs, domain) do
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       |> assign(domain_docs: Map.put(socket.assigns.domain_docs, domain, :loading))
+       |> start_async({:domain_doc, domain}, fn ->
+         with {:ok, base} <- Datasets.base_url(),
+              do: Tazuna.Datasets.Pihole.doc(base, domain)
+       end)}
+    end
+  end
+
+  def handle_event("close_domain", _params, socket),
+    do: {:noreply, assign(socket, opened_domain: nil)}
 
   def handle_event("close_book", _params, socket),
     do: {:noreply, assign(socket, opened_book: nil, book_asked: nil)}
@@ -534,6 +566,17 @@ defmodule TazunaWeb.DatasetsLive do
     ShelfCache.put(socket.assigns.view, result, now)
     {:noreply, assign(socket, shelf: result, shelf_checked_at: now, shelf_loading: false)}
   end
+
+  def handle_async({:domain_doc, domain}, {:ok, result}, socket),
+    do:
+      {:noreply, assign(socket, domain_docs: Map.put(socket.assigns.domain_docs, domain, result))}
+
+  def handle_async({:domain_doc, domain}, {:exit, _reason}, socket),
+    do:
+      {:noreply,
+       assign(socket,
+         domain_docs: Map.put(socket.assigns.domain_docs, domain, {:error, :collection_crashed})
+       )}
 
   def handle_async({:book_posts, title}, {:ok, result}, socket),
     do: {:noreply, assign(socket, book_posts: Map.put(socket.assigns.book_posts, title, result))}
@@ -1102,6 +1145,23 @@ defmodule TazunaWeb.DatasetsLive do
   def book_mark_summary(%BookMark{read: true}), do: "読んだ"
   def book_mark_summary(%BookMark{note: note}) when is_binary(note) and note != "", do: "メモあり"
   def book_mark_summary(_mark), do: nil
+
+  @doc "詳細を開いているドメイン（一覧に無くなっていれば nil）。"
+  def opened_domain(%{opened_domain: domain, shelf: {:ok, domains}}) when is_binary(domain),
+    do: Enum.find(domains, &(&1.domain == domain))
+
+  def opened_domain(_assigns), do: nil
+
+  @doc "絞り込んだドメイン。"
+  def domains_shown(domains, "watch"), do: Enum.filter(domains, & &1.watch)
+  def domains_shown(domains, "blocked"), do: Enum.filter(domains, & &1.blocked)
+  def domains_shown(domains, "caution"), do: Enum.filter(domains, &(&1.verdict == "要注意"))
+  def domains_shown(domains, _all), do: domains
+
+  @doc "判定の札の色。"
+  def verdict_class("要注意"), do: "verdict is-caution"
+  def verdict_class("問題なし"), do: "verdict is-fine"
+  def verdict_class(_verdict), do: "verdict"
 
   @doc "詳細を開いている本（本棚に無くなっていれば nil）。"
   def opened_book(%{opened_book: title, shelf: {:ok, books}}) when is_binary(title),

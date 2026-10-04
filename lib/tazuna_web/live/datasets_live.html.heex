@@ -45,7 +45,7 @@
         <%!-- 本棚を持たない対象は、設定欄を開いているときだけ読み直すものがある --%>
         <% loading = reloading?(assigns) %>
         <button
-          :if={@dataset[:derived] || @settings_open}
+          :if={Tazuna.Datasets.listed?(@dataset) || @settings_open}
           type="button"
           phx-click="reload"
           disabled={loading}
@@ -59,7 +59,72 @@
 
     <%!-- **本棚**（読む側のアプリを持たない対象だけ）。**設定より先に置く** ——
          この対象で読みに来るのは、溜まった本のほう --%>
-    <section :if={match?({:ok, [_ | _]}, @shelf)} class="bookshelf" aria-label="本棚">
+    <%!-- **Pi-hole のドメイン**（設定より先に置く。見に来るのは溜まったドメインのほう）。
+         気になる通信を先に、止めた回数の多い順。押すと調べた中身の全文が開く --%>
+    <section
+      :if={@dataset[:listing] && match?({:ok, _}, @shelf)}
+      class="domains"
+      aria-label="ドメイン"
+    >
+      <% {:ok, all_domains} = @shelf %>
+      <% domains = domains_shown(all_domains, @domain_filter) %>
+      <h2>
+        ドメイン
+        <span class="muted-note">
+          （{length(all_domains)} 件・調べたもの {Enum.count(all_domains, & &1.researched)} 件）
+        </span>
+      </h2>
+      <p :if={all_domains == []} class="muted-note">
+        まだありません。Chiezo で Pi-hole の取り込み（ソース「pihole」）を焼き、下の設定から依頼して有効にすると、機械収集が引いてきます。
+      </p>
+      <p :if={all_domains != []} class="domain-filters" role="group" aria-label="絞り込み">
+        <button
+          :for={
+            {key, label, n} <- [
+              {"all", "すべて", length(all_domains)},
+              {"watch", "気になる通信", Enum.count(all_domains, & &1.watch)},
+              {"blocked", "止めたもの", Enum.count(all_domains, & &1.blocked)},
+              {"caution", "要注意", Enum.count(all_domains, &(&1.verdict == "要注意"))}
+            ]
+          }
+          type="button"
+          class={["domain-filter", @domain_filter == key && "is-on"]}
+          phx-click="filter_domains"
+          phx-value-filter={key}
+          aria-pressed={to_string(@domain_filter == key)}
+        >
+          {label}（{n}）
+        </button>
+      </p>
+      <ul :if={domains != []} class="domain-list">
+        <li :for={d <- domains} class={["domain-row", d.watch && "is-watch"]}>
+          <p class="domain-head">
+            <button
+              type="button"
+              class="domain-name"
+              phx-click="open_domain"
+              phx-value-domain={d.domain}
+            >
+              {d.domain}
+            </button>
+            <span :if={d.verdict} class={verdict_class(d.verdict)}>{d.verdict}</span>
+            <span :if={d.watch} class="domain-badge is-watch">気になる通信</span>
+            <span :if={d.blocked} class="domain-badge">止めた {d.blocked_count} 回</span>
+            <span :for={reason <- d.reasons} class="domain-reason">{reason}</span>
+          </p>
+          <p class="domain-summary">
+            <span :if={!d.researched} class="muted-note">まだ調べていません。</span>
+            {d.summary}
+          </p>
+        </li>
+      </ul>
+    </section>
+
+    <section
+      :if={@dataset[:derived] && match?({:ok, [_ | _]}, @shelf)}
+      class="bookshelf"
+      aria-label="本棚"
+    >
       <% {:ok, all_books} = @shelf %>
       <% near_count = Enum.count(all_books, &(&1.near != [])) %>
       <% books =
@@ -869,6 +934,46 @@
         </section>
       </div>
     </section>
+
+    <%!-- **ドメインの詳細**（ほかの画面の詳細と同じくモーダル）。観測した事実（機械）と、
+         調べた中身（AI）を分けて出す --%>
+    <% domain = opened_domain(assigns) %>
+    <div :if={domain} class="artwork-backdrop" phx-window-keydown="close_domain" phx-key="Escape">
+      <section
+        class="artwork domain-detail"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="domain-detail-title"
+        phx-click-away="close_domain"
+      >
+        <div class="artwork-head">
+          <strong id="domain-detail-title">
+            {domain.domain}
+            <span :if={domain.verdict} class={verdict_class(domain.verdict)}>{domain.verdict}</span>
+          </strong>
+          <button type="button" phx-click="close_domain">閉じる</button>
+        </div>
+        <h3>観測したこと</h3>
+        <ul class="domain-facts">
+          <li :if={domain.blocked}>Pi-hole がこの 30 日に {domain.blocked_count} 回止めた</li>
+          <li :if={domain.queries > 0}>直近 24 時間に {domain.queries} 回の問い合わせ</li>
+          <li :if={domain.last_query_at}>最後に見たのは {Jst.format(domain.last_query_at)}</li>
+          <li :if={domain.clients != []}>引いた端末: {Enum.join(domain.clients, "、")}</li>
+          <li :for={fact <- domain.observed}>{fact}</li>
+        </ul>
+        <h3>調べたこと</h3>
+        <%= case @domain_docs[domain.domain] do %>
+          <% {:ok, text} when domain.researched and text != "" -> %>
+            <div class="domain-research">{text}</div>
+          <% {:ok, _text} -> %>
+            <p class="muted-note">まだ調べていません（整理の回が順に調べます）。</p>
+          <% {:error, reason} -> %>
+            <p class="muted-note">読めませんでした（{reason_text(reason)}）。</p>
+          <% _loading -> %>
+            <p class="muted-note">読んでいます…</p>
+        <% end %>
+      </section>
+    </div>
 
     <%!-- **本の詳細**（ほかの画面の詳細と同じくモーダル）。勧めている記事と、その本について
        Chiezo へ頼む口（本棚の整理の回への割り込み）を置く —— 頼みごとは本を見ながら
