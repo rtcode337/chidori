@@ -187,7 +187,29 @@
                     /> 自動で回さない
                   </label>
                 </td>
-                <td>{sweep.clock}</td>
+                <td>
+                  {sweep.clock}
+                  <%!-- **tazuna が起こす回は、ここで時刻を直せる**（要約の回は各話題の画面、
+                       情報収集の回はデータ収集の画面と同じ値）。Chiezo には送らない
+                       —— 時計を持つのは tazuna --%>
+                  <form
+                    :if={sweep[:wake]}
+                    id={"wake-#{collection.name}-#{index}"}
+                    class="wake-form"
+                    phx-submit="save_wake"
+                  >
+                    <input type="hidden" name="collection" value={collection.name} />
+                    <input type="hidden" name="kind" value={elem(sweep.wake, 0)} />
+                    <input
+                      type="text"
+                      name="times"
+                      value={elem(sweep.wake, 1)}
+                      placeholder="07:00,19:00"
+                      aria-label={"#{collection.label}の#{sweep.name}を起こす時刻"}
+                    />
+                    <button type="submit" phx-disable-with="保存しています…">時刻を保存</button>
+                  </form>
+                </td>
                 <td class="pick">
                   <span :if={sweep.mechanical} class="muted-note">AI を使いません</span>
                   <%= if !sweep.mechanical do %>
@@ -246,8 +268,14 @@
           どの収集にも共通の速さです。AI の枠が回復より速く減るときは延ばしてください。区画を回る巡回（関連図・食事処）は、一周の日数も同じ比で伸ばして、1 回に見る量を変えません。整理を延ばすと、AI が目を通すまで画面に出ないニュース類は、そのぶん遅れて出ます。
         </p>
         <form id="collect-pace" phx-submit="save_pace" class="pace-form">
-          <label :for={kind <- CollectPace.kinds()}>
-            <span>{CollectPace.sweep_name(kind)}</span>
+          <%!-- **ざっと見るを先に**（回る順。ざっと見るが一周してから整理が回る） --%>
+          <label :for={kind <- pace_kinds()}>
+            <span>
+              {CollectPace.sweep_name(kind)}
+              <span :if={pace_count(@overview, kind)} class="muted-note">
+                {pace_count(@overview, kind)}
+              </span>
+            </span>
             <select name={"pace[#{kind}]"}>
               <option
                 :for={minutes <- CollectPace.choices(kind)}

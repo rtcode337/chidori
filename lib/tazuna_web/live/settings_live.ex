@@ -185,6 +185,27 @@ defmodule TazunaWeb.SettingsLive do
     end
   end
 
+  # **tazuna が起こす回の時刻を直す**（要約の回は `Notify.Settings` の digest_at、
+  # データ収集の情報収集の回は `SurveyPlans` の run_at）。Chiezo には送らない
+  def handle_event("save_wake", %{"collection" => name, "kind" => kind, "times" => times}, socket) do
+    result =
+      case kind do
+        "digest" -> Tazuna.Notify.Settings.put(name, %{"digest_at" => times})
+        "survey" -> Tazuna.Datasets.SurveyPlans.put_times(name, times)
+        _other -> {:error, :unknown}
+      end
+
+    message =
+      case result do
+        {:ok, _saved} -> "起こす時刻を保存しました。"
+        {:error, %Ecto.Changeset{} = changeset} -> first_error(changeset)
+        {:error, _reason} -> "起こす時刻を保存できませんでした。"
+      end
+
+    {:noreply,
+     socket |> assign(sent: Map.put(socket.assigns.sent, name, message)) |> load("chiezo")}
+  end
+
   # 書いたそばから覚える。覚えないと、描き直しの拍子に書きかけが消える
   def handle_event("edit_ntfy", %{"ntfy" => attrs}, socket) do
     {:noreply, assign(socket, ntfy_form: ntfy_form(attrs))}
@@ -230,6 +251,35 @@ defmodule TazunaWeb.SettingsLive do
     |> Enum.flat_map(fn {_field, messages} -> messages end)
     |> List.first() || "書いた内容を確かめてください"
   end
+
+  @doc "巡回の間隔の並び（ざっと見る → 整理。回る順）。"
+  def pace_kinds, do: Enum.sort_by(CollectPace.kinds(), &if(&1 == :scan, do: 0, else: 1))
+
+  @doc """
+  その巡回を持つ収集の数と、そのうち動いているものの数（「tazuna に 5 本・動いている 3 本」）。
+  **動いている**のは、収集も巡回も止まっておらず、自分の時計で回り、いま走れないわけの
+  無いもの（依頼元が起こす回・一周して止まった回・前の回の一周待ちは数えない）。
+  表を読めていなければ nil。
+  """
+  def pace_count({:ok, %{collections: collections}}, kind) do
+    name = CollectPace.sweep_name(kind)
+
+    sweeps =
+      for collection <- collections,
+          sweep <- collection.sweeps,
+          sweep.name == name,
+          do: {collection, sweep}
+
+    running =
+      Enum.count(sweeps, fn {collection, sweep} ->
+        collection[:in_chiezo] != false and collection[:enabled] == true and
+          sweep[:enabled] != false and not sweep[:by_caller] and sweep[:blocked] in [nil, ""]
+      end)
+
+    "tazuna に #{length(sweeps)} 本・動いている #{running} 本"
+  end
+
+  def pace_count(_overview, _kind), do: nil
 
   defp form_picks(params),
     do: %{"sweeps" => sweep_choices(params), "tidy" => params["tidy"] == "true"}

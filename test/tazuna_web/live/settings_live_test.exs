@@ -197,4 +197,50 @@ defmodule TazunaWeb.SettingsLiveTest do
     # 書いたものは消さない
     assert html =~ ~s(value="ntfy.test")
   end
+
+  test "tazuna が起こす回は、表の中で時刻を直せる", %{conn: conn} do
+    # 要約の回は Chiezo 側に時計が無く、時刻を持つのは tazuna（各話題の画面と同じ値）
+    Tazuna.Notify.Settings.put("tazuna_news", %{"digest_at" => "07:00"})
+
+    HttpStub.stub(fn
+      %{method: :get, url: url} ->
+        if String.ends_with?(url, "/v1/collect"),
+          do:
+            HttpStub.ok(
+              Jason.encode!(%{
+                "collections" => [
+                  %{
+                    "name" => "tazuna_news",
+                    "sweeps" => [%{"name" => "要約", "on_demand" => true}]
+                  }
+                ]
+              })
+            ),
+          else: HttpStub.ok(~s({"workers":[],"backends":[]}))
+    end)
+
+    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    html = render_async(live)
+
+    assert html =~ "tazuna が起こす（07:00）"
+    assert html =~ ~s(value="07:00")
+
+    live
+    |> form(".wake-form", times: "6, 19")
+    |> render_submit()
+
+    assert Tazuna.Notify.Settings.get("tazuna_news").digest_at == "06:00,19:00"
+    assert render_async(live) =~ "起こす時刻を保存しました。"
+  end
+
+  test "巡回の間隔はざっと見るが先で、それぞれ何本あって何本動いているかを出す", %{conn: conn} do
+    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    html = render_async(live)
+
+    pace = html |> String.split(~s(id="collect-pace")) |> List.last()
+    {scan, tidy} = {:binary.match(pace, "ざっと見る"), :binary.match(pace, "整理")}
+    assert elem(scan, 0) < elem(tidy, 0)
+    # 整理は tazuna_tech と tazuna_old の 2 本（どちらも時計で回る）
+    assert pace =~ "tazuna に 2 本・動いている"
+  end
 end
