@@ -250,6 +250,9 @@ defmodule Tazuna.Datasets.Meals do
   # 確かめていない店にも付けてしまう。travel-log から位置確認を渡したあと、取り込み直して
   # この印が付いていれば、Chiezo まで届いたと分かる
   @checked_category "位置確認済み"
+  # その逆。**まだ確かめていない店を現地で見て回るため**に絞り込めるようにする
+  # （確かめ済みだけでは、残りを探すのに全部の店を開くことになる）
+  @unchecked_category "位置未確認"
 
   # 営業時間から機械で読み取れる特徴（`Tazuna.Datasets.OpeningHours`）
   @hours_features [lunch: "ランチ営業", late: "深夜営業"]
@@ -266,13 +269,14 @@ defmodule Tazuna.Datasets.Meals do
   @doc "特徴の語彙（AI に付けさせるもの）。"
   def features, do: @features
 
-  @doc "travel-log のカテゴリの並び（特徴の語彙と、位置確認済み）。絞り込みの並びになります。"
-  def category_order, do: @features ++ [@checked_category]
+  @doc "travel-log のカテゴリの並び（特徴の語彙と、位置確認済み・位置未確認）。絞り込みの並びになります。"
+  def category_order, do: @features ++ [@checked_category, @unchecked_category]
 
   @doc """
   1 軒の特徴（travel-log のカテゴリ）。**AI が付けたタグと、営業時間から機械で
   読み取れるもの**を合わせ、語彙の並びで返します。語彙に無い語は落とします。
-  座標が固定された店（`Chiezo.locked_tag/0`）には「位置確認済み」を足します。
+  座標が固定された店（`Chiezo.locked_tag/0`）には「位置確認済み」を、それ以外には
+  「位置未確認」を足します。
 
   営業時間を持っているのは地図辞典（OSM）の店の一部だけなので、機械で付くのは
   そこまでです。残りは AI が調べて付けます。
@@ -290,7 +294,8 @@ defmodule Tazuna.Datasets.Meals do
       |> Tazuna.Datasets.OpeningHours.features()
       |> Enum.map(&@hours_features[&1])
 
-    checked = if Chiezo.locked_tag() in tags, do: [@checked_category], else: []
+    checked =
+      if Chiezo.locked_tag() in tags, do: [@checked_category], else: [@unchecked_category]
 
     have = MapSet.new(from_tags ++ from_hours ++ checked)
     Enum.filter(category_order(), &MapSet.member?(have, &1))

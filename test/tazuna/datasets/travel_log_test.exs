@@ -40,7 +40,8 @@ defmodule Tazuna.Datasets.TravelLogTest do
       row = TravelLog.row(doc(%{}), dataset())
 
       assert row["series"] == "和食"
-      assert row["categories"] == ""
+      # 特徴が無くても、位置を確かめたかどうかは付く
+      assert row["categories"] == "位置未確認"
 
       tags = ["食事処", "ジャンル:和食", "地域:東京都", "特徴:個室あり", "特徴:ゆっくりできる", "特徴:眺めがいい"]
 
@@ -53,11 +54,11 @@ defmodule Tazuna.Datasets.TravelLogTest do
       row = TravelLog.row(doc(%{"tags" => tags, "extra" => extra}), dataset())
 
       # 語彙の並びで、語彙に無い語は落とす。営業時間から読めるものは機械で足す
-      assert row["categories"] == "ランチ営業|深夜営業|ゆっくりできる|個室あり"
+      assert row["categories"] == "ランチ営業|深夜営業|ゆっくりできる|個室あり|位置未確認"
       assert row["description"] =~ "営業時間: Mo-Fr 11:00-14:00; Sa 17:00-23:00"
     end
 
-    test "座標が固定された店には、カテゴリ「位置確認済み」が付く" do
+    test "座標が固定された店には「位置確認済み」、それ以外には「位置未確認」が付く" do
       # travel-log から渡した位置確認が Chiezo まで届いたことを、取り込み直して確かめられる
       tags = ["食事処", "ジャンル:和食", "地域:東京都", "特徴:個室あり", Tazuna.Chiezo.locked_tag()]
       extra = %{"lat" => 35.6, "lon" => 139.7}
@@ -65,9 +66,15 @@ defmodule Tazuna.Datasets.TravelLogTest do
 
       assert row["categories"] == "個室あり|位置確認済み"
 
+      # まだ確かめていない店を現地で見て回れるよう、未確認も絞り込めるようにする
+      unchecked = List.delete(tags, Tazuna.Chiezo.locked_tag())
+      row = TravelLog.row(doc(%{"tags" => unchecked, "extra" => extra}), dataset())
+      assert row["categories"] == "個室あり|位置未確認"
+
       # AI に付けさせる語彙には入れない（確かめていない店に付けられないように）
       refute "位置確認済み" in Tazuna.Datasets.Meals.features()
-      assert List.last(Tazuna.Datasets.Meals.category_order()) == "位置確認済み"
+      refute "位置未確認" in Tazuna.Datasets.Meals.features()
+      assert Enum.take(Tazuna.Datasets.Meals.category_order(), -2) == ["位置確認済み", "位置未確認"]
     end
 
     test "鍵は Chiezo の doc_id" do
