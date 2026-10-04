@@ -155,4 +155,17 @@ defmodule Tazuna.Datasets.RequestsTest do
     # 書き出すときに落としている見分けの番号
     assert preface =~ "「 (数字)」が落ちている"
   end
+
+  test "依頼の前置きは、変わった先の店と、web に無い店も足させる" do
+    # 「変わった」の報告で前の店だけ消え、新しい店は web で見つからずに足されなかった。
+    # 「ある」の報告も、同じ場所で web に出ている別の店に置き換えられた
+    preface = Requests.preface()
+
+    assert preface =~ "前の店を墓標で消し、新しい店を\n  足す"
+    assert preface =~ "web で見つからなくても足して"
+    assert preface =~ "現地からの報告（web では確かめられず）"
+    # 打ち間違いは web の名前に寄せ、別の店では置き換えない
+    assert preface =~ "一字違いの店"
+    assert preface =~ "その店で\n  置き換えずに報告の名前で足して"
+  end
 end
