@@ -229,7 +229,7 @@ defmodule Tazuna.News do
       # 画面から頼んだ 1 回（止めている収集でも走らせる。`Chiezo.by_hand/1`）
       base ->
         Tazuna.Chiezo.by_hand(fn ->
-          Tazuna.Chiezo.focus(base, collection, note, titles, focus_sweep())
+          Tazuna.Chiezo.focus(base, collection, note, titles, focus_sweep_of(collection))
         end)
     end
   end
@@ -243,6 +243,16 @@ defmodule Tazuna.News do
   整理の回だけ**なので、頼んだとおりには動きません。
   """
   def focus_sweep, do: @focus_sweep
+
+  @doc """
+  その話題で割り込みを走らせる巡回。**整理を置かない話題**（配信元を持たず、先を探す回
+  だけで集めるお笑いイベント）は先を探す回で走らせる —— 無い巡回を名指しすると Chiezo が断る。
+  """
+  def focus_sweep_of(collection) do
+    if only_look_ahead?(Tazuna.Topics.get(collection)),
+      do: Tazuna.SweepNames.survey(),
+      else: @focus_sweep
+  end
 
   @doc """
   予定を待たずに1回集めさせます。止まっている収集は Chiezo が断ります。
@@ -643,7 +653,7 @@ defmodule Tazuna.News do
   defp collection_prompt(topic) do
     cond do
       works = Topics.works(topic) -> works.survey_prompt(interest_of(topic))
-      only_look_ahead?(topic) -> hd(look_ahead_sweeps(topic)).prompt
+      only_look_ahead?(topic) -> hd(look_ahead_sweeps(topic, true)).prompt
       true -> prompt(topic)
     end
   end
@@ -697,15 +707,20 @@ defmodule Tazuna.News do
     ] ++ digest_sweeps(topic)
   end
 
+  # **配信元を持たず、先を探す回で集める話題**（お笑いイベント）は、**先を探す回だけ**
+  # にする。溜める回を置くとニュースを集める文で記事を溜め始め、整理を置くと「上に無い
+  # ものを探して足す」が先を探す回と重なって AI の回が倍になる。終わったものを消す・
+  # タグを揃えるのは先を探す回が引き受ける（`standalone`）
   defp article_sweeps(topic) do
-    # **配信元を持たず、先を探す回で集める話題**（お笑いイベント）には溜める回を置かない ——
-    # 置くと、ニュースを集める文で記事を溜め始める。整理は先を探す回を待つ
-    {intakes, first} =
-      if only_look_ahead?(topic),
-        do: {[], hd(look_ahead_sweeps(topic))},
-        else: {[intake(topic)], intake(topic)}
+    if only_look_ahead?(topic),
+      do: look_ahead_sweeps(topic, true) ++ digest_sweeps(topic),
+      else: fed_sweeps(topic)
+  end
 
-    intakes ++
+  defp fed_sweeps(topic) do
+    first = intake(topic)
+
+    [first] ++
       [
         %{
           name: @focus_sweep,
@@ -733,19 +748,26 @@ defmodule Tazuna.News do
 
   # 先の月を探す回（技術イベント。`Tazuna.Topics` の `look_ahead`）。巡回の名前は
   # 「情報収集」—— 食事処と同じく、足りないものを外から探して足す仕事。
-  # **足すだけ**（今あるものは整理が見る）
-  defp look_ahead_sweeps(topic) do
+  # **足すだけ**（今あるものは整理が見る）。**整理を置かない話題**（`standalone`）では、
+  # 終わったものを消してタグを揃えるのもこの回なので、足すだけにしない
+  defp look_ahead_sweeps(topic, standalone \\ false) do
     case look_ahead_of(topic) do
       nil ->
         []
 
       module ->
+        prompt = module.look_ahead_prompt(interest_of(topic), interests_of(topic))
+
         [
           %{
             name: Tazuna.SweepNames.survey(),
             interval_minutes: module.look_ahead_minutes(),
-            only_new: true,
-            prompt: module.look_ahead_prompt(interest_of(topic), interests_of(topic))
+            only_new: !standalone,
+            prompt:
+              if(standalone and function_exported?(module, :housekeeping, 0),
+                do: prompt <> "\n" <> module.housekeeping(),
+                else: prompt
+              )
           }
         ]
     end

@@ -203,11 +203,9 @@ defmodule Tazuna.Topics do
         digest: false,
         calendar: true,
         # **配信元は持たない**（お笑いのイベントを機械で配っている先が無い）。月ごとに
-        # 外を探す回（情報収集）と、整理の「上に無いものを探して足す」で集める
+        # 外を探す回（情報収集）だけで集め、片付けもその回がする（整理の回は置かない）
         feeds: [],
         look_ahead: Tazuna.News.ComedyEvents,
-        note: Tazuna.News.ComedyEvents.refine_note(),
-        outside: Tazuna.News.ComedyEvents.outside(),
         # **絵を Chiezo に縮めて持たせる**（AI が公式サイトの絵の URL を返す）
         thumbs: true
       },

@@ -521,7 +521,7 @@ defmodule Tazuna.NewsTest do
   end
 
   describe "巡回" do
-    test "お笑いイベントは配信元を持たず、月ごとに探す回と整理だけで回す" do
+    test "お笑いイベントは配信元を持たず、月ごとに探す回だけで回す（整理を置かない）" do
       topic = defined_topic("tazuna_comedy")
       sweeps = News.sweeps(topic)
       names = Enum.map(sweeps, & &1.name)
@@ -529,15 +529,23 @@ defmodule Tazuna.NewsTest do
       # ニュースを集める回は置かない（置くと記事を溜め始める）
       refute Tazuna.SweepNames.machine() in names
       refute Tazuna.SweepNames.collect() in names
-      survey = Enum.find(sweeps, &(&1.name == Tazuna.SweepNames.survey()))
-      tidy = Enum.find(sweeps, &(&1.name == Tazuna.SweepNames.tidy()))
-      assert tidy.after == survey.name
+
+      # 整理を置くと「上に無いものを探して足す」が先を探す回と重なり、AI の回が倍になる
+      assert names == [Tazuna.SweepNames.survey()]
+      survey = hd(sweeps)
+
+      # 片付け（終わったものを消す・タグを揃える）はこの回が引き受けるので、足すだけにしない
+      refute survey.only_new
+      assert survey.prompt =~ "上に並んでいるものも片付けてください"
+
+      # 割り込みもこの回で走らせる（無い巡回を名指しすると Chiezo が断る）
+      assert News.focus_sweep_of("tazuna_comedy") == survey.name
+      assert News.focus_sweep_of("tazuna_tech") == Tazuna.SweepNames.tidy()
 
       # テレビ番組も入れ、放送日で並べる。出演者は関連図とつなぐ書き方で
       assert survey.prompt =~ "今回探すのは「{cursor}」"
       assert survey.prompt =~ "開催地:テレビ"
       assert survey.prompt =~ "出演:"
-      assert tidy.prompt =~ "next_cursor は返さないでください"
 
       attrs = News.attrs("tazuna_comedy", topic)
       assert attrs.thumbs == true
