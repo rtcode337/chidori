@@ -28,7 +28,7 @@ defmodule Tazuna.Relations.Faces do
 
   require Logger
 
-  @user_agent "tazuna/0.1 (+https://github.com/rtcode337/tazuna)"
+  @user_agent "chidori/0.1 (+https://github.com/rtcode337/chidori)"
   # 縮小版の横幅（Commons が受け付ける幅の一覧から。`Tazuna.Artwork.thumb/2`）
   @width 120
   # 1 枚取るごとに空ける間（ミリ秒）

@@ -276,7 +276,7 @@ defmodule TazunaWeb.SettingsLive do
           sweep[:enabled] != false and not sweep[:by_caller] and sweep[:blocked] in [nil, ""]
       end)
 
-    "tazuna に #{length(sweeps)} 本・動いている #{running} 本"
+    "Chidori に #{length(sweeps)} 本・動いている #{running} 本"
   end
 
   def pace_count(_overview, _kind), do: nil

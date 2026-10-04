@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <.live_title default="tazuna" suffix=" · Chiezo の手元" phx-no-format>{assigns[:page_title]}</.live_title>
+    <.live_title default="Chidori" suffix=" · Chiezo の手元" phx-no-format>{assigns[:page_title]}</.live_title>
     <%!-- 画面のヘッダーのマークと同じ絵。原本は images/icon.svg で、PNG はそこから作る。
          ここから指すのは images/ 配下だけにする —— Plug.Static の `only` は先頭の
          セグメントで見るので、`/favicon.ico` を指すとハッシュ付きの名前が 404 になる。

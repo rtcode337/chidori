@@ -109,7 +109,7 @@ defmodule TazunaWeb.SettingsLiveTest do
     # 画面に無い収集は後ろ
     assert painters < old
     assert html =~ "Chiezo にまだありません"
-    assert html =~ "tazuna の画面に無い収集です"
+    assert html =~ "Chidori の画面に無い収集です"
   end
 
   test "画面の収集は、その画面と同じ設定を丸ごと送る（選んだ相手と整理の止め方を載せる）", %{conn: conn} do
@@ -222,7 +222,7 @@ defmodule TazunaWeb.SettingsLiveTest do
     {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
     html = render_async(live)
 
-    assert html =~ "tazuna が起こす（07:00）"
+    assert html =~ "Chidori が起こす（07:00）"
     assert html =~ ~s(value="07:00")
 
     live
@@ -241,6 +241,6 @@ defmodule TazunaWeb.SettingsLiveTest do
     {scan, tidy} = {:binary.match(pace, "ざっと見る"), :binary.match(pace, "整理")}
     assert elem(scan, 0) < elem(tidy, 0)
     # 整理は tazuna_tech と tazuna_old の 2 本（どちらも時計で回る）
-    assert pace =~ "tazuna に 2 本・動いている"
+    assert pace =~ "Chidori に 2 本・動いている"
   end
 end

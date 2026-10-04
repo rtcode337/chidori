@@ -26,8 +26,9 @@ defmodule TazunaWeb.MainNav do
 
     ~H"""
     <header>
-      <a href={~p"/"} class="brand" aria-label="tazuna トップページ">
-        <span>t</span><b class="brand-name">tazuna</b>
+      <%!-- 画面に出す名前は Chidori（開発コードは tazuna のまま） --%>
+      <a href={~p"/"} class="brand" aria-label="Chidori トップページ">
+        <img src={~p"/images/icon.svg"} alt="" class="brand-mark" /><b class="brand-name">Chidori</b>
       </a>
       <nav id="main-menu" phx-hook="ScrollTabs" aria-label="主要メニュー">
         <a

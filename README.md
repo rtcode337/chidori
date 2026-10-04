@@ -1,4 +1,4 @@
-# tazuna
+# Chidori
 
 日々確認したいニュースや趣味の情報を、利用者ごとの関心に合わせて収集・要約し、適切なタイミングで知らせるアプリです。技術情報に限らず、暮らし、スポーツ、エンターテインメント、地域情報などを扱います。
 
@@ -12,7 +12,7 @@ tazuna は [Chiezo](https://github.com/rtcode337/chiezo) と利用者のあい�
 - 利用者の関心を Chiezo に伝える
 - 何を集めてほしいかの指示を Chiezo に渡す（tazuna で読むものも、他のアプリで使うものも）
 
-**名前は手綱から採っています。** 知識と AI を持って走るのは Chiezo の側で、こちらはその様子を見ながら、どちらへ向かわせるかを人が決めるための手元です。
+**名前は「知取（ちどり）」** —— 知を取って回る、千鳥のように各所を巡って拾う、を掛けています（Chiezo と並ぶ書き方で Chidori）。**開発コードは tazuna のまま**です（ソースのモジュール名・DB・コンテナ名・Chiezo に名乗る `requested_by`）。もとは手綱から採った名前で、知識と AI を持って走る Chiezo を、どちらへ向かわせるか人が決めるための手元、という意味でした。
 
 **Chiezo で止めた収集も、画面から押した 1 回は走ります**（区画を指定して頼む・travel-log からの依頼・割り込み・「いま要約を作る」など）。AI の使い過ぎを気にして自動の回を止めていても、見て決めた 1 回は頼めるようにするためで、Chiezo に「人が押した 1 回」（`manual=true`）と申告して頼みます（`Tazuna.Chiezo.by_hand/1`）。定時の時計（要約・情報収集・閉店の片割れ確かめ）は申告しないので、止めた収集は時計では動きません。
 
@@ -503,7 +503,7 @@ docker run --rm -v "$PWD/priv/static:/w" -w /w debian:bookworm-slim sh -c \
    && rsvg-convert -w 64 -h 64 images/icon.svg -o favicon.ico'
 ```
 
-本番用イメージは `Dockerfile` でビルドする。イメージの中でスタイルと JavaScript も作る。公開時は `ghcr.io/<owner>/tazuna:<commit-sha>` のようにコミット SHA を含むタグを付ける。
+本番用イメージは `Dockerfile` でビルドする。イメージの中でスタイルと JavaScript も作る。公開時は `ghcr.io/<owner>/chidori:<commit-sha>` のようにコミット SHA を含むタグを付ける。
 
 基本設計は [docs/basic-design.md](docs/basic-design.md) を参照してください。
 採用技術と選定理由は [docs/technology-selection.md](docs/technology-selection.md) を参照してください。

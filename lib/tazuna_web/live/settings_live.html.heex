@@ -21,7 +21,7 @@
         <p>SETTINGS</p>
         <h1>Chiezo 収集</h1>
         <p>
-          tazuna が Chiezo に頼んでいる収集と、その回り方です。設定そのものは Chiezo にあり、開くたびに読み直します（直すのは各画面か Chiezo の画面から）。
+          Chidori が Chiezo に頼んでいる収集と、その回り方です。設定そのものは Chiezo にあり、開くたびに読み直します（直すのは各画面か Chiezo の画面から）。
         </p>
       </section>
 
@@ -117,7 +117,7 @@
         <section class="settings-block">
           <h3>収集（{length(overview.collections)} 本）</h3>
           <p class="muted-note">
-            tazuna の画面の並びで、各画面が Chiezo に送る収集を並べます（Chiezo にまだ送っていないものも出ます）。巡回ごとに頼む相手を選び、収集ごとの「Chiezo に送る」で送ります。送るのは各画面の「収集の設定を更新」と同じもので、tazuna の今の依頼文も一緒に届きます。整理の「自動で回さない」にチェックを入れて送ると、整理だけが自動では回らなくなります（巡回は消さないので、割り込みや travel-log からの依頼では今までどおり走ります）。これは tazuna も覚えていて、収集の設定を送り直すたびに載せ直します。
+            Chidori の画面の並びで、各画面が Chiezo に送る収集を並べます（Chiezo にまだ送っていないものも出ます）。巡回ごとに頼む相手を選び、収集ごとの「Chiezo に送る」で送ります。送るのは各画面の「収集の設定を更新」と同じもので、Chidori の今の依頼文も一緒に届きます。整理の「自動で回さない」にチェックを入れて送ると、整理だけが自動では回らなくなります（巡回は消さないので、割り込みや travel-log からの依頼では今までどおり走ります）。これは Chidori も覚えていて、収集の設定を送り直すたびに載せ直します。
           </p>
           <% {plain, hands} = by_kind(overview.backends) %>
           <table class="collect-overview">
@@ -155,7 +155,7 @@
                   <br :if={!collection.push} /><span
                     :if={!collection.push}
                     class="muted-note"
-                  >tazuna の画面に無い収集です（相手と整理だけを送ります）</span>
+                  >Chidori の画面に無い収集です（相手と整理だけを送ります）</span>
                   <form
                     id={form_id}
                     class="collection-send"

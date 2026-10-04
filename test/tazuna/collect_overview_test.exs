@@ -73,7 +73,7 @@ defmodule Tazuna.CollectOverviewTest do
     # ワーカーは名前で出す
     assert refine.backend == "ワーカー「整理用」"
     # 時計を持たない要約の回は、tazuna が起こす時刻を出す
-    assert digest.clock == "tazuna が起こす（07:00・19:00）"
+    assert digest.clock == "Chidori が起こす（07:00・19:00）"
     # ワーカーは `worker` の欄に入っていることもある
     assert digest.backend == "ワーカー「整理用」"
 

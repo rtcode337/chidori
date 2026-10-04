@@ -776,7 +776,7 @@ defmodule TazunaWeb.DatasetsLive do
 
   def push_note(_state),
     do:
-      "押すと、tazuna が持っている抽出の指定・依頼文・区画の割り方・巡回を Chiezo へ" <>
+      "押すと、Chidori が持っている抽出の指定・依頼文・区画の割り方・巡回を Chiezo へ" <>
         "送り直します（走らせはしません。Chiezo の画面で手で直したものは上書きされます）。"
 
   @doc """

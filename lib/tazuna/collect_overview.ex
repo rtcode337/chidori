@@ -147,7 +147,7 @@ defmodule Tazuna.CollectOverview do
       sweep["on_demand"] ->
         case digest_times(collection) do
           [] -> "頼まれたときだけ"
-          times -> "tazuna が起こす（" <> Enum.join(times, "・") <> "）"
+          times -> "Chidori が起こす（" <> Enum.join(times, "・") <> "）"
         end
 
       sweep["once"] ->
@@ -155,8 +155,8 @@ defmodule Tazuna.CollectOverview do
 
       survey_sweep?(sweep, collection) ->
         case survey_times(collection) do
-          "" -> "tazuna が起こす（時刻を決めていません）"
-          times -> "tazuna が起こす（" <> String.replace(times, ",", "・") <> "）"
+          "" -> "Chidori が起こす（時刻を決めていません）"
+          times -> "Chidori が起こす（" <> String.replace(times, ",", "・") <> "）"
         end
 
       sweep["by_caller"] ->

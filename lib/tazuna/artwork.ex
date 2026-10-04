@@ -24,7 +24,7 @@ defmodule Tazuna.Artwork do
   alias Tazuna.Http
 
   @endpoint "https://ja.wikipedia.org/api/rest_v1/page/summary/"
-  @user_agent "tazuna/0.1 (+https://github.com/rtcode337/tazuna)"
+  @user_agent "chidori/0.1 (+https://github.com/rtcode337/chidori)"
   @timeout 10_000
   @connect_timeout 5_000
 

@@ -179,7 +179,7 @@
         <p class="muted-note collect-origin">
           集めるのは
           <a href="https://github.com/rtcode337/chiezo" target="_blank" rel="noreferrer">Chiezo</a>
-          の「集める」層です。tazuna が持つのは依頼と進み具合だけで、
+          の「集める」層です。Chidori が持つのは依頼と進み具合だけで、
           溜まったものは Chiezo のソース「{@dataset.collection}」として残ります
           （読むのは{@dataset.reader}です）。
         </p>
@@ -478,7 +478,7 @@
         <section :if={@plan} class="survey-plan" aria-label={"#{@dataset.survey_plan_sweep}の時刻"}>
           <h3>{@dataset.survey_plan_sweep}の時刻</h3>
           <p :if={Tazuna.Datasets.uses_origin?(@dataset)} class="muted-note">
-            決めた時刻に tazuna が情報収集を 1 回起こします。見る区画は Chiezo が選びます
+            決めた時刻に Chidori が情報収集を 1 回起こします。見る区画は Chiezo が選びます
             （その巡回で見た古い順、同じなら起点に近い順）。
             Chiezo が取り込み中なら、次の予定の時刻まで空くのを待って頼みます。
           </p>
@@ -935,7 +935,7 @@
               </label>
             </p>
             <p class="muted-note">
-              ここに書いたことは tazuna にだけ残ります（Chiezo へは送りません）。読んだ本は「いま勧められている未読の上位」から外れます。
+              ここに書いたことは Chidori にだけ残ります（Chiezo へは送りません）。読んだ本は「いま勧められている未読の上位」から外れます。
               <strong>印もメモも空にして保存すると、記録ごと消えます。</strong>
             </p>
             <button type="submit" phx-disable-with="保存しています…">記録を保存</button>

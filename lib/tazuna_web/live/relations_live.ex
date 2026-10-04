@@ -1266,7 +1266,7 @@ defmodule TazunaWeb.RelationsLive do
   """
   def source_note(view) do
     if Tazuna.Relations.chiezo_view?(view),
-      do: "このボタンは、tazuna が持っている依頼文と回り方を Chiezo へ送り直すだけで、集めさせはしません。",
+      do: "このボタンは、Chidori が持っている依頼文と回り方を Chiezo へ送り直すだけで、集めさせはしません。",
       else: "「関連図を収集」を押すと、その場で AI に調べさせて図を作り直します。"
   end
 

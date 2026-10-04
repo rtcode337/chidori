@@ -75,11 +75,12 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relations-page > div { width: 90%; max-width: none; padding-left: 0; padding-right: 0; }
 @media (min-width: 64rem) { .relations-page > div { width: 75%; } }
 .relations-page .brand { display: flex; align-items: center; gap: .65rem; color: #182033; font-size: 1.2rem; font-weight: 800; text-decoration: none; }
-.relations-page .brand span { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; border-radius: 1rem; background: #6254d6; color: white; font-weight: 900; }
 .relations-page header nav { display: flex; gap: 1rem; }
 .relations-page header nav a { color: #52607a; font-size: .9rem; font-weight: 700; text-decoration: none; }
 .relations-page header nav a.active { color: #4f46b9; }
 .relations-page .brand-name { font-weight: inherit; }
+/* 画面のマーク（アイコンと同じ小鳥）。角丸はアイコンの絵に入っている */
+.relations-page .brand-mark { width: 2.5rem; height: 2.5rem; flex: none; }
 /* 狭い画面ではメニューを詰める。**語の途中で割らない**（「最新情/報」と割れると読めない）。
    トップと設定を足して 5 つになり、スマホの幅に収まらなくなったので、**名前の字は隠して
    印だけにし**、それでも入らなければメニューの列だけを横にスクロールさせる
