@@ -214,10 +214,10 @@ defmodule TazunaWeb.NewsLive do
     with_server(socket, &News.setup(&1, topic, picks))
   end
 
-  # 通知先を書き換える。**押したときだけ送る**ので、ここでは保存だけ
+  # 知らせるかどうかを書き換える。**押したときだけ送る**ので、ここでは保存だけ
   # **書いたそばから覚える。** 覚えないと、収集の状態が届いた拍子にフォームが
-  # 描き直され、**書きかけの通知先が消えます**（保存したつもりで消えたように見える）
-  # 要約の時刻と通知先は**別のフォーム**（別の枠）だが、書きかけは 1 つに覚える ——
+  # 描き直され、**書きかけが消えます**（保存したつもりで消えたように見える）
+  # 要約の時刻と通知は**別のフォーム**（別の枠）だが、書きかけは 1 つに覚える ——
   # 片方を書き換えた拍子に、もう片方の書きかけが消えないように
   def handle_event("edit_notify", %{"setting" => attrs}, socket) do
     topic = socket.assigns.topic
@@ -238,7 +238,7 @@ defmodule TazunaWeb.NewsLive do
          |> put_flash(:info, "保存しました。")}
 
       {:error, changeset} ->
-        # **書いたものは消さない。** 時刻の書き方を間違えただけで通知先まで
+        # **書いたものは消さない。** 時刻の書き方を間違えただけで通知の設定まで
         # 書き直させられると、直すたびに全部を入れ直すことになる
         {:noreply,
          socket
@@ -1129,7 +1129,7 @@ defmodule TazunaWeb.NewsLive do
   def theme_prompt_note(_themes),
     do: "この節の「収集を依頼する」を押すと、この内容で Chiezo に頼みます。"
 
-  @doc "いまの通知先。フォームに載せます。"
+  @doc "いまの通知の設定。フォームに載せます。"
   def notify_setting(nil), do: Settings.changeset("")
   def notify_setting(%{collection: collection}), do: Settings.changeset(collection)
 
@@ -1148,7 +1148,8 @@ defmodule TazunaWeb.NewsLive do
   end
 
   @doc false
-  def notify_error(:ntfy_topic_missing), do: "この話題の通知先が決まっていません。"
+  def notify_error(:ntfy_topic_missing), do: "通知先が決まっていません（設定の「通知」タブ）。"
+  def notify_error(:notify_off), do: "この話題は知らせない設定です。"
   def notify_error(:ntfy_unavailable), do: "ntfy に接続できませんでした。"
   def notify_error({:ntfy_status, status}), do: "ntfy が #{status} を返しました。"
   def notify_error(reason), do: "知らせられませんでした（#{inspect(reason)}）。"
@@ -1172,10 +1173,13 @@ defmodule TazunaWeb.NewsLive do
   def notify_note(%{collection: collection}) do
     case Ntfy.ready(collection) do
       {:ok, {base, ntfy_topic}} ->
-        "「知らせる」を押すと、#{base} の「#{ntfy_topic}」へまとめを送ります。"
+        "#{base} の「#{ntfy_topic}」へ送ります。"
+
+      {:error, :notify_off} ->
+        "この話題は知らせません。"
 
       {:error, :ntfy_topic_missing} ->
-        "この話題の通知先が決まっていません（下の欄にトピック名を書くと送れます）。"
+        "知らせる設定ですが、通知先（ntfy のトピック名）が決まっていないので送れません。"
     end
   end
 
@@ -1205,11 +1209,11 @@ defmodule TazunaWeb.NewsLive do
 
     case Setting.digest_times(setting) do
       [] ->
-        "時刻を書くと、その時刻に整理→要約を起こします。通知先があれば、作った後に知らせます" <>
+        "時刻を書くと、その時刻に整理→要約を起こします。知らせる設定なら、作った後に知らせます" <>
           "（空なら自分からは回りません。08:00 でも 0800 でも 8 でも読めます）。"
 
       times ->
-        "この時刻に、整理を 1 回起こしてからまとめを作らせます（通知先があれば、作った後に知らせます。JST）: " <>
+        "この時刻に、整理を 1 回起こしてからまとめを作らせます（知らせる設定なら、作った後に知らせます。JST）: " <>
           Enum.map_join(times, "、", fn {hour, minute} ->
             String.pad_leading("#{hour}", 2, "0") <>
               ":" <> String.pad_leading("#{minute}", 2, "0")

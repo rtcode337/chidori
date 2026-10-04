@@ -172,8 +172,8 @@ defmodule Tazuna.Digest do
     end
   end
 
-  # **知らせるのは通知先があるときだけ。** 時刻は「要約を作る時刻」で、通知はその後に
-  # 付いてくるもの —— 通知先が無いのは「知らせない」の意思表示で、失敗ではない
+  # **知らせるのは、知らせる設定で宛先もあるときだけ。** 時刻は「要約を作る時刻」で、
+  # 通知はその後に付いてくるもの —— 知らせない設定・宛先が無いのは失敗ではない
   # （失敗として残すと、要約はできているのに画面に「止まりました」と出る）
   defp deliver_if_set(collection, digest) do
     case Tazuna.Ntfy.ready(collection) do
@@ -181,7 +181,7 @@ defmodule Tazuna.Digest do
         tell(collection, "知らせています…")
         Notify.deliver(collection, digest)
 
-      {:error, :ntfy_topic_missing} ->
+      {:error, reason} when reason in [:notify_off, :ntfy_topic_missing] ->
         {:ok, :made}
     end
   end
@@ -350,7 +350,7 @@ defmodule Tazuna.Digest do
   end
 
   defp outcome({:ok, :sent}), do: "まとめを作って知らせました。"
-  defp outcome({:ok, :made}), do: "まとめを作りました（通知先が無いので知らせていません）。"
+  defp outcome({:ok, :made}), do: "まとめを作りました（知らせない設定か、通知先が無いので知らせていません）。"
   defp outcome({:ok, :already_sent}), do: "まとめを作りましたが、同じものは知らせ済みでした。"
 
   defp outcome({:ok, :nothing_to_send}),
@@ -372,7 +372,8 @@ defmodule Tazuna.Digest do
     do: "次の予定の時刻まで待ちましたが、Chiezo の取り込みが空きませんでした。"
 
   def error_text(:timed_out), do: "Chiezo の返事を待ちましたが、時間内に終わりませんでした。"
-  def error_text(:ntfy_topic_missing), do: "この話題の通知先が決まっていません。"
+  def error_text(:ntfy_topic_missing), do: "通知先が決まっていません（設定の「通知」タブ）。"
+  def error_text(:notify_off), do: "この話題は知らせない設定です。"
   def error_text({:chiezo_refused, _status, reason}) when is_binary(reason), do: reason
   def error_text(_reason), do: "まとめを作れませんでした。"
 end

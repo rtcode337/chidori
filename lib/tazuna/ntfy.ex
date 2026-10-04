@@ -1,8 +1,9 @@
 defmodule Tazuna.Ntfy do
   @moduledoc """
-  ntfy へ知らせる口。**話題ごとに宛先（トピック）を決めます**。
+  ntfy へ知らせる口。**宛先（トピックと場所）は全部の通知で 1 つ**で、話題ごとに
+  決めるのは知らせるかどうかだけです。
 
-  **設定は画面から直せます**（`Tazuna.Notify.Settings`）。宛先は運用しながら
+  **宛先は設定画面の「通知」タブで直せます**（`Tazuna.Notify.Destination`）。宛先は運用しながら
   決めるもの（試しに別のトピックへ流す、しばらく止める）なので、環境変数だけだと
   変えるたびに立て直しが要ります。**置き場の既定は環境変数から取ります**
   （`NTFY_BASE_URL`）—— あれは環境の事情なので、画面で毎回書かせるものではありません。
@@ -19,6 +20,7 @@ defmodule Tazuna.Ntfy do
   """
 
   alias Tazuna.Http
+  alias Tazuna.Notify.Destination
   alias Tazuna.Notify.Settings
 
   # **書かなければ公式の公開サーバーへ倒します。** 場所を書かせないと、宛先だけ
@@ -46,35 +48,37 @@ defmodule Tazuna.Ntfy do
   def public_base_url, do: @public_base_url
 
   @doc """
-  その収集の置き場。**画面で書いてあればそちらが勝ちます**。
+  置き場。**画面（設定の「通知」タブ）で書いてあればそちらが勝ちます**。
   """
-  def base_url(collection) do
-    case Settings.get(collection).ntfy_base_url do
+  def base_url do
+    case Destination.get().base_url do
       "" -> default_base_url()
       written -> written
     end
   end
 
   @doc """
-  その収集の宛先（ntfy のトピック）。**収集ごとに別に決められます** ——
-  同じところへまとめて流すと、技術の話を追いたいだけの人に暮らしの話まで届きます。
+  宛先（ntfy のトピック）。**全部の通知で 1 つ**です —— 話題ごとに持たせていた頃は、
+  同じトピックを画面ごとに書き写していて、変えるときに全部を回る羽目になっていました。
   """
-  def topic_for(collection) when is_binary(collection) do
-    case Settings.get(collection).ntfy_topic do
+  def topic do
+    case Destination.get().topic do
       "" -> nil
       topic -> topic
     end
   end
 
-  def topic_for(_collection), do: nil
-
   @doc """
-  知らせられる状態か。**押す前に読めるようにするため**に、理由まで返します。
+  その話題を知らせられる状態か。**押す前に読めるようにするため**に、理由まで返します。
+
+  - `:notify_off` —— その話題は知らせない設定（話題の画面の「知らせる」）
+  - `:ntfy_topic_missing` —— 宛先が決まっていない（設定の「通知」タブ）
   """
   def ready(collection) do
-    case topic_for(collection) do
-      nil -> {:error, :ntfy_topic_missing}
-      topic -> {:ok, {base_url(collection), topic}}
+    cond do
+      not Settings.get(collection).notify -> {:error, :notify_off}
+      topic() == nil -> {:error, :ntfy_topic_missing}
+      true -> {:ok, {base_url(), topic()}}
     end
   end
 

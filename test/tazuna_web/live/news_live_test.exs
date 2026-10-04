@@ -336,29 +336,29 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "まとめ: 今日の動き（2026-09-13）"
     end
 
-    test "通知先が決まっていなければ、書く欄と理由を出す", %{conn: conn} do
+    test "話題の画面では知らせるかどうかだけを決め、宛先は設定の通知タブにある", %{conn: conn} do
       # **まとめの枠には置かない** —— あれはまとめができるまで出ないので、
       # 設定を確かめたいときにいちばん見たい状態で消えている
-      System.delete_env("NTFY_BASE_URL")
       html = shown(conn)
 
-      assert html =~ "この話題の通知先が決まっていません"
-      assert html =~ ~s(name="setting[ntfy_topic]")
-      # 場所を書かなければどこへ送るのかも読める
-      assert html =~ Tazuna.Ntfy.public_base_url()
+      assert html =~ ~s(name="setting[notify]")
+      # 宛先は全部の通知で 1 つ（画面ごとに書き写さない）
+      refute html =~ "ntfy_topic"
+      assert html =~ "この話題は知らせません"
+      assert html =~ ~s(href="/settings?tab=notify")
 
       # 送れない口は出さない（押せるのに何も起きないボタンを置かない）
       refute html =~ "いまのまとめを知らせる"
     end
 
-    test "通知先が決まっていれば、どこへ知らせるかを出す", %{conn: conn} do
+    test "知らせる設定で宛先もあれば、どこへ知らせるかを出す", %{conn: conn} do
       System.put_env("NTFY_BASE_URL", "http://ntfy.test")
       on_exit(fn -> System.delete_env("NTFY_BASE_URL") end)
-      Tazuna.Notify.Settings.put("tazuna_news", %{"ntfy_topic" => "tazuna-news"})
+      notify_to("tazuna-news")
 
       html = shown(conn)
 
-      assert html =~ "tazuna-news"
+      assert html =~ "http://ntfy.test の「tazuna-news」へ送ります"
 
       # **押したときだけ飛ぶ。** 自動では送らないことが、押す前に読めること
       assert html =~ "いまのまとめを知らせる"
@@ -384,7 +384,7 @@ defmodule TazunaWeb.NewsLiveTest do
       # 時計を持つのは tazuna の側。Chiezo には「いま回してください」としか言わない
       System.put_env("NTFY_BASE_URL", "http://ntfy.test")
       on_exit(fn -> System.delete_env("NTFY_BASE_URL") end)
-      Tazuna.Notify.Settings.put("tazuna_news", %{"ntfy_topic" => "tazuna-news"})
+      notify_to("tazuna-news")
 
       html = shown(conn)
 
@@ -394,9 +394,10 @@ defmodule TazunaWeb.NewsLiveTest do
       assert html =~ "いまのまとめを知らせる"
     end
 
-    test "通知先が無ければ、要約を作るだけの口になる", %{conn: conn} do
-      # 時刻は「要約を作る時刻」。通知先が無いのは「知らせない」の意思表示
-      Tazuna.Notify.Settings.put("tazuna_news", %{"ntfy_topic" => ""})
+    test "知らせない設定なら、要約を作るだけの口になる", %{conn: conn} do
+      # 時刻は「要約を作る時刻」。知らせないのは失敗ではない
+      Tazuna.Notify.Destination.put(%{"topic" => "tazuna-news"})
+      Tazuna.Notify.Settings.put("tazuna_news", %{"notify" => "false"})
 
       html = shown(conn)
 
@@ -437,8 +438,8 @@ defmodule TazunaWeb.NewsLiveTest do
     end
 
     test "時刻の書き方を間違えても、書いたものは消さない", %{conn: conn} do
-      # 時刻だけ直せばよいのに通知先まで書き直させられると、直すたびに全部を
-      # 入れ直すことになる（実際、通知先ごと消えた）
+      # 時刻だけ直せばよいのに通知の設定まで書き直させられると、直すたびに全部を
+      # 入れ直すことになる（通知先を同じ画面で書いていた頃、実際に消えた）
       System.put_env("NTFY_BASE_URL", "http://ntfy.test")
       on_exit(fn -> System.delete_env("NTFY_BASE_URL") end)
 
@@ -447,7 +448,7 @@ defmodule TazunaWeb.NewsLiveTest do
       assert_receive {:news_updated, %{status: :ready}}, 2_000
 
       live
-      |> form("#notify-form", setting: %{ntfy_topic: "tazuna-news"})
+      |> form("#notify-form", setting: %{notify: "true"})
       |> render_change()
 
       html =
@@ -456,8 +457,8 @@ defmodule TazunaWeb.NewsLiveTest do
         |> render_submit()
 
       assert html =~ "24 時間制で書いてください"
-      # 書いた通知先はそのまま残っている
-      assert html =~ ~s(value="tazuna-news")
+      # 付けたチェックはそのまま残っている
+      assert html =~ ~s(value="true" checked)
     end
 
     test "書きかけは、収集の状態が届いても消えない", %{conn: conn} do
@@ -467,7 +468,7 @@ defmodule TazunaWeb.NewsLiveTest do
       assert_receive {:news_updated, %{status: :ready}}, 2_000
 
       live
-      |> form("#notify-form", setting: %{ntfy_topic: "書きかけ"})
+      |> form("#notify-form", setting: %{notify: "true"})
       |> render_change()
 
       live
@@ -478,7 +479,7 @@ defmodule TazunaWeb.NewsLiveTest do
       Tazuna.News.refresh(Tazuna.News.server("tazuna_news"))
       assert_receive {:news_updated, %{status: :ready}}, 2_000
 
-      assert render(live) =~ ~s(value="書きかけ")
+      assert render(live) =~ ~s(value="true" checked)
     end
 
     test "まとめが、画面ではリンク入りで出る", %{conn: conn} do
@@ -888,5 +889,11 @@ defmodule TazunaWeb.NewsLiveTest do
 
       assert TazunaWeb.NewsLive.theme_prompt_note(%{collection: nil}) =~ "収集を依頼する"
     end
+  end
+
+  # 全部の通知で共通の宛先を決め、ニュースの話題を知らせる設定にする
+  defp notify_to(topic) do
+    Tazuna.Notify.Destination.put(%{"topic" => topic})
+    Tazuna.Notify.Settings.put("tazuna_news", %{"notify" => "true"})
   end
 end

@@ -9,6 +9,7 @@ defmodule Tazuna.NotifyTest do
   alias Tazuna.HttpStub
   alias Tazuna.News
   alias Tazuna.Notify
+  alias Tazuna.Notify.Destination
   alias Tazuna.Notify.Settings
 
   @collection "tazuna_tech"
@@ -33,7 +34,8 @@ defmodule Tazuna.NotifyTest do
   setup do
     System.put_env("NTFY_BASE_URL", "http://ntfy.test")
     on_exit(fn -> System.delete_env("NTFY_BASE_URL") end)
-    Settings.put(@collection, %{"ntfy_topic" => "tazuna-tech"})
+    Settings.put(@collection, %{"notify" => "true"})
+    Destination.put(%{"topic" => "tazuna-tech"})
     :ok
   end
 
@@ -99,7 +101,7 @@ defmodule Tazuna.NotifyTest do
     assert Notify.deliver(@collection, @digest) == {:ok, :sent}
     assert_receive {:notified, _url, _sent}, 2_000
 
-    Settings.put(@collection, %{"ntfy_topic" => "tazuna-tech-2"})
+    Destination.put(%{"topic" => "tazuna-tech-2"})
     assert Notify.deliver(@collection, @digest) == {:ok, :sent}
     assert_receive {:notified, _url, sent}, 2_000
     assert sent["topic"] == "tazuna-tech-2"
@@ -116,9 +118,16 @@ defmodule Tazuna.NotifyTest do
 
   test "宛先が未設定なら、その理由を返す" do
     # 無言で何もしないと、設定を間違えているのかまとめがまだ無いのかが分からない
-    Settings.put(@collection, %{"ntfy_topic" => ""})
+    Destination.put(%{"topic" => ""})
 
     assert Notify.deliver(@collection, @digest) == {:error, :ntfy_topic_missing}
+  end
+
+  test "知らせない設定の話題は送らない" do
+    # 宛先は全部の通知で 1 つなので、話題ごとの「知らせる」で止める
+    Settings.put(@collection, %{"notify" => "false"})
+
+    assert Notify.deliver(@collection, @digest) == {:error, :notify_off}
   end
 
   test "場所を書かなければ、公式の公開サーバーへ送る" do
@@ -133,7 +142,7 @@ defmodule Tazuna.NotifyTest do
 
   test "宛先が空なら、そもそも送らない" do
     # **既定の宛先は持たない** —— 公開の ntfy では誰でも読めるところへ流れる
-    Settings.put(@collection, %{"ntfy_topic" => ""})
+    Destination.put(%{"topic" => ""})
 
     assert Notify.deliver(@collection, @digest) == {:error, :ntfy_topic_missing}
   end

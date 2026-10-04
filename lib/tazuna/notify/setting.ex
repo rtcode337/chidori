@@ -1,6 +1,7 @@
 defmodule Tazuna.Notify.Setting do
   @moduledoc """
-  話題 1 つぶんの通知先。**利用者が決めることだけ**を持ちます。
+  話題 1 つぶんの通知の設定（知らせるかどうかと、要約を作る時刻）。**利用者が決めることだけ**を持ちます。
+  宛先（ntfy のトピック名と場所）は全部の通知で 1 つです（`Tazuna.Notify.Destination`）。
 
   話題そのものの定義（名前・関心・配信元）はコードにあります（`Tazuna.Topics`）——
   DB に定義を持たせていた頃は、コードに足した話題が既に使っている環境へ永遠に
@@ -13,8 +14,7 @@ defmodule Tazuna.Notify.Setting do
 
   schema "notify_settings" do
     field(:collection, :string)
-    field(:ntfy_topic, :string, default: "")
-    field(:ntfy_base_url, :string, default: "")
+    field(:notify, :boolean, default: false)
     field(:digest_at, :string, default: "")
     field(:last_digest_at, :utc_datetime)
     field(:last_digest_result, :string, default: "")
@@ -22,7 +22,7 @@ defmodule Tazuna.Notify.Setting do
     timestamps(type: :utc_datetime)
   end
 
-  @fields ~w(collection ntfy_topic ntfy_base_url digest_at last_digest_at last_digest_result)a
+  @fields ~w(collection notify digest_at last_digest_at last_digest_result)a
 
   # 時刻の区切り。**読点も空白も受けます** —— 書く人は「08:00、21:00」とも書きます
   @separators ~r/[,、\s]+/
@@ -30,22 +30,14 @@ defmodule Tazuna.Notify.Setting do
   def changeset(setting, attrs) do
     setting
     |> cast(attrs, @fields)
-    |> update_change(:ntfy_topic, &String.trim/1)
-    |> update_change(:ntfy_base_url, &(&1 |> String.trim() |> String.trim_trailing("/")))
     |> validate_required([:collection])
-    |> validate_length(:ntfy_topic, max: 200)
-    |> validate_length(:ntfy_base_url, max: 500)
-    # **押せる形だけを受け取る。** 空でない宛先に、置き場が無いのは設定し忘れ
-    |> validate_format(:ntfy_base_url, ~r{\A(\z|https?://)},
-      message: "http:// か https:// で書いてください"
-    )
     |> update_change(:digest_at, &normalize_times/1)
     |> validate_change(:digest_at, &valid_times/2)
     |> unique_constraint(:collection)
   end
 
   @doc """
-  要約を作る時刻（JST）。書かれていなければ空で、その話題は回しません（通知先があれば、作った後に知らせます）。
+  要約を作る時刻（JST）。書かれていなければ空で、その話題は回しません（知らせる設定なら、作った後に知らせます）。
 
   返すのは `{時, 分}` の並びで、**早い順に揃えます** —— 書いた順のまま持つと、
   「次はいつか」を数えるたびに並べ直すことになります。
@@ -85,7 +77,7 @@ defmodule Tazuna.Notify.Setting do
   `0800` も `8` も同じ時刻です（全角のコロンも読みます）。
 
   厳しくすると、**時刻の書き方を間違えただけでフォームごと保存されません** ——
-  通知先まで一緒に消えます（実際にそうなりました）。
+  知らせるかどうかまで一緒に戻ります（通知先を同じフォームで書いていた頃、実際に消えました）。
   """
   def parse(text) when is_binary(text) do
     text = text |> String.replace("：", ":") |> String.trim()

@@ -168,4 +168,33 @@ defmodule TazunaWeb.SettingsLiveTest do
     live |> element("button", "最新の情報を取得") |> render_click()
     assert render_async(live) =~ "最新の情報を取得"
   end
+
+  test "通知タブで、全部の通知に共通の宛先を書く", %{conn: conn} do
+    # 話題ごとに書いていた頃は、同じトピックを画面ごとに書き写していた
+    Tazuna.Notify.Settings.put("tazuna_tech", %{"notify" => "true"})
+    {:ok, live, html} = live(conn, ~p"/settings?tab=notify")
+
+    assert html =~ ~s(name="ntfy[topic]")
+    assert html =~ ~s(name="ntfy[base_url]")
+
+    # 知らせるかどうかは話題ごと（直すのは各画面）。いまどうなっているかは並べる
+    assert html =~ "知らせる"
+
+    live
+    |> form("#ntfy-form", ntfy: %{topic: " shared-topic ", base_url: "http://ntfy.test/"})
+    |> render_submit()
+
+    assert Tazuna.Ntfy.topic() == "shared-topic"
+    assert Tazuna.Ntfy.base_url() == "http://ntfy.test"
+    assert Tazuna.Ntfy.ready("tazuna_tech") == {:ok, {"http://ntfy.test", "shared-topic"}}
+
+    html =
+      live
+      |> form("#ntfy-form", ntfy: %{base_url: "ntfy.test"})
+      |> render_submit()
+
+    assert html =~ "http:// か https:// で書いてください"
+    # 書いたものは消さない
+    assert html =~ ~s(value="ntfy.test")
+  end
 end

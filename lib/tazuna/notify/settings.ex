@@ -1,6 +1,6 @@
 defmodule Tazuna.Notify.Settings do
   @moduledoc """
-  話題ごとの通知先の読み書き。
+  話題ごとの通知の設定（知らせるかどうか・要約を作る時刻）の読み書き。
 
   **持っていない話題には、空の設定を返します**（nil ではなく）。画面はこれを
   そのままフォームに載せるので、まだ書かれていないことと、書いて空にしたことを
@@ -11,17 +11,17 @@ defmodule Tazuna.Notify.Settings do
   alias Tazuna.Repo
 
   @doc """
-  その収集の通知先。**無ければ空のもの**を返します。
+  その収集の通知の設定。**無ければ空のもの**（知らせない）を返します。
   """
   def get(collection) when is_binary(collection) do
     Repo.get_by(Setting, collection: collection) ||
-      %Setting{collection: collection, ntfy_topic: "", ntfy_base_url: ""}
+      %Setting{collection: collection, notify: false}
   end
 
-  def get(_collection), do: %Setting{collection: "", ntfy_topic: "", ntfy_base_url: ""}
+  def get(_collection), do: %Setting{collection: "", notify: false}
 
   @doc """
-  通知先を書き換えます。**空にすれば、その話題は知らせなくなります**。
+  通知の設定を書き換えます。
   """
   def put(collection, attrs) do
     collection

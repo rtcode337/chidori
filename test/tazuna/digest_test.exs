@@ -23,7 +23,8 @@ defmodule Tazuna.DigestTest do
       System.delete_env("NTFY_BASE_URL")
     end)
 
-    Settings.put(@collection, %{"ntfy_topic" => "tazuna-tech"})
+    Settings.put(@collection, %{"notify" => "true"})
+    Tazuna.Notify.Destination.put(%{"topic" => "tazuna-tech"})
     {:ok, topic: Enum.find(Topics.list(), &(&1.collection == @collection))}
   end
 
@@ -241,11 +242,11 @@ defmodule Tazuna.DigestTest do
     assert Settings.get(@collection).last_digest_result =~ "Chiezo 側で止まっています"
   end
 
-  test "通知先が決まっていなければ、要約は作って知らせない", %{topic: topic} do
-    # 時刻は「要約を作る時刻」。通知先が無いのは「知らせない」の意思表示で失敗ではない
+  test "知らせない設定なら、要約は作って知らせない", %{topic: topic} do
+    # 時刻は「要約を作る時刻」。知らせない設定・通知先が無いのは失敗ではない
     # （失敗として残すと、要約はできているのに「止まりました」と出る）。
     # 知らせなかったことは残す（静かに送れずにいるのと見分けるため）
-    Settings.put(@collection, %{"ntfy_topic" => ""})
+    Settings.put(@collection, %{"notify" => "false"})
     stub_chiezo(%{})
 
     assert Digest.run(topic) == {:ok, :made}

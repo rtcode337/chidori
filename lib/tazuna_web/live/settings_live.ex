@@ -19,9 +19,12 @@ defmodule TazunaWeb.SettingsLive do
   alias Tazuna.CollectPace
   alias Tazuna.Home
   alias Tazuna.News
+  alias Tazuna.Notify.Destination
+  alias Tazuna.Notify.Settings
+  alias Tazuna.Topics
 
   # **トップページを先頭に**（いちばん触る設定。開いたときに出る）
-  @tabs [{"home", "トップページ"}, {"chiezo", "Chiezo 収集"}]
+  @tabs [{"home", "トップページ"}, {"chiezo", "Chiezo 収集"}, {"notify", "通知"}]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -74,7 +77,25 @@ defmodule TazunaWeb.SettingsLive do
     end
   end
 
+  # 通知の宛先。**全部の通知で 1 つ**（話題ごとに決めるのは知らせるかどうかだけ）
+  defp load(socket, "notify") do
+    assign(socket, ntfy_form: ntfy_form(), notify_topics: notify_topics())
+  end
+
   defp load(socket, _tab), do: socket
+
+  defp ntfy_form(attrs \\ %{}), do: to_form(Destination.change(attrs), as: :ntfy)
+
+  # 要約を作る話題と、それぞれ知らせるかどうか（直すのは各画面）
+  defp notify_topics do
+    for topic <- Topics.list(), Topics.digest?(topic) do
+      %{
+        name: topic.name,
+        collection: topic.collection,
+        notify: Settings.get(topic.collection).notify
+      }
+    end
+  end
 
   # 収集の表は **tazuna の画面の並び**で、Chiezo にまだ無い収集も出す（`CollectCatalog`）
   defp load_overview(base) do
@@ -164,6 +185,28 @@ defmodule TazunaWeb.SettingsLive do
     end
   end
 
+  # 書いたそばから覚える。覚えないと、描き直しの拍子に書きかけが消える
+  def handle_event("edit_ntfy", %{"ntfy" => attrs}, socket) do
+    {:noreply, assign(socket, ntfy_form: ntfy_form(attrs))}
+  end
+
+  def handle_event("save_ntfy", %{"ntfy" => attrs}, socket) do
+    case Destination.put(attrs) do
+      {:ok, _destination} ->
+        {:noreply,
+         socket
+         |> assign(ntfy_form: ntfy_form())
+         |> put_flash(:info, "通知先を保存しました。")}
+
+      {:error, changeset} ->
+        # 書いたものは消さない
+        {:noreply,
+         socket
+         |> assign(ntfy_form: to_form(%{changeset | action: :validate}, as: :ntfy))
+         |> put_flash(:error, "通知先を保存できませんでした: " <> first_error(changeset))}
+    end
+  end
+
   # **並びは送られてきた順**（チェックした枠の順番の欄で決める）
   def handle_event("save_home", params, socket) do
     keys =
@@ -179,6 +222,13 @@ defmodule TazunaWeb.SettingsLive do
      socket
      |> assign(home_keys: Home.selected_keys())
      |> put_flash(:info, "トップページに並べる枠を保存しました。")}
+  end
+
+  defp first_error(changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {message, _opts} -> message end)
+    |> Enum.flat_map(fn {_field, messages} -> messages end)
+    |> List.first() || "書いた内容を確かめてください"
   end
 
   defp form_picks(params),
