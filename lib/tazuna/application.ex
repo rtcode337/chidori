@@ -31,7 +31,9 @@ defmodule Tazuna.Application do
         Tazuna.Datasets.ShelfCache,
         Tazuna.News.Hatena,
         # 代表作の絵の覚え書き（置き場を持つだけ。引くのは押した人のプロセス）
-        Tazuna.Artwork
+        Tazuna.Artwork,
+        # 関連図の顔写真を 1 枚ずつ間を空けて取りに行く列
+        Tazuna.Relations.Faces
       ] ++
         scheduler() ++
         [TazunaWeb.Endpoint]

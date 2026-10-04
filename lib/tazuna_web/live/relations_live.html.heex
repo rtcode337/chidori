@@ -157,6 +157,18 @@
           <rect x={band.x} y="0" width={band.width} height={shown.height} />
           <line x1={band.x} y1="0" x2={band.x} y2={shown.height} />
         </g>
+        <%!-- グループの枠（芸能人の図）。**線と札より先に描く**ので、メンバーの札は
+             枠の上に乗る。グループの名前は枠の上の縁にある札（グループの札そのもの）--%>
+        <rect
+          :for={cluster <- shown[:clusters] || []}
+          class="relation-cluster"
+          x={cluster.x}
+          y={cluster.y}
+          width={cluster.width}
+          height={cluster.height}
+          rx="10"
+          style={cluster_style(cluster)}
+        />
         <g :for={tick <- shown[:ticks] || []} class="relation-tick">
           <line x1="70" y1={tick.y} x2={shown.width} y2={tick.y} />
         </g>
@@ -262,6 +274,18 @@
               rx={label_height_of(node) * 0.28}
               style={hue_style(node)}
             />
+            <%!-- 顔写真（芸能人の図。写しのある人だけ）。札の左端に、札の高さの正方形で
+                 置く（札の幅はそのぶん広げてある。`face_slot/1`）。写しは tazuna が配る --%>
+            <image
+              :if={node[:face]}
+              class="node-face"
+              href={node.face}
+              x={-label_width_of(node) / 2 + face_inset(node)}
+              y={-label_height_of(node) / 2 + face_inset(node)}
+              width={face_slot(node) - 2 * face_inset(node)}
+              height={label_height_of(node) - 2 * face_inset(node)}
+              preserveAspectRatio="xMidYMin slice"
+            />
             <%!-- 字の大きさは 1 人ずつ違う（知名度で決まる）ので、CSS ではなく
                  ここで当てる。**style で当てる** —— SVG の font-size 属性は
                  CSS のほうが強いので、属性で書くと class 側に負ける --%>
@@ -269,6 +293,7 @@
               text-anchor="middle"
               dominant-baseline="central"
               class="node-name"
+              x={face_slot(node) / 2}
               y={node[:name_dy] || 0}
               style={"font-size: #{name_size_of(node)}px"}
             >
@@ -285,6 +310,7 @@
               text-anchor="middle"
               dominant-baseline="central"
               class="node-note"
+              x={face_slot(node) / 2}
               y={node[:note_dy] || 0}
               style={"font-size: #{sub_size_of(node)}px"}
             >
@@ -425,10 +451,10 @@
         </p>
       <% else %>
         <p>
-          <strong>縦は年代</strong>です（上から下へ。人は生年、コンビ・グループは結成年）。 <strong>横は種別</strong>で、お笑いと俳優に分けて並べます。 <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、 <strong>色は種別</strong>です。
+          <strong>縦は年代</strong>です（上から下へ。人は生年。グループはメンバーの生年の中ほど）。 <strong>グループはメンバーを囲む枠</strong>で、名前は枠の上の縁にあります。 <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、 <strong>色は種別</strong>（俳優・歌手・タレント・お笑いなど）です。写真のある人は札に顔写真が出ます（Wikimedia Commons。押すと出典とライセンス）。
         </p>
         <p>
-          <strong>実線は家族</strong>（親子・配偶者・きょうだい）、 <strong>点線はコンビ・グループとメンバー</strong>です。どちらも AI が公表されている情報から書いたもので、
+          <strong>太い赤の線は夫婦</strong>（元夫婦も）、 <strong>実線は家族</strong>（親子・きょうだい）、 <strong>点線は元メンバー</strong>です。どれも AI が公表されている情報から書いたもので、
           未成年の家族と、芸能人でない家族は載せていません。
           薄い線は記事どうしが互いにリンクしているというだけの関係で、Wikipedia から機械的に引いたものです。
         </p>
@@ -506,6 +532,31 @@
                   {collect_label(@relation)}
                 </button>
               </div>
+            </form>
+
+            <%!-- 名簿の広さ（芸能人の図）。**知名度で下を切って始め、落ち着いたら広げる**。
+                 引き直す回は足すだけなので、下限を上げても名簿からは消えない --%>
+            <form :if={@view == "people"} id="roster-form" phx-submit="reroster">
+              <% now = Tazuna.Relations.Settings.min_pageviews(@view) %>
+              <label>
+                名簿の広さ（Wikipedia の月の閲覧数の下限）
+                <select name="min">
+                  <option
+                    :for={value <- Tazuna.Relations.Settings.choices()}
+                    value={value}
+                    selected={value == now}
+                  >
+                    月 {delimit(value)} 以上
+                  </option>
+                </select>
+              </label>
+              <button type="submit" phx-disable-with="頼んでいます…">名簿を引き直す</button>
+              <p class="muted-note">
+                いまは月 {delimit(now)} 以上の人とグループを名簿にしています。下げると名簿が広がります（足すだけで、上げても名簿からは消えません）。
+              </p>
+              <p :if={@reroster_message} class="muted-note" aria-live="polite">
+                {@reroster_message}
+              </p>
             </form>
 
             <%!-- **区画の一覧は全部出す。** どこがまだ見られていないかは、ここにしか
@@ -660,6 +711,10 @@
           <p :if={@edge.label} class="edge-label-text">{@edge.label}</p>
           <p :if={!@edge.label} class="muted-note">AI は中身を書いていません（線だけがあります）。</p>
         <% else %>
+          <p :if={@edge.kind == :spouse} class="edge-reason">
+            <strong>{@edge.from.name}と{@edge.to.name}は{if @edge.label == "元配偶者", do: "以前夫婦でした", else: "夫婦です"}</strong>（{@edge.label ||
+              "配偶者"}）。AI が公表されている情報から書いています。
+          </p>
           <p :if={@edge.kind == :family} class="edge-reason">
             <strong>{@edge.from.name}と{@edge.to.name}は家族です</strong>（{@edge.label || "家族"}）。AI が公表されている情報から書いています。
           </p>
@@ -720,7 +775,7 @@
           {@edge.to.name}の影響元はほかに: {Enum.join(@edge.others, "、")}
         </p>
 
-        <%= if @edge.kind in [:family, :duo] do %>
+        <%= if @edge.kind in [:spouse, :family, :duo] do %>
           <p class="muted-note">
             <strong>AI が書いたものです。</strong> 確かめるには、それぞれの記事を読んでください。
           </p>
@@ -802,6 +857,21 @@
         <%!-- **その画家の姿。** 記事の先頭画像は、たいてい自画像か肖像写真。
              説明の横に小さく置く（主役は代表作のほうなので、大きくしない）。
              無ければ何も出さない —— 探している最中の文言も出さない（無い人のほうが多い） --%>
+        <%!-- 芸能人の顔写真。**写真ごとにライセンスが違う**ので、Commons のファイルの
+             ページ（出典とライセンスが書いてある）へのリンクを添える --%>
+        <figure :if={@detail[:face]} class="portrait">
+          <img src={@detail.face} alt={"#{@detail.name}の写真"} />
+          <figcaption>
+            <a
+              :if={Tazuna.Relations.Faces.file_page(@detail[:image])}
+              href={Tazuna.Relations.Faces.file_page(@detail[:image])}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Wikimedia Commons（出典・ライセンス）
+            </a>
+          </figcaption>
+        </figure>
         <figure :if={is_map(@portrait) and is_binary(@portrait[:image])} class="portrait">
           <img src={@portrait.image} alt={"#{@detail.name}の肖像"} />
           <figcaption>Wikipedia より</figcaption>

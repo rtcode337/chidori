@@ -173,11 +173,11 @@ defmodule Tazuna.Relations do
   @views %{
     "people" => %{
       title: "芸能人のつながり",
-      eyebrow: "FAMILY & DUO",
+      eyebrow: "COUPLES & FAMILY",
       # **これは手書きの表示例**。Chiezo（や AI）から読めたものに差し替わるまで、
       # 図は描かない —— 本物と見分けが付かない図が出ると、何を見ているのか分からない
       sample?: true,
-      description: "芸人と俳優の家族とコンビ・グループを、上から下へ年代順にたどれます。",
+      description: "芸能人の夫婦・家族とグループを、上から下へ年代順にたどれます。",
       width: @canvas_width,
       height: @canvas_height,
       collection: nil,
@@ -310,6 +310,34 @@ defmodule Tazuna.Relations do
   """
   def collect_now(key, choices \\ %{}) when is_binary(key) and is_map(choices) do
     GenServer.cast(__MODULE__, {:collect, valid_key(key), choices})
+  end
+
+  @doc """
+  **名簿の知名度の下限を変えて、名簿を引き直します**（芸能人の図。`Relations.Settings`）。
+
+  Chiezo には抽出の指定だけを送り（巡回の相手などは触らない）、名簿を引く回
+  （機械収集）を 1 回走らせます。**足すだけ**の回なので、下限を上げても名簿からは
+  消えません（広げる向きのつまみ）。結果は `{:reroster, key, result}` で知らせます。
+  """
+  def reroster(key, min_pageviews) when key == "people" and is_integer(min_pageviews) do
+    with {:ok, _setting} <- Tazuna.Relations.Settings.put_min_pageviews(key, min_pageviews),
+         base when is_binary(base) <- chiezo_base_url() do
+      Task.Supervisor.start_child(Tazuna.TaskSupervisor, fn ->
+        name = collection_of(key)
+
+        result =
+          with :ok <- Chiezo.patch(base, name, %{extract: People.extract(min_pageviews)}) do
+            Chiezo.run(base, name, sweep: Tazuna.SweepNames.machine())
+          end
+
+        Phoenix.PubSub.broadcast(Tazuna.PubSub, topic(key), {:reroster, key, result})
+      end)
+
+      :ok
+    else
+      nil -> {:error, :chiezo_not_configured}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @doc """
@@ -849,10 +877,29 @@ defmodule Tazuna.Relations do
           # ここで外へ引きに行かない
           {:ok,
            fallback
-           |> Map.merge(%{graph | nodes: Graph.sized(graph.nodes)})
+           |> Map.merge(%{graph | nodes: graph.nodes |> Graph.sized() |> with_faces()})
            |> Map.put(:collection, nil)
            |> Map.put(:sample?, false)}
         end
+    end
+  end
+
+  # 顔写真の写しがある人に、配る道を付ける（無い人は取りに行く列に並ぶ。
+  # `Tazuna.Relations.Faces`）。記事の画像を運んでいない図（画家）は何もしない
+  defp with_faces(nodes) do
+    case for(node <- nodes, url = node[:image], is_binary(url), do: url) do
+      [] ->
+        nodes
+
+      urls ->
+        faces = Tazuna.Relations.Faces.faces(urls)
+
+        Enum.map(nodes, fn node ->
+          case faces[node[:image]] do
+            nil -> node
+            path -> Map.put(node, :face, path)
+          end
+        end)
     end
   end
 

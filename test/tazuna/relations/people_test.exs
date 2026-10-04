@@ -1,7 +1,7 @@
 defmodule Tazuna.Relations.PeopleTest do
   @moduledoc """
   芸能人の関連図（`Tazuna.Relations.People`）。**画家の図と同じ仕組み**で、札と線の
-  語彙だけが違う。
+  語彙と並べ方が違う（横の帯を持たず、グループはメンバーを囲む枠にする）。
   """
 
   use ExUnit.Case, async: true
@@ -40,13 +40,45 @@ defmodule Tazuna.Relations.PeopleTest do
 
       assert {"〇〇コンビ", "甲山", :duo, "メンバー"} in lines
       assert {"〇〇コンビ", "乙川", :duo, "メンバー"} in lines
-      # 両方の文書に書かれていても 1 本
-      assert Enum.count(lines, fn {_a, _b, kind, _l} -> kind == :family end) == 1
-      assert Enum.any?(lines, &match?({_, _, :family, "配偶者"}, &1))
+
+      # 夫婦は家族の線の中で種類を分ける（いちばん目立たせる）。両方の文書に書かれていても 1 本
+      assert Enum.count(lines, fn {_a, _b, kind, _l} -> kind == :spouse end) == 1
+      assert Enum.any?(lines, &match?({_, _, :spouse, "配偶者"}, &1))
     end
 
-    test "横の帯はお笑いと俳優", %{graph: graph} do
-      assert Enum.map(graph.bands, & &1.band) == ["お笑い", "俳優"]
+    test "横の帯は持たず、グループはメンバーを囲む枠にする", %{graph: graph} do
+      # 種別は色で分かるので、帯に割ると夫婦が左右の端に離れる
+      assert graph.bands == []
+
+      nodes = Map.new(graph.nodes, &{&1.name, &1})
+      assert [frame] = graph.clusters
+      assert frame.name == "〇〇コンビ"
+      assert Enum.sort(frame.members) == Enum.sort([nodes["甲山"].id, nodes["乙川"].id])
+
+      # メンバーは隣り合わせで、枠の中にいる
+      for name <- ["甲山", "乙川"] do
+        node = nodes[name]
+        assert node.x > frame.x and node.x < frame.x + frame.width
+        assert node.y > frame.y and node.y < frame.y + frame.height
+      end
+
+      assert nodes["甲山"].y == nodes["乙川"].y
+      assert abs(nodes["甲山"].seat - nodes["乙川"].seat) == 1
+
+      # グループの札は枠の上の縁（枠の名前になる）
+      assert nodes["〇〇コンビ"].y == frame.y
+
+      # 枠の中のメンバーへの線は描かない印を付ける（線そのものは残す）
+      framed = Enum.filter(graph.edges, & &1[:framed?])
+      assert length(framed) == 2
+    end
+
+    test "メンバーが名簿にいないグループは、札のまま" do
+      docs = [doc("△△トリオ", ~w(芸能人 区分:グループ 種別:お笑いトリオ 年代:2001- メンバー:だれか))]
+      graph = Graph.from_docs(docs, People.graph_spec())
+
+      assert graph.clusters == []
+      assert [%{name: "△△トリオ", kind: :group}] = graph.nodes
     end
 
     test "代表作は持たない", %{graph: graph} do
@@ -64,16 +96,42 @@ defmodule Tazuna.Relations.PeopleTest do
       %{attrs: People.attrs()}
     end
 
-    test "名簿はお笑いコンビ・トリオと俳優のカテゴリから、種別とグループの印を機械で付ける", %{
+    test "名簿は俳優・歌手・タレント・お笑い芸人とグループから、種別とグループの印を機械で付ける", %{
       attrs: attrs
     } do
       assert attrs.name == "tazuna_people"
-      assert attrs.extract.tag =~ "日本のお笑いコンビ"
-      assert attrs.extract.tag =~ "21世紀日本の女優"
+
+      for category <- ~w(日本の男優 20世紀日本の女優 日本の女性歌手 日本のタレント お笑い芸人
+                         日本のお笑いコンビ 日本の女性アイドルグループ 日本のロック・バンド) do
+        assert attrs.extract.tag =~ category
+      end
+
       formats = Enum.map(attrs.extract.tags, &Map.get(&1, :format))
-      assert "種別:お笑いコンビ" in formats
+
+      for kind <- ~w(俳優 歌手 タレント お笑い芸人 お笑いコンビ アイドルグループ バンド),
+          do: assert("種別:#{kind}" in formats)
+
       assert "区分:グループ" in formats
-      assert "種別:俳優" in formats
+      # Chiezo の規則の上限（20）に収まる
+      assert length(attrs.extract.tags) <= 20
+    end
+
+    test "名簿は知名度で下を切り、顔写真の手掛かりに記事の画像を運ぶ", %{attrs: attrs} do
+      # カテゴリだけで 3 万人に届くので、月の閲覧数で切ってから AI に回す
+      assert attrs.extract.min_extra == %{pageviews_month: 10_000}
+      assert "image" in attrs.extract.extra
+      assert People.extract(3_000).min_extra == %{pageviews_month: 3_000}
+    end
+
+    test "いちばん知りたいのは夫婦で、両側に書かせる", %{attrs: attrs} do
+      tidy = List.last(attrs.sweeps)
+
+      for prompt <- [attrs.prompt, tidy.prompt] do
+        assert prompt =~ ~r/いちばん知りたいのは、\s*誰と誰が夫婦か/
+        assert prompt =~ "家族:<相手の名前>:配偶者"
+        assert prompt =~ "元配偶者"
+        assert prompt =~ "関係は両側に書いてください"
+      end
     end
 
     test "区画は種別 × 年代で、巡回は画家と同じ 3 本", %{attrs: attrs} do

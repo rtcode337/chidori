@@ -333,17 +333,27 @@ defmodule Tazuna.Relations.Graph do
   defp relaid(relation, kept, edges) do
     # 升目が変わるので、大きさも付け直す（知名度は `sized` が残しておいたものを使う）
     bare = Enum.map(kept, &Map.drop(&1, [:cell]))
-    laid = layout(bare, edges, fitted_columns(bare), relation[:band_order] || region_bands())
+
+    laid =
+      arrange(
+        bare,
+        edges,
+        fitted_columns(bare),
+        relation[:band_order] || region_bands(),
+        relation[:cluster_rule]
+      )
+
     fame = Map.new(laid.nodes, &{&1.article, &1[:views] || 0})
 
-    %{
-      relation
-      | nodes: refit(laid.nodes, fame),
-        edges: edges,
-        ticks: ticks(laid.nodes),
-        bands: laid.bands,
-        height: laid.height
-    }
+    relation
+    |> Map.merge(%{
+      nodes: refit(laid.nodes, fame),
+      edges: mark_framed(edges, laid[:clusters] || []),
+      ticks: ticks(laid.nodes),
+      bands: laid.bands,
+      clusters: paint_clusters(laid[:clusters] || [], laid.nodes),
+      height: laid.height
+    })
   end
 
   @doc "横軸に並べる地域のまとまり（西から東へ）。"
@@ -391,7 +401,8 @@ defmodule Tazuna.Relations.Graph do
     # 何も繋がっていない前提で並べることになる
     edges = edges(docs, by_name, spec)
     order = band_order(spec)
-    laid = layout(nodes, edges, nil, order)
+    clusters = spec[:clusters]
+    laid = arrange(nodes, edges, nil, order, clusters)
     hues = style_hues(laid.nodes)
     counts = laid.nodes |> Enum.flat_map(&styles_of/1) |> Enum.frequencies()
 
@@ -413,12 +424,18 @@ defmodule Tazuna.Relations.Graph do
       changed: Enum.count(marked, & &1[:changed?]),
       # AI がまだ目を通していない人の数（凡例と絞り込みに使う）
       unreviewed: Enum.count(marked, & &1[:unreviewed?]),
-      edges: edges,
       # **消えた画家。** 図には出さないが、消し間違いを戻す頼みごとは
       # ここからしか出せない（名簿から消えると、押せる丸が無くなる）
       removed: removed_of(docs, spec),
       # 横の帯の並び（絞り込んで置き直すときにも同じ並びを使う）
       band_order: order,
+      # グループを枠にする決まり（絞り込んで置き直すときにも同じ決まりを使う）
+      cluster_rule: clusters,
+      # グループの枠（`arrange/5`）。色はそのグループの札と同じ
+      clusters: paint_clusters(laid[:clusters] || [], coloured),
+      # **枠に入っているメンバーへの線は描かない**（枠で分かる。印を付けるだけで、
+      # 線そのものは残す —— 絞り込んで置き直すときに、枠をこの線から組み直す）
+      edges: mark_framed(edges, laid[:clusters] || []),
       ticks: ticks(laid.nodes),
       bands: laid.bands,
       # 色の凡例に使う（様式・人数・色相）。**図に出ているものだけ**を数える
@@ -506,7 +523,17 @@ defmodule Tazuna.Relations.Graph do
   刻みは、図が収める幅に合わせて 50 年か 100 年のどちらかにします。
   """
   def ticks(nodes) do
-    dated = for node <- nodes, year = year_of(node), do: {year, node.y}
+    # **上から順に、年代が戻らないものだけ**を拾う。グループの枠はメンバーをまとめて
+    # 置くので、行の中に少し外れた年代が混ざる —— そのまま拾うと目盛りが行きつ戻りつする
+    dated =
+      for(node <- nodes, year = year_of(node), do: {year, node.y})
+      |> Enum.sort_by(&elem(&1, 1))
+      |> Enum.reduce([], fn
+        {_year, _y} = point, [] -> [point]
+        {year, _y} = point, [{last, _} | _] = acc when year >= last -> [point | acc]
+        _point, acc -> acc
+      end)
+      |> Enum.reverse()
 
     case dated do
       [] ->
@@ -762,6 +789,8 @@ defmodule Tazuna.Relations.Graph do
           # **Chiezo に入っているタグをそのまま持つ。** どういう条件でこの人が
           # 名簿に入り、何が分かっているのかは、これを見せないと読み取れない
           tags: tags,
+          # 記事の画像（顔写真の手掛かり。名簿を引くときに運んだもの。無ければ nil）
+          image: image_in(doc),
           # **どれくらい知られているか。** 丸の大きさに使う。集める回が長期記憶の
           # 月次ページビューを写してくるので、ここで外へ引きに行かない
           views: views_in(doc),
@@ -823,6 +852,9 @@ defmodule Tazuna.Relations.Graph do
   end
 
   defp views_in(_doc), do: 0
+
+  defp image_in(%{"extra" => %{"image" => url}}) when is_binary(url) and url != "", do: url
+  defp image_in(_doc), do: nil
 
   # 知名度の倍率。**書かれていなければ 1.0**（ほとんどの画家には要らない）。
   # 読めない値も 1.0 —— 図が壊れるより、補正が効かないほうがまし
@@ -911,7 +943,10 @@ defmodule Tazuna.Relations.Graph do
         from: from.id,
         to: to.id,
         label: label || rule[:label],
-        kind: rule.kind,
+        # 字で種類を分ける線（夫婦は家族の線の中でいちばん目立たせる）
+        kind: Map.get(rule[:kinds_by_label] || %{}, label, rule.kind),
+        # どのタグから引いた線か（グループの枠は「今のメンバー」の線から組む）
+        via: rule.prefix,
         # 文書の主の説明のうち、相手の名前が出てくる文。**線を押したときに出す** ——
         # AI の一言だけでは、何を根拠にした線なのかが読めない
         excerpt: mentions(doc["body"], other.name)
@@ -1010,6 +1045,282 @@ defmodule Tazuna.Relations.Graph do
   end
 
   defp trimmed(_value), do: nil
+
+  # 置き方の入口。**グループを枠にする図**（`clusters`）は横の帯を持たず、
+  # メンバーをまとめて置く（`cluster_layout/4`）。それ以外は帯に割る（`layout/4`）
+  defp arrange(nodes, edges, columns, order, nil), do: layout(nodes, edges, columns, order)
+
+  defp arrange(nodes, edges, columns, _order, rule),
+    do: cluster_layout(nodes, edges, columns, rule)
+
+  # 枠にグループの札と同じ色を付ける
+  defp paint_clusters(clusters, nodes) do
+    hues = Map.new(nodes, &{&1.id, &1[:hue]})
+    Enum.map(clusters, &Map.put(&1, :hue, hues[&1.id]))
+  end
+
+  # 枠に入っているメンバーへの線に印を付ける（画面はこの印の線を描かない）
+  defp mark_framed(edges, []), do: edges
+
+  defp mark_framed(edges, clusters) do
+    framed =
+      for cluster <- clusters, id <- cluster.members, into: MapSet.new(), do: {cluster.id, id}
+
+    Enum.map(edges, fn edge ->
+      if MapSet.member?(framed, {edge.from, edge.to}),
+        do: Map.put(edge, :framed?, true),
+        else: edge
+    end)
+  end
+
+  # グループを 1 行に収めるために、少なくとも取る列の数
+  @cluster_min_columns 8
+
+  # 枠の内側に空ける幅（升目に対する比）
+  @frame_inset 0.06
+
+  # **グループを枠にする置き方**（芸能人の図）。
+  #
+  # - **横の帯は持たない。** 種別は札の色で分かるので、帯に割ると夫婦が左右の端に離れる
+  # - **グループのメンバーは隣り合わせに置き、枠で囲む。** 1 人ずつ生年で置くと、
+  #   コンビの 2 人が年の差のぶん別の行へ散って、枠が組めない。グループは
+  #   **メンバーの生年の中ほど**の高さに 1 かたまりで置く（縦は「何となく年齢順」になる）
+  # - 1 行に収まらない大きなグループは、行を改めて何行かに折り返す（枠もその行ぶん）
+  # - 行の中は、**つながっている相手の真上・真下へ寄せる**（かたまりごと動かす）。
+  #   夫婦は年の差のぶん別の行に入るので、縦に並ぶと線が短くなる
+  # - グループの札は枠の上の縁に置く（枠の名前になる）
+  defp cluster_layout([], _edges, _columns, _rule),
+    do: %{nodes: [], height: @canvas_height + 2 * @canvas_margin, bands: [], clusters: []}
+
+  defp cluster_layout(nodes, edges, wanted, rule) do
+    %{columns: from_aspect, cell: cell} = grid(length(nodes))
+    units = cluster_units(nodes, edges, rule)
+
+    # **小さいグループは 1 行に収める。** 人数の少ない図は 1 列になることがあり、
+    # そのままだとコンビの 2 人が縦に割れて枠が行をまたぐ
+    widest = units |> Enum.map(&length(&1.members)) |> Enum.max(fn -> 1 end)
+    columns = max(wanted || from_aspect, min(widest, @cluster_min_columns))
+    packed = pack(units, columns)
+    rows = packed |> Enum.flat_map(fn {_unit, seats} -> Enum.map(seats, &elem(&1, 1)) end)
+    row_count = Enum.max(rows, fn -> 0 end) + 1
+
+    others = Enum.reject(edges, &(&1[:via] == rule.member_prefix))
+    columns_by_id = shift_units(packed, adjacency(others))
+
+    drawn_height = max(@canvas_height, row_count * cell)
+    height = drawn_height + 2 * @canvas_margin
+    x_step = (@canvas_width - @gutter) / columns
+    y_step = drawn_height / row_count
+
+    member_spots =
+      for {_unit, seats} <- packed, {node, row, _column} <- seats, into: %{} do
+        column = Map.fetch!(columns_by_id, node.id)
+
+        {node.id,
+         %{
+           x: @gutter + (column + 0.5) * x_step,
+           y: @canvas_margin + (row + 0.5) * y_step,
+           row: row,
+           seat: column
+         }}
+      end
+
+    clusters =
+      for {%{group: group, members: members}, seats} <- packed, group != nil do
+        frame(group, members, seats, columns_by_id, columns, x_step, y_step)
+      end
+
+    group_spots =
+      Map.new(clusters, fn cluster ->
+        {cluster.id, %{x: cluster.x + cluster.width / 2, y: cluster.y, row: cluster.row, seat: 0}}
+      end)
+
+    spots = Map.merge(member_spots, group_spots)
+
+    placed =
+      packed
+      |> Enum.flat_map(fn {%{group: group}, seats} ->
+        List.wrap(group) ++ Enum.map(seats, &elem(&1, 0))
+      end)
+      |> Enum.with_index(fn node, index ->
+        Map.merge(node, Map.fetch!(spots, node.id))
+        |> Map.merge(%{
+          band: band_of(node),
+          cell_w: x_step,
+          cell_h: y_step,
+          cell: cell,
+          index: index
+        })
+      end)
+
+    %{nodes: placed, height: height, bands: [], clusters: clusters}
+  end
+
+  # かたまりに分ける。グループは今のメンバーと 1 かたまり、ほかの人は 1 人で 1 かたまり。
+  # **同じ人が 2 つのグループにいたら、名簿にいるメンバーの多いほうに入れる**（枠は
+  # 重ねられない）。メンバーが名簿に 1 人もいないグループは、札のまま 1 かたまり
+  defp cluster_units(nodes, edges, rule) do
+    by_id = Map.new(nodes, &{&1.id, &1})
+
+    members_of =
+      edges
+      |> Enum.filter(&(&1[:via] == rule.member_prefix))
+      |> Enum.group_by(& &1.from, & &1.to)
+
+    groups =
+      nodes
+      |> Enum.filter(&(&1[:kind] == rule.kind and Map.has_key?(members_of, &1.id)))
+      |> Enum.sort_by(&{-length(members_of[&1.id]), &1.name})
+
+    {framed, taken} =
+      Enum.map_reduce(groups, MapSet.new(), fn group, taken ->
+        members =
+          members_of[group.id]
+          |> Enum.uniq()
+          |> Enum.reject(&MapSet.member?(taken, &1))
+          |> Enum.map(&by_id[&1])
+          |> Enum.reject(&(is_nil(&1) or &1[:kind] == rule.kind))
+          |> Enum.sort_by(&sort_key/1)
+
+        {%{group: group, members: members}, Enum.reduce(members, taken, &MapSet.put(&2, &1.id))}
+      end)
+
+    framed = Enum.reject(framed, &(&1.members == []))
+    frames = MapSet.new(framed, & &1.group.id)
+
+    singles =
+      for node <- nodes,
+          not MapSet.member?(taken, node.id),
+          not MapSet.member?(frames, node.id),
+          do: %{group: nil, members: [node]}
+
+    Enum.sort_by(framed ++ singles, &{unit_year(&1), unit_name(&1)})
+  end
+
+  # かたまりの高さを決める年。**メンバーの生年の中ほど**（無ければグループの結成年）
+  defp unit_year(%{group: group, members: members}) do
+    case members |> Enum.map(&year_of/1) |> Enum.reject(&is_nil/1) |> Enum.sort() do
+      [] -> (group && year_of(group)) || 9999
+      years -> Enum.at(years, div(length(years) - 1, 2))
+    end
+  end
+
+  defp unit_name(%{group: nil, members: [node | _]}), do: node.name
+  defp unit_name(%{group: group}), do: group.name
+
+  # かたまりを上から順に詰める。`[{かたまり, [{人, 行, 列}]}]`。
+  # **1 行に収まるかたまりは行をまたがせない**（収まらなければ次の行へ）。
+  # 1 行より大きいかたまりは行頭から折り返し、次のかたまりは行を改めて始める
+  # （枠の中に他人が入らないように）
+  defp pack(units, columns) do
+    {packed, _row, _column} =
+      Enum.reduce(units, {[], 0, 0}, fn unit, {acc, row, column} ->
+        size = length(unit.members)
+
+        {row, column} =
+          if column == 0 or column + size <= columns, do: {row, column}, else: {row + 1, 0}
+
+        seats =
+          unit.members
+          |> Enum.with_index()
+          |> Enum.map(fn {node, i} ->
+            {node, row + div(column + i, columns), rem(column + i, columns)}
+          end)
+
+        {_node, last_row, last_column} = List.last(seats)
+
+        next =
+          cond do
+            size > columns -> {last_row + 1, 0}
+            last_column + 1 >= columns -> {last_row + 1, 0}
+            true -> {last_row, last_column + 1}
+          end
+
+        {[{unit, seats} | acc], elem(next, 0), elem(next, 1)}
+      end)
+
+    Enum.reverse(packed)
+  end
+
+  # 行の中で、かたまりを**つながっている相手の平均の列**の順に並べ替える（重心法。
+  # `reorder/3` のかたまり版）。かたまりの中の並びと、行をまたぐかたまりは動かさない
+  defp shift_units(packed, adjacency) do
+    initial =
+      for {_unit, seats} <- packed,
+          {node, _row, column} <- seats,
+          into: %{},
+          do: {node.id, column}
+
+    rows =
+      packed
+      |> Enum.filter(fn {_unit, seats} ->
+        seats |> Enum.map(&elem(&1, 1)) |> Enum.uniq() |> length() == 1
+      end)
+      |> Enum.group_by(fn {_unit, [{_node, row, _column} | _]} -> row end)
+
+    Enum.reduce(1..@barycenter_passes, initial, fn _pass, positions ->
+      Enum.reduce(rows, positions, fn {_row, blocks}, positions ->
+        start = blocks |> Enum.map(fn {_u, [{_n, _r, c} | _]} -> c end) |> Enum.min()
+
+        blocks
+        |> Enum.map(fn {_unit, seats} ->
+          ids = Enum.map(seats, &elem(&1, 0).id)
+          here = Enum.map(ids, &positions[&1])
+          {unit_center(ids, positions, adjacency, Enum.sum(here) / length(here)), ids}
+        end)
+        |> Enum.sort_by(&elem(&1, 0))
+        |> Enum.reduce({positions, start}, fn {_center, ids}, {acc, column} ->
+          acc =
+            ids
+            |> Enum.with_index()
+            |> Enum.reduce(acc, fn {id, i}, acc -> Map.put(acc, id, column + i) end)
+
+          {acc, column + length(ids)}
+        end)
+        |> elem(0)
+      end)
+    end)
+  end
+
+  # かたまりの寄せ先。**メンバーの相手の平均**（相手がいなければ今の位置のまま）
+  defp unit_center(ids, positions, adjacency, here) do
+    inside = MapSet.new(ids)
+
+    case for(
+           id <- ids,
+           other <- Map.get(adjacency, id, []),
+           not MapSet.member?(inside, other),
+           do: positions[other]
+         )
+         |> Enum.reject(&is_nil/1) do
+      [] -> here
+      columns -> Enum.sum(columns) / length(columns)
+    end
+  end
+
+  # グループの枠（左上・幅・高さ）。行をまたぐかたまりは、その行ぶんの幅いっぱい
+  defp frame(group, members, seats, columns_by_id, columns, x_step, y_step) do
+    rows = Enum.map(seats, &elem(&1, 1))
+    {top, bottom} = Enum.min_max(rows)
+
+    {left, right} =
+      if top == bottom,
+        do: members |> Enum.map(&columns_by_id[&1.id]) |> Enum.min_max(),
+        else: {0, columns - 1}
+
+    inset = @frame_inset * min(x_step, y_step)
+
+    %{
+      id: group.id,
+      name: group.name,
+      x: Float.round(@gutter + left * x_step + inset, 1),
+      y: Float.round(@canvas_margin + top * y_step + inset, 1),
+      width: Float.round((right - left + 1) * x_step - 2 * inset, 1),
+      height: Float.round((bottom - top + 1) * y_step - 2 * inset, 1),
+      row: top,
+      members: Enum.map(members, & &1.id)
+    }
+  end
 
   # **時代は縦に流す。** 人数が増えても幅が要らないので、たくさん並べられる
   # （横に流していた頃は 12 人で幅 2400 になり、画面に収まらなかった）。

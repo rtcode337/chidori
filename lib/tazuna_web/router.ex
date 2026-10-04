@@ -34,6 +34,10 @@ defmodule TazunaWeb.Router do
     # 集めたものを travel-log 用の ZIP で渡す。**ファイルを返すだけなので LiveView に
     # 載せない**（押したら降ってくる、以上の状態を持たない）
     get "/datasets/:key/travel-log.zip", DatasetsController, :export
+
+    # 関連図の顔写真の写し（`Tazuna.Relations.Faces`）。見る人のブラウザに写真の
+    # 置き場を直に引かせないため、tazuna が配る
+    get "/faces/:id", FaceController, :show
   end
 
   # 外のアプリから頼まれる口（JSON）。**LAN の中から呼ばれる前提**で、認証は持たない

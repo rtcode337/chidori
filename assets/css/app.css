@@ -338,6 +338,11 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relation-edge { stroke: #b6bdd2; stroke-width: 2; }
 .relation-edge.family { stroke: #d07b91; }
 .relation-edge.duo { stroke: #7770cc; stroke-dasharray: 7 6; }
+/* 夫婦。芸能人の図でいちばん知りたい線なので、いちばん太く濃くする */
+.relation-edge.spouse { stroke: #e0386d; stroke-width: 3; }
+/* グループの枠。色はグループの札と同じ（hue_style）。中のメンバーが読めるよう薄く */
+.relation-cluster { fill: rgb(226 232 240 / 0.45); stroke: #94a3b8; stroke-width: 1.5; }
+.node-face { clip-path: inset(0 round 18%); }
 .relation-edge.influence { stroke: #6f69c8; stroke-width: 2.5; }
 /* 相互リンクだけの線。何の関係かは分からないので、影響の線より薄く細く */
 .relation-edge.related { stroke: #cfd4e6; stroke-width: 1.5; }

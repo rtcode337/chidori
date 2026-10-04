@@ -63,6 +63,8 @@ defmodule TazunaWeb.RelationsLive do
        # **ほかの絞り込みとは排他**（重ねると、出ていない理由が読めない）
        review_filter: nil,
        focus_sent: nil,
+       # 名簿を引き直した結果の一言（芸能人の図）
+       reroster_message: nil,
        # 設定欄。**開いたときだけ Chiezo から読む**（図を開くたびには読まない）。
        # settings は nil（まだ）/ :loading / 読めたもの / {:error, 理由}
        settings_open: false,
@@ -218,6 +220,21 @@ defmodule TazunaWeb.RelationsLive do
   # 相手を選んだ拍子に「考える量: 空」まで覚えてしまい、そのあと考える量を選んでも
   # 空のまま送られていた（画面では選べているように見えるので、押すまで気づけない）。
   # フォームは変更のたびに丸ごと届くので、この控えだけで全部の欄が揃う
+  # 名簿の知名度の下限を変えて、名簿を引き直す（芸能人の図）。**選べる値だけ受ける**
+  def handle_event("reroster", %{"min" => min}, socket) do
+    with {value, ""} <- Integer.parse(to_string(min)),
+         true <- value in Tazuna.Relations.Settings.choices(),
+         :ok <- Relations.reroster(socket.assigns.view, value) do
+      {:noreply,
+       assign(socket,
+         reroster_message: "月 #{delimit(value)} 以上で名簿を引き直すよう頼んでいます…"
+       )}
+    else
+      {:error, reason} -> {:noreply, assign(socket, reroster_message: relation_reason(reason))}
+      _bad -> {:noreply, socket}
+    end
+  end
+
   def handle_event("pick_sweep", params, socket),
     do: {:noreply, assign(socket, picks: sweep_choices(params))}
 
@@ -272,7 +289,7 @@ defmodule TazunaWeb.RelationsLive do
     # **知っている種類だけ読む**（画面から来る値なので、そのまま atom にしない）
     kind =
       Map.get(
-        %{"influence" => :influence, "family" => :family, "duo" => :duo},
+        %{"influence" => :influence, "family" => :family, "spouse" => :spouse, "duo" => :duo},
         params["kind"],
         :related
       )
@@ -558,6 +575,16 @@ defmodule TazunaWeb.RelationsLive do
   defp picks(socket, params), do: merged_picks(socket.assigns.picks, params)
 
   @impl true
+  def handle_info({:reroster, _key, result}, socket) do
+    message =
+      case result do
+        :ok -> "名簿を引き直しました。新しく入った人は、ざっと見る回で順に詳しくなります。"
+        {:error, reason} -> "名簿を引き直せませんでした: " <> relation_reason(reason)
+      end
+
+    {:noreply, assign(socket, reroster_message: message)}
+  end
+
   def handle_info({:relation_updated, relation}, socket) do
     # **設定を送り終えたら、開いている設定欄を読み直す。** 送った中身は Chiezo の
     # 側で書き換わっているので、前に読んだものを出し続けると、送れていないように見える
@@ -645,6 +672,14 @@ defmodule TazunaWeb.RelationsLive do
     case Graph.hue_of(node) do
       nil -> nil
       hue -> "fill: hsl(#{hue} 62% 92%); stroke: hsl(#{hue} 45% 58%)"
+    end
+  end
+
+  @doc "グループの枠の色（グループの札と同じ色相で、中のメンバーが読めるよう薄く）。"
+  def cluster_style(cluster) do
+    case cluster[:hue] do
+      nil -> nil
+      hue -> "fill: hsl(#{hue} 60% 94% / 0.5); stroke: hsl(#{hue} 45% 55%)"
     end
   end
 
@@ -1027,6 +1062,8 @@ defmodule TazunaWeb.RelationsLive do
     by_id = Map.new(drawn, &{&1.id, &1})
 
     for edge <- relation.edges,
+        # 枠に入っているメンバーへの線は描かない（枠で分かる）
+        !edge[:framed?],
         from = by_id[edge.from],
         to = by_id[edge.to] do
       # **矢印の先は札の枠で止める。** 中央まで引くと、先端が札の下に隠れて
@@ -1081,8 +1118,19 @@ defmodule TazunaWeb.RelationsLive do
 
   持っていないノード（人物の図）には、以前の丸と同じ大きさの札を返します。
   """
-  def label_width_of(node), do: node[:label_width] || radius_of(node) * 2.6
+  def label_width_of(node),
+    do: (node[:label_width] || radius_of(node) * 2.6) + face_slot(node)
+
   def label_height_of(node), do: node[:label_height] || radius_of(node) * 1.6
+
+  @doc """
+  顔写真のぶん札に足す幅（札の高さの正方形）。写しの無い人は 0。**札の幅に数える** ——
+  数えないと、重なりを避ける仕組みが写真のぶんを知らずに隣と重ねる。
+  """
+  def face_slot(node), do: if(node[:face], do: label_height_of(node), else: 0)
+
+  @doc "顔写真の札の縁からの余白。"
+  def face_inset(node), do: label_height_of(node) * 0.08
 
   @doc "丸の半径。知名度が引けていなければ既定の大きさ。"
   def radius_of(node), do: node[:radius] || if(node[:kind] == :group, do: 47, else: 42)
@@ -1247,4 +1295,13 @@ defmodule TazunaWeb.RelationsLive do
     do: "この画家の入る区画が見つかりませんでした（区画を割り直したばかりのときに起きます）。"
 
   defp relation_reason(reason), do: reason_text(reason)
+
+  @doc "数を 3 桁ごとに区切る（10000 → 10,000）。"
+  def delimit(number) when is_integer(number) do
+    number
+    |> Integer.to_string()
+    |> String.reverse()
+    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
+    |> String.reverse()
+  end
 end
