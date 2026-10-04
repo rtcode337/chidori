@@ -11,6 +11,12 @@ defmodule Tazuna.Datasets.ClosedTwins do
   ざっと見るの回に割り込ませます**。消すかどうかは AI が決めます —— 近所に同じ
   チェーンの別の店があるのは普通なので、機械で消すと開いている店まで消える。
 
+  **現地から営業中の報告で戻した店は、片割れとして頼みません**（本文の「現地から営業中の
+  報告」。`Tazuna.Datasets.Requests.preface/0` が戻すときに書かせる）。頼むと、AI は消した
+  店の理由（閉店）を信じて、現地で営業を見た店をもう一度消す —— 実際に、「閉店して
+  いない」の報告で戻した店が、同じ店として閉店で消した片割れの墓標に引かれて、
+  次の割り込みで消えた。
+
   **同じ組は二度頼みません**（`Tazuna.Datasets.ClosedTwinCheck`）。「別の店なので
   残す」と判断された 1 件は生きたまま残るので、控えが無いと毎日頼み直すことになる。
 
@@ -37,6 +43,8 @@ defmodule Tazuna.Datasets.ClosedTwins do
   # 近くの似た名前の 1 件こそが生きている本体
   @closed ~r/閉店|閉業|廃業|営業終了|営業を終了/u
   @moved ~r/移転/u
+  # 現地で営業を見た報告で戻した店の印（`Requests.preface/0` が本文に書かせる）
+  @reported_open "現地から営業中の報告"
 
   @doc "消した理由が閉店か。"
   def closed?(reason) when is_binary(reason),
@@ -92,6 +100,7 @@ defmodule Tazuna.Datasets.ClosedTwins do
         for stone <- tombstones,
             twin <- living_near(base, collection, stone),
             similar?(twin["title"], stone.title),
+            not reported_open?(twin),
             not MapSet.member?(asked, {twin["title"], stone.title}) do
           %{
             twin: twin["title"],
@@ -103,6 +112,12 @@ defmodule Tazuna.Datasets.ClosedTwins do
 
       {:ok, pairs}
     end
+  end
+
+  @doc "現地から営業中の報告で戻した店か（本文の頭に印がある）。"
+  def reported_open?(doc) do
+    [doc["opening"], doc["body"]]
+    |> Enum.any?(&(is_binary(&1) and String.contains?(&1, @reported_open)))
   end
 
   @doc """
@@ -165,6 +180,7 @@ defmodule Tazuna.Datasets.ClosedTwins do
     1 軒ずつ確かめてください。
     - 消した店と同じ店（同じ住所・同じ建物の、辞典違いや表記違い）なら、同じく閉店として墓標で消してください（理由も同じように 1 行で）。
     - 別の店（同じチェーンの別の店舗、同じ名前の別の店）で営業しているなら、そのまま残してください。返さなくてかまいません。
+    - 本文に「#{@reported_open}」とある店は、現地で営業しているのを見た報告があった店です。消した店の理由より報告を信じて、消さないでください。
     """
   end
 

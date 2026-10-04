@@ -109,6 +109,30 @@ defmodule Tazuna.Datasets.ClosedTwinsTest do
       refute_received {:nearby, _url}
     end
 
+    test "現地から営業中の報告で戻した店は、片割れとして頼まない" do
+      # 頼むと、AI は消した店の理由（閉店）を信じて、現地で営業を見た店をもう一度消した
+      reported = %{
+        "title" => "Ninja Akasaka (1772404)",
+        "tags" => ["食事処"],
+        "opening" => "所在地: 東京都港区\n現地から営業中の報告。忍者屋敷風のレストラン。",
+        "extra" => %{"lat" => 35.6773, "lon" => 139.7375}
+      }
+
+      HttpStub.stub(fn %{method: :get, url: url} ->
+        if String.contains?(url, "tag=_chiezo_removed"),
+          do:
+            HttpStub.ok(
+              Jason.encode!(%{"results" => @tombstones, "total" => length(@tombstones)})
+            ),
+          else: HttpStub.ok(Jason.encode!(%{"results" => [reported]}))
+      end)
+
+      assert {:ok, []} = ClosedTwins.find(@base, @dataset.collection)
+      # AI にも、報告のある店は消さないよう頼んである
+      assert ClosedTwins.note([%{twin: "A", closed: "B", reason: "閉店", meters: 5}]) =~
+               "現地から営業中の報告"
+    end
+
     test "まだ AI が見ていない店も探す（片割れはたいていそこに居る）" do
       stub()
       {:ok, _pairs} = ClosedTwins.find(@base, @dataset.collection)

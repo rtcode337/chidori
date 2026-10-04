@@ -269,7 +269,9 @@ defmodule Tazuna.Chiezo do
       URI.encode_query(%{
         "bbox" => Enum.join([lat - dlat, lon - dlon, lat + dlat, lon + dlon], ","),
         "limit" => 50,
-        "fields" => "title,tags,extra",
+        # 冒頭（`opening`）も読む —— 「現地から営業中の報告」で戻した店を見分けるのに使う
+        # （`Tazuna.Datasets.ClosedTwins`）
+        "fields" => "title,tags,extra,opening",
         "include_removed" => "true"
       })
 
