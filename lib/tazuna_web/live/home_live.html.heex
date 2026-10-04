@@ -95,7 +95,7 @@
         <p :if={match?({:error, _}, @events)} class="muted-note">イベントを読めませんでした。</p>
         <%= if match?({:ok, _}, @events) do %>
           <% list = upcoming(elem(@events, 1)) %>
-          <p :if={list == []} class="muted-note">これから 2 か月の注目イベントはまだありません。</p>
+          <p :if={list == []} class="muted-note">これから 2 か月の、注目度の高いイベントはまだありません。</p>
           <ul :if={list != []} class="event-day-list home-events">
             <li :for={entry <- list} class={["event-item", "is-#{entry.attention}"]}>
               <img

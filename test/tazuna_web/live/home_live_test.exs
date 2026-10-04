@@ -38,7 +38,7 @@ defmodule TazunaWeb.HomeLiveTest do
     refute embedded =~ "主要メニュー"
   end
 
-  test "注目イベントは、これから 2 か月を近い順に" do
+  test "注目イベントは、注目度が高いものを、これから 2 か月まで近い順に" do
     today = ~D[2026-10-01]
     event = fn title, date, attention -> %{title: title, date: date, attention: attention} end
 
@@ -46,15 +46,17 @@ defmodule TazunaWeb.HomeLiveTest do
       TazunaWeb.HomeLive.upcoming(
         [
           event.("終わった", ~D[2026-09-30], :high),
-          event.("先すぎる", ~D[2026-12-15], :high),
+          event.("先すぎる", ~D[2026-12-02], :high),
+          event.("2 か月後", ~D[2026-12-01], :high),
           event.("来週・中", ~D[2026-10-08], :mid),
           event.("来週・高", ~D[2026-10-08], :high),
-          event.("今日", ~D[2026-10-01], :mid)
+          event.("今日・高", ~D[2026-10-01], :high)
         ],
         today
       )
 
-    assert Enum.map(list, & &1.title) == ["今日", "来週・高", "来週・中"]
+    # 中は出さない（中まで入れると、件数の上限で先の月が見えなくなる）
+    assert Enum.map(list, & &1.title) == ["今日・高", "来週・高", "2 か月後"]
   end
 
   test "技術書は、押すとその本を勧めている記事をたどれる", %{conn: conn} do

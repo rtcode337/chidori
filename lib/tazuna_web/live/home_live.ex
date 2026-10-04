@@ -24,9 +24,9 @@ defmodule TazunaWeb.HomeLive do
   alias Tazuna.Topics
   alias TazunaWeb.NewsLive
 
-  # 注目イベントを先まで見る日数と、並べる数
-  @events_days 60
-  @events_max 20
+  # 注目イベントを先まで見る月数。**注目度が高いものだけ**を並べるので、数では切らない
+  # （中まで入れていた頃は、20 件の上限で 1 か月先あたりまでしか見えなかった）
+  @events_months 2
 
   @impl true
   def mount(_params, _session, socket) do
@@ -98,7 +98,7 @@ defmodule TazunaWeb.HomeLive do
     end
   end
 
-  # 注目度が中以上だけをタグで引く（溜まっている全部は読みに行かない）
+  # 注目度が高いものだけをタグで引く（溜まっている全部は読みに行かない）
   defp load(socket, %{kind: :events, topic: topic}) do
     case News.chiezo_base_url() do
       nil ->
@@ -106,7 +106,7 @@ defmodule TazunaWeb.HomeLive do
 
       base ->
         if connected?(socket) do
-          tags = Enum.map_join(["高", "中"], ",", &"#{Events.attention_tag()}:#{&1}")
+          tags = "#{Events.attention_tag()}:高"
 
           socket
           |> assign(events: :loading)
@@ -163,18 +163,16 @@ defmodule TazunaWeb.HomeLive do
   defp to_index(_value), do: 0
 
   @doc """
-  これからの注目イベント。**今日から #{@events_days} 日先まで**を、開催日の近い順に
-  （同じ日なら注目度の高い順）#{@events_max} 件まで。
+  これからの注目イベント。**注目度が高いもの**を、**今日から #{@events_months} か月先まで**、
+  開催日の近い順に。
   """
   def upcoming(entries, today \\ Jst.today()) do
-    until = Date.add(today, @events_days)
+    until = Date.shift(today, month: @events_months)
 
     entries
+    |> Enum.filter(&(&1.attention == :high))
     |> Enum.filter(&(Date.compare(&1.date, today) != :lt and Date.compare(&1.date, until) != :gt))
-    |> Enum.sort_by(
-      &{Date.to_gregorian_days(&1.date), if(&1.attention == :high, do: 0, else: 1), &1.title}
-    )
-    |> Enum.take(@events_max)
+    |> Enum.sort_by(&{Date.to_gregorian_days(&1.date), &1.title})
   end
 
   @impl true
