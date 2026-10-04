@@ -57,6 +57,19 @@ defmodule Tazuna.Datasets.TravelLogTest do
       assert row["description"] =~ "営業時間: Mo-Fr 11:00-14:00; Sa 17:00-23:00"
     end
 
+    test "座標が固定された店には、カテゴリ「位置確認済み」が付く" do
+      # travel-log から渡した位置確認が Chiezo まで届いたことを、取り込み直して確かめられる
+      tags = ["食事処", "ジャンル:和食", "地域:東京都", "特徴:個室あり", Tazuna.Chiezo.locked_tag()]
+      extra = %{"lat" => 35.6, "lon" => 139.7}
+      row = TravelLog.row(doc(%{"tags" => tags, "extra" => extra}), dataset())
+
+      assert row["categories"] == "個室あり|位置確認済み"
+
+      # AI に付けさせる語彙には入れない（確かめていない店に付けられないように）
+      refute "位置確認済み" in Tazuna.Datasets.Meals.features()
+      assert List.last(Tazuna.Datasets.Meals.category_order()) == "位置確認済み"
+    end
+
     test "鍵は Chiezo の doc_id" do
       # 焼き直しても引き継がれる番号。名前を鍵にすると、AI が表記を直した回で
       # 別のスポットが増える

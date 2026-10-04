@@ -139,7 +139,11 @@ defmodule Tazuna.Datasets.TravelLog do
 
   # 収集が語彙を持っていれば、その並び（無ければ渡さない）
   defp category_order(module) do
-    if function_exported?(module, :features, 0), do: module.features(), else: nil
+    cond do
+      function_exported?(module, :category_order, 0) -> module.category_order()
+      function_exported?(module, :features, 0) -> module.features()
+      true -> nil
+    end
   end
 
   # 全ページ。**件数は 1 ページ目が教えてくれる**ので、何周するかはそこで決まる
