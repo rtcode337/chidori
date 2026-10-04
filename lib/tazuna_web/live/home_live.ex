@@ -3,6 +3,7 @@ defmodule TazunaWeb.HomeLive do
   トップページ。**設定ページで選んだ枠をタブで並べ、最初の枠を開いた状態で出します**
   （`Tazuna.Home`）。
 
+  - 書き手ごとの要約 —— 要約を別の収集から読む話題（市況ニュース）。書き手ごとに最新の 1 本
   - 話題の要約 —— その話題のいちばん新しい要約を全文で。**右上のアイコンで全画面に
     開き、左右のスワイプで前後の要約へ**（最新情報の画面と同じ部品）
   - 興味トピックの要約 —— 同じ話題を、選んだ興味トピックに絞って書いたもの
@@ -39,6 +40,8 @@ defmodule TazunaWeb.HomeLive do
        # 読んだ本（上位の枠から外す。`Tazuna.Datasets.BookMarks`）
        read_books: MapSet.new(),
        events: nil,
+       # 書き手ごとの要約（市況ニュース。`Tazuna.News.AiDigests`）
+       ai_digests: nil,
        # 押した本（書名の見出し。`本:<書名>`）と、それを勧めている記事
        opened_book: nil,
        book_posts: nil,
@@ -115,6 +118,25 @@ defmodule TazunaWeb.HomeLive do
           end)
         else
           assign(socket, events: :loading)
+        end
+    end
+  end
+
+  # 要約を別の収集から読む話題（市況ニュース）。書き手ごとに最新の 1 本
+  defp load(socket, %{kind: :ai_digests, topic: topic}) do
+    case News.chiezo_base_url() do
+      nil ->
+        assign(socket, ai_digests: {:error, :chiezo_not_configured})
+
+      base ->
+        if connected?(socket) do
+          source = Topics.digest_from(topic)
+
+          socket
+          |> assign(ai_digests: :loading)
+          |> start_async(:ai_digests, fn -> Tazuna.News.AiDigests.latest(base, source) end)
+        else
+          assign(socket, ai_digests: :loading)
         end
     end
   end
@@ -207,6 +229,12 @@ defmodule TazunaWeb.HomeLive do
 
   def handle_async(:events, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, events: {:error, :chiezo_unavailable})}
+
+  def handle_async(:ai_digests, {:ok, result}, socket),
+    do: {:noreply, assign(socket, ai_digests: result)}
+
+  def handle_async(:ai_digests, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, ai_digests: {:error, :chiezo_unavailable})}
 
   @impl true
   # **要約を全画面で読む**（最新情報の画面と同じ動き）。目次の項目から開いたときは、その章から

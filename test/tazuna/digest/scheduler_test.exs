@@ -58,21 +58,21 @@ defmodule Tazuna.Digest.SchedulerTest do
 
   test "同じ時刻に来た回は全部並べる（並んでいる・走っている話題は除く）" do
     # 1 本ずつ拾っていた頃は、4 つが同じ 07:00 に並ぶと最後の話題が猶予を過ぎて捨てられた
-    for c <- ~w(tazuna_news tazuna_tech tazuna_market),
+    for c <- ~w(tazuna_news tazuna_tech tazuna_movies),
         do: Settings.put(c, %{"digest_at" => "07:00"})
 
     topics =
       Enum.filter(
         Tazuna.Topics.list(),
-        &(&1.collection in ~w(tazuna_news tazuna_tech tazuna_market))
+        &(&1.collection in ~w(tazuna_news tazuna_tech tazuna_movies))
       )
 
     now = ~U[2026-09-16 22:01:00Z]
 
-    assert ~w(tazuna_news tazuna_tech tazuna_market) ==
+    assert ~w(tazuna_news tazuna_tech tazuna_movies) ==
              topics |> Scheduler.due_all(MapSet.new(), now) |> Enum.map(&elem(&1, 0).collection)
 
-    assert ~w(tazuna_news tazuna_market) ==
+    assert ~w(tazuna_news tazuna_movies) ==
              topics
              |> Scheduler.due_all(MapSet.new(["tazuna_tech"]), now)
              |> Enum.map(&elem(&1, 0).collection)

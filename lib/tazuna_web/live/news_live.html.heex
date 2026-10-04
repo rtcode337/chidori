@@ -39,7 +39,26 @@
     <%!-- まとめ。**カレンダーと記事の一覧より先に出す**（映画の注目作の一覧は長いので、
          下に置くと要約が見えなくなっていた） —— 溜まったものをそのまま並べても
          読めないので、何が起きたかを先に言う（通知へ流れるのは、この中の要旨） --%>
-    <section :if={@news.digests != []} class="news-digest" aria-label="要約">
+    <%!-- 要約を別の収集から読む話題（市況ニュース）は、書き手ごとの要約。
+         **tazuna 自身の要約は出さない**（作るのをやめる前に溜まった分が Chiezo に残っていても） --%>
+    <section
+      :if={@topic && Tazuna.Topics.digest_from(@topic)}
+      class="news-digest"
+      aria-label="要約"
+    >
+      <h2 class="news-section-title">要約（AI ごと）</h2>
+      <TazunaWeb.AiDigests.ai_digests
+        digests={@ai_digests}
+        label={@topic.name}
+        id_prefix="news-ai"
+      />
+    </section>
+
+    <section
+      :if={@news.digests != [] and !(@topic && Tazuna.Topics.digest_from(@topic))}
+      class="news-digest"
+      aria-label="要約"
+    >
       <h2 class="news-section-title">要約</h2>
       <.digest_preview
         digests={@news.digests}

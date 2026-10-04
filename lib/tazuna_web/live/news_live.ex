@@ -130,10 +130,36 @@ defmodule TazunaWeb.NewsLive do
         cal_events: nil,
         cal_day: nil,
         cal_places: [],
-        works: nil
+        works: nil,
+        ai_digests: nil
       )
 
-    {:noreply, socket |> load_themes() |> load_calendar() |> load_works()}
+    {:noreply, socket |> load_themes() |> load_calendar() |> load_works() |> load_ai_digests()}
+  end
+
+  # 要約を別の収集から読む話題（市況ニュース）。書き手ごとに最新の 1 本（`Tazuna.News.AiDigests`）
+  defp load_ai_digests(socket) do
+    topic = socket.assigns.topic
+    base = News.chiezo_base_url()
+    source = topic && Topics.digest_from(topic)
+
+    cond do
+      source == nil ->
+        socket
+
+      base == nil ->
+        assign(socket, ai_digests: {:error, :chiezo_not_configured})
+
+      connected?(socket) ->
+        socket
+        |> assign(ai_digests: :loading)
+        |> start_async({:ai_digests, topic.collection}, fn ->
+          Tazuna.News.AiDigests.latest(base, source)
+        end)
+
+      true ->
+        assign(socket, ai_digests: :loading)
+    end
   end
 
   # 開催日のカレンダーは**その月のぶんだけ**引く（`Tazuna.News.Events.fetch_month/3`）。
@@ -727,6 +753,21 @@ defmodule TazunaWeb.NewsLive do
 
   # 読めなくても記事は読める（何が読めていないかは収集の枠に出る）
   def handle_async({:themes, _collection}, _result, socket), do: {:noreply, socket}
+
+  # **いま見ている話題の答えだけ受け取る**（話題を切り替えた直後に前の答えが届くことがある）
+  def handle_async({:ai_digests, collection}, result, socket) do
+    if socket.assigns.topic && socket.assigns.topic.collection == collection do
+      value =
+        case result do
+          {:ok, answer} -> answer
+          {:exit, _reason} -> {:error, :chiezo_unavailable}
+        end
+
+      {:noreply, assign(socket, ai_digests: value)}
+    else
+      {:noreply, socket}
+    end
+  end
 
   def handle_async(:backends, {:ok, list}, socket) when is_list(list),
     do: {:noreply, assign(socket, backends: list)}

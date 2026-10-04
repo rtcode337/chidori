@@ -664,6 +664,10 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .news-digest { margin: 1.5rem 0 2rem; }
 /* 要約・記事一覧の見出し(トピックの網の見出しと同じ大きさ) */
 .news-section-title { margin: 0 0 .7rem; font-size: 1.05rem; }
+/* 書き手ごとの要約(市況ニュース)。1 人ぶんずつ畳み、見出しに書き手と時刻を出す */
+.ai-digest { margin: 0 0 .8rem; }
+.ai-digest > summary { cursor: pointer; padding: .45rem 0; font-weight: 600; }
+.ai-digest-at { margin-left: .6rem; color: #7c869b; font-size: .78rem; font-weight: 400; }
 /* 要約の窓。**見出し・要旨・目次はここで読める**(章と出典は押して全画面で読む) */
 .digest-preview { cursor: pointer; }
 .digest-open-hint { margin: .7rem 0 0; text-align: center; color: #554bc0; font-size: .82rem; font-weight: 700; }

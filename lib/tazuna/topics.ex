@@ -309,21 +309,13 @@ defmodule Tazuna.Topics do
             "経済指標、海外市場の大きな動き、業種全体に効く規制や制度の変更、" <>
             "個別企業の決算・業績修正・大型の受注や提携・M&A・不祥事を優先する。" <>
             "株価に関係の薄い一般のニュースは入れない",
-        # **要約は、売買提案の AI が読む決まった形にする**（`Tazuna.News.MarketDigest`）。
-        # 売買提案のアプリ は最新の 1 本をそのまま提案の材料に渡すので、読み物の論評より、日付・数字・
-        # 銘柄コードの付いた事実が決まった節に並んでいるほうが効く。**人が読むのも同じ 1 本**
-        # —— AI 用と人間用を別々に書かせると、AI に何が伝わったのかを人が確かめられない。
-        # **材料は直近 24 時間**（`{recent:24h}`）。前回からの差分にすると、回す間隔が
-        # そのまま幅になり（1 日 2 回なら 12 時間）、最新の 1 本だけを読む 売買提案のアプリ に半日ぶん
-        # しか届かない
-        digest_intro: Tazuna.News.MarketDigest.intro(),
-        digest_material: Tazuna.News.MarketDigest.material(),
-        digest_format: Tazuna.News.MarketDigest.format(),
-        themes: true,
-        theme_examples: %{
-          fields: ["金融政策", "為替", "決算", "半導体", "資源"],
-          parent: {"日銀の利上げ", "金融政策"}
-        },
+        # **要約は tazuna では作らない。** 売買提案の AI（売買提案のアプリ）の参加者が、それぞれ自分で
+        # この記事を読んで書いた要約を Chiezo の収集 pta_market に溜めている。画面には
+        # それを並べる（`digest_from`。`Tazuna.News.AiDigests`）—— 同じ記事から tazuna も
+        # 1 本書くと、AI に何が渡ったのかと人が読むものが別になる。記事の収集（機械収集と
+        # 整理）はここで続ける（売買提案のアプリ がこの記事を要約の素材に読む）
+        digest: false,
+        digest_from: "pta_market",
         buzz: """
         - 高: 複数の媒体が一斉に報じている、各社の経済面のトップや速報で扱われている、
           相場全体が反応している
@@ -359,20 +351,6 @@ defmodule Tazuna.Topics do
           %{url: "https://www.jpx.co.jp/rss/jpx-news.xml", tags: ["ニュース"]},
           %{url: "https://b.hatena.ne.jp/hotentry/economics.rss", tags: ["記事"]}
         ]
-      },
-      %{
-        name: "銘柄調査",
-        collection: "tazuna_stocks",
-        # **調べる銘柄は 売買提案のアプリ が決めて渡してくる**（`Tazuna.News.StockResearch`）。
-        # 巡回は時計を持たない情報収集の 1 本だけで、頼まれたときに動く
-        interest:
-          "頼まれた銘柄の、株価に効きそうな直近の材料と、値動きの理由。" <>
-            "公式の発表（適時開示・IR）を先に当たり、報道で補う",
-        sweeps_from: Tazuna.News.StockResearch,
-        # **要約は作らない**（読むのは 売買提案のアプリ で、1 銘柄ずつの材料が要る）
-        digest: false,
-        # 配信元は持たない（何を調べるかは頼まれるまで決まらない）
-        feeds: []
       }
     ]
   end
@@ -422,11 +400,12 @@ defmodule Tazuna.Topics do
   def works(_topic), do: nil
 
   @doc """
-  巡回をまるごと決めるモジュール（銘柄調査。`Tazuna.News.StockResearch`）。
-  書いていない話題では nil（記事を溜める巡回か、作品を育てる巡回になる）。
+  要約を**別の収集から読む**話題なら、その収集の名前（市況ニュースの `pta_market`。
+  `Tazuna.News.AiDigests`）。tazuna 自身は要約を作らず、そこに溜まった要約を
+  書き手ごとに並べる。書いていない話題では nil。
   """
-  def sweeps_from(%{sweeps_from: module}) when is_atom(module) and module != nil, do: module
-  def sweeps_from(_topic), do: nil
+  def digest_from(%{digest_from: name}) when is_binary(name), do: name
+  def digest_from(_topic), do: nil
 
   @doc "記事の一覧を出す話題か。**既定は出す**（作品を育てる話題では出さない）。"
   def articles?(%{articles: false}), do: false

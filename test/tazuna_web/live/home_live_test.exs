@@ -133,9 +133,9 @@ defmodule TazunaWeb.HomeLiveTest do
     # 要約を作らずカレンダーを持つ話題（技術イベント）は注目イベントとして並べる
     refute "topic:tazuna_events" in keys
     assert "events:tazuna_events" in keys
-    # どちらも持たない話題（銘柄調査）は並べない
-    refute "topic:tazuna_stocks" in keys
-    refute "events:tazuna_stocks" in keys
+
+    # 要約を別の収集から読む話題（市況ニュース）は、書き手ごとの要約として同じキーで並べる
+    assert %{kind: :ai_digests} = Enum.find(Home.catalog(), &(&1.key == "topic:tazuna_market"))
     assert "relations:painters" in keys
     assert "books" in keys
   end

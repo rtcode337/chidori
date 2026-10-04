@@ -635,7 +635,6 @@ defmodule Tazuna.News do
   # 先を探す回の文 —— 記事を集める文を置くと、名指ししない回が記事を溜め始める
   defp collection_prompt(topic) do
     cond do
-      module = Topics.sweeps_from(topic) -> module.prompt(topic)
       works = Topics.works(topic) -> works.survey_prompt(interest_of(topic))
       only_look_ahead?(topic) -> hd(look_ahead_sweeps(topic)).prompt
       true -> prompt(topic)
@@ -664,8 +663,6 @@ defmodule Tazuna.News do
   """
   def sweeps(topic) do
     cond do
-      # **巡回をまるごと別のモジュールが決める話題**（銘柄調査。`Tazuna.Topics` の `sweeps_from`）
-      module = Topics.sweeps_from(topic) -> module.sweeps(topic)
       works = Topics.works(topic) -> work_sweeps(topic, works)
       true -> article_sweeps(topic)
     end
@@ -1255,7 +1252,6 @@ defmodule Tazuna.News do
   """
   def refine_prompt(topic) do
     cond do
-      module = Topics.sweeps_from(topic) -> module.prompt(topic)
       works = Topics.works(topic) -> works.refine_prompt(interest_of(topic))
       true -> article_refine_prompt(topic)
     end

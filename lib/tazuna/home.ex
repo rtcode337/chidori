@@ -5,7 +5,8 @@ defmodule Tazuna.Home do
 
   並べられる枠は次のとおりです。
 
-  - 話題の要約（`topic:<収集>`）—— 最新情報の話題のうち、要約を作るもの
+  - 話題の要約（`topic:<収集>`）—— 最新情報の話題のうち、要約を作るもの。
+    要約を別の収集から読む話題（市況ニュース）は、書き手ごとの要約を並べる
   - 興味トピックの要約（`interest:<収集>`）—— 同じ話題を、選んだ興味トピックに
     絞って書いたもの（トピックの網を育てる話題だけ。「技術興味ニュース」など）
   - これからの注目イベント（`events:<収集>`）—— 要約を作らず、開催日のカレンダーを
@@ -32,6 +33,18 @@ defmodule Tazuna.Home do
     topics =
       Enum.flat_map(Topics.list(), fn topic ->
         cond do
+          # **要約を別の収集から読む話題は、書き手ごとの要約**（市況ニュース。
+          # `Tazuna.News.AiDigests`）。キーは要約を作る話題と同じ形にして、選んであった枠を生かす
+          Topics.digest_from(topic) ->
+            [
+              %{
+                key: "topic:" <> topic.collection,
+                name: topic.name,
+                kind: :ai_digests,
+                topic: topic
+              }
+            ]
+
           # **要約を作る話題は要約、作らずにカレンダーを持つ話題は注目イベント**
           Topics.digest?(topic) ->
             [%{key: "topic:" <> topic.collection, name: topic.name, kind: :topic, topic: topic}] ++

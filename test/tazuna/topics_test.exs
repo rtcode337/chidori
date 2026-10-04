@@ -49,8 +49,7 @@ defmodule Tazuna.TopicsTest do
                "お笑いイベント",
                "映画",
                "アニメ",
-               "市況ニュース",
-               "銘柄調査"
+               "市況ニュース"
              ]
     end
 

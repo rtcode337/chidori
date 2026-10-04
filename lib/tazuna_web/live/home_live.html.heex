@@ -67,6 +67,20 @@
         <p><a href={~p"/news?view=#{@panel.topic.collection}"}>{@panel.topic.name}の画面へ</a></p>
       </section>
 
+      <%!-- 書き手ごとの要約（市況ニュース。売買提案の AI がそれぞれ自分で書いたもの） --%>
+      <section
+        :if={@panel && @panel.kind == :ai_digests}
+        class="home-panel"
+        aria-label={@panel.name}
+      >
+        <TazunaWeb.AiDigests.ai_digests
+          digests={@ai_digests}
+          label={@panel.name}
+          id_prefix="home-ai"
+        />
+        <p><a href={~p"/news?view=#{@panel.topic.collection}"}>{@panel.topic.name}の画面へ</a></p>
+      </section>
+
       <%!-- 関連図は画面ごと埋め込む（操作も同じ。頭のメニューと設定は出さない） --%>
       <section
         :if={@panel && @panel.kind == :relations}

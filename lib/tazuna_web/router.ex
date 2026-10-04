@@ -10,10 +10,6 @@ defmodule TazunaWeb.Router do
     plug :put_secure_browser_headers
   end
 
-  pipeline :api do
-    plug :accepts, ["json"]
-  end
-
   scope "/", TazunaWeb do
     pipe_through :browser
 
@@ -38,14 +34,5 @@ defmodule TazunaWeb.Router do
     # 関連図の顔写真の写し（`Tazuna.Relations.Faces`）。見る人のブラウザに写真の
     # 置き場を直に引かせないため、tazuna が配る
     get "/faces/:id", FaceController, :show
-  end
-
-  # 外のアプリから頼まれる口（JSON）。**LAN の中から呼ばれる前提**で、認証は持たない
-  # （Chiezo と同じ線。ルーターでポートを開けないこと）
-  scope "/api", TazunaWeb do
-    pipe_through :api
-
-    # 銘柄調査を頼む（調べる銘柄は 売買提案のアプリ が決める。`Tazuna.News.StockResearch`）
-    post "/stock-research", StockResearchController, :create
   end
 end
