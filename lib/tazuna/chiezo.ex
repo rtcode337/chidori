@@ -369,7 +369,7 @@ defmodule Tazuna.Chiezo do
       |> then(&if(prompt, do: Map.put(&1, :prompt, prompt), else: &1))
       |> Jason.encode!()
 
-    case post(base <> "/v1/collect/" <> name <> "/focus", body, @timeout) do
+    case post(base <> "/v1/collect/" <> name <> "/focus" <> manual_query("?"), body, @timeout) do
       {:ok, %{status: status}} when status in 200..299 -> :ok
       {:ok, %{status: 403}} -> {:error, :collection_disabled}
       {:ok, %{status: 404}} -> {:error, :not_requested}
@@ -390,14 +390,43 @@ defmodule Tazuna.Chiezo do
     end
   end
 
+  # 人が押した操作の印を置く場所（`by_hand/1`）
+  @by_hand_key {__MODULE__, :by_hand}
+
+  @doc """
+  **人が押した操作として頼みます**（中で呼んだ `run/3` と `focus/7` に `manual=true` を付ける）。
+  Chiezo は、止めている収集でも人が押した 1 回は走らせます —— AI の使い過ぎを気にして
+  収集を止めていても、区画を名指しした 1 回や travel-log からの依頼は頼みたいため。
+
+  **定時の時計（要約・情報収集・片割れ確かめ）は囲まない**約束です。止めた収集が
+  時計で動かないことが、止めた意味なので。印はプロセスに置くので、**囲むのは Chiezo を
+  呼ぶプロセスの中**（Task を起こすなら Task の中で囲む）。
+  """
+  def by_hand(fun) when is_function(fun, 0) do
+    previous = Process.put(@by_hand_key, true)
+
+    try do
+      fun.()
+    after
+      if previous, do: Process.put(@by_hand_key, previous), else: Process.delete(@by_hand_key)
+    end
+  end
+
+  @doc "人が押した操作として頼んでいる最中か（`by_hand/1` の中か）。"
+  def by_hand?, do: Process.get(@by_hand_key) == true
+
+  defp manual_query(joint), do: if(by_hand?(), do: joint <> "manual=true", else: "")
+
   @doc """
   予定を待たずに1回走らせます。**止まっている収集は Chiezo が断ります**（403）。
+  人が押した操作（`by_hand/1` の中）なら、止まっていても走らせます。
   """
   def run(base, name, opts \\ []) do
     # **巡回を名指しできる。** 相手も 1 回に見る量も巡回ごとに違うので、
     # 「この回だけ今すぐ」を頼めないと、分けてある意味が半分になる。
     # **時計を持たない巡回は Chiezo が断る**（あれは割り込みからしか走らない）
     query = if sweep = opts[:sweep], do: "?" <> URI.encode_query(%{"sweep" => sweep}), else: ""
+    query = query <> manual_query(if query == "", do: "?", else: "&")
 
     # **区画と相手は、その 1 回だけの上書き**（`once`）。書かなければ
     # ふつうの回がふつうの設定で走る —— 区画の地図から「ここを 1 回見て」と

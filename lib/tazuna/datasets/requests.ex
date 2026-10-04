@@ -147,7 +147,10 @@ defmodule Tazuna.Datasets.Requests do
   """
   def apply_now(%{collection: name, module: module}) do
     with {:ok, base} <- Datasets.base_url() do
-      Chiezo.run(base, name, sweep: module.roster_sweep_name(), timeout: 60_000)
+      # 押したのは人（止めている収集でも走らせる。`Chiezo.by_hand/1`）
+      Chiezo.by_hand(fn ->
+        Chiezo.run(base, name, sweep: module.roster_sweep_name(), timeout: 60_000)
+      end)
     end
   end
 
@@ -423,7 +426,12 @@ defmodule Tazuna.Datasets.Requests do
 
     with {:ok, base} <- Datasets.base_url() do
       Chiezo.when_free(
-        fn -> Chiezo.run(base, name, sweep: sweep, partitions: keys, notes: notes) end,
+        # 「この区画を頼む」を押したのは人（止めている収集でも走らせる。`Chiezo.by_hand/1`）
+        fn ->
+          Chiezo.by_hand(fn ->
+            Chiezo.run(base, name, sweep: sweep, partitions: keys, notes: notes)
+          end)
+        end,
         deadline
       )
     end

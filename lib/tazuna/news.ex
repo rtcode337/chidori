@@ -223,8 +223,14 @@ defmodule Tazuna.News do
   """
   def ask_focus(collection, note, titles \\ []) do
     case chiezo_base_url() do
-      nil -> {:error, :chiezo_not_configured}
-      base -> Tazuna.Chiezo.focus(base, collection, note, titles, focus_sweep())
+      nil ->
+        {:error, :chiezo_not_configured}
+
+      # 画面から頼んだ 1 回（止めている収集でも走らせる。`Chiezo.by_hand/1`）
+      base ->
+        Tazuna.Chiezo.by_hand(fn ->
+          Tazuna.Chiezo.focus(base, collection, note, titles, focus_sweep())
+        end)
     end
   end
 
@@ -496,8 +502,9 @@ defmodule Tazuna.News do
     end
   end
 
+  # 「いま集める」は画面から押したときだけ来る（止めている収集でも走らせる）
   defp perform(:run, base, name) do
-    with :ok <- run_collection(base, name) do
+    with :ok <- Tazuna.Chiezo.by_hand(fn -> run_collection(base, name) end) do
       read(base, name)
     end
   end
@@ -842,7 +849,9 @@ defmodule Tazuna.News do
   def feed_spec(_topic), do: nil
 
   defp run_collection(base, name) do
-    case post(base <> "/v1/collect/" <> name <> "/run", "", @run_timeout) do
+    manual = if Tazuna.Chiezo.by_hand?(), do: "?manual=true", else: ""
+
+    case post(base <> "/v1/collect/" <> name <> "/run" <> manual, "", @run_timeout) do
       {:ok, %{status: status}} when status in 200..299 -> :ok
       # 止まっている収集は Chiezo が断る。有効にできるのは Chiezo の画面だけ
       {:ok, %{status: 403}} -> {:error, :collection_disabled}

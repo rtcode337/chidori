@@ -116,7 +116,8 @@ defmodule Tazuna.Datasets do
         attrs = dataset |> call(:shape) |> with_origin(dataset)
 
         with :ok <- Chiezo.patch(base, name, attrs) do
-          case Chiezo.run(base, name, sweep: module.roster_sweep_name()) do
+          # 範囲を変えたのは人なので、止めている収集でも走らせる（`Chiezo.by_hand/1`）
+          case Chiezo.by_hand(fn -> Chiezo.run(base, name, sweep: module.roster_sweep_name()) end) do
             :ok -> :ok
             {:error, reason} -> {:error, {:not_run, reason}}
           end
@@ -203,7 +204,8 @@ defmodule Tazuna.Datasets do
   """
   def focus_partition(%{collection: name, survey_sweep: sweep}, key, note) do
     with {:ok, base} <- base_url() do
-      Chiezo.focus(base, name, note, [], sweep, key)
+      # 人が押した 1 回（止めている収集でも走らせる。`Chiezo.by_hand/1`）
+      Chiezo.by_hand(fn -> Chiezo.focus(base, name, note, [], sweep, key) end)
     end
   end
 
@@ -257,7 +259,8 @@ defmodule Tazuna.Datasets do
   """
   def run_partition(%{collection: name}, key, opts \\ []) do
     with {:ok, base} <- base_url() do
-      Chiezo.run(base, name, Keyword.merge(opts, partitions: [key]))
+      # 人が押した 1 回（止めている収集でも走らせる。`Chiezo.by_hand/1`）
+      Chiezo.by_hand(fn -> Chiezo.run(base, name, Keyword.merge(opts, partitions: [key])) end)
     end
   end
 
@@ -267,7 +270,7 @@ defmodule Tazuna.Datasets do
   """
   def focus(%{collection: name, survey_sweep: sweep}, note) do
     with {:ok, base} <- base_url() do
-      Chiezo.focus(base, name, note, [], sweep)
+      Chiezo.by_hand(fn -> Chiezo.focus(base, name, note, [], sweep) end)
     end
   end
 

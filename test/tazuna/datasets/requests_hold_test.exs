@@ -104,6 +104,23 @@ defmodule Tazuna.Datasets.RequestsHoldTest do
       assert_received {:posted, url, _body}
       assert url =~ "/v1/collect/tazuna_dining_1/run?sweep="
       assert URI.decode(url) =~ Tazuna.SweepNames.machine()
+      # 押したのは人なので、止めている収集でも走らせる印を付ける
+      assert url =~ "manual=true"
+    end
+
+    test "人が押した操作の印は、by_hand の中だけに付く（定時の頼みには付けない）" do
+      :ok = Tazuna.Chiezo.run("http://chiezo.test", "tazuna_dining_1", sweep: "整理")
+      assert_received {:posted, url, _body}
+      refute url =~ "manual"
+
+      :ok =
+        Tazuna.Chiezo.by_hand(fn ->
+          Tazuna.Chiezo.focus("http://chiezo.test", "tazuna_dining_1", "直して", [])
+        end)
+
+      assert_received {:posted, url, _body}
+      assert url =~ "/focus?manual=true"
+      refute Tazuna.Chiezo.by_hand?()
     end
   end
 end

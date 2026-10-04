@@ -379,7 +379,7 @@ defmodule Tazuna.Themes do
   **止まっている収集は Chiezo が断ります。**
   """
   def pick_now(base, topic) do
-    Chiezo.run(base, collection_name(topic), sweep: @pick_sweep)
+    Chiezo.by_hand(fn -> Chiezo.run(base, collection_name(topic), sweep: @pick_sweep) end)
   end
 
   defp first_after(tags, prefix) do

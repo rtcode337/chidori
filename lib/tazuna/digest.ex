@@ -80,7 +80,11 @@ defmodule Tazuna.Digest do
   呼ぶ側を待たせないので、走らせるのは `Tazuna.TaskSupervisor` の下です。
   """
   def start(topic) do
-    Task.Supervisor.start_child(Tazuna.TaskSupervisor, fn -> run(topic) end)
+    # **画面から押した 1 回**なので、止めている収集でも走らせる（`Chiezo.by_hand/1`）。
+    # 定時の回（`Tazuna.Digest.Scheduler`）は囲まない —— 止めた収集が時計で動かないように
+    Task.Supervisor.start_child(Tazuna.TaskSupervisor, fn ->
+      Tazuna.Chiezo.by_hand(fn -> run(topic) end)
+    end)
   end
 
   @doc """
@@ -258,7 +262,11 @@ defmodule Tazuna.Digest do
   # 止まっている収集は Chiezo が断る。**押す前と同じ理由で先に見る** ——
   # 起こしてから断られると、どの段で止まったのかが読みにくい
   defp enabled(%{enabled: true}), do: :ok
-  defp enabled(_collection), do: {:error, :collection_disabled}
+
+  # 人が押した 1 回は、止めている収集でも走らせる（Chiezo も通す）
+  defp enabled(_collection) do
+    if Chiezo.by_hand?(), do: :ok, else: {:error, :collection_disabled}
+  end
 
   # 整理が終わったか。**収集の前回時刻で見る** —— 巡回ごとの時刻は割り込みでは
   # 進まないので、どちらの起こし方でも動く側を見る

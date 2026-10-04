@@ -219,7 +219,12 @@ defmodule TazunaWeb.DatasetsLive do
      socket
      |> assign(surveying: true)
      |> start_async(:survey, fn ->
-       result = Survey.run(dataset, plan, System.monotonic_time(:millisecond) + 60 * 60 * 1000)
+       # 画面から押した 1 回（止めている収集でも走らせる。定時の回は囲まない）
+       result =
+         Tazuna.Chiezo.by_hand(fn ->
+           Survey.run(dataset, plan, System.monotonic_time(:millisecond) + 60 * 60 * 1000)
+         end)
+
        SurveyPlans.mark_result(dataset.collection, Survey.result_text(result))
        result
      end)}

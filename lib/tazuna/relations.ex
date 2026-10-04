@@ -327,7 +327,7 @@ defmodule Tazuna.Relations do
 
         result =
           with :ok <- Chiezo.patch(base, name, %{extract: People.extract(min_pageviews)}) do
-            Chiezo.run(base, name, sweep: Tazuna.SweepNames.machine())
+            Chiezo.by_hand(fn -> Chiezo.run(base, name, sweep: Tazuna.SweepNames.machine()) end)
           end
 
         Phoenix.PubSub.broadcast(Tazuna.PubSub, topic(key), {:reroster, key, result})
@@ -1016,7 +1016,10 @@ defmodule Tazuna.Relations do
   def ask_partition(base_url, partition, note, sweep \\ @survey_sweep, key \\ "painters") do
     # **区画を名指しした割り込み。** その区画に印が付くので、巡回が同じところを
     # もう一度見ることはない —— 「ここを先に見てほしい」を頼む口
-    Chiezo.focus(base_url, collection_of(key), note, [], sweep, partition)
+    # 画面から押した 1 回（止めている収集でも走らせる。`Chiezo.by_hand/1`）
+    Chiezo.by_hand(fn ->
+      Chiezo.focus(base_url, collection_of(key), note, [], sweep, partition)
+    end)
   end
 
   @doc """
@@ -1049,7 +1052,9 @@ defmodule Tazuna.Relations do
   def ask_focus(base_url, name, note, key \\ "painters") do
     # **調査の回に頼む。** 割り込み専用の巡回は置いていない —— 同じ仕事
     # （漏れ探し・磨き・削除）を頼むのだから、設定も依頼文もそこのものでよい
-    case Chiezo.focus(base_url, collection_of(key), note, [name], @survey_sweep) do
+    case Chiezo.by_hand(fn ->
+           Chiezo.focus(base_url, collection_of(key), note, [name], @survey_sweep)
+         end) do
       :ok -> :ok
       {:error, reason} -> {:error, reason}
     end

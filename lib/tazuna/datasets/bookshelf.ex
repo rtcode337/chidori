@@ -312,7 +312,10 @@ defmodule Tazuna.Datasets.Bookshelf do
         text -> "#{name}について、分野・タグ・説明・ISBN を確かめてください。補足: #{text}"
       end
 
-    Chiezo.focus(base, collection(), written, [title], SweepNames.tidy(), nil, focus_prompt())
+    # 画面から頼んだ 1 回（止めている収集でも走らせる。`Chiezo.by_hand/1`）
+    Chiezo.by_hand(fn ->
+      Chiezo.focus(base, collection(), written, [title], SweepNames.tidy(), nil, focus_prompt())
+    end)
   end
 
   @doc "巡回ごとの依頼文（画面に出すため。機械収集の回は AI を呼ばないので持たない）。"
