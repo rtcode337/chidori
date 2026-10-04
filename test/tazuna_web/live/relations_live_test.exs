@@ -614,6 +614,22 @@ defmodule TazunaWeb.RelationsLiveTest do
       assert Enum.map(drawn, & &1.id) == ["big"]
     end
 
+    test "夫婦の相手は、小さくても描く" do
+      # 線は両端が描かれているときだけ引くので、相手が間引かれると夫婦の線が出なかった
+      big = node("big", 10, 10, 30)
+      tiny = node("tiny", 200, 200, 1)
+      stranger = node("stranger", 300, 300, 1)
+      viewport = %{x: 0, y: 0, w: 400, h: 400, ppu: 1.0}
+
+      relation = %{
+        graph([big, tiny, stranger])
+        | edges: [%{from: "big", to: "tiny", kind: :spouse}]
+      }
+
+      drawn = RelationsLive.drawn_nodes(relation, viewport)
+      assert Enum.map(drawn, & &1.id) == ["big", "tiny"]
+    end
+
     test "拡大すると小さい丸も出てくる" do
       tiny = node("tiny", 20, 20, 1)
       fit = %{x: 0, y: 0, w: 400, h: 400, ppu: 1.0}

@@ -960,19 +960,42 @@ defmodule TazunaWeb.RelationsLive do
   """
   def drawn_nodes(relation, viewport, focus \\ nil) do
     kept = neighbourhood(relation, focus)
+    couples = couples(relation)
+
+    shown =
+      relation.nodes
+      |> Enum.filter(&(visible?(&1, viewport) and big_enough?(&1, viewport)))
+      |> MapSet.new(& &1.id)
+
+    # **夫婦の相手は、小さくても描く**（芸能人の図）。線は両端の札が描かれているときだけ
+    # 引くので、相手が小さくて間引かれると、いちばん見たい夫婦の線が全体表示で 1 本も
+    # 出なかった（親子の線だけが見えていた）
+    partners = for id <- shown, other <- Map.get(couples, id, []), into: MapSet.new(), do: other
 
     relation.nodes
     |> Enum.filter(fn node ->
-      MapSet.member?(kept, node.id) or
-        (visible?(node, viewport) and big_enough?(node, viewport))
+      MapSet.member?(kept, node.id) or MapSet.member?(shown, node.id) or
+        (MapSet.member?(partners, node.id) and visible?(node, viewport))
     end)
-    # 探して選んだ人とその相手を先に、あとは大きい順に。**置く順がそのまま優先順**で、
-    # 先に置いたものが場所を取る
-    |> Enum.sort_by(fn node -> {!MapSet.member?(kept, node.id), -radius_of(node)} end)
+    # 探して選んだ人とその相手を先に、次に夫婦の組、あとは大きい順に。
+    # **置く順がそのまま優先順**で、先に置いたものが場所を取る
+    |> Enum.sort_by(fn node ->
+      {!MapSet.member?(kept, node.id), !Map.has_key?(couples, node.id), -radius_of(node)}
+    end)
     # 重なりを見るのは総当たりなので、見る数に蓋をする
     |> Enum.take(@max_drawn * 4)
     |> without_overlap()
     |> Enum.take(@max_drawn)
+  end
+
+  # 夫婦の組（id → 相手の id の並び）。夫婦の線を持たない図では空
+  defp couples(relation) do
+    for edge <- relation.edges || [], edge.kind == :spouse, reduce: %{} do
+      acc ->
+        acc
+        |> Map.update(edge.from, [edge.to], &[edge.to | &1])
+        |> Map.update(edge.to, [edge.from], &[edge.from | &1])
+    end
   end
 
   # 札が重なるものを落とす。

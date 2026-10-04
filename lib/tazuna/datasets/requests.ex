@@ -33,44 +33,69 @@ defmodule Tazuna.Datasets.Requests do
   # 座標の書き方は travel-log のテキストの `(35.68123,139.76712)`。空白は許す
   @point ~r/\(\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*\)/u
 
-  # 「位置は正しい」の行（travel-log の `- [位置確認] 名前 (緯度,経度)`）。**AI には渡さない**
+  # 「位置OK」の行（travel-log の `- [位置確認] 名前 (緯度,経度)`）。**AI には渡さない**
   # —— 頼むだけでは守れないので、Chiezo に座標を固定させる（`hold/2`）
   @confirm_mark "[位置確認]"
+  # 「この位置へ直して」の行（travel-log の `- [位置修正] 名前 (緯度,経度) → (緯度,経度)`）。
+  # これも **AI には渡さない** —— 正しい位置は人が地図で指してあるので、調べさせる理由が無い。
+  # 前の座標で店を探し、後ろの座標で固定させる（`hold/2`）
+  @move_mark "[位置修正]"
   # 位置確認の行の店を探す広さ（メートル）。地図に出ている座標そのものなので狭くてよい
   @hold_meters 60
 
   @doc """
-  「位置は正しい」の行（`- [位置確認] 名前 (緯度,経度)`）。`%{name, lat, lon}` の並び。
+  AI を通さずに座標を固定させる行。`%{name, lat, lon}` の並び（`lat` / `lon` は店を探す
+  いまの座標）。
+
+  - 「位置OK」（`- [位置確認] 名前 (緯度,経度)`）—— その座標で固定する
+  - 「この位置へ直して」（`- [位置修正] 名前 (緯度,経度) → (緯度,経度)`）—— 後ろの座標で
+    固定する（`to: {緯度, 経度}` が付く）
   """
   def confirms(text) when is_binary(text) do
     text
     |> String.split("\n")
-    |> Enum.filter(&String.contains?(&1, @confirm_mark))
     |> Enum.flat_map(fn line ->
-      with {lat, lon} <- point_of(line),
-           name when name != "" <- confirm_name(line) do
-        [%{name: name, lat: lat, lon: lon}]
-      else
-        _none -> []
+      cond do
+        String.contains?(line, @move_mark) -> held_line(line, @move_mark)
+        String.contains?(line, @confirm_mark) -> held_line(line, @confirm_mark)
+        true -> []
       end
     end)
   end
 
   def confirms(_text), do: []
 
-  @doc "「位置は正しい」の行を除いたテキスト（AI に渡す依頼のぶん）。"
+  defp held_line(line, mark) do
+    points =
+      for [_all, lat, lon] <- Regex.scan(@point, line),
+          {lat, lon} = {to_float(lat), to_float(lon)},
+          abs(lat) <= 90 and abs(lon) <= 180,
+          do: {lat, lon}
+
+    name = confirm_name(line, mark)
+
+    case {mark, points} do
+      {_mark, _points} when name == "" -> []
+      {@move_mark, [{lat, lon}, to | _]} -> [%{name: name, lat: lat, lon: lon, to: to}]
+      {@move_mark, _points} -> []
+      {_confirm, [{lat, lon} | _]} -> [%{name: name, lat: lat, lon: lon}]
+      _none -> []
+    end
+  end
+
+  @doc "AI を通さない行（位置OK・位置修正）を除いたテキスト（AI に渡す依頼のぶん）。"
   def without_confirms(text) when is_binary(text) do
     text
     |> String.split("\n")
-    |> Enum.reject(&String.contains?(&1, @confirm_mark))
+    |> Enum.reject(&(String.contains?(&1, @confirm_mark) or String.contains?(&1, @move_mark)))
     |> Enum.join("\n")
   end
 
   def without_confirms(_text), do: ""
 
-  defp confirm_name(line) do
+  defp confirm_name(line, mark) do
     line
-    |> String.split(@confirm_mark, parts: 2)
+    |> String.split(mark, parts: 2)
     |> List.last()
     |> String.split("(", parts: 2)
     |> List.first()
@@ -78,7 +103,8 @@ defmodule Tazuna.Datasets.Requests do
   end
 
   @doc """
-  「位置は正しい」の店の座標を、Chiezo に固定させます（AI を通さない）。
+  「位置OK」「この位置へ直して」の店の座標を、Chiezo に固定させます（AI を通さない）。
+  直す先（`to`）があればその座標で、無ければいまの座標で固定します。
 
   店は**その座標の近くにある、同じ名前の 1 件**で探します（`Tazuna.Datasets.ClosedTwins`
   と同じ名前の比べ方。travel-log は見分けの番号「 (1470114)」を落として出すので、
@@ -90,11 +116,13 @@ defmodule Tazuna.Datasets.Requests do
   def hold(%{collection: name}, confirms) when is_list(confirms) do
     with {:ok, base} <- Datasets.base_url() do
       results =
-        Enum.map(confirms, fn %{name: shop, lat: lat, lon: lon} ->
+        Enum.map(confirms, fn %{name: shop, lat: lat, lon: lon} = confirm ->
+          {to_lat, to_lon} = confirm[:to] || {lat, lon}
+
           with {:ok, docs} <- Chiezo.nearby(base, name, lat, lon, @hold_meters),
                %{"title" => title} <- same_shop(docs, shop, lat, lon) || :missed,
-               :ok <- Chiezo.lock(base, name, title, lat, lon) do
-            {:held, shop}
+               :ok <- Chiezo.lock(base, name, title, to_lat, to_lon) do
+            {:held, if(confirm[:to], do: shop <> "（位置を直した）", else: shop)}
           else
             :missed -> {:missed, shop}
             {:error, reason} -> {:failed, {shop, reason}}
@@ -107,6 +135,19 @@ defmodule Tazuna.Datasets.Requests do
          missed: for({:missed, shop} <- results, do: shop),
          failed: for({:failed, one} <- results, do: one)
        }}
+    end
+  end
+
+  @doc """
+  **AI を使わずに、固定した座標をいま反映させます**（機械収集の回を 1 回走らせる）。
+
+  固定（`hold/2`）は次に焼くときから効くので、そのままだと次の AI の回まで
+  travel-log へ出せない。名簿を引く回は AI を呼ばずに焼くので、これで反映される
+  （名簿は足すだけなので、ほかは変わらない）。止まっている収集は Chiezo が断る。
+  """
+  def apply_now(%{collection: name, module: module}) do
+    with {:ok, base} <- Datasets.base_url() do
+      Chiezo.run(base, name, sweep: module.roster_sweep_name(), timeout: 60_000)
     end
   end
 

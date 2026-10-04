@@ -658,7 +658,7 @@
               travel-log の管理画面の「渡すテキスト」をそのまま貼ってください。 <strong>すぐには頼まず、1 件ずつ控えます</strong>（同じ依頼を貼り直しても 1 件のまま）。
               下の「控えている依頼」で区画ごとの件数を見て、溜まった区画から「この区画を頼む」で頼んでください
               —— 1 件しか無い区画にも 1 回ずつ AI の回が走ると、枠を使い潰します。
-              「[位置確認]」の行（位置は正しい）は AI を使わないので、貼った時点でその店の座標を Chiezo に固定させます。
+              「[位置確認]」（位置OK）と「[位置修正]」（ピンを動かして指した位置）の行は AI を使わないので、貼った時点でその店の座標を Chiezo に固定させます（位置修正は動かした先の座標で）。
             </p>
             <div class="button-row">
               <button type="submit" phx-disable-with="控えています…">控える</button>
@@ -668,6 +668,15 @@
         <p :if={held_message(@held)} class="muted-note" aria-live="polite">
           {held_message(@held)}
         </p>
+        <%!-- **AI を使わずに、いま反映する**（機械収集の回を 1 回走らせて焼き直す）。固定は
+             次に焼くときから効くので、待たずに travel-log へ出したいときに押す。AI の回を
+             待たせない・枠を使わない —— 依頼のうち、AI の要らない直しだけを先に済ませる口 --%>
+        <div :if={match?({:ok, %{held: [_ | _]}}, @held)} class="button-row">
+          <button type="button" phx-click="apply_locks" phx-disable-with="頼んでいます…">
+            AI を使わずにいま反映する
+          </button>
+        </div>
+        <p :if={@applied} class="muted-note" aria-live="polite">{applied_message(@applied)}</p>
         <p :if={stashed_message(@stashed)} class="muted-note" aria-live="polite">
           {stashed_message(@stashed)}
         </p>

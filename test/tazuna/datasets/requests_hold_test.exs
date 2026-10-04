@@ -1,6 +1,7 @@
 defmodule Tazuna.Datasets.RequestsHoldTest do
   @moduledoc """
-  travel-log の「位置は正しい」（`- [位置確認] 名前 (緯度,経度)`）。見ているのは、
+  travel-log の「位置OK」（`- [位置確認] 名前 (緯度,経度)`）と「この位置へ直して」
+  （`- [位置修正] 名前 (緯度,経度) → (緯度,経度)`）。見ているのは、
   **AI に渡すテキストから外すこと**と、**近くの同じ名前の店を探して Chiezo に座標を
   固定させること**（見つからなかった店も黙って落とさない）です。
   """
@@ -57,7 +58,7 @@ defmodule Tazuna.Datasets.RequestsHoldTest do
           )
 
         %{method: :post, url: url, body: body} ->
-          send(parent, {:posted, url, Jason.decode!(body)})
+          send(parent, {:posted, url, if(body in ["", nil], do: %{}, else: Jason.decode!(body))})
           HttpStub.ok("{}")
       end)
 
@@ -76,6 +77,33 @@ defmodule Tazuna.Datasets.RequestsHoldTest do
       assert_received {:posted, "http://chiezo.test/v1/collect/tazuna_dining_1/locks", body}
       assert body == %{"title" => "丸の内食堂 (1470001)", "lat" => 35.6812, "lon" => 139.7665}
       refute_received {:posted, _url, _body}
+    end
+
+    test "位置修正は、いまの座標で店を探して、動かした先の座標で固定させる" do
+      # ピンを動かして指した位置。AI に調べさせずにそのまま固定する
+      text = "- [位置修正] 丸の内食堂 (35.68120,139.76650) → (35.68150,139.76600)\n"
+      dataset = %{collection: "tazuna_dining_1"}
+
+      assert [%{name: "丸の内食堂", lat: 35.6812, lon: 139.7665, to: {35.6815, 139.766}}] =
+               Requests.confirms(text)
+
+      # AI に渡すテキストからは外す
+      refute Requests.without_confirms(text) =~ "位置修正"
+
+      assert {:ok, %{held: ["丸の内食堂（位置を直した）"]}} =
+               Requests.hold(dataset, Requests.confirms(text))
+
+      assert_received {:posted, "http://chiezo.test/v1/collect/tazuna_dining_1/locks", body}
+      assert body == %{"title" => "丸の内食堂 (1470001)", "lat" => 35.6815, "lon" => 139.766}
+    end
+
+    test "AI を使わずにいま反映するのは、名簿を引く回（機械収集）" do
+      dataset = %{collection: "tazuna_dining_1", module: Tazuna.Datasets.Meals}
+
+      assert Requests.apply_now(dataset) == :ok
+      assert_received {:posted, url, _body}
+      assert url =~ "/v1/collect/tazuna_dining_1/run?sweep="
+      assert URI.decode(url) =~ Tazuna.SweepNames.machine()
     end
   end
 end
