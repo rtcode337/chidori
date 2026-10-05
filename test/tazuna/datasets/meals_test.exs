@@ -556,6 +556,18 @@ defmodule Tazuna.Datasets.MealsTest do
       assert Meals.attrs(%{}, @area).prompt == prompt
     end
 
+    test "営業日と営業時間を、確かめられた店だけ OSM の書き方で埋めさせる" do
+      # ランチ営業・深夜営業の印は、この書き方から機械で読み取る（`OpeningHours`）
+      for prompt <- [Meals.tidy_prompt(), Meals.check_prompt()] do
+        assert prompt =~ "extra.opening_hours"
+        assert prompt =~ "確かめられたときだけ"
+        assert prompt =~ "Mo-Fr 11:00-14:30,17:30-22:00; Sa,Su,PH 11:00-21:00; We off"
+      end
+
+      assert Tazuna.Datasets.OpeningHours.features("Mo-Fr 11:00-14:30,17:30-22:00; We off") ==
+               [:lunch]
+    end
+
     test "整理は、報告・まだ目を通していない店・足りない店を先にし、見直しは残りの時間で" do
       prompt = Meals.tidy_prompt()
       order = fn needle -> prompt |> :binary.match(needle) |> elem(0) end

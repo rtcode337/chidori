@@ -55,7 +55,7 @@ defmodule Tazuna.Datasets.TravelLogTest do
 
       # 語彙の並びで、語彙に無い語は落とす。営業時間から読めるものは機械で足す
       assert row["categories"] == "ランチ営業|深夜営業|ゆっくりできる|個室あり|位置未確認"
-      assert row["description"] =~ "営業時間: Mo-Fr 11:00-14:00; Sa 17:00-23:00"
+      assert row["description"] =~ "営業時間: 月〜金 11:00〜14:00 / 土 17:00〜23:00"
     end
 
     test "座標が固定された店には「位置確認済み」、それ以外には「位置未確認」が付く" do

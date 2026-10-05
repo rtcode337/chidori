@@ -270,12 +270,14 @@ defmodule Tazuna.Datasets.TravelLog do
     |> Enum.join("\n")
   end
 
-  # 営業時間は地図辞典の書き方のまま添える（`Mo-Fr 11:00-15:00` のような形）。
-  # **言い換えない** —— 祝日や例外の書き方まで読み替えると、違う時間を書くことになる
+  # 営業時間は**日本語に直して**添える（`月〜金 11:00〜15:00 / 定休日: 水`）。
+  # **全部を読めたときだけ**直し、知らない書き方（月日の指定・第何曜日など）が混ざって
+  # いれば地図辞典の書き方のまま出す —— 一部だけ読み替えると、例外を落として
+  # 違う時間を書くことになる（`Tazuna.Datasets.OpeningHours.to_japanese/1`）
   defp hours(extra) do
     case clean(Map.get(extra, "opening_hours")) do
       "" -> ""
-      text -> "営業時間: " <> text
+      text -> "営業時間: " <> (Tazuna.Datasets.OpeningHours.to_japanese(text) || text)
     end
   end
 
