@@ -831,6 +831,8 @@ defmodule Tazuna.Datasets.Meals do
 
     {current}
 
+    #{nearby_block()}
+
     **上に並んでいるのが、この範囲の全部です。** 名簿は 3 つの辞典
     （Wikipedia・OpenStreetMap・Overture Maps）から機械的に作ってあり、
     1 件ごとに**どこから来たかのタグ**が付いています。
@@ -912,6 +914,8 @@ defmodule Tazuna.Datasets.Meals do
     {partition}
 
     {current}
+
+    #{nearby_block()}
 
     **上に並んでいるのが、この範囲の全部です。** この区画の店は、前の回で一度ずつ
     確かめてあります。**今回は次の順に進めてください**（上のものほど大事です）。
@@ -997,6 +1001,8 @@ defmodule Tazuna.Datasets.Meals do
     {partition}
 
     {current}
+
+    #{nearby_block()}
 
     **上に並んでいるのが、この範囲の全部です。** 名簿は 3 つの辞典
     （Wikipedia・OpenStreetMap・Overture Maps）から機械的に作ってあり、
@@ -1092,6 +1098,8 @@ defmodule Tazuna.Datasets.Meals do
     {partition}
 
     {current}
+
+    #{nearby_block()}
 
     **上に並んでいるのが、この範囲の全部です。** やってほしいことは 2 つで、
     **1 つめが主な仕事**です。
@@ -1210,6 +1218,19 @@ defmodule Tazuna.Datasets.Meals do
 
   # 1 件の形。**2 つの依頼文で同じものを使う** —— 書き分けると、片方だけ直したときに
   # 回によって別の形が返ってくる（travel-log が読むのはこの形）
+  # 隣の区画にある店（Chiezo の `{nearby}`）。**`{current}` は区画の中しか見せない**ので、
+  # 密集した地区では境目の向こうに既にある店を「足りない」と読んで足し直していた。
+  # **どの依頼文にも同じ文を置く**（足す回が 1 つでも見ていなければ、そこで被る）
+  defp nearby_block do
+    """
+    **隣の区画にある店**（この範囲のすぐ外。見出しと座標だけ）。**ここに並んでいる店は
+    足さないでください** —— 隣の区画で扱っています。辞典ごとに座標が少しずれるので、
+    この範囲の中にあるように見えても、同じ名前・同じ場所なら同じ店です。
+
+    {nearby}
+    """
+  end
+
   defp item_format do
     """
     1 件の形は次のとおりです。

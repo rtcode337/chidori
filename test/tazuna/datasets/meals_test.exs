@@ -556,6 +556,19 @@ defmodule Tazuna.Datasets.MealsTest do
       assert Meals.attrs(%{}, @area).prompt == prompt
     end
 
+    test "どの依頼文にも、隣の区画にある店を見せて足させない" do
+      # 区画の中しか見せないと、密集した地区では境目の向こうの店を足し直す
+      for prompt <- [
+            Meals.tidy_prompt(),
+            Meals.check_prompt(),
+            Meals.scan_prompt(),
+            Meals.survey_prompt()
+          ] do
+        assert prompt =~ "{nearby}"
+        assert prompt =~ "隣の区画にある店"
+      end
+    end
+
     test "営業日と営業時間を、確かめられた店だけ OSM の書き方で埋めさせる" do
       # ランチ営業・深夜営業の印は、この書き方から機械で読み取る（`OpeningHours`）
       for prompt <- [Meals.tidy_prompt(), Meals.check_prompt()] do
