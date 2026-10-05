@@ -17,7 +17,8 @@ defmodule Tazuna.Datasets.PiholeTest do
 
       # 前の版で送った名簿の指定は消す（残ると 1 回目が名簿の回として走る）
       attrs = Pihole.attrs()
-      assert Map.has_key?(attrs, :extract) and attrs.extract == nil
+      # null は Chiezo が「触らない」と読むので、空のオブジェクトで外す
+      assert attrs.extract == %{}
     end
 
     test "整理は web で調べ、まだ調べていないものを決まった数ずつ、重みの順に渡す" do

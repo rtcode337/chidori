@@ -193,8 +193,9 @@ defmodule Tazuna.Datasets.Pihole do
       prompt: research_prompt(),
       interval_minutes: SweepNames.tidy_minutes(),
       # **名簿を引く指定は持たない**（前の版で送ったものを消す。残っていると、
-      # 進み具合が空の 1 回目が名簿の回として走る）
-      extract: nil,
+      # 進み具合が空の 1 回目が名簿の回として走る）。**空のオブジェクトで外す** ——
+      # Chiezo の更新は null を「触らない」と読む
+      extract: %{},
       sweeps: with_choices(sweeps(), choices),
       # **網羅。** 一度調べたドメインは、また出てきたときに読み直さずに済むよう残す
       kind: "stock",
