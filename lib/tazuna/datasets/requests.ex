@@ -43,6 +43,12 @@ defmodule Tazuna.Datasets.Requests do
   # 位置確認の行の店を探す広さ（メートル）。地図に出ている座標そのものなので狭くてよい
   @hold_meters 60
 
+  # 「閉店している」の報告（`- [修正] 名前 (緯度,経度): 理由`）。**位置を固定した店は
+  # AI の墓標では消えない**（Chiezo の `locked_doubt_tag`）ので、人が現地で見た報告は
+  # 頼む前に固定を外す（`release_closed/2`）—— 外さないと「閉店の可能性あり」が付くだけで残る
+  @fix_mark "[修正]"
+  @closed ~r/閉店|閉業|廃業|潰れ|つぶれ|なくなって|無くなって|営業して(い)?ない|やってい?ない|存在しない|見当たらない/u
+
   @doc """
   AI を通さずに座標を固定させる行。`%{name, lat, lon}` の並び（`lat` / `lon` は店を探す
   いまの座標）。
@@ -135,6 +141,43 @@ defmodule Tazuna.Datasets.Requests do
          missed: for({:missed, shop} <- results, do: shop),
          failed: for({:failed, one} <- results, do: one)
        }}
+    end
+  end
+
+  @doc """
+  人が「閉店している」と報告した店（`%{name, lat, lon}` の並び）。`[修正]` の行のうち、
+  理由が閉店を言っているものだけ。
+  """
+  def closures(text) when is_binary(text) do
+    for line <- String.split(text, "\n"),
+        String.contains?(line, @fix_mark),
+        [_head, reason] <- [String.split(line, "):", parts: 2)],
+        Regex.match?(@closed, reason),
+        %{name: name, lat: lat, lon: lon} <- held_line(line, @fix_mark),
+        do: %{name: name, lat: lat, lon: lon}
+  end
+
+  def closures(_text), do: []
+
+  @doc """
+  閉店を報告された店のうち、**位置を固定している店の固定を外します**（`Chiezo.unlock/3`）。
+  固定した店は AI の墓標では消えず「閉店の可能性あり」が付くだけなので、人が現地で
+  見た報告まで残ってしまう。外した店の名前を返す（固定していない店・見つからない店は触らない）。
+  """
+  def release_closed(_dataset, []), do: []
+
+  def release_closed(%{collection: name}, closures) do
+    case Datasets.base_url() do
+      {:ok, base} ->
+        for %{name: shop, lat: lat, lon: lon} <- closures,
+            {:ok, docs} <- [Chiezo.nearby(base, name, lat, lon, @hold_meters)],
+            %{"title" => title} = doc <- [same_shop(docs, shop, lat, lon)],
+            Chiezo.locked_tag() in (doc["tags"] || []),
+            :ok <- [Chiezo.unlock(base, name, title)],
+            do: shop
+
+      _error ->
+        []
     end
   end
 
@@ -261,6 +304,9 @@ defmodule Tazuna.Datasets.Requests do
     text = Enum.map_join(items, "\n", & &1.text)
     plan = %{keys: [key], notes: %{key => text}, points: items, missed: []}
     {:ok, log} = record(dataset, plan, text)
+
+    # **頼む直前に外す**（控えたまま取り消された報告では、固定を外さない）
+    release_closed(dataset, closures(text))
     result = run(dataset, plan, deadline)
     mark(log, result)
 

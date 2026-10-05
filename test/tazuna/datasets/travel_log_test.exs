@@ -75,6 +75,12 @@ defmodule Tazuna.Datasets.TravelLogTest do
       refute "位置確認済み" in Tazuna.Datasets.Meals.features()
       refute "位置未確認" in Tazuna.Datasets.Meals.features()
       assert Enum.take(Tazuna.Datasets.Meals.category_order(), -2) == ["位置確認済み", "位置未確認"]
+
+      # 位置を確かめた店を AI が閉店と読むと、Chiezo が消さずに印を付けて残す。その印もカテゴリになる
+      doubted = tags ++ ["閉店の可能性あり"]
+      row = TravelLog.row(doc(%{"tags" => doubted, "extra" => extra}), dataset())
+      assert row["categories"] == "個室あり|閉店の可能性あり|位置確認済み"
+      assert Tazuna.Datasets.Meals.attrs().locked_doubt_tag == "閉店の可能性あり"
     end
 
     test "鍵は Chiezo の doc_id" do

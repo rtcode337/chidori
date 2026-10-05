@@ -253,6 +253,9 @@ defmodule Tazuna.Datasets.Meals do
   # その逆。**まだ確かめていない店を現地で見て回るため**に絞り込めるようにする
   # （確かめ済みだけでは、残りを探すのに全部の店を開くことになる）
   @unchecked_category "位置未確認"
+  # 位置を確かめた店を、AI が閉店と読んだときの印。**消さずにこれを付けて残す**のは
+  # Chiezo（`locked_doubt_tag`）。印のタグがそのまま travel-log のカテゴリになる
+  @doubt_category "閉店の可能性あり"
 
   # 営業時間から機械で読み取れる特徴（`Tazuna.Datasets.OpeningHours`）
   @hours_features [lunch: "ランチ営業", late: "深夜営業"]
@@ -270,7 +273,11 @@ defmodule Tazuna.Datasets.Meals do
   def features, do: @features
 
   @doc "travel-log のカテゴリの並び（特徴の語彙と、位置確認済み・位置未確認）。絞り込みの並びになります。"
-  def category_order, do: @features ++ [@checked_category, @unchecked_category]
+  def category_order,
+    do: @features ++ [@doubt_category, @checked_category, @unchecked_category]
+
+  @doc "位置を確かめた店を AI が閉店と読んだときの印（タグとカテゴリ）。"
+  def doubt_category, do: @doubt_category
 
   @doc """
   1 軒の特徴（travel-log のカテゴリ）。**AI が付けたタグと、営業時間から機械で
@@ -297,7 +304,9 @@ defmodule Tazuna.Datasets.Meals do
     checked =
       if Chiezo.locked_tag() in tags, do: [@checked_category], else: [@unchecked_category]
 
-    have = MapSet.new(from_tags ++ from_hours ++ checked)
+    doubted = if @doubt_category in tags, do: [@doubt_category], else: []
+
+    have = MapSet.new(from_tags ++ from_hours ++ doubted ++ checked)
     Enum.filter(category_order(), &MapSet.member?(have, &1))
   end
 
@@ -757,6 +766,9 @@ defmodule Tazuna.Datasets.Meals do
       sweeps: with_choices(sweeps(area), choices),
       # **網羅。** ある括りの全部が対象で、古いものが要らなくなることはない
       kind: "stock",
+      # **現地で位置を確かめた店は、AI が閉店と読んでも消さない**（Chiezo が墓標を
+      # このタグに置き換えて残す）。確かめた人が現地でもう一度見られるように
+      locked_doubt_tag: @doubt_category,
       requested_by: "tazuna"
     }
     |> Map.merge(shape(area))
@@ -1149,6 +1161,8 @@ defmodule Tazuna.Datasets.Meals do
     **あなたが消せば、その店はそこで終わりです。**
     **tags に "#{Chiezo.locked_tag()}" が付いた店は、人が現地で確かめた位置です。
     座標を直さないでください**（直しても元の座標に戻ります）。
+    この店を閉店と判断して墓標にすると、消えずに「#{@doubt_category}」のタグが付いて
+    残ります（現地で確かめ直すため）。**「#{@doubt_category}」のタグは消さないでください。**
     """
   end
 

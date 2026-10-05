@@ -306,6 +306,21 @@ defmodule Tazuna.Chiezo do
   end
 
   @doc """
+  1 件の座標の固定を外します（`POST /v1/collect/{name}/locks` に緯度・経度を書かない）。
+  **次に焼くときから効き**、その 1 件はまた AI の回で消せるようになります。
+  """
+  def unlock(base, name, title) do
+    body = Jason.encode!(%{title: title})
+
+    case post(base <> "/v1/collect/" <> URI.encode(name) <> "/locks", body) do
+      {:ok, %{status: status}} when status in 200..299 -> :ok
+      {:ok, %{status: 404}} -> {:error, :not_found}
+      {:ok, %{status: status, body: raw}} -> {:error, {:chiezo_refused, status, reason_of(raw)}}
+      {:error, _reason} -> {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
   収集を依頼します。**作られるのは止まった状態**なので、これで AI が動き出すことは
   ありません。すでにあれば何もしません（409 は成功として扱う）。
   """

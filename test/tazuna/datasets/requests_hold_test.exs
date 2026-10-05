@@ -44,7 +44,7 @@ defmodule Tazuna.Datasets.RequestsHoldTest do
                 # 見分けの番号が付いていても同じ店（travel-log は番号を落として出す）
                 %{
                   "title" => "丸の内食堂 (1470001)",
-                  "tags" => ["食事処"],
+                  "tags" => ["食事処", Tazuna.Chiezo.locked_tag()],
                   "extra" => %{"lat" => 35.6813, "lon" => 139.7664}
                 },
                 # 消えた同名の店は選ばない
@@ -95,6 +95,47 @@ defmodule Tazuna.Datasets.RequestsHoldTest do
 
       assert_received {:posted, "http://chiezo.test/v1/collect/tazuna_dining_1/locks", body}
       assert body == %{"title" => "丸の内食堂 (1470001)", "lat" => 35.6815, "lon" => 139.766}
+    end
+
+    test "人が閉店を報告した店は、固定していれば頼む前に固定を外す" do
+      # 固定した店は AI の墓標では消えず「閉店の可能性あり」が付くだけなので、
+      # 人が現地で見た報告まで残ってしまう
+      text = """
+      - [修正] 丸の内食堂 (35.68120,139.76650): 閉店している
+      - [修正] 駅前うどん (35.68100,139.76700): 営業時間が違う
+      """
+
+      assert Requests.closures(text) == [%{name: "丸の内食堂", lat: 35.6812, lon: 139.7665}]
+
+      assert Requests.release_closed(%{collection: "tazuna_dining_1"}, Requests.closures(text)) ==
+               ["丸の内食堂"]
+
+      assert_received {:posted, "http://chiezo.test/v1/collect/tazuna_dining_1/locks", body}
+      # 緯度・経度を書かないと外れる
+      assert body == %{"title" => "丸の内食堂 (1470001)"}
+    end
+
+    test "固定していない店は触らない" do
+      HttpStub.stub(fn
+        %{method: :get} ->
+          HttpStub.ok(
+            Jason.encode!(%{
+              "results" => [
+                %{
+                  "title" => "丸の内食堂 (1470001)",
+                  "tags" => ["食事処"],
+                  "extra" => %{"lat" => 35.6812, "lon" => 139.7665}
+                }
+              ]
+            })
+          )
+
+        %{method: :post} ->
+          flunk("固定していない店の固定を外しに行った")
+      end)
+
+      closures = [%{name: "丸の内食堂", lat: 35.6812, lon: 139.7665}]
+      assert Requests.release_closed(%{collection: "tazuna_dining_1"}, closures) == []
     end
 
     test "AI を使わずにいま反映するのは、名簿を引く回（機械収集）" do
