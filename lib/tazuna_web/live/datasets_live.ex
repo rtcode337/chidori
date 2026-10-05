@@ -1114,7 +1114,7 @@ defmodule TazunaWeb.DatasetsLive do
   defp sweep_prompt_of(sweep, assigns) do
     case Map.get(sweep, :prompt) do
       text when is_binary(text) and text != "" -> text
-      _ -> if sweep[:use_extract], do: "", else: collection_prompt(assigns)
+      _ -> if sweep[:use_extract] || sweep[:use_pihole], do: "", else: collection_prompt(assigns)
     end
   end
 

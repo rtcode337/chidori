@@ -96,6 +96,12 @@ defmodule TazunaWeb.CollectTest do
 
       assert [%{mechanical: true}] =
                Collect.sweep_rows(%{collection: collection(%{sweeps: [plain]})})
+
+      # Pi-hole から引く回も AI を呼ばない
+      pihole = base |> Map.delete(:use_feed) |> Map.put(:use_pihole, true)
+
+      assert [%{mechanical: true}] =
+               Collect.sweep_rows(%{collection: collection(%{sweeps: [pihole]})})
     end
   end
 

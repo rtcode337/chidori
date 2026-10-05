@@ -157,6 +157,7 @@ defmodule TazunaWeb.Collect do
           on_demand: false,
           use_extract: false,
           use_feed: false,
+          use_pihole: false,
           by_hand: false,
           enabled: c.enabled,
           next_run_at: c.next_run_at,
@@ -195,7 +196,7 @@ defmodule TazunaWeb.Collect do
       # **例外は検索文を考える回**（依頼文に `{queries}` を書いた機械で引く回）——
       # 引くのは機械だが、その前に検索文をその巡回の相手に考えさせる
       mechanical:
-        sweep[:use_extract] == true or sweep[:by_hand] == true or
+        sweep[:use_extract] == true or sweep[:by_hand] == true or sweep[:use_pihole] == true or
           (sweep[:use_feed] == true and not thinks_queries?(sweep)),
       # **走らない回に「いますぐ」と出さない。** 予定を持っていないだけの回と、
       # 先の回の一周を待っている回は、どちらも予定が空 —— 区別せずに出すと、

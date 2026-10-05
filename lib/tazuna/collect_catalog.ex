@@ -179,7 +179,7 @@ defmodule Tazuna.CollectCatalog do
   end
 
   defp mechanical?(sweep) do
-    sweep[:use_extract] == true or sweep[:by_hand] == true or
+    sweep[:use_extract] == true or sweep[:by_hand] == true or sweep[:use_pihole] == true or
       (sweep[:use_feed] == true and
          not String.contains?(to_string(sweep[:prompt] || ""), "{queries}"))
   end

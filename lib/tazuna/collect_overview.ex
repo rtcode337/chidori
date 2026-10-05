@@ -104,6 +104,7 @@ defmodule Tazuna.CollectOverview do
             # 検索文を考えさせる回（依頼文に `{queries}`）は例外
             mechanical:
               sweep["use_extract"] == true or sweep["by_hand"] == true or
+                sweep["use_pihole"] == true or
                 (sweep["use_feed"] == true and
                    not String.contains?(to_string(sweep["prompt"] || ""), "{queries}")),
             last_run_at: sweep["last_run_at"],
