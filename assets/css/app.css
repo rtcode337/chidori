@@ -910,6 +910,9 @@ ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column:
 .canvas-empty p { margin: 0; color: #7e879f; font-size: .95rem; text-align: center; }
 
 /* 本棚（技術書）。表紙・書名・おすすめ度を 1 冊 1 枚で並べる */
+.partition-pending { margin: .75rem 0; padding-top: .5rem; border-top: 1px solid #ece9f8; }
+.partition-pending h4 { margin: 0 0 .3rem; font-size: .95rem; color: #332c75; }
+.partition-pending pre { white-space: pre-wrap; font-size: .85rem; }
 .domains { margin-bottom: 1.25rem; }
 .domains h2 { margin-bottom: .3rem; font-size: 1.05rem; color: #332c75; }
 .domain-filters { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0; }

@@ -321,6 +321,26 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert html =~ "この区画で 1 回走らせる"
     end
 
+    test "選んだ区画に、控えている travel-log からの依頼を出す", %{conn: conn} do
+      dataset = Tazuna.Datasets.get("dining-1")
+
+      {:ok, _} =
+        Tazuna.Datasets.Requests.stash(
+          dataset,
+          "- [修正] 丸の内食堂 (35.65000,139.75000): 閉店している"
+        )
+
+      {live, _html} = shown(conn)
+
+      html = render_click(live, "pick_partition", %{"key" => "35.6,139.7/35.7,139.8"})
+      assert html =~ "travel-log からの依頼（控えている 1 件）"
+      assert html =~ "丸の内食堂"
+
+      # 依頼の無い区画は、無いと言う
+      html = render_click(live, "pick_partition", %{"key" => "43.0,141.3/43.1,141.4"})
+      assert html =~ "この区画に控えている依頼はありません"
+    end
+
     test "区画は地図にもなる", %{conn: conn} do
       # 「8,185 区画のうち 2 つ見終わり」と数で言われても、どこなのかは読めない
       {_live, html} = shown(conn)

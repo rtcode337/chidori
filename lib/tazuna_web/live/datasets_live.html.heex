@@ -318,6 +318,41 @@
               <dd>{if picked.by, do: "#{picked.by}（#{picked.seen}）", else: "まだ"}</dd>
             </div>
           </dl>
+          <%!-- **この区画に控えている travel-log からの依頼**（下の「控えている依頼」と同じもの）。
+             区画を地図で選んだところで、何が溜まっているかを見て、そのまま頼めるように --%>
+          <% waiting =
+            if @dataset.reader == "travel-log",
+              do: Enum.find(@pending, &(&1.key == picked.key)) %>
+          <div :if={@dataset.reader == "travel-log"} class="partition-pending">
+            <h4>
+              travel-log からの依頼（控えている {if waiting, do: length(waiting.items), else: 0} 件）
+            </h4>
+            <%= if waiting do %>
+              <p class="muted-note">{Jst.format(waiting.since)} から溜まっています。</p>
+              <pre>{Enum.map_join(waiting.items, "\n", & &1.text)}</pre>
+              <div class="button-row">
+                <button
+                  type="button"
+                  phx-click="send_pending"
+                  phx-value-key={waiting.key}
+                  disabled={@requesting != nil}
+                  phx-disable-with="頼んでいます…"
+                >
+                  この区画を頼む
+                </button>
+                <button
+                  type="button"
+                  phx-click="drop_pending"
+                  phx-value-key={waiting.key}
+                  data-confirm={"この#{length(waiting.items)} 件の控えを、頼まずに捨てます。よいですか？"}
+                >
+                  控えを捨てる
+                </button>
+              </div>
+            <% else %>
+              <p class="muted-note">この区画に控えている依頼はありません。</p>
+            <% end %>
+          </div>
           <%!-- **Chiezo の「選んだ区画で 1 回走らせる」と同じ形**にする ——
              割り込み（進み具合にも印にも触らない）は、押しても画面が変わらず
              「何が起きたのか分からない」になっていた。こちらは**ふつうの回として
