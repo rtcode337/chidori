@@ -147,4 +147,45 @@ defmodule Tazuna.Datasets.PiholeTest do
       assert url =~ "include_removed=true"
     end
   end
+
+  describe "いま止めている通信" do
+    test "Chiezo から続きを読み、行にする" do
+      parent = self()
+
+      HttpStub.stub(fn %{method: :get, url: url} ->
+        send(parent, {:asked, url})
+
+        HttpStub.ok(
+          Jason.encode!(%{
+            "now" => 1_759_600_010.0,
+            "cursor" => 1_759_600_005.0,
+            "queries" => [
+              %{
+                "id" => 1,
+                "at" => "2026-10-04T12:00:05+00:00",
+                "domain" => "ads.example.com",
+                "client" => "192.0.2.10",
+                "client_name" => "tablet",
+                "status" => "GRAVITY"
+              }
+            ]
+          })
+        )
+      end)
+
+      assert {:ok, %{rows: [row], cursor: 1_759_600_005.0}} =
+               Pihole.blocked_since("http://chiezo.test", 1_759_600_000)
+
+      assert row.domain == "ads.example.com" and row.client_name == "tablet"
+      assert_received {:asked, url}
+      assert url =~ "/v1/pihole/blocked?"
+      assert url =~ "since=1759600000"
+    end
+
+    test "接続先が無ければ、そう言う" do
+      HttpStub.stub(fn %{method: :get} -> {:ok, %{status: 409, body: "{}"}} end)
+
+      assert Pihole.blocked_since("http://chiezo.test", 0) == {:error, :pihole_not_configured}
+    end
+  end
 end

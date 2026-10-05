@@ -44,6 +44,10 @@ defmodule Tazuna.Datasets.Pihole do
   # （Chiezo のソースが付ける重み）
   @tidy_order "priority"
 
+  # いま止めている通信を 1 回に読む数と、画面に残す行数（Pi-hole の監視アプリ と同じ 500）
+  @live_rows 500
+  @live_keep 500
+
   # 一覧に読み込む上限（Chiezo の 1 回の上限 500 ずつ送る）
   @page 500
   @max_rows 5000
@@ -294,6 +298,53 @@ defmodule Tazuna.Datasets.Pihole do
         {:error, :chiezo_unavailable}
     end
   end
+
+  @doc """
+  **いま止めている通信**（Chiezo の `GET /v1/pihole/blocked`）。`since`（unix 秒）より後に
+  止めたものを古い順に 1 件 1 行で返します。鍵は Chiezo が持つので、Chidori は Pi-hole に
+  直接つながりません。返すのは `{:ok, %{rows: [...], cursor: 次に渡す since}}`。
+  """
+  def blocked_since(base, since) do
+    query = URI.encode_query(%{"since" => since, "limit" => @live_rows})
+
+    case Chiezo.get(base <> "/v1/pihole/blocked?" <> query) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"queries" => rows, "cursor" => cursor}} when is_list(rows) ->
+            {:ok, %{rows: Enum.map(rows, &to_live/1), cursor: cursor}}
+
+          _other ->
+            {:error, :chiezo_unexpected_body}
+        end
+
+      # 接続先が登録されていない（Chiezo の API キーの面）
+      {:ok, %{status: 409}} ->
+        {:error, :pihole_not_configured}
+
+      {:ok, %{status: 502}} ->
+        {:error, :pihole_unavailable}
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  defp to_live(row) do
+    %{
+      id: row["id"],
+      at: row["at"],
+      domain: to_string(row["domain"] || ""),
+      client: to_string(row["client"] || ""),
+      client_name: if(row["client_name"] in [nil, ""], do: nil, else: row["client_name"]),
+      status: to_string(row["status"] || "")
+    }
+  end
+
+  @doc "流し見で手元に残す行数（古いものから落とす）。"
+  def live_keep, do: @live_keep
 
   @doc false
   def to_domain(result) do

@@ -359,6 +359,13 @@ defmodule TazunaWeb.Collect do
   def reason_text(:not_requested), do: "Chiezo にこの収集がありません。もう一度押すと作り直します。"
   def reason_text(:collection_crashed), do: "問い合わせの途中で問題が起きました。もう一度押してください。"
   def reason_text(:too_soon), do: "続けて押しています。少し時間を置いてからもう一度押してください。"
+
+  def reason_text(:pihole_not_configured),
+    do:
+      "Chiezo に Pi-hole の接続先がありません（Chiezo の管理画面の API キーの面で pihole_url と pihole_password を登録してください）。"
+
+  def reason_text(:pihole_unavailable), do: "Chiezo から Pi-hole に繋がりませんでした。"
+
   def reason_text(nil), do: ""
   def reason_text(reason), do: "Chiezo とのやり取りに失敗しました（#{inspect(reason)}）。"
 end

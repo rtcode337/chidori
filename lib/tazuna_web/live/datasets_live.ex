@@ -69,6 +69,11 @@ defmodule TazunaWeb.DatasetsLive do
        shelf_near_only: false,
        # Pi-hole のドメインの絞り込み（"all" / "watch" / "blocked" / "caution"）
        domain_filter: "all",
+       # **いま止めている通信**（Pi-hole のタブ）。流しているか・新しい順の行・続きの印
+       live_on: false,
+       live_rows: [],
+       live_cursor: nil,
+       live_error: nil,
        # 詳細を開いているドメインと、開いたものの本文（開いたときに初めて引く）
        opened_domain: nil,
        domain_docs: %{},
@@ -139,7 +144,12 @@ defmodule TazunaWeb.DatasetsLive do
         book_marks: if(dataset[:derived], do: BookMarks.all(), else: %{}),
         book_mark_saved: nil,
         opened_domain: nil,
-        domain_filter: "all"
+        domain_filter: "all",
+        # 対象を切り替えたら流すのをやめる（別のタブで読み続けない）
+        live_on: false,
+        live_rows: [],
+        live_cursor: nil,
+        live_error: nil
       )
       |> assign_plan(dataset)
       |> assign(places: nil, place_query: "")
@@ -400,6 +410,24 @@ defmodule TazunaWeb.DatasetsLive do
     end
   end
 
+  # **いま止めている通信を流す**（Pi-hole の監視アプリ の「1件ずつ流す」）。押した時点から先を、
+  # 5 秒ごとに Chiezo 越しに読んで 1 件 1 行で足す。止めたら読みに行かない
+  def handle_event("live_start", _params, socket) do
+    socket =
+      assign(socket,
+        live_on: true,
+        live_rows: [],
+        live_cursor: System.os_time(:second),
+        live_error: nil
+      )
+
+    {:noreply, poll_live(socket)}
+  end
+
+  def handle_event("live_stop", _params, socket), do: {:noreply, assign(socket, live_on: false)}
+
+  def handle_event("live_clear", _params, socket), do: {:noreply, assign(socket, live_rows: [])}
+
   def handle_event("close_domain", _params, socket),
     do: {:noreply, assign(socket, opened_domain: nil)}
 
@@ -567,6 +595,29 @@ defmodule TazunaWeb.DatasetsLive do
     {:noreply, assign(socket, shelf: result, shelf_checked_at: now, shelf_loading: false)}
   end
 
+  def handle_async(:live, {:ok, {:ok, %{rows: rows, cursor: cursor}}}, socket) do
+    # **新しいものを上に**（流し見るときに目が行くのは上）。古いものから落とす
+    kept =
+      (Enum.reverse(rows) ++ socket.assigns.live_rows)
+      |> Enum.take(Tazuna.Datasets.Pihole.live_keep())
+
+    {:noreply,
+     socket
+     |> assign(
+       live_rows: kept,
+       live_cursor: cursor || socket.assigns.live_cursor,
+       live_error: nil
+     )
+     |> schedule_live()}
+  end
+
+  # 読めなかった回は理由を出し、**止めずに次の回も試す**（Pi-hole の再起動などは待てば戻る）
+  def handle_async(:live, {:ok, {:error, reason}}, socket),
+    do: {:noreply, socket |> assign(live_error: reason) |> schedule_live()}
+
+  def handle_async(:live, {:exit, _reason}, socket),
+    do: {:noreply, socket |> assign(live_error: :collection_crashed) |> schedule_live()}
+
   def handle_async({:domain_doc, domain}, {:ok, result}, socket),
     do:
       {:noreply, assign(socket, domain_docs: Map.put(socket.assigns.domain_docs, domain, result))}
@@ -667,6 +718,12 @@ defmodule TazunaWeb.DatasetsLive do
   # travel-log からの依頼が終わった（頼めた・断られた・待ちきれなかった）。
   # 見積もりは一言に使うので、結果と組にして残す
   @impl true
+  def handle_info(:live_tick, socket) do
+    if socket.assigns.live_on and socket.assigns.dataset[:listing],
+      do: {:noreply, poll_live(socket)},
+      else: {:noreply, socket}
+  end
+
   def handle_info({:travel_log_request, result}, socket) do
     {:noreply,
      socket
@@ -699,6 +756,23 @@ defmodule TazunaWeb.DatasetsLive do
   defp read_derived(socket, _dataset), do: socket
 
   # 本棚を Chiezo から読む（読めたら覚え書きにも残す）
+  # 流し見の 1 回ぶん。**読み終えてから次を予約する**（Pi-hole が遅いときに重ならない）
+  @live_every_ms 5_000
+
+  defp poll_live(socket) do
+    cursor = socket.assigns.live_cursor
+
+    start_async(socket, :live, fn ->
+      with {:ok, base} <- Datasets.base_url(),
+           do: Tazuna.Datasets.Pihole.blocked_since(base, cursor)
+    end)
+  end
+
+  defp schedule_live(socket) do
+    if socket.assigns.live_on, do: Process.send_after(self(), :live_tick, @live_every_ms)
+    socket
+  end
+
   defp read_shelf(socket, dataset) do
     socket
     |> assign(shelf_loading: true)

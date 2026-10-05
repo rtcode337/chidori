@@ -50,6 +50,47 @@ defmodule TazunaWeb.DatasetsLiveTest do
     assert settings =~ ~r|collect-origin.*「集める」層です.*tazuna_dining_1.*読むのはtravel-logです|s
   end
 
+  test "Pi-hole のタブで、いま止めている通信を流せる", %{conn: conn} do
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+
+    Tazuna.HttpStub.stub(fn %{method: :get, url: url} ->
+      body =
+        if url =~ "/v1/pihole/blocked",
+          do: %{
+            "cursor" => 1_759_600_005.0,
+            "queries" => [
+              %{
+                "id" => 1,
+                "at" => "2026-10-04T12:00:05+00:00",
+                "domain" => "ads.example.com",
+                "client" => "192.0.2.10",
+                "client_name" => "tablet",
+                "status" => "GRAVITY"
+              }
+            ]
+          },
+          else: %{"results" => []}
+
+      Tazuna.HttpStub.ok(Jason.encode!(body))
+    end)
+
+    {:ok, live, html} = live(conn, ~p"/datasets?view=pihole")
+    assert html =~ "いま止めている通信"
+
+    live |> element(~s|button[phx-click="live_start"]|) |> render_click()
+    html = render_async(live)
+
+    assert html =~ "ads.example.com"
+    assert html =~ "（tablet）"
+    assert html =~ ~s(phx-click="live_stop")
+
+    # 止めたら、読みに行かない（行は残る）
+    html = live |> element(~s|button[phx-click="live_stop"]|) |> render_click()
+    assert html =~ ~s(phx-click="live_start")
+    assert html =~ "ads.example.com"
+  end
+
   test "travel-log 用の書き出しを、リンクと分かる形で出す", %{conn: conn} do
     # ブラウザから Chiezo を直接読ませない代わりの道。押すと降ってくるだけなので、
     # リンクと分かる見た目のまま、周りの注記より一段強く出す
