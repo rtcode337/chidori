@@ -208,6 +208,9 @@ defmodule Tazuna.Datasets.TravelLogTest do
       assert settings["label"] == "食事処"
       # ランクは A〜E が入るので使う
       assert settings["settings"]["rank_enabled"] == true
+
+      # 見た目は travel-log 側で付けたものを残してもらう（範囲ごとに読み込むため）
+      assert settings["keep_series_styles"] == true
     end
   end
 

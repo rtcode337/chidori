@@ -319,7 +319,8 @@ defmodule Tazuna.Datasets.TravelLog do
   そのまま絞り込みの並びとピンの色の並びになるので、よく出るものが先のほうが読みやすい。
 
   見た目（2 文字のラベルと色）もここで決めます。決めないと travel-log 側で
-  全部が同じ灰色のピンになり、地図で見分けられません。
+  全部が同じ灰色のピンになり、地図で見分けられません。**ただし既にある見た目は
+  残してもらいます**（`keep_series_styles`）—— 足されるのはまだ無かったシリーズだけ。
 
   **カテゴリの並びも渡します**（`categories`。収集が語彙を持っていれば、その並び）。
   travel-log はこれを絞り込みの並びに使います。カテゴリは見た目に効かないので、
@@ -346,7 +347,12 @@ defmodule Tazuna.Datasets.TravelLog do
         label: name,
         # ランクは A〜E が入るので使う。公開するかどうかは向こうで決める（既定は非公開）
         settings: %{rank_enabled: true},
-        series: series
+        series: series,
+        # **見た目は travel-log 側で付けたものを残してもらう**。ここで決めているのは
+        # 機械の見た目（2 文字のラベルと色）だけなので、範囲ごとの ZIP を同じ種別へ
+        # 読み込むたびに上書きされると、画面で付けたアイコンや色が消える。
+        # 足されるのは、まだ無かったシリーズだけ
+        keep_series_styles: true
       }
       |> then(fn json ->
         if is_list(categories), do: Map.put(json, :categories, categories), else: json
