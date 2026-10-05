@@ -199,6 +199,16 @@ defmodule Tazuna.Datasets.TravelLogTest do
       assert Enum.map(series, & &1["label"]) == ["和食", "カフ"]
     end
 
+    test "シリーズの色は 60 を超えても重ならない" do
+      # 決まった 10 色を回していた頃は、60 ほどのジャンルで 6 つずつ同じ色になった
+      colors = Enum.map(0..79, &TravelLog.series_color/1)
+
+      assert Enum.all?(colors, &Regex.match?(~r/^#[0-9a-f]{6}$/, &1))
+      assert length(Enum.uniq(colors)) == 80
+      # 同じ番号ならいつも同じ色（読み込むたびに入れ替わらない）
+      assert TravelLog.series_color(7) == TravelLog.series_color(7)
+    end
+
     test "カテゴリの並びは語彙のまま渡し、シリーズには混ぜない" do
       rows = [%{"series" => "和食", "categories" => "ランチ営業"}]
       json = Jason.decode!(TravelLog.settings_json("meals", "食事処", rows, ["ランチ営業", "深夜営業"]))

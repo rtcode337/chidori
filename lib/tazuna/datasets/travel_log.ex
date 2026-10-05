@@ -49,9 +49,12 @@ defmodule Tazuna.Datasets.TravelLog do
 
   @csv_header ~w(name lat lng region rank series categories description key)
 
-  # シリーズの色。**travel-log が自動で配るのと同じ並び**にしてある ——
-  # 同じ収集を向こうの自動登録で入れたときと見た目が揃う
-  @series_colors ~w(#0ea5e9 #f97316 #14b8a6 #e11d48 #8b5cf6 #65a30d #d946ef #0891b2 #ea580c #4f46e5)
+  # シリーズの色は**並びの番号から計算する**（`series_color/1`）。決まった 10 色を
+  # 回していた頃は、60 ほどあるジャンルで 6 つずつ同じ色になり、地図で見分けられなかった。
+  # 色相は黄金角ずつずらし（隣どうしが離れる）、明るさを 3 段で回す（色相が近くなっても
+  # 明るさで分かれる）。ピンの文字の色は travel-log が面の明るさから選ぶ
+  @golden_angle 137.508
+  @lightness [42, 55, 32]
 
   @doc """
   書き出せる対象か。**スポットにできる収集だけ**（タグの取り決めを持つもの）。
@@ -337,7 +340,7 @@ defmodule Tazuna.Datasets.TravelLog do
         %{
           series: series,
           label: series |> String.graphemes() |> Enum.take(2) |> Enum.join(),
-          color: Enum.at(@series_colors, rem(index, length(@series_colors)))
+          color: series_color(index)
         }
       end)
 
@@ -359,6 +362,41 @@ defmodule Tazuna.Datasets.TravelLog do
       end),
       pretty: true
     )
+  end
+
+  @doc "並びの番号からシリーズの色（`#rrggbb`）。同じ番号ならいつも同じ色。"
+  def series_color(index) when is_integer(index) and index >= 0 do
+    hue = :math.fmod(index * @golden_angle, 360.0)
+    lightness = Enum.at(@lightness, rem(index, length(@lightness)))
+    hsl_hex(hue, 70, lightness)
+  end
+
+  defp hsl_hex(h, s, l) do
+    s = s / 100
+    l = l / 100
+    c = (1 - abs(2 * l - 1)) * s
+    x = c * (1 - abs(:math.fmod(h / 60, 2) - 1))
+    m = l - c / 2
+
+    {r, g, b} =
+      cond do
+        h < 60 -> {c, x, 0}
+        h < 120 -> {x, c, 0}
+        h < 180 -> {0, c, x}
+        h < 240 -> {0, x, c}
+        h < 300 -> {x, 0, c}
+        true -> {c, 0, x}
+      end
+
+    ("#" <>
+       Enum.map_join([r, g, b], fn v ->
+         (v + m)
+         |> Kernel.*(255)
+         |> round()
+         |> Integer.to_string(16)
+         |> String.pad_leading(2, "0")
+       end))
+    |> String.downcase()
   end
 
   # シリーズの並び。**語彙を持つ収集は語彙の順に固定する** —— settings.json は読み込む
