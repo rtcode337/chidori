@@ -125,7 +125,7 @@
       aria-label="ドメイン"
     >
       <% {:ok, all_domains} = @shelf %>
-      <% domains = domains_shown(all_domains, @domain_filter) %>
+      <% domains = domains_shown(all_domains, @domain_filter, @domain_marks) %>
       <h2>
         ドメイン
         <span class="muted-note">
@@ -140,6 +140,8 @@
           :for={
             {key, label, n} <- [
               {"all", "すべて", length(all_domains)},
+              {"unseen", "まだ見ていない",
+               Enum.count(all_domains, &(!domain_seen?(@domain_marks, &1.domain)))},
               {"watch", "気になる通信", Enum.count(all_domains, & &1.watch)},
               {"blocked", "止めたもの", Enum.count(all_domains, & &1.blocked)},
               {"caution", "要注意", Enum.count(all_domains, &(&1.verdict == "要注意"))}
@@ -155,7 +157,14 @@
         </button>
       </p>
       <ul :if={domains != []} class="domain-list">
-        <li :for={d <- domains} class={["domain-row", d.watch && "is-watch"]}>
+        <li
+          :for={d <- domains}
+          class={[
+            "domain-row",
+            d.watch && "is-watch",
+            domain_seen?(@domain_marks, d.domain) && "is-seen"
+          ]}
+        >
           <p class="domain-head">
             <button
               type="button"
@@ -166,6 +175,12 @@
               {d.domain}
             </button>
             <span :if={d.verdict} class={verdict_class(d.verdict)}>{d.verdict}</span>
+            <span
+              :if={domain_mark_summary(domain_mark_of(@domain_marks, d.domain))}
+              class="seen-badge"
+            >
+              {domain_mark_summary(domain_mark_of(@domain_marks, d.domain))}
+            </span>
             <span :if={d.watch} class="domain-badge is-watch">気になる通信</span>
             <span :if={d.blocked} class="domain-badge">止めた {d.blocked_count} 回</span>
             <span :if={d.last_seen} class="muted-note">最後に見たのは {Jst.format(d.last_seen)}</span>
@@ -1047,6 +1062,40 @@
           </strong>
           <button type="button" phx-click="close_domain">閉じる</button>
         </div>
+        <%!-- 見た記録（関連図の「見た記録」と同じ形）。**Chidori にだけ残す** --%>
+        <% mark = domain_mark_of(@domain_marks, domain.domain) %>
+        <details class="seen-mark" open={Map.has_key?(@domain_marks, domain.domain)}>
+          <summary>
+            見た記録
+            <span :if={domain_mark_summary(mark)} class="seen-badge">
+              {domain_mark_summary(mark)}
+            </span>
+          </summary>
+          <form id="domain-mark" phx-submit="save_domain_mark">
+            <input type="hidden" name="domain" value={domain.domain} />
+            <p class="seen-row">
+              <label><input type="checkbox" name="seen" checked={mark.seen} /> 見た</label>
+              <label>見た日 <input type="date" name="seen_on" value={domain_seen_on(mark)} /></label>
+            </p>
+            <p>
+              <label>
+                メモ（何の通信だったか・どうしたか）<br />
+                <textarea
+                  name="note"
+                  rows="3"
+                  placeholder="例: テレビの視聴データ送信。止めたままでよい"
+                >{mark.note}</textarea>
+              </label>
+            </p>
+            <p class="muted-note">
+              ここに書いたことは Chidori にだけ残ります（Chiezo へは送りません）。「まだ見ていない」で絞ると、見たものは一覧から外れます。
+              <strong>印もメモも空にして保存すると、記録ごと消えます。</strong>
+            </p>
+            <button type="submit" phx-disable-with="保存しています…">記録を保存</button>
+            <span :if={@domain_mark_saved == domain.domain} class="muted-note">保存しました。</span>
+          </form>
+        </details>
+
         <h3>観測したこと</h3>
         <ul class="domain-facts">
           <li :if={domain.first_seen}>

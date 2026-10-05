@@ -937,6 +937,7 @@ ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column:
 .domain-reason { background: #f8fafc; color: #475569; }
 .verdict.is-caution { background: #fee2e2; color: #991b1b; font-weight: 700; }
 .verdict.is-fine { background: #dcfce7; color: #166534; }
+.domain-row.is-seen { opacity: .65; }
 .domain-summary { margin: .3rem 0 0; font-size: .9rem; color: #374151; }
 .domain-facts { margin: .25rem 0 .75rem; padding-left: 1.2rem; font-size: .9rem; }
 .domain-clients { margin: 0 0 .75rem; border-collapse: collapse; font-size: .88rem; }

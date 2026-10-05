@@ -77,6 +77,9 @@ defmodule TazunaWeb.DatasetsLive do
        # 詳細を開いているドメインと、開いたものの本文（開いたときに初めて引く）
        opened_domain: nil,
        domain_docs: %{},
+       # ドメインに付けた「見た」印とメモ（関連図の印と同じ置き場。Chidori にだけ残す）
+       domain_marks: %{},
+       domain_mark_saved: nil,
        asking: false,
        asked: nil,
        # travel-log からの依頼。頼んでいる間は見積もり（何区画で頼むか）を持つ
@@ -145,6 +148,12 @@ defmodule TazunaWeb.DatasetsLive do
         book_mark_saved: nil,
         opened_domain: nil,
         domain_filter: "all",
+        domain_marks:
+          if(dataset[:listing],
+            do: Tazuna.Relations.Marks.for_view(Tazuna.Datasets.Pihole.mark_view()),
+            else: %{}
+          ),
+        domain_mark_saved: nil,
         # 対象を切り替えたら流すのをやめる（別のタブで読み続けない）
         live_on: false,
         live_rows: [],
@@ -390,7 +399,7 @@ defmodule TazunaWeb.DatasetsLive do
 
   # **Pi-hole のドメイン。** 絞り込みは押したときだけ（一覧は全部読んである）
   def handle_event("filter_domains", %{"filter" => filter}, socket)
-      when filter in ~w(all watch blocked caution),
+      when filter in ~w(all unseen watch blocked caution),
       do: {:noreply, assign(socket, domain_filter: filter)}
 
   # 押すと詳細を開く。**調べた中身の全文は開いたときに初めて引く**（一覧は冒頭だけ）
@@ -427,6 +436,28 @@ defmodule TazunaWeb.DatasetsLive do
   def handle_event("live_stop", _params, socket), do: {:noreply, assign(socket, live_on: false)}
 
   def handle_event("live_clear", _params, socket), do: {:noreply, assign(socket, live_rows: [])}
+
+  # 「見た」印とメモを書く（関連図の「見た記録」と同じ形）。**空にしたら消える**
+  def handle_event("save_domain_mark", %{"domain" => domain} = params, socket) do
+    attrs = %{
+      "seen" => params["seen"] == "on",
+      "seen_on" => blank_to_nil(params["seen_on"]),
+      "note" => params["note"] || ""
+    }
+
+    case Tazuna.Relations.Marks.put(Tazuna.Datasets.Pihole.mark_view(), domain, attrs) do
+      {:ok, mark} ->
+        marks =
+          if mark,
+            do: Map.put(socket.assigns.domain_marks, domain, mark),
+            else: Map.delete(socket.assigns.domain_marks, domain)
+
+        {:noreply, assign(socket, domain_marks: marks, domain_mark_saved: domain)}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "見た記録を保存できませんでした。")}
+    end
+  end
 
   def handle_event("close_domain", _params, socket),
     do: {:noreply, assign(socket, opened_domain: nil)}
@@ -1226,11 +1257,40 @@ defmodule TazunaWeb.DatasetsLive do
 
   def opened_domain(_assigns), do: nil
 
-  @doc "絞り込んだドメイン。"
-  def domains_shown(domains, "watch"), do: Enum.filter(domains, & &1.watch)
-  def domains_shown(domains, "blocked"), do: Enum.filter(domains, & &1.blocked)
-  def domains_shown(domains, "caution"), do: Enum.filter(domains, &(&1.verdict == "要注意"))
-  def domains_shown(domains, _all), do: domains
+  @doc "絞り込んだドメイン（`marks` は「見た」印。まだ見ていないものだけを出すのに使う）。"
+  def domains_shown(domains, filter, marks \\ %{})
+
+  def domains_shown(domains, "unseen", marks),
+    do: Enum.reject(domains, &domain_seen?(marks, &1.domain))
+
+  def domains_shown(domains, filter, _marks), do: shown_by(domains, filter)
+
+  defp shown_by(domains, "watch"), do: Enum.filter(domains, & &1.watch)
+  defp shown_by(domains, "blocked"), do: Enum.filter(domains, & &1.blocked)
+  defp shown_by(domains, "caution"), do: Enum.filter(domains, &(&1.verdict == "要注意"))
+  defp shown_by(domains, _all), do: domains
+
+  @doc "そのドメインに「見た」が付いているか（メモだけのものは見ていない扱い）。"
+  def domain_seen?(marks, domain), do: match?(%{seen: true}, Map.get(marks, domain))
+
+  @doc "ドメインの印（無ければ空の印）。"
+  def domain_mark_of(marks, domain),
+    do: Map.get(marks, domain) || %Tazuna.Relations.Mark{}
+
+  @doc "「見た日」の欄に最初から入れる日付（書いてあればそれ、無ければ日本時間の今日）。"
+  def domain_seen_on(%Tazuna.Relations.Mark{seen_on: %Date{} = date}), do: Date.to_iso8601(date)
+  def domain_seen_on(_mark), do: Jst.today() |> Date.to_iso8601()
+
+  @doc "印を 1 行で言う（一覧の札に出す）。"
+  def domain_mark_summary(%Tazuna.Relations.Mark{seen: true, seen_on: %Date{} = date}),
+    do: "見た（#{Date.to_iso8601(date)}）"
+
+  def domain_mark_summary(%Tazuna.Relations.Mark{seen: true}), do: "見た"
+
+  def domain_mark_summary(%Tazuna.Relations.Mark{note: note}) when is_binary(note) and note != "",
+    do: "メモあり"
+
+  def domain_mark_summary(_mark), do: nil
 
   @doc "判定の札の色。"
   def verdict_class("要注意"), do: "verdict is-caution"

@@ -52,6 +52,13 @@ defmodule Tazuna.Datasets.Pihole do
   @page 500
   @max_rows 5000
 
+  # 「見た」印の置き場での名前（関連図の印と同じ表 `relation_marks` を、図の名前の代わりに
+  # これで分けて使う。ノードの名前がドメイン）
+  @mark_view "pihole"
+
+  @doc "「見た」印の置き場での名前（`Tazuna.Relations.Marks` の view）。"
+  def mark_view, do: @mark_view
+
   @doc "全部の文書に付いている印。"
   def kind_tag, do: @kind_tag
 

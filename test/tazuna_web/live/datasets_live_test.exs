@@ -91,6 +91,62 @@ defmodule TazunaWeb.DatasetsLiveTest do
     assert html =~ "ads.example.com"
   end
 
+  test "Pi-hole のドメインに「見た」を付けられ、まだ見ていないものだけに絞れる", %{conn: conn} do
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+
+    Tazuna.HttpStub.stub(fn %{method: :get, url: url} ->
+      body =
+        cond do
+          url =~ "/filter?" and url =~ "offset=0" ->
+            %{
+              "results" => [
+                %{
+                  "title" => "ads.example.com",
+                  "tags" => ["Pi-hole", "ブロック"],
+                  "extra" => %{"blocked" => 3}
+                },
+                %{
+                  "title" => "tv.example.net",
+                  "tags" => ["Pi-hole", "ブロック"],
+                  "extra" => %{"blocked" => 1}
+                }
+              ]
+            }
+
+          url =~ "/doc?" ->
+            %{"title" => "ads.example.com", "body" => ""}
+
+          true ->
+            %{"results" => []}
+        end
+
+      Tazuna.HttpStub.ok(Jason.encode!(body))
+    end)
+
+    {:ok, live, _html} = live(conn, ~p"/datasets?view=pihole")
+    render_async(live)
+
+    live |> element(~s|button.domain-name[phx-value-domain="ads.example.com"]|) |> render_click()
+
+    html =
+      live
+      |> form("#domain-mark", %{
+        "domain" => "ads.example.com",
+        "seen" => "on",
+        "seen_on" => "2026-10-06",
+        "note" => "広告"
+      })
+      |> render_submit()
+
+    assert html =~ "見た（2026-10-06）"
+    assert Tazuna.Relations.Marks.get("pihole", "ads.example.com").note == "広告"
+
+    html = render_click(live, "filter_domains", %{"filter" => "unseen"})
+    assert html =~ "tv.example.net"
+    refute html =~ ~s(phx-value-domain="ads.example.com")
+  end
+
   test "travel-log 用の書き出しを、リンクと分かる形で出す", %{conn: conn} do
     # ブラウザから Chiezo を直接読ませない代わりの道。押すと降ってくるだけなので、
     # リンクと分かる見た目のまま、周りの注記より一段強く出す
