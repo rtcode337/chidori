@@ -136,6 +136,15 @@ defmodule Tazuna.Datasets.BookshelfTest do
       assert Bookshelf.isbn13("4-87311-565-X") == nil
     end
 
+    test "技術書でない本は、説明を書いて残さずに墓標で外させる" do
+      prompt = Bookshelf.tidy_prompt()
+      assert prompt =~ "技術書でない本も同じく外します"
+      assert prompt =~ "小説・漫画"
+      assert prompt =~ "まだ調べていなくても外してください"
+      assert prompt =~ "下の 1〜4 を書かずに墓標を付けてください"
+      assert Bookshelf.focus_prompt() =~ "小説・漫画"
+    end
+
     test "整理の回に ISBN を調べさせる" do
       assert Bookshelf.tidy_prompt() =~ ~s("isbn")
     end

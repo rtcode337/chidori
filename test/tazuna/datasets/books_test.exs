@@ -100,6 +100,12 @@ defmodule Tazuna.Datasets.BooksTest do
       refute prompt =~ "{current}"
     end
 
+    test "技術書だけをタグにさせる（読書記録に並ぶ小説や漫画は入れない）" do
+      prompt = Books.read_prompt()
+      assert prompt =~ "技術書だけです"
+      assert prompt =~ "小説・漫画"
+    end
+
     test "宣伝と本を挙げていない記事は外させる" do
       assert Books.read_prompt() =~ "宣伝と本の紹介ページ"
     end
