@@ -13,6 +13,12 @@ defmodule Tazuna.News.AnimeTest do
       %{prompt: Anime.survey_prompt("今期のアニメ")}
     end
 
+    test "見出しの一覧に並ぶまとめを真似て、まとめの 1 件を返させない", %{prompt: prompt} do
+      # 同じ収集に要約も溜まるので、見出しの一覧（`{names}`）に「まとめ: …」が並ぶ
+      assert prompt =~ "{names}"
+      assert prompt =~ "まとめ・要約・一覧の 1 件は返さないでください"
+    end
+
     test "今期は曜日で分け、1 回に 1 区切りを探させて、次の区切りをカーソルに返させる", %{prompt: prompt} do
       assert prompt =~ "今回探すのは「{cursor}」の区切りだけです"
       assert prompt =~ "今期・月火"

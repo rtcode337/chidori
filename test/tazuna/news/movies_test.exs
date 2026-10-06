@@ -13,6 +13,12 @@ defmodule Tazuna.News.MoviesTest do
       %{prompt: Movies.survey_prompt("映画")}
     end
 
+    test "見出しの一覧に並ぶまとめを真似て、まとめの 1 件を返させない", %{prompt: prompt} do
+      # 同じ収集に要約も溜まるので、見出しの一覧（`{names}`）に「まとめ: …」が並ぶ
+      assert prompt =~ "{names}"
+      assert prompt =~ "まとめ・要約・一覧の 1 件は返さないでください"
+    end
+
     test "公開中の作品も探させる", %{prompt: prompt} do
       # 映画は公開されてからが本番。未来だけを探すと、公開中の作品が入らない
       assert prompt =~ "いま公開中の映画と、これから公開される映画"
