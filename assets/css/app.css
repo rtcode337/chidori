@@ -261,7 +261,10 @@ article p:last-child { color: #475569; line-height: 1.7; }
    図の全画面（z-index 60）より上に置く */
 .relations-page.is-busy::after { content: ""; position: fixed; inset: 0; z-index: 70; background: rgba(248, 249, 254, .45); cursor: progress; }
 
-.relation-canvas { position: relative; overflow: hidden; margin-bottom: 1.5rem; height: auto; min-height: 28rem; border: 1px solid #e4e7f0; border-radius: 1.5rem; background: radial-gradient(circle at 45% 25%, #ffffff 0, #fafafe 42%, #eef0f9 100%); box-shadow: 0 14px 32px rgba(31, 41, 55, .08); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+/* **幅は決め打ちにする**（`width: 100%`）。図の縦横比（`aspect-ratio`。描くときに付く）と
+   `min-height` が両方効くと、幅が auto のままでは最低の高さから幅が逆算され、縦長の図
+   （芸能人のつながり）は狭い画面で枠ごと右へはみ出していた */
+.relation-canvas { position: relative; overflow: hidden; width: 100%; margin-bottom: 1.5rem; height: auto; min-height: 28rem; border: 1px solid #e4e7f0; border-radius: 1.5rem; background: radial-gradient(circle at 45% 25%, #ffffff 0, #fafafe 42%, #eef0f9 100%); box-shadow: 0 14px 32px rgba(31, 41, 55, .08); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 /* **器いっぱいに置く** —— 拡大は viewBox を動かして行うので、要素の大きさは変えない。
    映す範囲は器と同じ縦横比で切り出すので、縦長の図が潰れることはない
    （図は器より高いので、はみ出したぶんは引きずって見る） */
