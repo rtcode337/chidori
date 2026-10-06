@@ -72,6 +72,8 @@ defmodule Tazuna.CollectOverview do
       enabled: collection["enabled"] == true,
       last_status: collection["last_status"],
       last_error: collection["last_error"],
+      # Chiezo の今の設定そのもの（Chidori の定義と突き合わせる。`Tazuna.CollectDrift`）
+      config: collection,
       sweeps:
         Enum.map(collection["sweeps"] || [], fn sweep ->
           %{

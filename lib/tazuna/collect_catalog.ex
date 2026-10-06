@@ -14,6 +14,8 @@ defmodule Tazuna.CollectCatalog do
   """
 
   alias Tazuna.Chiezo
+  alias Tazuna.CollectDrift
+  alias Tazuna.CollectPace
   alias Tazuna.Datasets
   alias Tazuna.News
   alias Tazuna.News.Interests
@@ -75,7 +77,8 @@ defmodule Tazuna.CollectCatalog do
           label: Map.get(dataset, :title, dataset.name),
           screen: "/datasets?view=#{dataset.key}",
           attrs: &Datasets.call(dataset, :attrs, [&1]),
-          # 起点を差し替えて送る（データ収集の画面と同じ道）
+          # 起点を差し込んで送る（データ収集の画面と同じ道）。比べるのも同じもの
+          outgoing: fn -> Datasets.outgoing(dataset) end,
           push: fn _base, choices -> Datasets.push(dataset, choices) end
         }
       ] ++
@@ -113,11 +116,17 @@ defmodule Tazuna.CollectCatalog do
   もの）は後ろに並べ、`push` は nil（相手だけを送る）。
   """
   def rows(chiezo_rows) do
+    rows_with(chiezo_rows, &drift/2)
+  end
+
+  @doc false
+  # 突き合わせを差し替えられる形（テストで使う）
+  def rows_with(chiezo_rows, drift) do
     by_name = Map.new(chiezo_rows, &{&1.name, &1})
     entries = list()
     known = MapSet.new(entries, & &1.name)
 
-    Enum.map(entries, &row(&1, by_name[&1.name])) ++
+    Enum.map(entries, &row(&1, by_name[&1.name], drift)) ++
       for(
         c <- chiezo_rows,
         !MapSet.member?(known, c.name),
@@ -125,7 +134,7 @@ defmodule Tazuna.CollectCatalog do
       )
   end
 
-  defp row(entry, chiezo) do
+  defp row(entry, chiezo, drift) do
     sweeps =
       for d <- sweeps(entry) do
         c = chiezo && Enum.find(chiezo.sweeps, &(&1.name == d.name))
@@ -158,8 +167,27 @@ defmodule Tazuna.CollectCatalog do
       in_chiezo: chiezo != nil,
       enabled: chiezo == nil or chiezo.enabled,
       sweeps: sweeps,
-      push: entry.push
+      push: entry.push,
+      # **Chidori の定義と違う項目**（Chiezo にまだ無い収集は空）
+      drift: if(chiezo, do: drift.(entry, chiezo), else: [])
     }
+  end
+
+  @doc """
+  Chiezo の今の設定が、Chidori がいま送るはずの設定と違う項目（`Tazuna.CollectDrift`）。
+  比べるのは**送るときと同じもの**（整理を止めた選択も載せる）。組み立てに失敗しても
+  表は出す（違いが読めないだけで、空として扱う）。
+  """
+  def drift(entry, chiezo) do
+    expected =
+      case entry[:outgoing] do
+        nil -> entry.attrs.(%{})
+        outgoing -> outgoing.()
+      end
+
+    CollectDrift.differences(CollectPace.with_stops(entry.name, expected), chiezo[:config])
+  rescue
+    _error -> []
   end
 
   @doc """

@@ -156,6 +156,17 @@
                     :if={!collection.push}
                     class="muted-note"
                   >Chidori の画面に無い収集です（相手と整理だけを送ります）</span>
+                  <%!-- **Chidori の定義と違うところ**（直した依頼文や設定がまだ届いていない）。
+                       「Chiezo に送る」で揃う --%>
+                  <details :if={collection[:drift] not in [nil, []]} class="collect-drift">
+                    <summary>Chidori の定義と違います（{length(collection.drift)} 項目）</summary>
+                    <ul>
+                      <li :for={item <- collection.drift}>{item}</li>
+                    </ul>
+                    <p class="muted-note">
+                      「Chiezo に送る」で Chidori の今の定義に揃います（Chiezo の管理画面で直したものも上書きされます）。
+                    </p>
+                  </details>
                   <form
                     id={form_id}
                     class="collection-send"

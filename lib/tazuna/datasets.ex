@@ -93,10 +93,17 @@ defmodule Tazuna.Datasets do
          {:ok, existing} <- Chiezo.collection(base, name) do
       # **起点は tazuna が持っているものを送る**（画面で決め直したもの）。定義の既定を
       # 送ると、送り直すたびに東京駅へ戻る
-      attrs = dataset |> call(:attrs, [choices]) |> with_origin(dataset)
+      attrs = outgoing(dataset, choices)
       if existing, do: Chiezo.patch(base, name, attrs), else: Chiezo.request(base, attrs)
     end
   end
+
+  @doc """
+  `push/2` が送る設定（起点を差し込んだもの）。**「Chiezo 収集」の表で、Chiezo の今の
+  設定と突き合わせるのにも使う** —— 送るものと比べるものを別々に組むと、片方だけ直る。
+  """
+  def outgoing(dataset, choices \\ %{}),
+    do: dataset |> call(:attrs, [choices]) |> with_origin(dataset)
 
   @doc """
   範囲を変えたあとで、**範囲で決まるところだけを Chiezo へ送り、機械収集から

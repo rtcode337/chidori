@@ -58,6 +58,17 @@ defmodule TazunaWeb.SettingsLiveTest do
     :ok
   end
 
+  test "Chiezo の設定が Chidori の定義と違う収集に、違う項目を出す", %{conn: conn} do
+    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    html = render_async(live)
+
+    # Chiezo の技術ニュースには整理の回しか無い（Chidori の定義には見出しの回もある）
+    [_, tech] = String.split(html, "tazuna_tech</span>", parts: 2)
+    [tech, _] = String.split(tech, "</tbody>", parts: 2)
+    assert tech =~ "Chidori の定義と違います"
+    assert tech =~ "が Chiezo にありません"
+  end
+
   test "いまの間隔が選ばれて出る", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/settings?tab=chiezo")
 
