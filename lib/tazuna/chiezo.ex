@@ -826,6 +826,9 @@ defmodule Tazuna.Chiezo do
       # 区画の一覧。**どこがまだ見られていないかは、ここにしか無い** ——
       # 先に見てほしいところを頼むのに要る
       partitions: partitions_of(item),
+      # 座標を固定した店の数（位置OK・位置修正）。**固定は次に焼くときから効く**ので、
+      # これがあれば「AI を使わずにいま反映する」を出す（固定した直後の画面でなくても）
+      locked: map_size(if(is_map(item["locks"]), do: item["locks"], else: %{})),
       docs: 0,
       recent: [],
       requested_by: item["requested_by"] || "",

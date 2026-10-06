@@ -62,7 +62,9 @@ defmodule TazunaWeb.MealAreasLive do
        marker: nil,
        # travel-log からの依頼を配った結果と、位置の固定の結果
        routed: nil,
-       held: nil
+       held: nil,
+       # 「AI を使わずにいま反映する」を頼んだ範囲（範囲の id → 結果）
+       applied: %{}
      )
      |> assign_pending()}
   end
@@ -76,6 +78,8 @@ defmodule TazunaWeb.MealAreasLive do
 
     assign(socket, pending_counts: counts)
   end
+
+  defp empty_draft, do: %{"name" => "", "south" => "", "west" => "", "north" => "", "east" => ""}
 
   # ---- travel-log からの依頼を配る ------------------------------------------
 
@@ -117,7 +121,22 @@ defmodule TazunaWeb.MealAreasLive do
     {:noreply, socket}
   end
 
-  defp empty_draft, do: %{"name" => "", "south" => "", "west" => "", "north" => "", "east" => ""}
+  # **AI を使わずに、固定した座標をいま反映する**（その範囲の機械収集を 1 回走らせる）。
+  # 範囲のタブにある同じボタンと同じもの —— 配ったあとにタブへ移らずに済むように
+  def handle_event("apply_locks", %{"id" => id}, socket) do
+    with {n, ""} <- Integer.parse(id), %MealAreas{} = area <- MealAreas.get(n) do
+      applied = Map.put(socket.assigns.applied, area.id, :applying)
+
+      {:noreply,
+       socket
+       |> assign(applied: applied)
+       |> start_async({:apply_locks, area.id}, fn ->
+         Requests.apply_now(Meals.definition(area))
+       end)}
+    else
+      _other -> {:noreply, socket}
+    end
+  end
 
   # ---- 地名で寄る ----------------------------------------------------------
 
@@ -301,6 +320,14 @@ defmodule TazunaWeb.MealAreasLive do
   end
 
   @impl true
+  def handle_async({:apply_locks, id}, {:ok, result}, socket),
+    do: {:noreply, assign(socket, applied: Map.put(socket.assigns.applied, id, result))}
+
+  def handle_async({:apply_locks, id}, {:exit, _}, socket),
+    do:
+      {:noreply,
+       assign(socket, applied: Map.put(socket.assigns.applied, id, {:error, :chiezo_unavailable}))}
+
   def handle_async(:route_hold, {:ok, results}, socket),
     do: {:noreply, assign(socket, held: results)}
 
@@ -511,11 +538,18 @@ defmodule TazunaWeb.MealAreasLive do
   def held_lines(results) when is_list(results) do
     for {area, result} <- results, message = DatasetsLive.held_message(result), message != "" do
       "#{area.name}: " <>
-        String.replace(message, "「AI を使わずにいま反映する」", "範囲のタブの「AI を使わずにいま反映する」")
+        String.replace(message, "「AI を使わずにいま反映する」", "下の「AI を使わずにいま反映する」")
     end
   end
 
   def held_lines(_held), do: []
+
+  @doc "位置を固定できた範囲（「AI を使わずにいま反映する」を出す先）。"
+  def held_areas(results) when is_list(results) do
+    for {area, {:ok, %{held: [_ | _]}}} <- results, do: area
+  end
+
+  def held_areas(_held), do: []
 
   @doc "どの範囲にも入らなかった依頼（行の頭だけ）。"
   def outside_lines(%{outside: %{confirms: confirms, items: items}}) do

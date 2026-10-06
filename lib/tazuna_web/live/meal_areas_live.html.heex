@@ -120,6 +120,20 @@
         </div>
       <% end %>
       <p :for={line <- held_lines(@held)} class="muted-note" aria-live="polite">{line}</p>
+      <%!-- 固定できた範囲ごとに、AI を使わずにいま反映する口（範囲のタブと同じもの） --%>
+      <div :for={area <- held_areas(@held)} class="button-row">
+        <button
+          type="button"
+          phx-click="apply_locks"
+          phx-value-id={area.id}
+          phx-disable-with="頼んでいます…"
+        >
+          {area.name}: AI を使わずにいま反映する
+        </button>
+        <span :if={@applied[area.id]} class="muted-note" aria-live="polite">
+          {TazunaWeb.DatasetsLive.applied_message(@applied[area.id])}
+        </span>
+      </div>
     </section>
 
     <section

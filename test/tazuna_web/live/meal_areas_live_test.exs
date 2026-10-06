@@ -240,4 +240,17 @@ defmodule TazunaWeb.MealAreasLiveTest do
       assert html =~ ~p"/datasets/areas/travel-log.zip"
     end
   end
+
+  test "位置を固定できた範囲にだけ、AI を使わずにいま反映する口を出す" do
+    tokyo = %MealAreas{id: 1, name: "東京駅"}
+    osaka = %MealAreas{id: 2, name: "大阪"}
+
+    results = [
+      {tokyo, {:ok, %{held: ["駅前うどん"], missed: [], failed: []}}},
+      {osaka, {:ok, %{held: [], missed: ["見つからない店"], failed: []}}}
+    ]
+
+    assert TazunaWeb.MealAreasLive.held_areas(results) == [tokyo]
+    assert TazunaWeb.MealAreasLive.held_areas(:holding) == []
+  end
 end
