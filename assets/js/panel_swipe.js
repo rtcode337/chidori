@@ -9,6 +9,9 @@
 // - 横に広い表・コード（指で横へずらして読む）
 // - タブの列（横にスクロールさせて選ぶ）
 // 関連図は iframe の中なので、そこでの指はこちらに届かない（図を動かす指と取り合わない）。
+// 文字を選ぶ指（長押しから横へ引く）も払いにしない（`swipe_guard.js`）。
+
+import {selectingText} from "./swipe_guard"
 
 const SWIPE = 60
 const RATIO = 1.5
@@ -25,14 +28,16 @@ export default {
         return
       }
       const touch = event.touches[0]
-      this.start = {x: touch.clientX, y: touch.clientY}
+      this.start = {x: touch.clientX, y: touch.clientY, at: Date.now()}
     }
     this.onEnd = event => {
       if (!this.start) return
       const touch = event.changedTouches[0]
       const dx = touch.clientX - this.start.x
       const dy = touch.clientY - this.start.y
+      const selecting = selectingText(this.start)
       this.start = null
+      if (selecting) return
       if (Math.abs(dx) < SWIPE || Math.abs(dx) < Math.abs(dy) * RATIO) return
       this.pushEvent("panel_step", {by: dx < 0 ? 1 : -1})
     }

@@ -10,6 +10,9 @@
 // 開いている間は後ろのページを止める（全画面の中だけがスクロールする）。
 // 前後へ動いたら先頭から読ませる（前の要約の途中の位置で次が始まると、頭が見えない）。
 // 目次の項目から開いたときは、その章まで送る（`data-section`）。
+// 文字を選ぶ指（長押しから横へ引く）は払いにしない（`swipe_guard.js`）。
+
+import {selectingText} from "./swipe_guard"
 
 // ここまで横に動いたら払ったことにする（ピクセル）
 const SWIPE = 60
@@ -29,14 +32,16 @@ export default {
         return
       }
       const touch = event.touches[0]
-      this.start = {x: touch.clientX, y: touch.clientY}
+      this.start = {x: touch.clientX, y: touch.clientY, at: Date.now()}
     }
     this.onEnd = event => {
       if (!this.start) return
       const touch = event.changedTouches[0]
       const dx = touch.clientX - this.start.x
       const dy = touch.clientY - this.start.y
+      const selecting = selectingText(this.start)
       this.start = null
+      if (selecting) return
       if (Math.abs(dx) < SWIPE || Math.abs(dx) < Math.abs(dy) * RATIO) return
       // 右へ払う → 古いほう（1）、左へ払う → 新しいほう（-1）
       this.pushEvent("digest_step", {by: dx > 0 ? 1 : -1})
