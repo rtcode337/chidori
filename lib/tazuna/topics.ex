@@ -117,8 +117,11 @@ defmodule Tazuna.Topics do
         # 話題では、網になる前にその語が古くなる
         themes: true,
         # **記事の絵を Chiezo に持たせる**（一般ニュースと同じ）。どこのページも同じ
-        # ロゴを返す相手と、機械の取得を断る相手は名指ししない
-        thumbs: %{pages_from: ["itmedia.co.jp", "publickey1.jp", "github.blog"]},
+        # ロゴを返す相手（InfoQ など）と、機械の取得を断る相手（CodeZine など）は名指し
+        # しない。Qiita と Zenn は記事ごとの絵（見出しを載せたカード）を返す
+        thumbs: %{
+          pages_from: ["itmedia.co.jp", "publickey1.jp", "github.blog", "qiita.com", "zenn.dev"]
+        },
         # **機械で引ける配信元は機械で引く。** 見出し・要約・URL・配信日は
         # 機械が正確に取れるので、AI の枠は「何が重要か」「どうまとめるか」へ回す。
         # タグは同じ収集の中で束を分けるためのもの（ニュースと記事を混ぜて溜めて、
@@ -184,9 +187,10 @@ defmodule Tazuna.Topics do
         # 募集が出たものしか流れてこないので、そのままではカレンダーが来月で止まる
         look_ahead: true,
         # **絵を Chiezo に縮めて持たせる。** connpass は配信に絵を載せないので、イベントの
-        # ページの og:image を Chiezo に拾わせる（名指ししたホストだけ）。外から足した
-        # イベントは AI が返す絵から。TECH PLAY は配信の絵をそのまま使う
-        thumbs: %{pages_from: ["connpass.com"]}
+        # ページの og:image を Chiezo に拾わせる。**ホストは問わない**（`"*"`）—— 外から
+        # 足したイベントは主催ごとに公式サイトが違い、AI が絵を返さないことも多い。
+        # 配信が絵を運んでくる TECH PLAY は、ページまで取りに行かずその絵を使う
+        thumbs: %{pages_from: ["*"]}
       },
       %{
         name: "お笑いイベント",
@@ -206,8 +210,9 @@ defmodule Tazuna.Topics do
         # 外を探す回（情報収集）だけで集め、片付けもその回がする（整理の回は置かない）
         feeds: [],
         look_ahead: Tazuna.News.ComedyEvents,
-        # **絵を Chiezo に縮めて持たせる**（AI が公式サイトの絵の URL を返す）
-        thumbs: true
+        # **絵を Chiezo に縮めて持たせる**（AI が公式サイトの絵の URL を返す）。
+        # 返さなかったイベントは、公式サイトのページの og:image から（ホストは問わない）
+        thumbs: %{pages_from: ["*"]}
       },
       %{
         name: "映画",
@@ -253,8 +258,9 @@ defmodule Tazuna.Topics do
         # **記事一覧は出しません**（1 件が記事ではなく作品なので）。代わりに注目作を並べる
         articles: false,
         # **ポスターを Chiezo に縮めて持たせる**（AI が公式サイトの絵の URL を返す）。
-        # 画面が公式サイトの絵をそのまま指すと、見る人のブラウザが外へつなぎに行く
-        thumbs: true
+        # 画面が公式サイトの絵をそのまま指すと、見る人のブラウザが外へつなぎに行く。
+        # 返さなかった作品は、公式サイトのページの og:image から（ホストは問わない）
+        thumbs: %{pages_from: ["*"]}
       },
       %{
         name: "アニメ",
@@ -293,8 +299,9 @@ defmodule Tazuna.Topics do
         """,
         # 記事一覧は出さない（1 件が作品なので）。代わりに注目作を並べる
         articles: false,
-        # **キービジュアルを Chiezo に縮めて持たせる**（AI が公式サイトの絵の URL を返す）
-        thumbs: true
+        # **キービジュアルを Chiezo に縮めて持たせる**（AI が公式サイトの絵の URL を返す）。
+        # 返さなかった作品は、公式サイトのページの og:image から（ホストは問わない）
+        thumbs: %{pages_from: ["*"]}
       },
       %{
         name: "市況ニュース",

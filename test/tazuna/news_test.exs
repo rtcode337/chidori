@@ -548,7 +548,7 @@ defmodule Tazuna.NewsTest do
       assert survey.prompt =~ "出演:"
 
       attrs = News.attrs("tazuna_comedy", topic)
-      assert attrs.thumbs == true
+      assert attrs.thumbs == %{pages_from: ["*"]}
       assert attrs.keep_days == 0
       # 名指ししない回に落ちる文も、ニュースではなく先を探す文
       assert attrs.prompt == survey.prompt
@@ -604,9 +604,15 @@ defmodule Tazuna.NewsTest do
       assert sweep.prompt =~ "next_cursor には、今回の次の月の名前"
       assert Tazuna.News.Events.segments() == ~w(今月 来月 2か月先 3か月先 4か月先 5か月先 6か月先)
 
-      # connpass は配信に絵を載せないので、ページの og:image を Chiezo に拾わせる
+      # connpass は配信に絵を載せず、外から足したイベントは主催ごとに公式サイトが違うので、
+      # どのホストのページの og:image も Chiezo に拾わせる
       assert News.attrs("tazuna_events", defined_topic("tazuna_events")).thumbs ==
-               %{pages_from: ["connpass.com"]}
+               %{pages_from: ["*"]}
+
+      # 作品（アニメ・映画）とお笑いイベントも、AI が絵を返さなければ公式サイトのページから
+      for collection <- ~w(tazuna_anime tazuna_movies tazuna_comedy) do
+        assert News.attrs(collection, defined_topic(collection)).thumbs == %{pages_from: ["*"]}
+      end
 
       # ニュースは記事のページの og:image を拾わせる。市況には持たせない
       assert News.attrs("tazuna_tech", defined_topic("tazuna_tech")).thumbs.pages_from != []
@@ -890,8 +896,9 @@ defmodule Tazuna.NewsTest do
       attrs = News.attrs("tazuna_movies", defined_topic("tazuna_movies"))
       assert attrs.feed == nil
       assert attrs.keep_days == 0
-      # ポスターは Chiezo に縮めて持たせる
-      assert attrs.thumbs == true
+
+      # ポスターは Chiezo に縮めて持たせる（AI が返さなければ公式サイトのページから）
+      assert attrs.thumbs == %{pages_from: ["*"]}
 
       # 名指ししない回が記事を集め始めないように、収集ぜんたいの文も作品を探す文
       assert attrs.prompt == by_name["情報収集"].prompt
