@@ -1126,7 +1126,10 @@ a.top-book-cover { display: block; }
 .collect-overview .collection-send button { padding: .25rem .7rem; font-size: .78rem; }
 
 /* 食事処の範囲を描く地図 */
-.area-canvas { aspect-ratio: 4 / 3; background: #dbeafe; }
+/* **幅を基準に 4:3 にする**（`width: 100%` と `height: auto`）。地図の枠の高さは決め打ち
+   （`.map-canvas`）なので、縦横比だけを足すと高さから幅が逆算され、狭い画面で画面の倍ほど
+   右へはみ出していた（縦長の関連図と同じ型） */
+.area-canvas { width: 100%; height: auto; aspect-ratio: 4 / 3; background: #dbeafe; }
 /* 縁取りは引かない。**線の太さを倍率で割り戻す指定（non-scaling-stroke）は、深く寄ると
    陸地の塗りが黒く崩れる**（区や駅の細かさまで寄るこの地図では必ず踏む）。陸と海の塗り分けで見せる */
 .area-canvas path.coast { fill: #fff; stroke: none; pointer-events: none; }
