@@ -12,6 +12,47 @@ defmodule Tazuna.Datasets.RequestsTest do
 
   defp partitions(keys), do: Enum.map(keys, &%{key: &1})
 
+  describe "範囲ごとに振り分ける" do
+    # 東京駅のあたりの広い範囲と、その中の狭い範囲、離れた大阪の範囲
+    @wide %{id: 1, name: "広い", south: 35.60, west: 139.70, north: 35.75, east: 139.85}
+    @narrow %{id: 2, name: "狭い", south: 35.67, west: 139.75, north: 35.69, east: 139.78}
+    @osaka_area %{id: 3, name: "大阪", south: 34.60, west: 135.40, north: 34.80, east: 135.60}
+
+    test "1 件ずつ、座標の入る範囲へ回す（重なっていれば狭いほう）" do
+      text = """
+      - [修正] 東京駅の店 (35.6812,139.7671): 閉店している
+      - [追加] (35.7200,139.8000): 広い範囲だけに入る
+      - [修正] 大阪の店 (34.7000,135.5000): 営業時間が違う
+      """
+
+      %{areas: routed, outside: outside} = Requests.route(text, [@wide, @narrow, @osaka_area])
+      by = Map.new(routed, &{&1.area.name, Enum.map(&1.items, fn item -> item.text end)})
+
+      assert by["狭い"] == ["- [修正] 東京駅の店 (35.6812,139.7671): 閉店している"]
+      assert by["広い"] == ["- [追加] (35.7200,139.8000): 広い範囲だけに入る"]
+      assert by["大阪"] == ["- [修正] 大阪の店 (34.7000,135.5000): 営業時間が違う"]
+      assert outside == %{confirms: [], items: []}
+    end
+
+    test "位置修正は、店が今いる座標で振り分ける（直す先が範囲の外でも）" do
+      text = "- [位置修正] 東京駅の店 (35.6812,139.7671) → (35.7000,139.9000)"
+
+      %{areas: [%{area: area, confirms: [confirm]}]} = Requests.route(text, [@wide, @narrow])
+      assert area.name == "狭い"
+      assert confirm.to == {35.7, 139.9}
+    end
+
+    test "どの範囲にも入らない依頼は、落とさずに返す" do
+      text = "- [追加] (43.0600,141.3500): 札幌の店\n- [位置確認] 札幌の店 (43.0600,141.3500)"
+
+      %{areas: [], outside: %{confirms: [confirm], items: [item]}} =
+        Requests.route(text, [@wide, @osaka_area])
+
+      assert confirm.name == "札幌の店"
+      assert item.text =~ "札幌の店"
+    end
+  end
+
   test "travel-log のテキストから座標を読む（書かれた順・重複なし）" do
     text = """
     # 修正・追加の依頼(日本の食事処) 3件

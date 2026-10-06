@@ -73,7 +73,7 @@ defmodule Tazuna.Datasets.TravelLog do
   内訳は `%{rows: 書き出した件数, skipped: 落とした件数, outside: 範囲の外の件数,
   excluded: 消えたもの（範囲の外を含む）の件数}`。
   """
-  def bundle(%{key: zip_name, collection: collection, module: module} = dataset) do
+  def bundle(%{key: zip_name, module: module} = dataset) do
     # **種別の key と名前は、範囲の収集では範囲によらず同じ**（`dining`）。書き出しは
     # 範囲ごとでも、travel-log では 1 つの種別に読み込む
     key = dataset[:export_key] || zip_name
@@ -81,7 +81,70 @@ defmodule Tazuna.Datasets.TravelLog do
 
     with true <- exportable?(dataset) || {:error, :not_exportable},
          {:ok, base} <- Datasets.base_url(),
-         {:ok, docs} <- fetch_all(base, collection, module.kind_tag()),
+         {:ok, part} <- gather(base, dataset) do
+      zip(zip_name, key, name, part, module, dataset[:series_order])
+    else
+      {:error, reason} -> {:error, reason}
+      false -> {:error, :not_exportable}
+    end
+  end
+
+  @doc """
+  **いくつもの範囲を 1 つの ZIP に**まとめます（食事処の範囲の画面から）。travel-log では
+  範囲によらず 1 つの種別（`dining`）に読み込むので、範囲ごとに読み込ませる手間を省く。
+  返すのは `bundle/1` と同じ形。
+
+  **範囲が重なっていると、同じ店が 2 つの範囲に 1 件ずつ居る**（見分けの鍵は範囲ごとに
+  違う）。名前と場所（`@twin_meters` 以内）が同じ行は先の範囲のものだけを残し、
+  後のものは exclude.txt へ回す —— 範囲ごとの ZIP で前に読み込んでいれば、それが消える。
+  **書き出す行と同じ鍵は exclude.txt に入れない**（同じ鍵を残しつつ消す、にならないように）。
+  """
+  def bundle_all([first | _rest] = datasets, zip_name) do
+    %{module: module} = first
+    key = first[:export_key] || first.key
+    name = first[:export_name] || first.name
+
+    with true <- Enum.all?(datasets, &exportable?/1) || {:error, :not_exportable},
+         {:ok, base} <- Datasets.base_url(),
+         {:ok, parts} <- gather_all(base, datasets) do
+      {rows, twins} = without_twins(Enum.flat_map(parts, & &1.rows))
+      living = MapSet.new(rows, & &1["key"])
+
+      excluded =
+        parts
+        |> Enum.flat_map(& &1.excluded)
+        |> Kernel.++(Enum.map(twins, & &1["key"]))
+        |> Enum.reject(&MapSet.member?(living, &1))
+        |> Enum.uniq()
+
+      part = %{
+        rows: rows,
+        excluded: excluded,
+        outside: Enum.sum(Enum.map(parts, & &1.outside)),
+        skipped: Enum.sum(Enum.map(parts, & &1.skipped)) + length(twins)
+      }
+
+      zip(zip_name, key, name, part, module, first[:series_order])
+    else
+      {:error, reason} -> {:error, reason}
+      false -> {:error, :not_exportable}
+    end
+  end
+
+  def bundle_all([], _zip_name), do: {:error, :nothing_to_export}
+
+  defp gather_all(base, datasets) do
+    Enum.reduce_while(datasets, {:ok, []}, fn dataset, {:ok, acc} ->
+      case gather(base, dataset) do
+        {:ok, part} -> {:cont, {:ok, acc ++ [part]}}
+        {:error, reason} -> {:halt, {:error, {dataset.collection, reason}}}
+      end
+    end)
+  end
+
+  # 1 つの収集ぶんの行（範囲の中）と、消えたもの・範囲の外の鍵
+  defp gather(base, %{collection: collection, module: module} = dataset) do
+    with {:ok, docs} <- fetch_all(base, collection, module.kind_tag()),
          {:ok, removed} <-
            fetch_all(base, collection, Chiezo.removed_tag(), include_removed: true) do
       links = link_checks(base, collection)
@@ -92,34 +155,66 @@ defmodule Tazuna.Datasets.TravelLog do
         |> Enum.reject(&is_nil/1)
         |> split_outside(dataset)
 
-      excluded = Enum.uniq(excluded_keys(removed, dataset) ++ Enum.map(outside, & &1["key"]))
+      {:ok,
+       %{
+         rows: rows,
+         excluded: Enum.uniq(excluded_keys(removed, dataset) ++ Enum.map(outside, & &1["key"])),
+         outside: length(outside),
+         skipped: length(docs) - length(rows) - length(outside)
+       }}
+    end
+  end
 
-      files =
-        [
-          {~c"#{key}/settings.json",
-           settings_json(key, name, rows, category_order(module), dataset[:series_order])},
-          {~c"#{key}/spots.csv", csv(rows)}
-        ] ++
-          if excluded == [],
-            do: [],
-            else: [{~c"#{key}/excluded_candidates/exclude.txt", exclude_txt(excluded)}]
+  # 同じ店とみなす近さ（m）。範囲が重なったところで、同じ 1 件が 2 つの収集に居る
+  @twin_meters 30
 
-      case :zip.create(~c"#{zip_name}.zip", files, [:memory]) do
-        {:ok, {_name, binary}} ->
-          {:ok, "#{zip_name}.zip", binary,
-           %{
-             rows: length(rows),
-             skipped: length(docs) - length(rows) - length(outside),
-             outside: length(outside),
-             excluded: length(excluded)
-           }}
+  # 名前と場所が同じ行を畳む（`{残す行, 畳んだ行}`）。**先に来たほうを残す**
+  defp without_twins(rows) do
+    {kept, twins, _seen} =
+      Enum.reduce(rows, {[], [], %{}}, fn row, {kept, twins, seen} ->
+        same = Map.get(seen, row["name"], [])
 
-        {:error, reason} ->
-          {:error, reason}
-      end
-    else
-      {:error, reason} -> {:error, reason}
-      false -> {:error, :not_exportable}
+        if Enum.any?(same, &(meters(&1, {row["lat"], row["lng"]}) <= @twin_meters)) do
+          {kept, [row | twins], seen}
+        else
+          {[row | kept], twins, Map.put(seen, row["name"], [{row["lat"], row["lng"]} | same])}
+        end
+      end)
+
+    {Enum.reverse(kept), Enum.reverse(twins)}
+  end
+
+  defp meters({lat1, lon1}, {lat2, lon2}) do
+    dy = (lat2 - lat1) * 111_320
+    dx = (lon2 - lon1) * 111_320 * :math.cos(lat1 * :math.pi() / 180)
+    :math.sqrt(dx * dx + dy * dy)
+  end
+
+  defp zip(zip_name, key, name, part, module, series_order) do
+    %{rows: rows, excluded: excluded} = part
+
+    files =
+      [
+        {~c"#{key}/settings.json",
+         settings_json(key, name, rows, category_order(module), series_order)},
+        {~c"#{key}/spots.csv", csv(rows)}
+      ] ++
+        if excluded == [],
+          do: [],
+          else: [{~c"#{key}/excluded_candidates/exclude.txt", exclude_txt(excluded)}]
+
+    case :zip.create(~c"#{zip_name}.zip", files, [:memory]) do
+      {:ok, {_name, binary}} ->
+        {:ok, "#{zip_name}.zip", binary,
+         %{
+           rows: length(rows),
+           skipped: part.skipped,
+           outside: part.outside,
+           excluded: length(excluded)
+         }}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

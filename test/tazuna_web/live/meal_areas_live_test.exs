@@ -184,4 +184,60 @@ defmodule TazunaWeb.MealAreasLiveTest do
       refute_receive {:patched, _url, _sent}, 200
     end
   end
+
+  describe "travel-log からの依頼" do
+    test "1 件ずつ座標の入る範囲に控え、どこにも入らないものは控えずに出す", %{conn: conn} do
+      Tazuna.Repo.insert!(%MealAreas{
+        id: 1,
+        name: "東京駅",
+        south: 35.67,
+        west: 139.75,
+        north: 35.69,
+        east: 139.78
+      })
+
+      Tazuna.Repo.insert!(%MealAreas{
+        id: 2,
+        name: "大阪",
+        south: 34.6,
+        west: 135.4,
+        north: 34.8,
+        east: 135.6
+      })
+
+      {:ok, live, _html} = live(conn, ~p"/datasets/areas")
+
+      text = """
+      - [修正] 東京駅の店 (35.6812,139.7671): 閉店している
+      - [修正] 大阪の店 (34.7000,135.5000): 営業時間が違う
+      - [追加] (43.0600,141.3500): 札幌の店
+      """
+
+      html = live |> form("form[phx-submit=route_requests]", %{text: text}) |> render_submit()
+
+      assert html =~ "東京駅: 1 件を控えました"
+      assert html =~ "大阪: 1 件を控えました"
+      assert html =~ "どの範囲にも入らなかったので控えていません"
+      assert html =~ "札幌の店"
+      # 範囲の一覧に、控えている依頼の数が出る
+      assert html =~ "控えている依頼 1 件"
+
+      assert Tazuna.Datasets.Requests.pending_count(%{collection: "tazuna_dining_1"}) == 1
+      assert Tazuna.Datasets.Requests.pending_count(%{collection: "tazuna_dining_2"}) == 1
+    end
+
+    test "全範囲をまとめて書き出す口がある", %{conn: conn} do
+      Tazuna.Repo.insert!(%MealAreas{
+        id: 1,
+        name: "東京駅",
+        south: 35.67,
+        west: 139.75,
+        north: 35.69,
+        east: 139.78
+      })
+
+      {:ok, _live, html} = live(conn, ~p"/datasets/areas")
+      assert html =~ ~p"/datasets/areas/travel-log.zip"
+    end
+  end
 end

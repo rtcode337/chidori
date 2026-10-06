@@ -36,6 +36,14 @@
             {area.name}
           </.link>
           <span class="muted-note">{bbox_text(area)}</span>
+          <%!-- 控えている依頼の数（travel-log からの依頼を配った先）。頼むのは範囲のタブから --%>
+          <.link
+            :if={Map.get(@pending_counts, area.id, 0) > 0}
+            navigate={~p"/datasets?view=#{Tazuna.Datasets.Meals.definition(area).key}"}
+            class="area-pending"
+          >
+            控えている依頼 {Map.get(@pending_counts, area.id)} 件
+          </.link>
           <span class="area-actions">
             <button type="button" phx-click="show_area" phx-value-id={area.id}>地図で見る</button>
             <button type="button" phx-click="edit_area" phx-value-id={area.id}>範囲を直す</button>
@@ -50,6 +58,68 @@
           </span>
         </li>
       </ul>
+    </section>
+
+    <%!-- **全範囲を 1 つの ZIP に**（travel-log では範囲によらず 1 つの種別に読み込む）。
+         範囲ごとの ZIP は範囲のタブにある --%>
+    <section :if={@areas != []} class="settings-block" aria-label="全範囲の書き出し">
+      <h3>travel-log 用の ZIP</h3>
+      <a
+        id="download-dining-all"
+        class="download-link"
+        href={~p"/datasets/areas/travel-log.zip"}
+        download
+        phx-hook="DownloadLink"
+        data-status="download-status-dining-all"
+      >
+        ⬇ 全範囲をまとめて書き出す
+      </a>
+      <span
+        id="download-status-dining-all"
+        class="download-status"
+        role="status"
+        phx-update="ignore"
+      ></span>
+      <p class="muted-note">
+        全部の範囲の店を 1 つの ZIP にします（travel-log では範囲によらず「食事処」の 1 つの種別に読み込みます）。範囲が重なったところで同じ店が 2 つの範囲に居るときは、先に作った範囲のほうだけを入れ、もう片方は exclude.txt に回します。範囲の数だけ取り出すので、十数秒ずつかかります。
+      </p>
+    </section>
+
+    <%!-- **travel-log からの依頼を、範囲ごとに配る**。依頼のテキストにはどの範囲の店かが
+         書いていないので、1 件ずつ座標の入る範囲へ控える。頼むのは範囲のタブから --%>
+    <section :if={@areas != []} class="settings-block" aria-label="travel-log からの依頼">
+      <h3>travel-log からの依頼</h3>
+      <form phx-submit="route_requests">
+        <p>
+          <label>
+            travel-log の「修正・追加の依頼」のテキスト<br />
+            <textarea
+              name="text"
+              rows="6"
+              placeholder="- [修正] 店名 (35.68123,139.76712): 閉店している&#10;- [追加] (35.68000,139.76000): うどんの名店がある"
+            ></textarea>
+          </label>
+        </p>
+        <p class="muted-note">
+          travel-log の管理画面の「渡すテキスト」をそのまま貼ってください。1 件ずつ、座標の入る範囲に控えます（範囲が重なっていれば狭いほう）。頼むのは範囲のタブの「控えている依頼」から、区画ごとにどうぞ。「[位置確認]」「[位置修正]」の行は AI を使わないので、貼った時点でその範囲の収集に座標を固定させます。
+        </p>
+        <div class="button-row">
+          <button type="submit" phx-disable-with="配っています…">範囲ごとに控える</button>
+        </div>
+      </form>
+      <%= if @routed do %>
+        <p :if={@routed.empty} class="muted-note" aria-live="polite">
+          座標の入った依頼がありませんでした（「(緯度,経度)」の形の座標を含む行が要ります）。
+        </p>
+        <p :for={line <- routed_lines(@routed)} class="muted-note" aria-live="polite">{line}</p>
+        <div :if={outside_lines(@routed) != []} class="muted-note" aria-live="polite">
+          どの範囲にも入らなかったので控えていません（範囲を広げるか足してから、貼り直してください）:
+          <ul>
+            <li :for={line <- outside_lines(@routed)}>{line}</li>
+          </ul>
+        </div>
+      <% end %>
+      <p :for={line <- held_lines(@held)} class="muted-note" aria-live="polite">{line}</p>
     </section>
 
     <section

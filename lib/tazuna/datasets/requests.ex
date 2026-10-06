@@ -240,6 +240,52 @@ defmodule Tazuna.Datasets.Requests do
   def items(_text), do: []
 
   @doc """
+  依頼のテキストを、**範囲ごとに振り分けます**（食事処の範囲の画面から）。travel-log は
+  いくつもの範囲を 1 つの画面で扱うので、依頼のテキストにはどの範囲の店かが書いていない ——
+  **1 件ずつ、座標の入る範囲**へ回す。
+
+  返すのは `%{areas: [%{area, confirms, items}], outside: %{confirms, items}}`。
+  `confirms` は位置OK・位置修正（`confirms/1` の形）、`items` は AI に頼む依頼
+  （`items/1` の形）。**位置修正は店が今いる座標（前の座標）で振り分ける** —— 直す先が
+  境目の向こうでも、店を探すのは今いる範囲の収集。どの範囲にも入らないものは `outside` に
+  まとめて返す（黙って落とさない）。
+
+  **範囲が重なっていたら、いちばん狭い範囲へ**（より絞った範囲を作ったのは、そこを
+  細かく見たいからなので）。`areas` は範囲（`south` / `west` / `north` / `east` を持つもの）。
+  """
+  def route(text, areas) when is_binary(text) and is_list(areas) do
+    confirms = confirms(text)
+    items = items(without_confirms(text))
+    where = fn %{lat: lat, lon: lon} -> area_of(lat, lon, areas) end
+
+    confirms_by = Enum.group_by(confirms, where)
+    items_by = Enum.group_by(items, where)
+
+    routed =
+      areas
+      |> Enum.filter(&(Map.has_key?(confirms_by, &1) or Map.has_key?(items_by, &1)))
+      |> Enum.map(fn area ->
+        %{
+          area: area,
+          confirms: Map.get(confirms_by, area, []),
+          items: Map.get(items_by, area, [])
+        }
+      end)
+
+    %{
+      areas: routed,
+      outside: %{confirms: Map.get(confirms_by, nil, []), items: Map.get(items_by, nil, [])}
+    }
+  end
+
+  @doc "座標の入る範囲（重なっていれば、いちばん狭いもの）。どこにも入らなければ nil。"
+  def area_of(lat, lon, areas) do
+    areas
+    |> Enum.filter(&(&1.south <= lat and lat <= &1.north and &1.west <= lon and lon <= &1.east))
+    |> Enum.min_by(&((&1.north - &1.south) * (&1.east - &1.west)), fn -> nil end)
+  end
+
+  @doc """
   依頼を**控えます**（すぐには頼まない）。貼ったその場で頼むと、1 件しか依頼の無い
   区画にも AI の回が 1 回走り、枠を使い潰す —— 区画ごとに溜まった件数を見てから頼む。
 

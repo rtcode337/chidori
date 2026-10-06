@@ -1163,6 +1163,8 @@ a.top-book-cover { display: block; }
 .area-box { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: .5rem; }
 .area-estimate p { margin: .2rem 0; }
 .area-errors { color: #b91c1c; margin: 0; padding-left: 1.2rem; }
+/* 食事処の範囲の一覧で、控えている依頼の数（範囲のタブへ） */
+.area-pending { margin-left: .5rem; padding: .1rem .5rem; border-radius: 999px; background: #fff3d6; color: #8a5a00; font-size: .8rem; font-weight: 700; text-decoration: none; }
 /* 「Chiezo 収集」の表で、Chidori の定義と違う収集の印（`Tazuna.CollectDrift`） */
 .collect-drift { margin: .4rem 0; padding: .35rem .55rem; border: 1px solid #f0c36d; border-radius: .5rem; background: #fff8e6; font-size: .82rem; }
 .collect-drift summary { color: #8a5a00; font-weight: 700; cursor: pointer; }

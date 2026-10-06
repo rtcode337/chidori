@@ -18,6 +18,14 @@ defmodule TazunaWeb.MealAreasLive do
   範囲で決まるところ（名簿の指定・区画）を送り、機械収集から走らせ直す
   （`Tazuna.Datasets.reshape/1`）—— 送るだけだと、広げたぶんの店が名簿に入らない
   （機械収集は一度きりの回で、もう走らない）。
+
+  **travel-log からの依頼もここで受けて、範囲ごとに配ります**（`Requests.route/2`）。
+  travel-log はいくつもの範囲を 1 つの画面で扱うので、依頼のテキストにはどの範囲の店かが
+  書いていない —— 範囲のタブごとに貼り分けさせると、自分で座標を見て仕分けることになる。
+  1 件ずつ座標の入る範囲へ控え、位置OK・位置修正はその範囲の収集で固定させる。
+  頼むのはこれまでどおり範囲のタブの「この区画を頼む」から。
+
+  **全範囲を 1 つの ZIP に書き出せます**（`TazunaWeb.DatasetsController.export_areas/2`）。
   """
 
   use TazunaWeb, :live_view
@@ -26,6 +34,8 @@ defmodule TazunaWeb.MealAreasLive do
   alias Tazuna.Datasets
   alias Tazuna.Datasets.MealAreas
   alias Tazuna.Datasets.Meals
+  alias Tazuna.Datasets.Requests
+  alias TazunaWeb.DatasetsLive
 
   # 数える辞典とタグ（名簿を引く指定と同じもの）。**見込みは上限**で、同じ店が
   # 2 つの辞典に居れば 2 と数える（畳んだあとの数は名簿の回が引くまで分からない）
@@ -49,8 +59,62 @@ defmodule TazunaWeb.MealAreasLive do
        estimate: nil,
        query: "",
        places: nil,
-       marker: nil
-     )}
+       marker: nil,
+       # travel-log からの依頼を配った結果と、位置の固定の結果
+       routed: nil,
+       held: nil
+     )
+     |> assign_pending()}
+  end
+
+  # 範囲ごとに控えている依頼の数（範囲の id → 件数）
+  defp assign_pending(socket) do
+    counts =
+      Map.new(socket.assigns.areas, fn area ->
+        {area.id, Requests.pending_count(Meals.definition(area))}
+      end)
+
+    assign(socket, pending_counts: counts)
+  end
+
+  # ---- travel-log からの依頼を配る ------------------------------------------
+
+  @impl true
+  def handle_event("route_requests", %{"text" => text}, socket) do
+    areas = MealAreas.list()
+    %{areas: routed, outside: outside} = Requests.route(text, areas)
+
+    stashed =
+      for %{area: area, items: [_ | _] = items} <- routed do
+        text = Enum.map_join(items, "\n", & &1.text)
+        {area, Requests.stash(Meals.definition(area), text)}
+      end
+
+    holding = for %{area: area, confirms: [_ | _] = confirms} <- routed, do: {area, confirms}
+
+    socket =
+      socket
+      |> assign(
+        areas: areas,
+        routed: %{
+          stashed: stashed,
+          outside: outside,
+          empty: routed == [] and outside == %{confirms: [], items: []}
+        },
+        held: if(holding == [], do: nil, else: :holding)
+      )
+      |> assign_pending()
+
+    socket =
+      if holding == [],
+        do: socket,
+        else:
+          start_async(socket, :route_hold, fn ->
+            for {area, confirms} <- holding,
+                do: {area, Requests.hold(Meals.definition(area), confirms)}
+          end)
+
+    {:noreply, socket}
   end
 
   defp empty_draft, do: %{"name" => "", "south" => "", "west" => "", "north" => "", "east" => ""}
@@ -226,6 +290,7 @@ defmodule TazunaWeb.MealAreasLive do
       {:noreply,
        socket
        |> assign(areas: MealAreas.list(), datasets: Datasets.list())
+       |> assign_pending()
        |> put_flash(
          :info,
          "範囲「#{area.name}」を外しました。Chiezo の収集（#{Meals.collection(area)}）は残っているので、要らなければ Chiezo の画面で止めるか消してください。"
@@ -236,6 +301,12 @@ defmodule TazunaWeb.MealAreasLive do
   end
 
   @impl true
+  def handle_async(:route_hold, {:ok, results}, socket),
+    do: {:noreply, assign(socket, held: results)}
+
+  def handle_async(:route_hold, {:exit, _}, socket),
+    do: {:noreply, assign(socket, held: {:error, :chiezo_unavailable})}
+
   def handle_async(:places, {:ok, result}, socket), do: {:noreply, assign(socket, places: result)}
 
   def handle_async(:places, {:exit, _}, socket),
@@ -425,4 +496,30 @@ defmodule TazunaWeb.MealAreasLive do
   end
 
   defp fmt2(value), do: :erlang.float_to_binary(value / 1, decimals: 3)
+
+  @doc "範囲ごとに配った依頼の一言（範囲の名前を頭に付ける）。"
+  def routed_lines(%{stashed: stashed}) do
+    for {area, result} <- stashed, message = DatasetsLive.stashed_message(result) do
+      "#{area.name}: " <> String.replace(message, "下の「控えている依頼」から、区画ごとに頼んでください。", "")
+    end
+  end
+
+  @doc "範囲ごとの位置の固定の一言。"
+  def held_lines(:holding), do: [DatasetsLive.held_message(:holding)]
+  def held_lines({:error, _} = error), do: [DatasetsLive.held_message(error)]
+
+  def held_lines(results) when is_list(results) do
+    for {area, result} <- results, message = DatasetsLive.held_message(result), message != "" do
+      "#{area.name}: " <>
+        String.replace(message, "「AI を使わずにいま反映する」", "範囲のタブの「AI を使わずにいま反映する」")
+    end
+  end
+
+  def held_lines(_held), do: []
+
+  @doc "どの範囲にも入らなかった依頼（行の頭だけ）。"
+  def outside_lines(%{outside: %{confirms: confirms, items: items}}) do
+    Enum.map(confirms, &"#{&1.name} (#{&1.lat},#{&1.lon})") ++
+      Enum.map(items, &(&1.text |> String.split("\n") |> List.first()))
+  end
 end
