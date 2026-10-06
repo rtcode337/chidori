@@ -306,6 +306,27 @@ defmodule Tazuna.Chiezo do
   end
 
   @doc """
+  収集の 1 件が持つ URL を、Chiezo が開いて確かめた結果（`GET /v1/collect/{name}/links`）。
+  `{:ok, URL → %{"status", "final_url", "title"}}`。**まだ確かめていない URL は入りません**。
+  口を持たない Chiezo・読めないときは `{:error, 理由}`（呼ぶ側は空として扱う）。
+  """
+  def link_checks(base, name) do
+    case get(base <> "/v1/collect/" <> URI.encode(name) <> "/links") do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"links" => links}} when is_map(links) -> {:ok, links}
+          _other -> {:error, :chiezo_unexpected_body}
+        end
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
   1 件の座標の固定を外します（`POST /v1/collect/{name}/locks` に緯度・経度を書かない）。
   **次に焼くときから効き**、その 1 件はまた AI の回で消せるようになります。
   """

@@ -98,6 +98,14 @@ defmodule Tazuna.Datasets.TravelLogTest do
       assert description =~ "https://example.test/daruma"
     end
 
+    test "Chiezo が開けなかったと控えた URL は、説明に書かない" do
+      links = %{"https://example.test/daruma" => %{"status" => "HTTP 404"}}
+      description = TravelLog.row(doc(%{}), dataset(), links)["description"]
+
+      refute description =~ "https://example.test/daruma"
+      assert description =~ "昔ながらの定食屋。"
+    end
+
     test "地域が無いものは書き出さない" do
       # travel-log は地域が必須で、空のままでは地図に置けない
       without_area = doc(%{"tags" => ["食事処", "ジャンル:和食"]})

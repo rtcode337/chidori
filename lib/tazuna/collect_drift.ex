@@ -33,6 +33,7 @@ defmodule Tazuna.CollectDrift do
     "feed" => "配信元",
     "extract" => "名簿の引き方",
     "thumbs" => "絵の拾い方",
+    "links" => "URL の確認",
     "keep_days" => "保つ日数",
     "partition" => "区画",
     "material" => "材料",

@@ -293,6 +293,8 @@ defmodule Tazuna.Datasets.MealsTest do
       # 古いものが要らなくなることはない —— 期限で落とすと地図に穴が開く
       assert Meals.attrs().kind == "stock"
 
+      # 店の URL を Chiezo に確かめさせる（書き出すときに開けないものを落とす）
+      assert Meals.attrs().links
     end
 
     test "巡回の依頼文は、送るときに実物へ入れ替わる" do

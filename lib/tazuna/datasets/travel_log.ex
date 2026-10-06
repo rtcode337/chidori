@@ -84,8 +84,13 @@ defmodule Tazuna.Datasets.TravelLog do
          {:ok, docs} <- fetch_all(base, collection, module.kind_tag()),
          {:ok, removed} <-
            fetch_all(base, collection, Chiezo.removed_tag(), include_removed: true) do
+      links = link_checks(base, collection)
+
       {rows, outside} =
-        docs |> Enum.map(&row(&1, dataset)) |> Enum.reject(&is_nil/1) |> split_outside(dataset)
+        docs
+        |> Enum.map(&row(&1, dataset, links))
+        |> Enum.reject(&is_nil/1)
+        |> split_outside(dataset)
 
       excluded = Enum.uniq(excluded_keys(removed, dataset) ++ Enum.map(outside, & &1["key"]))
 
@@ -218,7 +223,7 @@ defmodule Tazuna.Datasets.TravelLog do
   （寿司屋の「和食」）ばかりで、絞り込みの軸になっていませんでした。
   `categories/2` を持たない収集は、今までどおりジャンルの 2 つめ以降を回します。
   """
-  def row(doc, %{module: module, collection: collection} = dataset) do
+  def row(doc, %{module: module, collection: collection} = dataset, links \\ %{}) do
     tags = Map.get(doc, "tags") || []
     extra = Map.get(doc, "extra") || %{}
     name = doc |> Map.get("title") |> clean() |> without_disambiguation()
@@ -239,7 +244,7 @@ defmodule Tazuna.Datasets.TravelLog do
         "series" => List.first(genres) || "",
         # カテゴリはパイプ区切りの 1 列（CSV の区切りと衝突しないため）
         "categories" => categories(module, tags, extra, genres) |> Enum.join("|"),
-        "description" => description(doc, tags, extra, collection, module),
+        "description" => description(doc, tags, extra, collection, module, {name, links}),
         "key" => spot_key(Map.get(doc, "doc_id"), dataset)
       }
     end
@@ -253,7 +258,7 @@ defmodule Tazuna.Datasets.TravelLog do
 
   # 説明文。**出どころを必ず添える** —— 辞典ごとにライセンスが違う（OpenStreetMap は
   # ODbL、Overture は継承条件なし）ので、後から切り分けられないと外しようがない
-  defp description(doc, tags, extra, collection, module) do
+  defp description(doc, tags, extra, collection, module, {name, links}) do
     from =
       tags
       |> tagged(module.source_tag_prefix())
@@ -264,7 +269,7 @@ defmodule Tazuna.Datasets.TravelLog do
       hours(extra),
       "出典: #{if from == [], do: "不明", else: Enum.join(from, " / ")}" <>
         "（tazuna の収集「#{collection}」から書き出し）",
-      link(extra)
+      Tazuna.Datasets.ShopLinks.pick(extra, name, links)
     ]
     |> Enum.reject(&(&1 == ""))
     |> Enum.join("\n")
@@ -285,9 +290,13 @@ defmodule Tazuna.Datasets.TravelLog do
   defp source_label("Overture"), do: "Overture Maps"
   defp source_label(other), do: other
 
-  defp link(extra) do
-    url = to_string(Map.get(extra, "website") || Map.get(extra, "url") || "")
-    if String.starts_with?(url, "http"), do: url, else: ""
+  # Chiezo が URL を確かめた結果（`Tazuna.Datasets.ShopLinks`）。**読めなければ空** ——
+  # 確かめていない URL は今までどおり書くので、読めないだけで書き出しを止めない
+  defp link_checks(base, collection) do
+    case Chiezo.link_checks(base, collection) do
+      {:ok, links} -> links
+      {:error, _reason} -> %{}
+    end
   end
 
   # そのタグの値だけを、付いている順で

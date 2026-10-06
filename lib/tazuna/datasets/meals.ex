@@ -776,6 +776,10 @@ defmodule Tazuna.Datasets.Meals do
       # **現地で位置を確かめた店は、AI が閉店と読んでも消さない**（Chiezo が墓標を
       # このタグに置き換えて残す）。確かめた人が現地でもう一度見られるように
       locked_doubt_tag: @doubt_category,
+      # **店の URL を Chiezo に確かめさせる**（開けるか・転送先・頁の題名）。AI が推し量った
+      # 口コミサイトの番号や、地図辞典に残った古い URL を、書き出すときに落とすため
+      # （`Tazuna.Datasets.ShopLinks`）
+      links: true,
       requested_by: "tazuna"
     }
     |> Map.merge(shape(area))
