@@ -292,6 +292,7 @@ defmodule Tazuna.Datasets.MealsTest do
     test "網羅で頼む" do
       # 古いものが要らなくなることはない —— 期限で落とすと地図に穴が開く
       assert Meals.attrs().kind == "stock"
+
     end
 
     test "巡回の依頼文は、送るときに実物へ入れ替わる" do
@@ -332,6 +333,17 @@ defmodule Tazuna.Datasets.MealsTest do
         assert prompt =~ "消す 1 件は、形が 1 つ違います"
         assert prompt =~ "body に消す理由を 1 行"
         assert prompt =~ "理由の無い墓標は、あとから誰にも直せません"
+      end
+    end
+
+    test "出典の URL は、開いて確かめたものだけを書かせる" do
+      # 口コミサイトの店の番号を推し量って書き、別の店の頁や開けない頁になっていた
+      for prompt <- [Meals.scan_prompt(), Meals.survey_prompt()] do
+        assert prompt =~ "実際に開いて、その店の頁だと"
+        assert prompt =~ "店の番号を推し量って書かないでください"
+        assert prompt =~ "https で"
+        # url を書かないだけでは前の値が残る
+        assert prompt =~ "`extra.url` に `null` を書いて"
       end
     end
 
