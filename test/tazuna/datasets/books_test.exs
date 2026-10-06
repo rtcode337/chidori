@@ -126,7 +126,6 @@ defmodule Tazuna.Datasets.BooksTest do
       # 依頼文に `{queries}` があると、Chiezo がその巡回の相手に考えさせる
       assert sweeps["機械収集"].use_feed
       assert sweeps["機械収集"].prompt =~ "{queries}"
-      refute Map.get(sweeps["機械収集"], :web)
       # Chiezo の時計で回す（tazuna は起こさない）
       assert Map.get(sweeps["機械収集"], :enabled, true)
       refute Map.has_key?(Books.definition(), :survey_plan_sweep)
@@ -140,9 +139,10 @@ defmodule Tazuna.Datasets.BooksTest do
       assert pick.prompt =~ "{queries}"
     end
 
-    test "整理の回は web を開ける", %{sweeps: sweeps} do
-      # 記事を開かないと、どの本を勧めているかが分からない
-      assert sweeps["整理"].web
+    test "整理の回は記事を開いて読ませる", %{sweeps: sweeps} do
+      # 記事を開かないと、どの本を勧めているかが分からない。web 検索は巡回ごとには
+      # 決められない（Chiezo の収集ぜんたいの設定で、既定で開いている）ので送らない
+      refute Map.has_key?(sweeps["整理"], :web)
       assert sweeps["整理"].prompt =~ "記事を開いて"
     end
 

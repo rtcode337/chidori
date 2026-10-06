@@ -21,10 +21,11 @@ defmodule Tazuna.Datasets.PiholeTest do
       assert attrs.extract == %{}
     end
 
-    test "整理は web で調べ、まだ調べていないものを決まった数ずつ、重みの順に渡す" do
+    test "整理は、まだ調べていないものを決まった数ずつ、重みの順に渡す" do
       tidy = Enum.find(Pihole.sweeps(), &(&1.name == Tazuna.SweepNames.tidy()))
 
-      assert tidy.web
+      # web 検索は巡回ごとには決められない（Chiezo の収集ぜんたいの設定）ので送らない
+      refute Map.has_key?(tidy, :web)
       assert tidy.unreviewed_per_run > 0
       assert tidy.unreviewed_by == "priority"
       assert tidy.after == Tazuna.SweepNames.machine()

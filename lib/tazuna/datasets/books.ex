@@ -54,7 +54,8 @@ defmodule Tazuna.Datasets.Books do
   @pick_minutes 1440
 
   # 整理の回の間隔（どの収集も同じ。`Tazuna.SweepNames.tidy_minutes/0`）。
-  # **記事を開くので web を開ける**（配信元は要約しか配らない）
+  # **記事を開くので web 検索が要る**（配信元は要約しか配らない）。開け閉めは Chiezo の
+  # 収集ぜんたいの設定（`web`。既定で開いている）で、巡回ごとには決められないので送らない
 
   @doc "記事 1 本ごとに付く印。"
   def kind_tag, do: @kind_tag
@@ -210,7 +211,6 @@ defmodule Tazuna.Datasets.Books do
         name: SweepNames.tidy(),
         after: SweepNames.machine(),
         interval_minutes: Tazuna.SweepNames.tidy_minutes(),
-        web: true,
         prompt: :read
       }
     ]

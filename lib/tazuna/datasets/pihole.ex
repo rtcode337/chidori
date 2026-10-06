@@ -138,7 +138,6 @@ defmodule Tazuna.Datasets.Pihole do
         name: SweepNames.tidy(),
         after: SweepNames.machine(),
         interval_minutes: SweepNames.tidy_minutes(),
-        web: true,
         prompt: :research,
         unreviewed_per_run: @tidy_per_run,
         unreviewed_by: @tidy_order
