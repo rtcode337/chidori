@@ -206,10 +206,18 @@
       <%!-- **上位の数冊を先に**（トップページと同じ枠）。本棚は何百冊にもなるので、
            いま何が勧められているかを一目で見るには長すぎる --%>
       <%!-- **読んだ本は外す**（この枠は次に何を読むかを決めるためのもの） --%>
-      <h2>いま勧められている未読の上位 {TazunaWeb.TopBooks.count()} 冊</h2>
+      <h2>オライリー以外の未読の上位 {TazunaWeb.TopBooks.count()} 冊</h2>
       <%!-- 押すと本棚の詳細と同じもの（勧めている記事つき）が開く --%>
       <TazunaWeb.TopBooks.top_books
         books={all_books}
+        open_event="open_book"
+        read={read_titles(@book_marks)}
+      />
+      <%!-- **オライリーの本は別の枠に**（Kindle で読めないので、上の順位とは分けて数える） --%>
+      <h2>オライリーの未読の上位 {TazunaWeb.TopBooks.count()} 冊</h2>
+      <TazunaWeb.TopBooks.top_books
+        books={all_books}
+        oreilly
         open_event="open_book"
         read={read_titles(@book_marks)}
       />

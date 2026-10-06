@@ -747,9 +747,18 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert shelf =~ "https://www.hanmoto.com/bd/img/9784873115658.jpg"
       assert shelf =~ "記事 5 本が勧めている"
       assert shelf =~ "定番"
-      {first, _} = :binary.match(shelf, "リーダブルコード")
-      {second, _} = :binary.match(shelf, "入門 監視")
+
+      # 順は本棚の一覧で見る（上位の枠はオライリーの本を別の枠に分ける）
+      [_, list] = String.split(shelf, ~s(class="book-list"), parts: 2)
+      {first, _} = :binary.match(list, "リーダブルコード")
+      {second, _} = :binary.match(list, "入門 監視")
       assert first < second
+
+      # リーダブルコードはオライリーの本なので、上位の枠ではオライリーの枠にだけ出る
+      [top, _] = String.split(shelf, ~s(class="book-list"), parts: 2)
+      [general, oreilly] = String.split(top, "オライリーの未読の上位", parts: 2)
+      refute general =~ "リーダブルコード"
+      assert oreilly =~ "リーダブルコード"
       # 数を持たない本（見出しを書き換えて足されたもの）は並べない
       refute shelf =~ ~s(phx-value-title="リーダブルコード")
     end
@@ -820,7 +829,7 @@ defmodule TazunaWeb.DatasetsLiveTest do
       {:ok, live, html} = open_live(conn, ~p"/datasets?view=books")
       html = render_async(live) || html
 
-      assert html =~ "いま勧められている未読の上位"
+      assert html =~ "オライリー以外の未読の上位"
       assert html =~ ~r|<ol[^>]*class="top-books">.*本:リーダブルコード|s
 
       live
@@ -844,8 +853,10 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert html =~ ~s(class="book-card is-read")
       assert html =~ "読んだ（2026-10-01）"
       # 未読の上位の枠からは外れる
-      [top] = Regex.run(~r|<ol[^>]*class="top-books">.*?</ol>|s, html)
-      refute top =~ "本:リーダブルコード"
+      # （リーダブルコードはオライリーの本なので、オライリーの枠も含めてどちらにも出ない）
+      for [top] <- Regex.scan(~r|<ol[^>]*class="top-books">.*?</ol>|s, html) do
+        refute top =~ "本:リーダブルコード"
+      end
     end
 
     test "印もメモも空にして保存すると、記録ごと消える", %{conn: conn} do

@@ -81,6 +81,27 @@ defmodule Tazuna.Datasets.Bookshelf do
   @cover_base "https://www.hanmoto.com/bd/img/"
   @book_page_base "https://www.hanmoto.com/bd/isbn/"
 
+  # オライリーの本の ISBN の頭（日本の 2 つの出版者記号と、原書の主な出版者記号）。
+  # **オライリーの本は Kindle で読めない**ので、上位の枠を分ける。**見分けるのは ISBN だけ** ——
+  # 説明に「O'Reilly」とあっても、他社から出た邦訳の原書名のことがある
+  @oreilly_isbn_prefixes [
+    "97848731",
+    "97848144",
+    "9780596",
+    "97814493",
+    "97814919",
+    "97814920",
+    "97810981"
+  ]
+
+  # 買う口。**オライリーの本は公式の頁へ、それ以外は Kindle ストアの検索へ**。
+  # Kindle 版の番号（ASIN）は ISBN から決まらないので、書名で Kindle ストアを引く。
+  # オライリー・ジャパンの頁は ISBN から決まる。原書（日本の記号でないもの）は本家の検索へ
+  @kindle_search_base "https://www.amazon.co.jp/s"
+  @oreilly_japan_base "https://www.oreilly.co.jp/books/"
+  @oreilly_search_base "https://www.oreilly.com/search/"
+  @oreilly_japan_prefixes ["97848731", "97848144"]
+
   # 機械収集の回と整理の回（AI）の間隔
   @pick_minutes 360
   # 整理の回（どの収集も同じ。`Tazuna.SweepNames.tidy_minutes/0`）
@@ -468,10 +489,33 @@ defmodule Tazuna.Datasets.Bookshelf do
       last_seen: to_string(extra["last_seen"] || ""),
       classic: docs >= @classic_sources,
       isbn: isbn,
+      oreilly: oreilly_isbn?(isbn),
       cover_url: isbn && @cover_base <> isbn <> ".jpg",
       page_url: isbn && @book_page_base <> isbn
     }
+    |> with_store()
   end
+
+  # 買う口（`store_label` と `store_url`）を足す
+  defp with_store(%{oreilly: true, isbn: isbn} = book) do
+    url =
+      if String.starts_with?(isbn, @oreilly_japan_prefixes),
+        do: @oreilly_japan_base <> isbn <> "/",
+        else: @oreilly_search_base <> "?" <> URI.encode_query(%{"q" => isbn})
+
+    Map.merge(book, %{store_label: "O'Reilly", store_url: url})
+  end
+
+  defp with_store(book) do
+    query = URI.encode_query(%{"k" => book.name, "i" => "digital-text"})
+    Map.merge(book, %{store_label: "Kindle", store_url: @kindle_search_base <> "?" <> query})
+  end
+
+  @doc "オライリーの本の ISBN か（13 桁に揃えたもの。nil は false）。"
+  def oreilly_isbn?(isbn) when is_binary(isbn),
+    do: String.starts_with?(isbn, @oreilly_isbn_prefixes)
+
+  def oreilly_isbn?(_isbn), do: false
 
   @doc """
   ISBN を 13 桁に揃えます。**チェックディジットが合わなければ nil** ——

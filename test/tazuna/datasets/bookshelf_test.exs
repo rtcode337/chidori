@@ -120,6 +120,7 @@ defmodule Tazuna.Datasets.BookshelfTest do
     test "ISBN から表紙の URL を組み立てる" do
       b = book("本:リーダブルコード", %{"docs" => 3, "isbn" => "978-4-87311-565-8"})
 
+      assert b.oreilly
       assert b.isbn == "9784873115658"
       assert b.cover_url == "https://www.hanmoto.com/bd/img/9784873115658.jpg"
     end
@@ -204,6 +205,44 @@ defmodule Tazuna.Datasets.BookshelfTest do
       prompt = Bookshelf.tidy_prompt()
       assert prompt =~ "いまの見出しを一字も変えずに"
       assert prompt =~ "「本:」で始まらない見出し"
+    end
+  end
+
+  describe "買う口" do
+    test "オライリー・ジャパンの本は公式の頁、原書は本家の検索、それ以外は Kindle ストアの検索" do
+      japan =
+        Bookshelf.to_book(%{
+          "title" => "本:a",
+          "extra" => %{"docs" => 2, "isbn" => "9784873115658"}
+        })
+
+      assert japan.store_label == "O'Reilly"
+      assert japan.store_url == "https://www.oreilly.co.jp/books/9784873115658/"
+
+      original =
+        Bookshelf.to_book(%{
+          "title" => "本:b",
+          "extra" => %{"docs" => 2, "isbn" => "9781098148621"}
+        })
+
+      assert original.store_url == "https://www.oreilly.com/search/?q=9781098148621"
+
+      other = Bookshelf.to_book(%{"title" => "本:テスト駆動開発", "extra" => %{"docs" => 2}})
+      assert other.store_label == "Kindle"
+      assert other.store_url =~ "https://www.amazon.co.jp/s?"
+
+      assert URI.decode_query(URI.parse(other.store_url).query) ==
+               %{"k" => "テスト駆動開発", "i" => "digital-text"}
+    end
+  end
+
+  describe "oreilly_isbn?/1" do
+    test "オライリーの出版者記号（日本と原書）だけを見分ける" do
+      assert Bookshelf.oreilly_isbn?("9784873115658")
+      assert Bookshelf.oreilly_isbn?("9784814400744")
+      assert Bookshelf.oreilly_isbn?("9781098148621")
+      refute Bookshelf.oreilly_isbn?("9784297146221")
+      refute Bookshelf.oreilly_isbn?(nil)
     end
   end
 end

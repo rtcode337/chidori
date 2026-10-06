@@ -23,6 +23,10 @@ defmodule TazunaWeb.TopBooks do
   # この枠は次に何を読むかを決めるためのもので、読み終えた本が残ると押し出される
   attr :read, :any, default: MapSet.new()
 
+  # **true ならオライリーの本だけ、false ならオライリー以外だけ**を並べる
+  # （`Tazuna.Datasets.Bookshelf.oreilly_isbn?/1`）。順位はそれぞれの枠の中で数える
+  attr :oreilly, :boolean, default: false
+
   # **押すとその本を勧めている記事をたどれる**（画面が受ける event の名前。`title` を渡す）。
   # 書名のリンクは本の頁へ行くので、たどる口は札そのものに置く
   attr :open_event, :string, default: nil
@@ -32,7 +36,12 @@ defmodule TazunaWeb.TopBooks do
   attr :posts, :any, default: nil
 
   def top_books(assigns) do
-    unread = Enum.reject(assigns.books, &MapSet.member?(assigns.read, &1.title))
+    unread =
+      Enum.filter(assigns.books, fn book ->
+        Map.get(book, :oreilly, false) == assigns.oreilly and
+          not MapSet.member?(assigns.read, book.title)
+      end)
+
     assigns = assign(assigns, shown: Enum.with_index(Enum.take(unread, @count), 1))
 
     ~H"""
@@ -101,6 +110,18 @@ defmodule TazunaWeb.TopBooks do
             記事 <strong>{book.docs}</strong>
             本が勧めている<span :if={book.recent > 0}>（直近 {book.recent} 本）</span>
           </p>
+          <%!-- **買う口**（オライリーの本は公式の頁、それ以外は Kindle ストアの検索）。
+               押しても札を開かない --%>
+          <p :if={Map.get(book, :store_url)} class="top-book-store">
+            <a
+              href={book.store_url}
+              target="_blank"
+              rel="noreferrer"
+              onclick="event.stopPropagation()"
+            >
+              {store_text(book)}
+            </a>
+          </p>
           <p :if={book.near != []} class="book-near">★ 興味: {Enum.join(book.near, "・")}</p>
           <p :if={book.fields != []} class="top-book-fields">
             <span :for={field <- book.fields} class="book-topic">{field}</span>
@@ -145,8 +166,13 @@ defmodule TazunaWeb.TopBooks do
         </div>
       </li>
     </ol>
-    <p :if={@shown == []} class="muted-note">まだ本棚に本がありません。</p>
+    <p :if={@shown == []} class="muted-note">
+      {if @oreilly, do: "まだ本棚にオライリーの本がありません。", else: "まだ本棚に本がありません。"}
+    </p>
     <p :if={@more_href}><a href={@more_href}>本棚をぜんぶ見る</a></p>
     """
   end
+
+  defp store_text(%{store_label: "Kindle"}), do: "Kindle で探す"
+  defp store_text(%{store_label: label}), do: "#{label} で見る"
 end

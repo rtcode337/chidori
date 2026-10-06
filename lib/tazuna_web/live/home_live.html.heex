@@ -142,14 +142,28 @@
       <section :if={@panel && @panel.kind == :books} class="home-panel" aria-label={@panel.name}>
         <p :if={@books in [nil, :loading]} class="muted-note">読み込んでいます…</p>
         <p :if={match?({:error, _}, @books)} class="muted-note">本棚を読めませんでした。</p>
-        <TazunaWeb.TopBooks.top_books
-          :if={match?({:ok, _}, @books)}
-          books={elem(@books, 1)}
-          read={@read_books}
-          open_event="open_book"
-          opened={@opened_book}
-          posts={@book_posts}
-        />
+        <%= if match?({:ok, _}, @books) do %>
+          <h2 class="news-section-title">
+            オライリー以外の未読の上位 {TazunaWeb.TopBooks.count()} 冊
+          </h2>
+          <TazunaWeb.TopBooks.top_books
+            books={elem(@books, 1)}
+            read={@read_books}
+            open_event="open_book"
+            opened={@opened_book}
+            posts={@book_posts}
+          />
+          <%!-- **オライリーの本は別の枠に**（Kindle で読めないので、上の順位とは分けて数える） --%>
+          <h2 class="news-section-title">オライリーの未読の上位 {TazunaWeb.TopBooks.count()} 冊</h2>
+          <TazunaWeb.TopBooks.top_books
+            books={elem(@books, 1)}
+            read={@read_books}
+            oreilly
+            open_event="open_book"
+            opened={@opened_book}
+            posts={@book_posts}
+          />
+        <% end %>
 
         <p :if={match?({:ok, _}, @books)}><a href={~p"/datasets?view=books"}>本棚をぜんぶ見る</a></p>
       </section>
