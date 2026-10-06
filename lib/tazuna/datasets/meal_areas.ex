@@ -52,8 +52,65 @@ defmodule Tazuna.Datasets.MealAreas do
 
   @doc """
   範囲を作ります。`{:ok, 範囲}` か `{:error, changeset}`。
+
+  **番号は空いているいちばん小さいもの**（範囲の番号は Chiezo の収集の名前
+  `tazuna_dining_<番号>` になる）。通し番号に任せると、消した範囲の番号が欠けた
+  まま残る。**Chiezo に同じ名前の収集が残っている番号は使わない** —— 範囲を外しても
+  Chiezo の収集は消さないので、使うと前の範囲の店を引き継ぐ。別の場所で動かしている
+  Chidori が作った範囲の収集とも、これでぶつからない。
+
+  Chiezo をつないでいるのに収集の一覧を読めなければ作らない（番号が決められない）。
+  `chiezo_names` は Chiezo の収集の名前を返す関数（テストで差し替える）。
   """
-  def create(attrs), do: %__MODULE__{} |> changeset(attrs) |> Repo.insert()
+  def create(attrs, chiezo_names \\ &chiezo_collection_names/0) do
+    changeset = changeset(%__MODULE__{}, attrs)
+
+    with true <- changeset.valid?,
+         {:ok, names} <- chiezo_names.() do
+      changeset
+      |> put_change(:id, free_number(names))
+      |> Repo.insert()
+    else
+      false ->
+        {:error, %{changeset | action: :insert}}
+
+      {:error, _reason} ->
+        {:error,
+         changeset
+         |> add_error(:id, "を決められません（Chiezo の収集の一覧を読めませんでした）")
+         |> Map.put(:action, :insert)}
+    end
+  end
+
+  @doc """
+  空いているいちばん小さい番号。手元の範囲と、Chiezo に残っている範囲の収集
+  （`names` のうち `tazuna_dining_<番号>` の形のもの）の両方が使っていないもの。
+  """
+  def free_number(names) do
+    prefix = Tazuna.Datasets.Meals.area_collection_prefix()
+
+    remote =
+      for name <- names,
+          String.starts_with?(name, prefix),
+          {n, ""} <- [Integer.parse(String.replace_prefix(name, prefix, ""))],
+          do: n
+
+    used = MapSet.new(Repo.all(from(a in __MODULE__, select: a.id)) ++ remote)
+    Enum.find(Stream.iterate(1, &(&1 + 1)), &(not MapSet.member?(used, &1)))
+  end
+
+  # Chiezo をつないでいなければ、Chiezo に収集は無い（手元の範囲だけで決める）
+  defp chiezo_collection_names do
+    case Tazuna.Datasets.base_url() do
+      {:error, :chiezo_not_configured} ->
+        {:ok, []}
+
+      {:ok, base} ->
+        with {:ok, collections} <- Tazuna.Chiezo.collections(base) do
+          {:ok, for(%{"name" => name} <- collections, is_binary(name), do: name)}
+        end
+    end
+  end
 
   @doc """
   範囲を直します（名前と四角）。`{:ok, 範囲}` か `{:error, changeset}`。
@@ -86,6 +143,8 @@ defmodule Tazuna.Datasets.MealAreas do
     |> validate_number(:east, greater_than_or_equal_to: -180, less_than_or_equal_to: 180)
     |> validate_box()
     |> unique_constraint(:name, message: "はもう使われています")
+    # 同じ番号を同時に 2 つ作ろうとしたとき（空き番号を選ぶのは挿入の手前なので）
+    |> unique_constraint(:id, name: :meal_areas_pkey, message: "が重なりました。もう一度作ってください")
   end
 
   defp validate_box(changeset) do

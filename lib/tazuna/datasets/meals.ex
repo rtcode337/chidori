@@ -328,6 +328,9 @@ defmodule Tazuna.Datasets.Meals do
     end
   end
 
+  @doc "範囲ごとの収集の名前の頭（後ろに範囲の番号が付く）。"
+  def area_collection_prefix, do: @area_collection_prefix
+
   @doc "範囲ごとの収集の名前（`tazuna_dining_<範囲の番号>`）。範囲を渡さなければ全国版。"
   def collection(nil), do: collection()
   def collection(%{id: id}), do: @area_collection_prefix <> to_string(id)

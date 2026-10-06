@@ -390,7 +390,7 @@ defmodule TazunaWeb.MealAreasLive do
   defp fmt(value), do: :erlang.float_to_binary(value / 1, decimals: 5)
 
   defp error_lines(changeset) do
-    labels = %{name: "名前", south: "南", west: "西", north: "北", east: "東"}
+    labels = %{name: "名前", south: "南", west: "西", north: "北", east: "東", id: "番号"}
 
     Enum.map(changeset.errors, fn {field, {message, opts}} ->
       text =
