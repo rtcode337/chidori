@@ -7,7 +7,7 @@
 // 払わないところ:
 // - 全画面の要約を開いている間（そちらの払いは前後の要約へ動く）
 // - 横に広い表・コード（指で横へずらして読む）
-// - タブの列（横にスクロールさせて選ぶ）
+// - タブの列（横にスクロールさせて選ぶ）と、「…」から開く枠の一覧
 // 関連図は iframe の中なので、そこでの指はこちらに届かない（図を動かす指と取り合わない）。
 // 文字を選ぶ指（長押しから横へ引く）も払いにしない（`swipe_guard.js`）。
 
@@ -15,7 +15,7 @@ import {selectingText} from "./swipe_guard"
 
 const SWIPE = 60
 const RATIO = 1.5
-const SKIP = ".report-table, pre, .relation-tabs, .digest-viewer, iframe"
+const SKIP = ".report-table, pre, .relation-tabs, .home-tab-menu, .digest-viewer, iframe"
 
 export default {
   mounted() {

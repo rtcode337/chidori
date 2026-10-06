@@ -28,6 +28,24 @@ defmodule TazunaWeb.HomeLiveTest do
     assert html =~ ~s(aria-label="技術書")
   end
 
+  test "右端の「…」の一覧から、どの枠へも移れる", %{conn: conn} do
+    Home.put(["books", "topic:tazuna_tech", "relations:painters"])
+
+    {:ok, live, html} = live(conn, ~p"/")
+
+    [_before, menu | _rest] = String.split(html, ~s(id="home-tab-menu"))
+    [menu | _rest] = String.split(menu, "</ul>")
+    assert menu =~ "技術書"
+    assert menu =~ "技術ニュース"
+    assert menu =~ "関連図（"
+
+    live
+    |> element("#home-tab-menu button", "技術ニュース")
+    |> render_click()
+
+    assert_patch(live, "/?panel=topic%3Atazuna_tech")
+  end
+
   test "関連図は画面ごと埋め込む（頭のメニューは出さない）", %{conn: conn} do
     Home.put(["relations:painters"])
 

@@ -125,6 +125,17 @@ article p:last-child { color: #475569; line-height: 1.7; }
   .relation-tabs::-webkit-scrollbar { display: none; }
   .relation-tabs a { flex: none; padding: .5rem .65rem; font-size: .8rem; }
 }
+/* トップのタブの列と、右端の「…」（全部の枠を縦の一覧から選ぶ）。
+   **「…」は列のスクロールの外に置く** —— 列の中に入れると、横へ送ったときに一緒に隠れる */
+.home-tabs-row { display: flex; align-items: flex-end; margin-top: 1.5rem; border-bottom: 1px solid #d9dcea; }
+.home-tabs-row .relation-tabs { flex: 1; min-width: 0; margin-top: 0; border-bottom: 0; }
+.home-tab-more { position: relative; flex: none; }
+.home-tab-more-button { padding: .5rem .8rem; border: 0; background: none; color: #616a82; font-size: 1rem; font-weight: 700; line-height: 1; cursor: pointer; }
+.home-tab-more-button:hover { color: #28235e; }
+.home-tab-menu { position: absolute; top: 100%; right: 0; z-index: 30; min-width: 12rem; max-height: 75vh; margin: .2rem 0 0; padding: .3rem; overflow-y: auto; list-style: none; border: 1px solid #d9dcea; border-radius: .6rem; background: #fff; box-shadow: 0 8px 24px rgb(40 35 94 / .15); }
+.home-tab-menu button { display: block; width: 100%; padding: .55rem .8rem; border: 0; border-radius: .4rem; background: none; color: #28235e; font-size: .9rem; text-align: left; cursor: pointer; }
+.home-tab-menu button:hover { background: #eceef8; }
+.home-tab-menu button.selected { background: #f0eefc; color: #4a3fc0; font-weight: 700; }
 /* 設定欄の開閉。**押せる見出し**として見せる */
 /* 設定欄の見出し。**見出しそのものが開閉の口**なので、見た目は見出しのまま、
    押せることだけ分かるようにする（設定欄のボタンの塗りより強く当てる） */

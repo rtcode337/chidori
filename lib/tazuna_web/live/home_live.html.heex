@@ -3,23 +3,57 @@
   <div>
     <TazunaWeb.MainNav.main_nav active={:home} />
 
-    <%!-- 設定ページで選んだ枠。**最初の枠が開いたときに出る** --%>
-    <nav
-      :if={length(@panels) > 1}
-      id="home-tabs"
-      class="relation-tabs"
-      phx-hook="ScrollTabs"
-      aria-label="トップページの枠"
-    >
-      <.link
-        :for={panel <- @panels}
-        patch={~p"/?panel=#{panel.key}"}
-        class={if @panel && @panel.key == panel.key, do: "selected"}
-        aria-current={if @panel && @panel.key == panel.key, do: "page"}
+    <%!-- 設定ページで選んだ枠。**最初の枠が開いたときに出る**。
+         **右端の「…」で全部の枠を縦の一覧から選べる** —— 枠が増えると、狭い画面では
+         タブの列を何度も横へ送らないと目当てに届かない --%>
+    <div :if={length(@panels) > 1} class="home-tabs-row">
+      <nav
+        id="home-tabs"
+        class="relation-tabs"
+        phx-hook="ScrollTabs"
+        aria-label="トップページの枠"
       >
-        {panel.name}
-      </.link>
-    </nav>
+        <.link
+          :for={panel <- @panels}
+          patch={~p"/?panel=#{panel.key}"}
+          class={if @panel && @panel.key == panel.key, do: "selected"}
+          aria-current={if @panel && @panel.key == panel.key, do: "page"}
+        >
+          {panel.name}
+        </.link>
+      </nav>
+      <%!-- 一覧の外を押すと閉じる（「…」は一覧と同じ囲みの中なので、押しても外とみなさない） --%>
+      <div class="home-tab-more" phx-click-away={JS.hide(to: "#home-tab-menu")}>
+        <button
+          type="button"
+          class="home-tab-more-button"
+          aria-label="枠を一覧から選ぶ"
+          aria-haspopup="true"
+          aria-controls="home-tab-menu"
+          phx-click={JS.toggle(to: "#home-tab-menu")}
+        >
+          …
+        </button>
+        <ul
+          id="home-tab-menu"
+          class="home-tab-menu"
+          style="display: none"
+          phx-window-keydown={JS.hide(to: "#home-tab-menu")}
+          phx-key="Escape"
+        >
+          <li :for={panel <- @panels}>
+            <button
+              type="button"
+              class={if @panel && @panel.key == panel.key, do: "selected"}
+              aria-current={if @panel && @panel.key == panel.key, do: "page"}
+              phx-click={JS.hide(to: "#home-tab-menu") |> JS.patch(~p"/?panel=#{panel.key}")}
+            >
+              {panel.name}
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
 
     <%!-- 枠の中を左右に払うと、隣のタブへ（`PanelSwipe`）。タブの列・表・関連図の中では払わない --%>
     <div id="home-panels" phx-hook="PanelSwipe">
