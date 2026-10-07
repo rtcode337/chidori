@@ -826,9 +826,10 @@ defmodule Tazuna.Chiezo do
       # 区画の一覧。**どこがまだ見られていないかは、ここにしか無い** ——
       # 先に見てほしいところを頼むのに要る
       partitions: partitions_of(item),
-      # 座標を固定した店の数（位置OK・位置修正）。**固定は次に焼くときから効く**ので、
-      # これがあれば「AI を使わずにいま反映する」を出す（固定した直後の画面でなくても）
-      locked: map_size(if(is_map(item["locks"]), do: item["locks"], else: %{})),
+      # **固定したのに、まだ焼いていない店の数**（Chiezo の `locks_pending`）。これがあれば
+      # 「AI を使わずにいま反映する」を出す。固定の記録そのものは反映したあとも残るので、
+      # 記録の数で出すと、反映が済んでも消えない。返さない古い Chiezo では 0
+      locks_pending: if(is_integer(item["locks_pending"]), do: item["locks_pending"], else: 0),
       docs: 0,
       recent: [],
       requested_by: item["requested_by"] || "",

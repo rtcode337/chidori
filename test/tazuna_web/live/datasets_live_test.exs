@@ -463,9 +463,11 @@ defmodule TazunaWeb.DatasetsLiveTest do
       assert html =~ "ざっと見る 済み"
     end
 
-    test "固定した店があれば、画面を移ってきても「AI を使わずにいま反映する」が出る", %{conn: conn} do
+    test "まだ焼いていない固定があれば、画面を移ってきても「AI を使わずにいま反映する」が出る", %{
+      conn: conn
+    } do
       # 範囲の画面で依頼を配ったときなど、固定した直後の画面でなくても押せるように
-      collection = Map.put(@collection, "locks", %{"駅前うどん" => %{"lat" => 35.65, "lon" => 139.75}})
+      collection = Map.put(@collection, "locks_pending", 1)
 
       Tazuna.HttpStub.stub(fn %{url: url} ->
         cond do
@@ -482,7 +484,30 @@ defmodule TazunaWeb.DatasetsLiveTest do
 
       {_live, html} = shown(conn)
       assert html =~ "AI を使わずにいま反映する"
-      assert html =~ "位置を固定した店が 1 件あります"
+      assert html =~ "まだ反映していない固定が 1 件あります"
+    end
+
+    test "固定がみな焼けていれば出さない（固定の記録は反映後も残る）", %{conn: conn} do
+      collection =
+        @collection
+        |> Map.put("locks", %{"駅前うどん" => %{"lat" => 35.65, "lon" => 139.75}})
+        |> Map.put("locks_pending", 0)
+
+      Tazuna.HttpStub.stub(fn %{url: url} ->
+        cond do
+          String.ends_with?(url, "/v1/collect") ->
+            Tazuna.HttpStub.ok(Jason.encode!(%{"collections" => [collection]}))
+
+          String.contains?(url, "/v1/collect/") ->
+            Tazuna.HttpStub.ok(Jason.encode!(collection))
+
+          true ->
+            Tazuna.HttpStub.ok(~s({"backends":[],"sources":[],"changes":[]}))
+        end
+      end)
+
+      {_live, html} = shown(conn)
+      refute html =~ "AI を使わずにいま反映する"
     end
 
     test "地図の上で地名を探すと、その場所へ寄って印を立てる", %{conn: conn} do

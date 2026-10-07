@@ -853,14 +853,14 @@
         <%!-- **AI を使わずに、いま反映する**（機械収集の回を 1 回走らせて焼き直す）。固定は
              次に焼くときから効くので、待たずに travel-log へ出したいときに押す。AI の回を
              待たせない・枠を使わない —— 依頼のうち、AI の要らない直しだけを先に済ませる口 --%>
-        <%!-- **固定した店があれば、いつでも出す**（固定した直後の画面に限らない）。範囲の画面で
-             依頼を配ったときや、画面を移ったあとでも押せるように。固定の記録には時刻が無く、
-             まだ反映していないものだけを見分けられないので、件数で出す --%>
+        <%!-- **まだ焼いていない固定があれば出す**（固定した直後の画面に限らない。範囲の画面で
+             依頼を配ったときや、画面を移ったあとでも押せるように）。焼けば 0 件になって消える
+             —— 固定の記録そのものは反映後も残るので、その数では出さない --%>
         <div
           :if={
             @dataset.reader == "travel-log" and
               (match?({:ok, %{held: [_ | _]}}, @held) or
-                 (@state.collection && Map.get(@state.collection, :locked, 0) > 0))
+                 (@state.collection && Map.get(@state.collection, :locks_pending, 0) > 0))
           }
           class="button-row"
         >
@@ -868,10 +868,10 @@
             AI を使わずにいま反映する
           </button>
           <span
-            :if={@state.collection && Map.get(@state.collection, :locked, 0) > 0}
+            :if={@state.collection && Map.get(@state.collection, :locks_pending, 0) > 0}
             class="muted-note"
           >
-            位置を固定した店が {@state.collection.locked} 件あります。固定は次に焼くときから効くので、待たずに出したいときに押してください（機械収集を 1 回走らせます。AI は使いません）。
+            まだ反映していない固定が {@state.collection.locks_pending} 件あります。待たずに出したいときに押してください（機械収集を 1 回走らせます。AI は使いません）。
           </span>
         </div>
         <p :if={@applied} class="muted-note" aria-live="polite">{applied_message(@applied)}</p>
