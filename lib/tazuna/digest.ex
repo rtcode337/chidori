@@ -67,6 +67,15 @@ defmodule Tazuna.Digest do
   @digest_note "定時のまとめです。前回のまとめから今回までに入ったものを1件にまとめてください。" <>
                  "既にある記事は書き換えないでください。"
 
+  # 1 件 = 1 作品の話題（映画・アニメ）は、前回からの差分でまとめさせない。
+  # 割り込みの指示は依頼文より強く効く（Chiezo が「この指示にだけ従って」と添える）ので、
+  # 上の文を渡すと、依頼文の「いま入っている作品から」より「前回から入ったもの」が勝つ。
+  # 作品は探す回が区切り（曜日・公開月）ごとに足していくので、要約がその日に探した
+  # 区切りの紹介になり、いま話題の作品が抜け落ちた
+  @works_note "定時のまとめです。名指しした作品ぜんぶを見渡して、いま話題になっているもの" <>
+                "（注目度と、公開・放送後の評判）を中心に1件にまとめてください。" <>
+                "最近足された作品に寄せないでください。既にある記事は書き換えないでください。"
+
   @interest_note "定時の、興味トピックの要約です。前回から今回までに入ったもののうち、" <>
                    "選ばれた興味トピックに関わるものを1件にまとめてください。" <>
                    "既にある記事は書き換えないでください。"
@@ -140,7 +149,7 @@ defmodule Tazuna.Digest do
                  Chiezo.focus(
                    base,
                    collection,
-                   @digest_note,
+                   digest_note(topic),
                    digest_titles(base, topic),
                    @digest_sweep
                  )
@@ -174,6 +183,12 @@ defmodule Tazuna.Digest do
           do: works.digest_titles(base, topic),
           else: []
     end
+  end
+
+  @doc false
+  # 要約の割り込みに添える指示。作品を育てる話題は、差分ではなく全体から書かせる
+  def digest_note(topic) do
+    if Tazuna.Topics.works(topic), do: @works_note, else: @digest_note
   end
 
   # **知らせるのは、知らせる設定で宛先もあるときだけ。** 時刻は「要約を作る時刻」で、

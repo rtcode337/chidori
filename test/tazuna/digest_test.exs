@@ -164,6 +164,20 @@ defmodule Tazuna.DigestTest do
     assert Jason.decode!(second)["title"] =~ "興味のまとめ"
   end
 
+  test "作品を育てる話題の要約は、前回からの差分ではなく全体から書かせる", %{topic: topic} do
+    movies = Enum.find(Topics.list(), &(&1.collection == "tazuna_movies"))
+    anime = Enum.find(Topics.list(), &(&1.collection == "tazuna_anime"))
+
+    for works <- [movies, anime] do
+      note = Digest.digest_note(works)
+      assert note =~ "名指しした作品ぜんぶ"
+      refute note =~ "前回のまとめから"
+    end
+
+    # 記事を溜める話題は、これまでどおり前回からの差分
+    assert Digest.digest_note(topic) =~ "前回のまとめから"
+  end
+
   test "興味トピックを選んでいなければ、興味の要約は起こさない", %{topic: topic} do
     stub_chiezo(%{})
 
