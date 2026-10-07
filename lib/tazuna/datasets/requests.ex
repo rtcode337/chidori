@@ -346,14 +346,15 @@ defmodule Tazuna.Datasets.Requests do
 
   取り込み中なら空くまで待ちます（`deadline`）。返すのは `{記録, 結果}`。
   """
-  def send_partition(dataset, key, items, deadline) when is_binary(key) and items != [] do
+  def send_partition(dataset, key, items, deadline, opts \\ [])
+      when is_binary(key) and items != [] do
     text = Enum.map_join(items, "\n", & &1.text)
     plan = %{keys: [key], notes: %{key => text}, points: items, missed: []}
     {:ok, log} = record(dataset, plan, text)
 
     # **頼む直前に外す**（控えたまま取り消された報告では、固定を外さない）
     release_closed(dataset, closures(text))
-    result = run(dataset, plan, deadline)
+    result = run(dataset, plan, deadline, opts)
     mark(log, result)
 
     if result == :ok, do: drop(dataset, Enum.map(items, & &1.id))
@@ -511,8 +512,10 @@ defmodule Tazuna.Datasets.Requests do
   （`plan/2` の `keys` と `notes`）。
 
   取り込み中なら空くまで待ちます（`deadline` は `System.monotonic_time(:millisecond)` の値）。
+  `opts` は頼む相手（`backend`・`model`・`worker`。その 1 回だけの上書きで、
+  書かなければ巡回の設定のまま）。
   """
-  def run(%{collection: name} = dataset, %{keys: keys, notes: notes}, deadline) do
+  def run(%{collection: name} = dataset, %{keys: keys, notes: notes}, deadline, opts \\ []) do
     sweep = sweep(dataset)
     notes = Map.new(notes, fn {key, text} -> {key, with_preface(text)} end)
 
@@ -521,7 +524,12 @@ defmodule Tazuna.Datasets.Requests do
         # 「この区画を頼む」を押したのは人（止めている収集でも走らせる。`Chiezo.by_hand/1`）
         fn ->
           Chiezo.by_hand(fn ->
-            Chiezo.run(base, name, sweep: sweep, partitions: keys, notes: notes)
+            Chiezo.run(
+              base,
+              name,
+              [sweep: sweep, partitions: keys, notes: notes] ++
+                Keyword.take(opts, [:backend, :model, :worker])
+            )
           end)
         end,
         deadline

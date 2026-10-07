@@ -828,8 +828,9 @@ defmodule Tazuna.Chiezo do
       partitions: partitions_of(item),
       # **固定したのに、まだ焼いていない店の数**（Chiezo の `locks_pending`）。これがあれば
       # 「AI を使わずにいま反映する」を出す。固定の記録そのものは反映したあとも残るので、
-      # 記録の数で出すと、反映が済んでも消えない。返さない古い Chiezo では 0
-      locks_pending: if(is_integer(item["locks_pending"]), do: item["locks_pending"], else: 0),
+      # 記録の数で出すと、反映が済んでも消えない。返さない古い Chiezo では固定の記録の数
+      # （0 にするとボタンが出ず、固定を反映する手段が画面から消える）
+      locks_pending: locks_pending(item),
       docs: 0,
       recent: [],
       requested_by: item["requested_by"] || "",
@@ -838,6 +839,10 @@ defmodule Tazuna.Chiezo do
   end
 
   def to_map(_item), do: nil
+
+  defp locks_pending(%{"locks_pending" => pending}) when is_integer(pending), do: pending
+  defp locks_pending(%{"locks" => locks}) when is_map(locks), do: map_size(locks)
+  defp locks_pending(_item), do: 0
 
   @doc """
   巡回の一覧。**Chiezo が持っているものが正**（依頼したあとは向こうの画面から

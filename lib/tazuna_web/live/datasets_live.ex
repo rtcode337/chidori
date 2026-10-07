@@ -105,6 +105,10 @@ defmodule TazunaWeb.DatasetsLive do
        run_sweep: nil,
        run_backend: nil,
        run_model: nil,
+       # travel-log からの依頼を頼むときの相手（空なら巡回の設定のまま）。覚えるのは
+       # 上と同じ理由でサーバー側
+       request_backend: nil,
+       request_model: nil,
        # 起点と情報収集の時刻（tazuna が持つ）。起点の候補は探したときだけ引く
        plan: nil,
        plan_form: nil,
@@ -505,6 +509,15 @@ defmodule TazunaWeb.DatasetsLive do
      )}
   end
 
+  # 依頼を頼む相手を選び直したら覚える（`pick_run` と同じ）
+  def handle_event("pick_request", params, socket) do
+    {:noreply,
+     assign(socket,
+       request_backend: params["request|backend"] || socket.assigns.request_backend,
+       request_model: params["request|model"] || socket.assigns.request_model
+     )}
+  end
+
   # **travel-log からの依頼は、すぐには頼まずに控える**（`Requests.stash/2`）。貼った
   # その場で頼むと、1 件しか依頼の無い区画にも AI の回が 1 回走って枠を使い潰す ——
   # 区画ごとに溜まった件数を見て、「この区画を頼む」で頼む（`send_pending`）。
@@ -535,9 +548,10 @@ defmodule TazunaWeb.DatasetsLive do
         live = self()
         deadline = System.monotonic_time(:millisecond) + @request_wait_ms
         plan = %{keys: [key], points: items, missed: []}
+        opts = request_options(socket.assigns)
 
         Task.Supervisor.start_child(Tazuna.TaskSupervisor, fn ->
-          {_log, result} = Requests.send_partition(dataset, key, items, deadline)
+          {_log, result} = Requests.send_partition(dataset, key, items, deadline, opts)
           send(live, {:travel_log_request, result})
         end)
 
@@ -1010,6 +1024,16 @@ defmodule TazunaWeb.DatasetsLive do
       end
   end
 
+  @doc """
+  依頼を頼むときの相手の指定（`Requests.send_partition/5` に渡す）。選び方は
+  「この区画で 1 回走らせる」と同じで、巡回は依頼の巡回のまま変えない。
+  """
+  def request_options(%{request_backend: backend, request_model: model, backends: backends}) do
+    %{"run|backend" => backend, "run|model" => model}
+    |> run_options(backends)
+    |> Keyword.delete(:sweep)
+  end
+
   defp blank_to_nil(value) do
     case String.trim(value || "") do
       "" -> nil
@@ -1114,6 +1138,50 @@ defmodule TazunaWeb.DatasetsLive do
 
   def run_scope(%{scope: [_ | _] = scope}), do: "区画 #{length(scope)} つ"
   def run_scope(_run), do: ""
+
+  @doc """
+  travel-log からの依頼を頼む相手とモデル。**選ばなければ巡回の設定のまま**。
+  区画の欄と「控えている依頼」の両方に置くので、どちらで選んでも同じ値を覚える。
+  """
+  attr :id, :string, required: true
+  attr :backends, :list, required: true
+  attr :backend, :string, default: nil
+  attr :model, :string, default: nil
+
+  def request_picker(assigns) do
+    {plain, hands} = by_kind(assigns.backends)
+
+    assigns =
+      assign(assigns,
+        plain: plain,
+        hands: hands,
+        models: models_for(assigns.backends, assigns.backend)
+      )
+
+    ~H"""
+    <form id={@id} phx-change="pick_request" class="collect-form request-picker">
+      <p>
+        <label>
+          頼む相手<br />
+          <select name="request|backend">
+            <option value="">巡回の設定のまま</option>
+            <option :for={b <- @plain} value={b.id} selected={b.id == @backend}>{b.label}</option>
+            <optgroup :if={@hands != []} label="ワーカー（枠を見て振り替える）">
+              <option :for={b <- @hands} value={b.id} selected={b.id == @backend}>{b.label}</option>
+            </optgroup>
+          </select>
+        </label>
+        <label :if={@models != []}>
+          モデル<br />
+          <select name="request|model">
+            <option value="">モデルは相手の既定</option>
+            <option :for={m <- @models} value={m} selected={m == @model}>{m}</option>
+          </select>
+        </label>
+      </p>
+    </form>
+    """
+  end
 
   @doc """
   1 回ぶんの「足した・直した・消した」の見出しの一覧。**依頼の結果と最近の回で

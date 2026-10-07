@@ -411,6 +411,12 @@
             <%= if waiting do %>
               <p class="muted-note">{Jst.format(waiting.since)} から溜まっています。</p>
               <pre>{Enum.map_join(waiting.items, "\n", & &1.text)}</pre>
+              <.request_picker
+                id="request-picker-partition"
+                backends={@backends}
+                backend={@request_backend}
+                model={@request_model}
+              />
               <div class="button-row">
                 <button
                   type="button"
@@ -893,6 +899,12 @@
             「この区画を頼む」で、その区画の「{Requests.sweep(@dataset)}」を 1 回走らせ、溜まった依頼を補足として載せます。
             ふつうの回として走るので、区画には印が付きます。Chiezo が受けたら控えから消えます（断られたら残ります）。
           </p>
+          <.request_picker
+            id="request-picker-pending"
+            backends={@backends}
+            backend={@request_backend}
+            model={@request_model}
+          />
           <details :for={group <- @pending} class="request-result">
             <summary>
               <span class="request-scope">

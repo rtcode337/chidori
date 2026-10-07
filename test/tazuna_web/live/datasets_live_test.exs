@@ -510,6 +510,45 @@ defmodule TazunaWeb.DatasetsLiveTest do
       refute html =~ "AI を使わずにいま反映する"
     end
 
+    test "未反映の数を返さない古い Chiezo でも、固定があれば出す", %{conn: conn} do
+      # 0 として扱うとボタンが出ず、固定を反映する手段が画面から消える
+      collection =
+        Map.put(@collection, "locks", %{"駅前うどん" => %{"lat" => 35.65, "lon" => 139.75}})
+
+      Tazuna.HttpStub.stub(fn %{url: url} ->
+        cond do
+          String.ends_with?(url, "/v1/collect") ->
+            Tazuna.HttpStub.ok(Jason.encode!(%{"collections" => [collection]}))
+
+          String.contains?(url, "/v1/collect/") ->
+            Tazuna.HttpStub.ok(Jason.encode!(collection))
+
+          true ->
+            Tazuna.HttpStub.ok(~s({"backends":[],"sources":[],"changes":[]}))
+        end
+      end)
+
+      {_live, html} = shown(conn)
+      assert html =~ "AI を使わずにいま反映する"
+    end
+
+    test "依頼を頼む相手は、選んだ相手とモデルをその 1 回だけ渡す" do
+      backends = [
+        %{id: "claude", label: "Claude", kind: "plain", models: ["opus", "sonnet"]},
+        %{id: "w-1", label: "整理用ワーカー", kind: "worker", models: []}
+      ]
+
+      assigns = &%{request_backend: &1, request_model: &2, backends: backends}
+
+      assert DatasetsLive.request_options(assigns.(nil, nil)) == []
+
+      assert DatasetsLive.request_options(assigns.("claude", "opus")) ==
+               [backend: "claude", model: "opus"]
+
+      # ワーカーはモデルを持たない（渡す先はそのときの枠で決まる）
+      assert DatasetsLive.request_options(assigns.("w-1", "opus")) == [worker: "w-1"]
+    end
+
     test "地図の上で地名を探すと、その場所へ寄って印を立てる", %{conn: conn} do
       collection = @collection
 
