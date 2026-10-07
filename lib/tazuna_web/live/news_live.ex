@@ -113,7 +113,7 @@ defmodule TazunaWeb.NewsLive do
     socket =
       assign(socket,
         topic: topic,
-        page_title: if(topic, do: "最新情報 — #{topic.name}", else: "最新情報"),
+        page_title: if(topic, do: "最新情報（#{topic.name}）", else: "最新情報"),
         news: if(topic, do: News.current(News.server(topic.collection)), else: News.empty()),
         notify_form: notify_form(topic),
         themes: empty_themes(),
