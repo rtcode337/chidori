@@ -118,6 +118,8 @@ defmodule Tazuna.Relations.PeopleTest do
         assert prompt =~ "家族:<相手の名前>:配偶者"
         assert prompt =~ "元配偶者"
         assert prompt =~ "関係は両側に書いてください"
+        # 並んでいない既存の人は返させない（見えていない 1 件は Chiezo が置き換えずに弾く）
+        assert prompt =~ "上に並んでいない人の文書は返さないでください"
 
         # 夫婦の相手は名簿の外からも足させる（知名度で切ると相手が抜ける）。芸能人でなくてよい
         assert prompt =~ "夫婦の相手が上に並んでいなければ、その相手も 1 件として足してください"
