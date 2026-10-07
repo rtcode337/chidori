@@ -27,8 +27,9 @@ defmodule Tazuna.News.Anime do
   @season_tag "期"
   @review_tag "評判"
 
-  # 放送が終わってから何日で落とすか。**見逃し配信で追いつく人がいる**ので、すぐには落とさない
-  @keep_after_end_days 14
+  # 放送が終わってから何日で落とすか。**完走した作品は一気見の候補**なので、すぐには落とさない
+  # （最終回のあとの評判が出そろうまで、要約でいちばん前に出したい時期）
+  @keep_after_end_days 30
 
   # 終わりの日が分からない作品を、放送開始から何日で落とすか（2 クールぶん）
   @keep_without_end_days 190
@@ -178,11 +179,13 @@ defmodule Tazuna.News.Anime do
 
     **2. 放送が始まった注目作に、評判を書き足す。**
     "#{Events.attention_tag()}:高" の作品のうち、**放送が始まったもの**（放送開始日が今日以前）が対象です。
-    まだ "#{@review_tag}:" のタグが無いもの、または付いている日付から #{@review_refresh_days} 日以上
-    経ったもの（放送中のものだけ）を当たってください。
+    まだ "#{@review_tag}:" のタグが無いもの、付いている日付から #{@review_refresh_days} 日以上
+    経ったもの（放送中のもの）、**最終回のあとにまだ書き直していないもの**を当たってください。
     - body の末尾に次の形で足す（前に書いたものがあれば置き換える）
         評判（<M月D日>時点）: 観た人の反応の傾向を 2〜3 文。**自分の言葉で**
-          （「作画を評価する声が多い」「原作との違いで賛否が割れている」）
+          （「作画を評価する声が多い」「原作との違いで賛否が割れている」）。
+          最終回のあとなら、**通して観た人の評価**（完走して満足か、後半の失速など）を
+    - 中だった作品も、放送が始まって話題になったら高に上げてから評判を書いてください
         出どころ: 当たったページの URL（1〜3 本）
     - tags に "#{@review_tag}:<YYYY-MM-DD>"（書いた日）を足す（前の日付は外す）
     - **感想の本文は写さないでください**（転載になるうえ、1 人の感想は作品の評判ではありません）
@@ -217,8 +220,11 @@ defmodule Tazuna.News.Anime do
   @digest_titles 50
 
   @doc """
-  要約の材料として名指しする作品の見出し（`Tazuna.Digest`）。**注目度が中以上で、
-  放送中か来期のもの**を、注目度の高いものから #{@digest_titles} 本まで。
+  要約の材料として名指しする作品の見出し（`Tazuna.Digest`）。#{@digest_titles} 本まで。
+
+  **放送が始まったもの（放送中と、最終回から #{@keep_after_end_days} 日以内）を先に**並べます。
+  読む人は話題になった作品をまとめて観たいので、これから始まる作品は**注目度が高いものだけ**
+  （中まで入れると、期の変わり目に来期の紹介で要約が埋まる）。
   """
   def digest_titles(base, topic) do
     case Events.fetch_tagged(base, topic.collection, notable_tags(), date_tag: @date_tag) do
@@ -231,17 +237,46 @@ defmodule Tazuna.News.Anime do
 
   @doc false
   def pick_for_digest(entries, today) do
+    entries
+    |> in_window(today)
+    |> Enum.reject(&(upcoming?(&1, today) and &1.attention != :high))
+    |> Enum.sort_by(
+      &{stage(&1, today), if(&1.attention == :high, do: 0, else: 1),
+       abs(Date.diff(&1.date, today)), &1.title}
+    )
+    |> Enum.take(@digest_titles)
+    |> Enum.map(& &1.title)
+  end
+
+  # 絵を探させる作品。要約とは違い、これから始まる中の作品も入れる（カレンダーにも出るので）
+  defp pick_for_images(entries, today) do
+    entries
+    |> in_window(today)
+    |> Enum.sort_by(
+      &{if(&1.attention == :high, do: 0, else: 1), abs(Date.diff(&1.date, today)), &1.title}
+    )
+    |> Enum.take(@digest_titles)
+    |> Enum.map(& &1.title)
+  end
+
+  defp in_window(entries, today) do
     from = Date.add(today, -@keep_without_end_days)
     until = Date.add(today, 120)
 
     entries
     |> Enum.filter(&(Date.compare(&1.date, from) != :lt and Date.compare(&1.date, until) != :gt))
     |> Enum.reject(&ended_long_ago?(&1, today))
-    |> Enum.sort_by(
-      &{if(&1.attention == :high, do: 0, else: 1), abs(Date.diff(&1.date, today)), &1.title}
-    )
-    |> Enum.take(@digest_titles)
-    |> Enum.map(& &1.title)
+  end
+
+  defp upcoming?(entry, today), do: Date.compare(entry.date, today) == :gt
+
+  # 要約に並べる順。最終回を迎えたばかり（一気見どき）→ 放送中 → これから
+  defp stage(entry, today) do
+    cond do
+      upcoming?(entry, today) -> 2
+      (ended = ended_on(entry)) && Date.compare(ended, today) != :gt -> 0
+      true -> 1
+    end
   end
 
   defp ended_long_ago?(entry, today) do
@@ -261,7 +296,7 @@ defmodule Tazuna.News.Anime do
          titles when titles != [] <-
            entries
            |> Enum.filter(&(is_nil(&1.thumb) and is_nil(&1.image)))
-           |> pick_for_digest(Tazuna.Jst.today()),
+           |> pick_for_images(Tazuna.Jst.today()),
          :ok <-
            Tazuna.Chiezo.focus(
              base,

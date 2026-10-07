@@ -55,7 +55,7 @@ defmodule Tazuna.News.AnimeTest do
     end
 
     test "放送が終わって時間が経ったものを落とさせる", %{prompt: prompt} do
-      assert prompt =~ "最終回から 14 日以上経ったもの"
+      assert prompt =~ "最終回から 30 日以上経ったもの"
       assert prompt =~ Tazuna.Chiezo.tombstone_tag()
     end
   end
@@ -93,12 +93,30 @@ defmodule Tazuna.News.AnimeTest do
       Anime.pick_for_digest(
         [
           %{title: "放送中", date: ~D[2026-10-01], attention: :high, tags: []},
-          %{title: "前の期で終わった", date: ~D[2026-07-01], attention: :high, tags: ["放送終了:2026-09-01"]},
-          %{title: "来期", date: ~D[2027-01-08], attention: :mid, tags: []}
+          %{title: "前の期で終わった", date: ~D[2026-07-01], attention: :high, tags: ["放送終了:2026-08-01"]},
+          %{title: "来期", date: ~D[2027-01-08], attention: :high, tags: []}
         ],
         today
       )
 
     assert titles == ["放送中", "来期"]
+  end
+
+  test "要約は終わったばかり・放送中を先に並べ、これから始まるものは注目度が高いものだけ" do
+    today = ~D[2026-10-04]
+
+    titles =
+      Anime.pick_for_digest(
+        [
+          %{title: "来期の大作", date: ~D[2026-10-10], attention: :high, tags: []},
+          %{title: "来期の中", date: ~D[2026-10-08], attention: :mid, tags: []},
+          %{title: "放送中の中", date: ~D[2026-10-02], attention: :mid, tags: []},
+          %{title: "放送中の高", date: ~D[2026-07-05], attention: :high, tags: []},
+          %{title: "完走した", date: ~D[2026-07-03], attention: :high, tags: ["放送終了:2026-09-27"]}
+        ],
+        today
+      )
+
+    assert titles == ["完走した", "放送中の高", "放送中の中", "来期の大作"]
   end
 end
