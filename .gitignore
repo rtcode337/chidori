@@ -39,6 +39,8 @@ npm-debug.log
 /data/
 /data-dev/
 .env
+# standalone の雛形に実値を入れたコピー（秘密とホストのパスが入る）
+/docker-compose.standalone.yml
 
 # 手元でテストを回すときの mix のホーム（コンテナに渡す置き場）
 /.docker-home/

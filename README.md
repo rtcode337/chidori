@@ -525,7 +525,15 @@ docker run --rm -v "$PWD/priv/static:/w" -w /w debian:bookworm-slim sh -c \
    && rsvg-convert -w 64 -h 64 images/icon.svg -o favicon.ico'
 ```
 
-本番用イメージは `Dockerfile` でビルドする。イメージの中でスタイルと JavaScript も作る。公開時は `ghcr.io/<owner>/chidori:<commit-sha>` のようにコミット SHA を含むタグを付ける。
+本番用イメージは `Dockerfile` でビルドする。イメージの中でスタイルと JavaScript も作る。
+`main` へ push すると GitHub Actions（`.github/workflows/build-and-push-image.yml`）が
+`ghcr.io/rtcode337/chidori:latest` と `:sha-<短縮SHA>` を公開する（amd64 のみ。GHCR には直近の
+2 版だけ残す）。パッケージは非公開なので、pull するホストでは `read:packages` の
+トークンで `docker login ghcr.io` を済ませておく。
+
+`.env` もリポジトリも置けない環境（管理画面に YAML を貼るタイプ）では
+`docker-compose.standalone.example.yml` を `docker-compose.standalone.yml` にコピーし、
+値を直書きして貼る（コピーは gitignore 済み）。
 
 基本設計は [docs/basic-design.md](docs/basic-design.md) を参照してください。
 採用技術と選定理由は [docs/technology-selection.md](docs/technology-selection.md) を参照してください。

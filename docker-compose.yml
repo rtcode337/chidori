@@ -20,6 +20,8 @@ services:
       CHIEZO_BASE_URL: ${CHIEZO_BASE_URL:-}
       CHIEZO_RELATIONS_BACKEND: ${CHIEZO_RELATIONS_BACKEND:-}
       CHIEZO_RELATIONS_MODEL: ${CHIEZO_RELATIONS_MODEL:-}
+      # ntfy（まとめの通知）の場所の既定。通知先（トピック）は画面から決める
+      NTFY_BASE_URL: ${NTFY_BASE_URL:-}
       TZ: ${TZ:-Asia/Tokyo}
     ports:
       - "${PORT:-7000}:${PORT:-7000}"

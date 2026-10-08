@@ -1,0 +1,92 @@
+# `.env` を置けず、リポジトリのチェックアウトもできない実行環境向けの単体定義。
+# （NAS のコンテナマネージャー等、管理画面に YAML を貼り付けて起動するタイプの環境を想定）
+#
+# docker-compose.yml との違いは 3 点だけ:
+#   1. `${...}` を使わず、値を YAML に直接書く（`.env` もシェルの環境変数も無い前提のため）
+#   2. データの置き場を絶対パスで書く（相対パスの基準になるチェックアウトが無いため）
+#   3. サービス名と DB のユーザー名・DB 名を chidori にする（docker-compose.yml の tazuna は
+#      開発コードの名残。既存の DB を作り直さずに済むよう、あちらは変えずに残している）
+# **docker-compose.yml のサービス・環境変数を変えたら、こちらにも同じ変更を入れること**
+# （値の直書きぶん古くなりやすい）。
+#
+# 使い方:
+#   1. このファイルを docker-compose.standalone.yml にコピーする
+#      （コピー先は .gitignore 済み。ホスト固有のパスや秘密を書いても誤ってコミット
+#        されない。この .example 側は雛形なので直接編集しない）
+#   2. 「ここだけ編集」の値を書き換える（データの置き場・SECRET_KEY_BASE・宛先）
+#   3. その内容を管理画面に貼り付けて起動する
+#   4. http://<ホスト>:7000/ を開く。移行は起動のたびに当たるので手で流す必要はない
+#
+# 非公開リポジトリのため GHCR のパッケージも非公開。pull する前に、そのホストで
+# `read:packages` スコープの Personal Access Token を使って
+# `docker login ghcr.io -u <GitHub ユーザー名>` を済ませておくこと。
+#
+# :latest ではなく :sha-xxxxxxx を指定すれば特定のイメージを指せる。
+# ※ GHCR には直近の 2 版しか残らない（.github/workflows/build-and-push-image.yml）。
+
+# ---- ここだけ編集: データの置き場（ホストの絶対パス。1 つだけ） ----
+# この下に PostgreSQL の実データ（postgres/18/docker）ができる。
+# **バックアップはここを丸ごとコピーすればよい**（止めてからコピーすること）。
+# 書式は「ホスト側の絶対パス:コンテナ側」。`type: bind` の長い形は使わない ——
+# 古い Docker だとホスト側のディレクトリを自動で作らない
+x-data-volume: &data-volume "/path/to/chidori/data:/data"
+
+# ---- ここだけ編集: DB の接続情報 ----
+# 初回起動の前に決める（data を作るときにしか効かず、後から変えても DB 側は
+# 変わらないまま接続文字列だけがずれる）。下の DATABASE_URL と揃えること
+x-db-env: &db-env
+  POSTGRES_USER: "chidori"
+  POSTGRES_PASSWORD: "change-me"
+  POSTGRES_DB: "chidori"
+  TZ: "Asia/Tokyo"
+  # postgres:18 は /var/lib/postgresql/data を直に使わせないので、PGDATA を data の下へ
+  PGDATA: "/data/postgres/18/docker"
+
+services:
+  chidori:
+    image: ghcr.io/rtcode337/chidori:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # ---- ここだけ編集 ----
+      # 生成: `mix phx.gen.secret` か `openssl rand -base64 64`（64 バイト以上。短いと起動時に断る）
+      SECRET_KEY_BASE: "change-me-to-a-64-byte-or-longer-random-string"
+      # 上の x-db-env と同じユーザー・パスワード・DB 名にする
+      DATABASE_URL: "ecto://chidori:change-me@db:5432/chidori"
+      # ブラウザから見えるホスト名（リンクの組み立てに使う）。この機械の LAN アドレスか、
+      # 名前が引けるならホスト名
+      PHX_HOST: "localhost"
+      # Chiezo（LAN 内の知識サーバー）のルート URL。/v1 は付けない
+      CHIEZO_BASE_URL: "http://chiezo.example.lan:7010"
+      # ntfy（まとめの通知）の場所の既定。通知先（トピック）は画面から決める
+      NTFY_BASE_URL: ""
+      # ---- 通常は編集不要 ----
+      PHX_SCHEME: "http"
+      # LiveView が繋ぎ直すときに接続元を見比べるか。空なら見比べない（LAN の中に閉じている前提）
+      PHX_CHECK_ORIGIN: ""
+      PORT: "7000"
+      # 関連図を調べさせる相手（空なら Chiezo の既定）
+      CHIEZO_RELATIONS_BACKEND: ""
+      CHIEZO_RELATIONS_MODEL: ""
+      TZ: "Asia/Tokyo"
+    ports:
+      - "7000:7000"
+
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment: *db-env
+    volumes:
+      - *data-volume
+    # postgres:18 は VOLUME /var/lib/postgresql を宣言していて、何もマウントしないと
+    # 起動のたびに空の匿名ボリュームが溜まる。実データは PGDATA に置くので tmpfs で抑える
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      # 立ち上がる前にアプリが繋ぎに行くと、移行が失敗して起動ごと落ちる
+      test: ["CMD-SHELL", "pg_isready -U chidori -d chidori"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
