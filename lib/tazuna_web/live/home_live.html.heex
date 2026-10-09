@@ -142,7 +142,7 @@
         <p :if={@events in [nil, :loading]} class="muted-note">読み込んでいます…</p>
         <p :if={match?({:error, _}, @events)} class="muted-note">イベントを読めませんでした。</p>
         <%= if match?({:ok, _}, @events) do %>
-          <% list = upcoming(elem(@events, 1)) %>
+          <% list = upcoming(elem(@events, 1), Tazuna.Topics.home_attention(@panel.topic)) %>
           <p :if={list == []} class="muted-note">これから 2 か月の、注目度の高いイベントはまだありません。</p>
           <ul :if={list != []} class="event-day-list home-events">
             <li :for={entry <- list} class={["event-item", "is-#{entry.attention}"]}>

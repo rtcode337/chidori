@@ -10,7 +10,7 @@ defmodule TazunaWeb.HomeLive do
   - 関連図 —— 関連図の画面をそのまま埋め込む（操作も同じ）
   - 技術書 —— 本棚の上位の数冊（`TazunaWeb.TopBooks`）。**押すとその本を勧めている
     記事をたどれる**（札の下に開く）
-  - これからの注目イベント —— 注目度が中以上で、これから 2 か月のもの
+  - これからの注目イベント —— 注目度が高いもの（話題によっては中も）で、これから 2 か月のもの
 
   **枠の中を左右に払うと、隣のタブへ移ります**（`PanelSwipe`）。
   """
@@ -25,8 +25,8 @@ defmodule TazunaWeb.HomeLive do
   alias Tazuna.Topics
   alias TazunaWeb.NewsLive
 
-  # 注目イベントを先まで見る月数。**注目度が高いものだけ**を並べるので、数では切らない
-  # （中まで入れていた頃は、20 件の上限で 1 か月先あたりまでしか見えなかった）
+  # 注目イベントを先まで見る月数。**並べる注目度は話題ごとに絞る**ので、数では切らない
+  # （技術イベントで中まで入れていた頃は、20 件の上限で 1 か月先あたりまでしか見えなかった）
   @events_months 2
 
   @impl true
@@ -101,7 +101,7 @@ defmodule TazunaWeb.HomeLive do
     end
   end
 
-  # 注目度が高いものだけをタグで引く（溜まっている全部は読みに行かない）
+  # 出す注目度のものだけをタグで引く（溜まっている全部は読みに行かない）
   defp load(socket, %{kind: :events, topic: topic}) do
     case News.chiezo_base_url() do
       nil ->
@@ -109,7 +109,7 @@ defmodule TazunaWeb.HomeLive do
 
       base ->
         if connected?(socket) do
-          tags = "#{Events.attention_tag()}:高"
+          tags = Enum.map_join(Topics.home_attention(topic), ",", &Events.attention_tag/1)
 
           socket
           |> assign(events: :loading)
@@ -185,16 +185,19 @@ defmodule TazunaWeb.HomeLive do
   defp to_index(_value), do: 0
 
   @doc """
-  これからの注目イベント。**注目度が高いもの**を、**今日から #{@events_months} か月先まで**、
+  これからの注目イベント。**`levels` の注目度のもの**（既定は高だけ。
+  `Tazuna.Topics.home_attention/1`）を、**今日から #{@events_months} か月先まで**、
   開催日の近い順に。
   """
-  def upcoming(entries, today \\ Jst.today()) do
+  def upcoming(entries, levels \\ [:high], today \\ Jst.today()) do
     until = Date.shift(today, month: @events_months)
 
     entries
-    |> Enum.filter(&(&1.attention == :high))
+    |> Enum.filter(&(&1.attention in levels))
     |> Enum.filter(&(Date.compare(&1.date, today) != :lt and Date.compare(&1.date, until) != :gt))
-    |> Enum.sort_by(&{Date.to_gregorian_days(&1.date), &1.title})
+    # 同じ日のものは注目度の高い順（中も並べる話題で、高が中の後ろに埋もれないように）
+    |> Events.sort()
+    |> Enum.sort_by(&Date.to_gregorian_days(&1.date))
   end
 
   @impl true

@@ -70,11 +70,33 @@ defmodule TazunaWeb.HomeLiveTest do
           event.("来週・高", ~D[2026-10-08], :high),
           event.("今日・高", ~D[2026-10-01], :high)
         ],
+        [:high],
         today
       )
 
     # 中は出さない（中まで入れると、件数の上限で先の月が見えなくなる）
     assert Enum.map(list, & &1.title) == ["今日・高", "来週・高", "2 か月後"]
+  end
+
+  test "注目度が中のものも出す話題では、中も並べる（お笑いイベント）" do
+    today = ~D[2026-10-01]
+    event = fn title, attention -> %{title: title, date: ~D[2026-10-08], attention: attention} end
+    entries = [event.("高", :high), event.("中", :mid), event.("低", :low)]
+
+    comedy = Enum.find(Tazuna.Topics.list(), &(&1.collection == "tazuna_comedy"))
+    tech = Enum.find(Tazuna.Topics.list(), &(&1.collection == "tazuna_events"))
+
+    assert Enum.map(
+             TazunaWeb.HomeLive.upcoming(entries, Tazuna.Topics.home_attention(comedy), today),
+             & &1.title
+           ) ==
+             ["高", "中"]
+
+    assert Enum.map(
+             TazunaWeb.HomeLive.upcoming(entries, Tazuna.Topics.home_attention(tech), today),
+             & &1.title
+           ) ==
+             ["高"]
   end
 
   test "技術書は、押すとその本を勧めている記事をたどれる", %{conn: conn} do

@@ -73,6 +73,11 @@ defmodule Tazuna.News.Events do
   @doc "注目度のタグの頭。"
   def attention_tag, do: @attention_tag
 
+  @doc "注目度のタグ（`:high` → `注目度:高`）。"
+  def attention_tag(:high), do: @attention_tag <> ":高"
+  def attention_tag(:mid), do: @attention_tag <> ":中"
+  def attention_tag(:low), do: @attention_tag <> ":低"
+
   @doc """
   整理の回の依頼文に足す、技術イベントならではの頼みごと（`Tazuna.Topics` の `note`）。
 

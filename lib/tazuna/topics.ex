@@ -210,6 +210,9 @@ defmodule Tazuna.Topics do
         # 外を探す回（情報収集）だけで集め、片付けもその回がする（整理の回は置かない）
         feeds: [],
         look_ahead: Tazuna.News.ComedyEvents,
+        # **トップページには注目度が中のものも出す**（`home_attention/1`）。技術イベントほど
+        # 数が無く、高だけだと 2 か月先まででも数件しか並ばない
+        home_attention: [:high, :mid],
         # **絵を Chiezo に縮めて持たせる**（AI が公式サイトの絵の URL を返す）。
         # 返さなかったイベントは、公式サイトのページの og:image から（ホストは問わない）
         thumbs: %{pages_from: ["*"]}
@@ -395,6 +398,13 @@ defmodule Tazuna.Topics do
   @doc "開催日のカレンダーを出す話題か（`Tazuna.News.Events`）。"
   def calendar?(%{calendar: true}), do: true
   def calendar?(_topic), do: false
+
+  @doc """
+  トップページの「これからの注目イベント」に出す注目度（`:high` / `:mid` / `:low`）。
+  **既定は高だけ** —— 中まで入れると、件数の多い話題では近い日のもので埋まる。
+  """
+  def home_attention(%{home_attention: levels}) when is_list(levels), do: levels
+  def home_attention(_topic), do: [:high]
 
   @doc "カレンダーの日付を読むタグの頭（既定は技術イベントの `開催日`）。"
   def date_tag(%{date_tag: tag}) when is_binary(tag), do: tag
