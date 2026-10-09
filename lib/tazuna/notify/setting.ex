@@ -18,11 +18,13 @@ defmodule Tazuna.Notify.Setting do
     field(:digest_at, :string, default: "")
     field(:last_digest_at, :utc_datetime)
     field(:last_digest_result, :string, default: "")
+    # 最後に ntfy へ知らせた時刻（画面の「最後に知らせた」）
+    field(:last_sent_at, :utc_datetime)
 
     timestamps(type: :utc_datetime)
   end
 
-  @fields ~w(collection notify digest_at last_digest_at last_digest_result)a
+  @fields ~w(collection notify digest_at last_digest_at last_digest_result last_sent_at)a
 
   # 時刻の区切り。**読点も空白も受けます** —— 書く人は「08:00、21:00」とも書きます
   @separators ~r/[,、\s]+/

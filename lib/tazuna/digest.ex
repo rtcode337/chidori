@@ -374,7 +374,6 @@ defmodule Tazuna.Digest do
 
   defp outcome({:ok, :sent}), do: "まとめを作って知らせました。"
   defp outcome({:ok, :made}), do: "まとめを作りました（知らせない設定か、通知先が無いので知らせていません）。"
-  defp outcome({:ok, :already_sent}), do: "まとめを作りましたが、同じものは知らせ済みでした。"
 
   defp outcome({:ok, :nothing_to_send}),
     do: "まとめを作りましたが、知らせるものがありませんでした。"

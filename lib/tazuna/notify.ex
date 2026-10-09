@@ -1,22 +1,17 @@
 defmodule Tazuna.Notify do
   @moduledoc """
-  まとめを知らせるところ。**同じものを二度知らせない**のがここの仕事です。
+  まとめを知らせるところ。
 
-  まとめは Chiezo に溜まっていて、tazuna は時々読みに行くだけです ——
-  **読み直すたびに同じまとめが返る**ので、何を知らせたかを覚えていないと、
-  読むたびに通知が飛びます。覚える先は DB です（メモリだと、立ち上げ直した拍子に
-  前のまとめをもう一度知らせることになります）。
-
-  **宛先を変えたら、変えた先へは改めて届きます。** 記録の鍵に宛先も入れてあるので、
-  引っ越した先には「もう知らせた」と黙りません。
+  **知らせるのは、新しくできたまとめ 1 件と、画面で押されたときだけ**です
+  （`Tazuna.Digest` と最新情報の「知らせる」）。Chiezo に溜まったまとめを読み直して
+  知らせ漏れを探すことはしないので、「何を知らせたか」の記録は持ちません ——
+  持っていた頃（表 `sent_notices`）も、効いていたのは画面の「最後に知らせた時刻」だけでした。
+  その時刻は話題の設定に 1 つだけ控えます（`Tazuna.Notify.Settings.mark_sent/2`）。
   """
 
-  import Ecto.Query
-
   alias Tazuna.News
-  alias Tazuna.Notify.Notice
+  alias Tazuna.Notify.Settings
   alias Tazuna.Ntfy
-  alias Tazuna.Repo
 
   require Logger
 
@@ -34,79 +29,33 @@ defmodule Tazuna.Notify do
   end
 
   @doc """
-  まとめ 1 件を知らせます。
-
-  **押されたときは、知らせ済みでも送ります**（`force: true`）。押すのは意思表示
-  なので、そこで黙られると「壊れているのか、もう送ったのか」が分かりません ——
-  送ったことは画面に出るので、二度目が要らないかは押す人が決められます。
+  まとめ 1 件を知らせます。`opts` は呼び出し側との互換のために受け取るだけです
+  （知らせ済みかどうかを見ないので、`force` の有無で動きは変わりません）。
   """
-  def deliver(collection, digest, opts \\ []) do
-    with {:ok, {_base, ntfy_topic}} <- Ntfy.ready(collection),
-         false <- opts[:force] != true and sent?(collection, digest.title, ntfy_topic) do
-      send_and_record(collection, ntfy_topic, digest)
-    else
-      # 送れない理由（宛先が未設定など）はそのまま返す。押した人にも読めるように
-      {:error, reason} -> {:error, reason}
-      true -> {:ok, :already_sent}
+  def deliver(collection, digest, _opts \\ []) do
+    with {:ok, _ready} <- Ntfy.ready(collection) do
+      send_and_record(collection, digest)
     end
   end
 
   @doc """
   その話題へ最後に知らせた時刻。**押した結果がここに出ます**。
   """
-  def last_sent_at(collection) do
-    Repo.one(
-      from(n in Notice,
-        where: n.collection == ^collection,
-        # **送った時刻で見る**（足した時刻ではない）—— 二度目は行が増えないので、
-        # 足した時刻だと押しても画面が動かない
-        order_by: [desc: n.updated_at],
-        limit: 1,
-        select: n.updated_at
-      )
-    )
-  end
+  def last_sent_at(collection), do: Settings.get(collection).last_sent_at
 
-  defp send_and_record(collection, ntfy_topic, digest) do
+  defp send_and_record(collection, digest) do
     case Ntfy.notify(collection, digest.title, News.digest_text(digest),
            click: click_url(collection)
          ) do
       :ok ->
-        record(collection, digest.title, ntfy_topic)
+        Settings.mark_sent(collection, DateTime.utc_now())
         {:ok, :sent}
 
       {:error, reason} ->
-        # **届かなかったものは記録しない。** 記録すると、次に読み直したときに
-        # 「もう知らせた」と黙って飛ばされ、そのまとめは永遠に届かない
+        # 届かなかったものは時刻を進めない（画面に「知らせた」と出さない）
         Logger.warning("ntfy へ知らせられなかった（#{collection}）: #{inspect(reason)}")
         {:error, reason}
     end
-  end
-
-  @doc "知らせたことがあるか。"
-  def sent?(collection, key, ntfy_topic) do
-    Repo.exists?(
-      from(n in Notice,
-        where: n.collection == ^collection and n.key == ^key and n.topic == ^(ntfy_topic || "")
-      )
-    )
-  end
-
-  @doc """
-  知らせたことを残します。**同時に 2 つ走っても 1 件**（一意制約に任せます）。
-
-  **二度目は時刻だけ進めます。** 押されたときは知らせ済みでも送るので、
-  行を足さずに黙ると、**画面の「最後に知らせた」が送った瞬間から古いまま**になります。
-  """
-  def record(collection, key, ntfy_topic) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    %Notice{}
-    |> Notice.changeset(%{collection: collection, key: key, topic: ntfy_topic || ""})
-    |> Repo.insert(
-      on_conflict: [set: [updated_at: now]],
-      conflict_target: [:collection, :key, :topic]
-    )
   end
 
   @doc false

@@ -278,8 +278,7 @@ defmodule Tazuna.Chiezo do
         "bbox" => bbox,
         "limit" => @nearby_page,
         "offset" => offset,
-        # 冒頭（`opening`）も読む —— 「現地から営業中の報告」で戻した店を見分けるのに使う
-        # （`Tazuna.Datasets.ClosedTwins`）
+        # 冒頭（`opening`）も読む —— 呼ぶ側が本文の頭で見分けられるように
         "fields" => "title,tags,extra,opening",
         "include_removed" => "true"
       })
@@ -451,7 +450,7 @@ defmodule Tazuna.Chiezo do
   Chiezo は、止めている収集でも人が押した 1 回は走らせます —— AI の使い過ぎを気にして
   収集を止めていても、区画を名指しした 1 回や travel-log からの依頼は頼みたいため。
 
-  **定時の時計（要約・情報収集・片割れ確かめ）は囲まない**約束です。止めた収集が
+  **定時の時計（要約・情報収集）は囲まない**約束です。止めた収集が
   時計で動かないことが、止めた意味なので。印はプロセスに置くので、**囲むのは Chiezo を
   呼ぶプロセスの中**（Task を起こすなら Task の中で囲む）。
   """

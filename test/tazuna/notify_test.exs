@@ -1,7 +1,7 @@
 defmodule Tazuna.NotifyTest do
   @moduledoc """
-  知らせるところ。見ているのは 2 つ ——
-  **同じものを二度知らせないこと**と、**届かなかったものを知らせた扱いにしないこと**。
+  知らせるところ。見ているのは、届けた時刻が残ることと、
+  **届かなかったものを知らせた扱いにしないこと**。
   """
 
   use Tazuna.DataCase, async: false
@@ -84,36 +84,12 @@ defmodule Tazuna.NotifyTest do
     refute Map.has_key?(sent, "click")
   end
 
-  test "同じまとめは二度知らせない" do
-    # まとめは Chiezo に溜まっていて、読み直すたびに同じものが返る
-    stub_ok()
-
-    assert Notify.deliver(@collection, @digest) == {:ok, :sent}
-    assert_receive {:notified, _url, _sent}, 2_000
-
-    assert Notify.deliver(@collection, @digest) == {:ok, :already_sent}
-    refute_receive {:notified, _url, _sent}, 300
-  end
-
-  test "宛先を変えたら、変えた先へは改めて届く" do
-    # 「もう知らせた」と黙られると、新しい宛先には何も来ないまま気づけない
-    stub_ok()
-    assert Notify.deliver(@collection, @digest) == {:ok, :sent}
-    assert_receive {:notified, _url, _sent}, 2_000
-
-    Destination.put(%{"topic" => "tazuna-tech-2"})
-    assert Notify.deliver(@collection, @digest) == {:ok, :sent}
-    assert_receive {:notified, _url, sent}, 2_000
-    assert sent["topic"] == "tazuna-tech-2"
-  end
-
   test "届かなかったものは、知らせた扱いにしない" do
-    # 記録すると、次に読み直したときに「もう知らせた」と黙って飛ばされ、
-    # そのまとめは永遠に届かない
+    # 時刻を進めると、画面に「知らせた」と出て届いていないことに気づけない
     HttpStub.stub(fn %{method: :post} -> {:ok, %{status: 500, body: ""}} end)
 
     assert Notify.deliver(@collection, @digest) == {:error, {:ntfy_status, 500}}
-    refute Notify.sent?(@collection, @digest.title, "tazuna-tech")
+    refute Notify.last_sent_at(@collection)
   end
 
   test "宛先が未設定なら、その理由を返す" do
@@ -147,7 +123,7 @@ defmodule Tazuna.NotifyTest do
     assert Notify.deliver(@collection, @digest) == {:error, :ntfy_topic_missing}
   end
 
-  test "押されたときは、知らせ済みでも送る" do
+  test "同じまとめでも、押されれば送る" do
     # 押すのは意思表示。そこで黙られると「壊れているのか、もう送ったのか」が
     # 分からない（送ったことは画面に出るので、二度目が要るかは押す人が決める）
     stub_ok()
@@ -167,8 +143,7 @@ defmodule Tazuna.NotifyTest do
     assert_receive {:notified, _url, _sent}, 2_000
     assert first = Notify.last_sent_at(@collection)
 
-    # **二度目も時刻が進む。** 行は増えないので、足した時刻で見ていると
-    # 押しても画面が動かない
+    # 二度目も時刻が進む（押した結果が画面に出る）
     Notify.deliver(@collection, @digest, force: true)
     assert_receive {:notified, _url, _sent}, 2_000
     assert DateTime.compare(Notify.last_sent_at(@collection), first) != :lt

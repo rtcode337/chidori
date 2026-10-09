@@ -59,6 +59,17 @@ defmodule Tazuna.Notify.Settings do
     |> Repo.insert_or_update()
   end
 
+  @doc "知らせた時刻を控えます（画面の「最後に知らせた」）。"
+  def mark_sent(collection, %DateTime{} = at) do
+    collection
+    |> get()
+    |> Setting.changeset(%{
+      "collection" => collection,
+      "last_sent_at" => DateTime.truncate(at, :second)
+    })
+    |> Repo.insert_or_update()
+  end
+
   @doc "フォームに載せる形。"
   def changeset(collection, attrs \\ %{}) do
     collection |> get() |> Setting.changeset(Map.put(attrs, "collection", collection))

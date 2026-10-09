@@ -112,7 +112,7 @@ defmodule Tazuna.Datasets.Requests do
   「位置OK」「この位置へ直して」の店の座標を、Chiezo に固定させます（AI を通さない）。
   直す先（`to`）があればその座標で、無ければいまの座標で固定します。
 
-  店は**その座標の近くにある、同じ名前の 1 件**で探します（`Tazuna.Datasets.ClosedTwins`
+  店は**その座標の近くにある、同じ名前の 1 件**で探します（`same_name/1`
   と同じ名前の比べ方。travel-log は見分けの番号「 (1470114)」を落として出すので、
   名前だけでは引けない）。見つからなかった・断られた店も黙って落とさずに返します。
 
@@ -199,12 +199,30 @@ defmodule Tazuna.Datasets.Requests do
 
   # 近くの同じ名前の 1 件（消えたものは除く。いちばん近いもの）
   defp same_shop(docs, shop, lat, lon) do
-    want = Tazuna.Datasets.ClosedTwins.normalize(shop)
+    want = same_name(shop)
 
     docs
     |> Enum.reject(&(Chiezo.removed_tag() in (&1["tags"] || [])))
-    |> Enum.filter(&(Tazuna.Datasets.ClosedTwins.normalize(&1["title"]) == want))
+    |> Enum.filter(&(same_name(&1["title"]) == want))
     |> Enum.min_by(&distance(&1, lat, lon), fn -> nil end)
+  end
+
+  @doc false
+  # 店の名前を、比べられる形に均す（見分けの札・空白・記号・全角半角・大小を落とす）。
+  # travel-log は見分けの番号「 (1470114)」を落として出すので、名前だけでは引けない
+  def same_name(name) do
+    name
+    |> to_string()
+    |> strip_labels()
+    |> :unicode.characters_to_nfkc_binary()
+    |> String.downcase()
+    |> String.replace(~r/[\s・･\-‐－_'’&＆.。、,]/u, "")
+  end
+
+  # 「名前 (千代田区)」「名前 (node:123)」「名前 (1772404)」の札を落とす
+  defp strip_labels(name) do
+    stripped = Regex.replace(~r/\s*[（(][^（）()]*[）)]\s*$/u, name, "")
+    if stripped == name or stripped == "", do: String.trim(name), else: strip_labels(stripped)
   end
 
   defp distance(%{"extra" => %{"lat" => la, "lon" => lo}}, lat, lon)
@@ -338,7 +356,7 @@ defmodule Tazuna.Datasets.Requests do
     {gone, alive} =
       docs
       |> Enum.filter(fn doc ->
-        name = Tazuna.Datasets.ClosedTwins.normalize(doc["title"] || "")
+        name = same_name(doc["title"] || "")
         String.length(name) >= 3 and String.contains?(said, name)
       end)
       |> Enum.split_with(&(Chiezo.removed_tag() in (&1["tags"] || [])))
@@ -367,7 +385,7 @@ defmodule Tazuna.Datasets.Requests do
     end
   end
 
-  # 報告の文を、店の名前と同じ形に揃える（`ClosedTwins.normalize/1` の札を落とさない版）
+  # 報告の文を、店の名前と同じ形に揃える（`same_name/1` の札を落とさない版）
   defp squash(text) do
     text
     |> :unicode.characters_to_nfkc_binary()

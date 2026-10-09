@@ -85,9 +85,8 @@ defmodule Tazuna.Datasets.MealsTest do
              )
     end
 
-    test "閉店の片割れを確かめてもらう" do
-      # 同じ店が辞典に 2 件入っていて、片方だけ閉店で消えることがある
-      assert Meals.definition().closed_twins == true
+    test "閉店で消すときは、同じ店の片割れも見るよう頼む" do
+      # 同じ店が辞典に 2 件入っていて、片方だけ閉店で消えることがある。判断は AI に任せる
       assert Meals.scan_prompt() =~ "片割れ"
       assert Meals.survey_prompt() =~ "片割れ"
     end

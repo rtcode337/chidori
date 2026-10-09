@@ -408,9 +408,6 @@ defmodule Tazuna.Datasets.Meals do
       # ので、「この区画を先に調べて」「この店が違う」をその場で頼む先はざっと ——
       # 直す・消す・埋めるはざっとの依頼文がそのまま引き受ける
       survey_sweep: @scan_sweep,
-      # **閉店の片割れを探して確かめてもらう**（`Tazuna.Datasets.ClosedTwins`）。
-      # 場所を持つ収集でしか探せない
-      closed_twins: true,
       # **tazuna が起点と時刻を決めて起こす巡回**（`Tazuna.Datasets.SurveyScheduler`）
       survey_plan_sweep: @survey_sweep,
       # **travel-log からの依頼を走らせる巡回**（`Tazuna.Datasets.Requests`）
