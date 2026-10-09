@@ -1,4 +1,4 @@
-defmodule Tazuna.Datasets.Meals do
+defmodule Tazuna.Datasets.Dining do
   @moduledoc """
   食事処 —— travel-log の地図に並べる「食べに行く先」を Chiezo に集めさせる依頼です。
 
@@ -24,7 +24,7 @@ defmodule Tazuna.Datasets.Meals do
 
   ## 収集は範囲ごとに 1 つ
 
-  **見たい範囲だけを、細かい区画で回します**（`Tazuna.Datasets.MealAreas`。
+  **見たい範囲だけを、細かい区画で回します**（`Tazuna.Datasets.DiningAreas`。
   収集の名前は `tazuna_dining_<範囲の番号>`）。日本全体を 1 つで回していた頃は、
   59.7 万件・4,105 区画で一周のめどが立たず、AI の費用もかさみ、抜け漏れと間違いが
   多すぎて地図として使えませんでした。
@@ -393,7 +393,7 @@ defmodule Tazuna.Datasets.Meals do
   ものとして扱い、親の下に並べる。
   """
   def extract(area) do
-    box = Tazuna.Datasets.MealAreas.bbox(area)
+    box = Tazuna.Datasets.DiningAreas.bbox(area)
     Enum.map([wikipedia_extract(), osm_extract(), overture_extract()], &Map.put(&1, :bbox, box))
   end
 
@@ -505,14 +505,14 @@ defmodule Tazuna.Datasets.Meals do
     %{
       by: "geo",
       target: @area_partition_target,
-      bbox: Tazuna.Datasets.MealAreas.bbox(area),
+      bbox: Tazuna.Datasets.DiningAreas.bbox(area),
       origin: origin
     }
   end
 
   @doc "起点の既定は、範囲の真ん中（区画はここから近い順に広げる）。"
   def default_origin(area) do
-    {lat, lon} = Tazuna.Datasets.MealAreas.center(area)
+    {lat, lon} = Tazuna.Datasets.DiningAreas.center(area)
     %{name: "#{area.name}の真ん中", lat: Float.round(lat, 6), lon: Float.round(lon, 6)}
   end
 

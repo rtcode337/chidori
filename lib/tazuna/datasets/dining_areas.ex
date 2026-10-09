@@ -1,12 +1,12 @@
-defmodule Tazuna.Datasets.MealAreas do
+defmodule Tazuna.Datasets.DiningAreas do
   @moduledoc """
   食事処を集める範囲。**範囲 1 つにつき Chiezo の収集が 1 つ**です
-  （`Tazuna.Datasets.Meals.definition/1`）。
+  （`Tazuna.Datasets.Dining.definition/1`）。
 
   **離れた場所は別の範囲にします。** 1 つの四角で 2 か所を囲むと、あいだの
   見たくない土地まで区画になって AI が回る。
 
-  範囲は画面で地図に四角を描いて決めます（`TazunaWeb.MealAreasLive`）。
+  範囲は画面で地図に四角を描いて決めます（`TazunaWeb.DiningAreasLive`）。
   """
 
   use Ecto.Schema
@@ -16,7 +16,7 @@ defmodule Tazuna.Datasets.MealAreas do
 
   alias Tazuna.Repo
 
-  schema "meal_areas" do
+  schema "dining_areas" do
     field(:name, :string)
     field(:south, :float)
     field(:west, :float)
@@ -87,7 +87,7 @@ defmodule Tazuna.Datasets.MealAreas do
   （`names` のうち `tazuna_dining_<番号>` の形のもの）の両方が使っていないもの。
   """
   def free_number(names) do
-    prefix = Tazuna.Datasets.Meals.area_collection_prefix()
+    prefix = Tazuna.Datasets.Dining.area_collection_prefix()
 
     remote =
       for name <- names,
@@ -122,14 +122,14 @@ defmodule Tazuna.Datasets.MealAreas do
   別の場所で Chidori を動かし直したとき、描き直さずに同じ収集へつなぎ直せる。
 
   **Chiezo へは何も送りません。** 収集はもう在るので、送ると画面で選んだ相手が
-  既定に戻る（`Tazuna.Datasets.Meals.shape/1` の注）。
+  既定に戻る（`Tazuna.Datasets.Dining.shape/1` の注）。
 
   `collections` は Chiezo の収集の一覧を返す関数（テストで差し替える）。
   """
   def restore(collections \\ &chiezo_collections/0) do
     with {:ok, collections} <- collections.() do
       local = MapSet.new(Repo.all(from(a in __MODULE__, select: a.id)))
-      prefix = Tazuna.Datasets.Meals.area_collection_prefix()
+      prefix = Tazuna.Datasets.Dining.area_collection_prefix()
 
       candidates =
         for %{"name" => name} = collection when is_binary(name) <- collections,
@@ -164,7 +164,7 @@ defmodule Tazuna.Datasets.MealAreas do
     end
   end
 
-  # 説明から範囲の名前を読む（`Tazuna.Datasets.Meals.shape/1` が書く形）
+  # 説明から範囲の名前を読む（`Tazuna.Datasets.Dining.shape/1` が書く形）
   defp area_name(description) when is_binary(description) do
     case Regex.run(~r/（(.+)の食事処 \/ travel-log 向け）/u, description) do
       [_, name] -> {:ok, name}
@@ -213,7 +213,7 @@ defmodule Tazuna.Datasets.MealAreas do
     |> validate_box()
     |> unique_constraint(:name, message: "はもう使われています")
     # 同じ番号を同時に 2 つ作ろうとしたとき（空き番号を選ぶのは挿入の手前なので）
-    |> unique_constraint(:id, name: :meal_areas_pkey, message: "が重なりました。もう一度作ってください")
+    |> unique_constraint(:id, name: :dining_areas_pkey, message: "が重なりました。もう一度作ってください")
   end
 
   defp validate_box(changeset) do

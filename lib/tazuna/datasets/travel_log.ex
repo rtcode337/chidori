@@ -4,7 +4,7 @@ defmodule Tazuna.Datasets.TravelLog do
   書き出します。
 
   **向こうに、こちらの決めごとを持たせないため**の層です。ジャンル・地域・ランクを
-  タグでどう書くかは依頼文（`Tazuna.Datasets.Meals`）の取り決めで、travel-log には
+  タグでどう書くかは依頼文（`Tazuna.Datasets.Dining`）の取り決めで、travel-log には
   関係がありません。ここで travel-log の形（`settings.json` と `spots.csv`）に直せば、
   向こうは**リポジトリから取り込むのと同じ処理**でそのまま入れられます。
 
@@ -232,7 +232,7 @@ defmodule Tazuna.Datasets.TravelLog do
         {rows, []}
 
       area ->
-        [s, w, n, e] = Tazuna.Datasets.MealAreas.bbox(area)
+        [s, w, n, e] = Tazuna.Datasets.DiningAreas.bbox(area)
 
         Enum.split_with(rows, fn %{"lat" => lat, "lng" => lon} ->
           lat >= s and lat <= n and lon >= w and lon <= e

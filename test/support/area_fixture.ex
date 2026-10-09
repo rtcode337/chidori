@@ -4,11 +4,11 @@ defmodule Tazuna.AreaFixture do
   画面を見るテストはこれを作ってから開く（`dining-1` / `tazuna_dining_1`）。
   """
 
-  alias Tazuna.Datasets.MealAreas
+  alias Tazuna.Datasets.DiningAreas
 
   def area! do
     Tazuna.Repo.insert!(
-      %MealAreas{id: 1, name: "テスト範囲", south: 35.5, west: 139.5, north: 35.9, east: 139.9},
+      %DiningAreas{id: 1, name: "テスト範囲", south: 35.5, west: 139.5, north: 35.9, east: 139.9},
       on_conflict: :nothing
     )
   end

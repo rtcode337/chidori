@@ -6,7 +6,7 @@ defmodule Tazuna.Datasets.TravelLogTest do
 
   @area %{id: 3, name: "東京駅", south: 35.67, west: 139.75, north: 35.69, east: 139.78}
 
-  defp dataset, do: Tazuna.Datasets.Meals.definition(@area)
+  defp dataset, do: Tazuna.Datasets.Dining.definition(@area)
 
   defp doc(overrides) do
     Map.merge(
@@ -74,15 +74,15 @@ defmodule Tazuna.Datasets.TravelLogTest do
       assert row["categories"] == "個室あり|位置未確認"
 
       # AI に付けさせる語彙には入れない（確かめていない店に付けられないように）
-      refute "位置確認済み" in Tazuna.Datasets.Meals.features()
-      refute "位置未確認" in Tazuna.Datasets.Meals.features()
-      assert Enum.take(Tazuna.Datasets.Meals.category_order(), -2) == ["位置確認済み", "位置未確認"]
+      refute "位置確認済み" in Tazuna.Datasets.Dining.features()
+      refute "位置未確認" in Tazuna.Datasets.Dining.features()
+      assert Enum.take(Tazuna.Datasets.Dining.category_order(), -2) == ["位置確認済み", "位置未確認"]
 
       # 位置を確かめた店を AI が閉店と読むと、Chiezo が消さずに印を付けて残す。その印もカテゴリになる
       doubted = tags ++ ["閉店の可能性あり"]
       row = TravelLog.row(doc(%{"tags" => doubted, "extra" => extra}), dataset())
       assert row["categories"] == "個室あり|閉店の可能性あり|位置確認済み"
-      assert Tazuna.Datasets.Meals.attrs(%{}, @area).locked_doubt_tag == "閉店の可能性あり"
+      assert Tazuna.Datasets.Dining.attrs(%{}, @area).locked_doubt_tag == "閉店の可能性あり"
     end
 
     test "鍵は Chiezo の doc_id（頭に範囲の番号）" do
@@ -258,14 +258,14 @@ defmodule Tazuna.Datasets.TravelLogTest do
         "extra" => %{"lat" => 35.681, "lon" => 139.767}
       }
 
-      assert TravelLog.row(doc, Tazuna.Datasets.Meals.definition(@area))["key"] == "3-1234"
+      assert TravelLog.row(doc, Tazuna.Datasets.Dining.definition(@area))["key"] == "3-1234"
     end
 
     test "範囲の外の店は書き出さず、exclude.txt に回す（範囲を狭めたあと）" do
       # Chiezo は四角の外の文書を消さないので、狭めた範囲の外の店が収集に残る
       inside = %{"lat" => 35.681, "lng" => 139.767, "key" => "3-1"}
       outside = %{"lat" => 35.70, "lng" => 139.767, "key" => "3-2"}
-      definition = Tazuna.Datasets.Meals.definition(@area)
+      definition = Tazuna.Datasets.Dining.definition(@area)
 
       assert TravelLog.split_outside([inside, outside], definition) == {[inside], [outside]}
       # 範囲を持たない収集は全部が中
@@ -274,7 +274,7 @@ defmodule Tazuna.Datasets.TravelLogTest do
 
     test "シリーズは語彙の順に固定する（読み込むたびに並びも色も入れ替わらない）" do
       rows = [%{"series" => "和食"}, %{"series" => "和食"}, %{"series" => "カレー"}]
-      order = Tazuna.Datasets.Meals.genre_order()
+      order = Tazuna.Datasets.Dining.genre_order()
 
       %{"series" => series} =
         Jason.decode!(TravelLog.settings_json("dining", "食事処", rows, nil, order))

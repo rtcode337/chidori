@@ -11,8 +11,8 @@ defmodule TazunaWeb.DatasetsController do
   use TazunaWeb, :controller
 
   alias Tazuna.Datasets
-  alias Tazuna.Datasets.MealAreas
-  alias Tazuna.Datasets.Meals
+  alias Tazuna.Datasets.DiningAreas
+  alias Tazuna.Datasets.Dining
   alias Tazuna.Datasets.TravelLog
 
   def export(conn, %{"key" => key}) do
@@ -48,8 +48,8 @@ defmodule TazunaWeb.DatasetsController do
   travel-log では範囲によらず 1 つの種別に読み込むので、範囲ごとに読み込ませない。
   """
   def export_areas(conn, _params) do
-    case MealAreas.list()
-         |> Enum.map(&Meals.definition/1)
+    case DiningAreas.list()
+         |> Enum.map(&Dining.definition/1)
          |> TravelLog.bundle_all("dining-all") do
       {:ok, filename, binary, _counts} ->
         send_download(conn, {:binary, binary}, filename: filename)

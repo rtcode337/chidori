@@ -8,7 +8,7 @@ defmodule Tazuna.Datasets do
   タブも依頼も増えます。
 
   **ここに置くのは、どの対象でも同じ手順だけ**です（読む・送る・割り込む）。
-  何を集めるかの指定と依頼文は対象の側（`Tazuna.Datasets.Meals` など）が持ちます。
+  何を集めるかの指定と依頼文は対象の側（`Tazuna.Datasets.Dining` など）が持ちます。
 
   **tazuna は収集の設定を覚えません。** 正は Chiezo が持っているもので、画面は
   それを読んで見せているだけ —— 写しを置くと、どちらが本物か言えなくなります。
@@ -16,20 +16,20 @@ defmodule Tazuna.Datasets do
 
   alias Tazuna.Chiezo
   alias Tazuna.Datasets.Books
-  alias Tazuna.Datasets.MealAreas
-  alias Tazuna.Datasets.Meals
+  alias Tazuna.Datasets.DiningAreas
+  alias Tazuna.Datasets.Dining
   alias Tazuna.Datasets.Pihole
 
   @doc """
   tazuna が持っている収集の対象。**この並びがタブの並び**。
 
-  **食事処は範囲ごとに 1 つ**（`Tazuna.Datasets.MealAreas`。画面で地図に四角を描いて
+  **食事処は範囲ごとに 1 つ**（`Tazuna.Datasets.DiningAreas`。画面で地図に四角を描いて
   足す）。日本全体を 1 つで回していた頃は、費用がかさみ抜け漏れも多すぎた。
   """
   def defined,
     do: [
       Books.definition(),
-      Pihole.definition() | Enum.map(MealAreas.list(), &Meals.definition/1)
+      Pihole.definition() | Enum.map(DiningAreas.list(), &Dining.definition/1)
     ]
 
   @doc """

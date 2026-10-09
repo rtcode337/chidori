@@ -1,17 +1,17 @@
-defmodule Tazuna.Datasets.MealsTest do
+defmodule Tazuna.Datasets.DiningTest do
   use ExUnit.Case, async: true
 
   alias Tazuna.Chiezo
-  alias Tazuna.Datasets.Meals
+  alias Tazuna.Datasets.Dining
 
   @area %{id: 3, name: "東京駅", south: 35.67, west: 139.75, north: 35.69, east: 139.78}
 
   # 範囲の収集の依頼文（ざっと見ると整理）
-  defp prompts, do: [Meals.check_prompt(), Meals.tidy_prompt()]
+  defp prompts, do: [Dining.check_prompt(), Dining.tidy_prompt()]
 
   describe "名簿の引き方" do
     setup do
-      specs = Meals.extract(@area)
+      specs = Dining.extract(@area)
       %{specs: specs, by_source: Map.new(specs, &{&1.source, &1})}
     end
 
@@ -145,7 +145,7 @@ defmodule Tazuna.Datasets.MealsTest do
         assert %{const: tag} in by_source[source].tags
       end
 
-      assert Enum.sort(Meals.source_tags()) ==
+      assert Enum.sort(Dining.source_tags()) ==
                Enum.sort(["出典:Wikipedia", "出典:OSM", "出典:Overture"])
     end
   end
@@ -154,7 +154,7 @@ defmodule Tazuna.Datasets.MealsTest do
     test "座標で割り、母集団は書かない" do
       # **自分自身を割っているときだけ Chiezo が割り直す** —— 座標が直れば
       # 区画もそれに追随してほしい
-      spec = Meals.partition([35.68, 139.765], @area)
+      spec = Dining.partition([35.68, 139.765], @area)
 
       assert spec.by == "geo"
       refute Map.has_key?(spec, :source)
@@ -163,8 +163,8 @@ defmodule Tazuna.Datasets.MealsTest do
     test "始める点は、範囲の四角の中にある" do
       # 書かないと南西の隅から広がる。外に置いても並ぶだけは並ぶが、
       # 「範囲のどこから広げるか」を言えなくなる
-      [south, west, north, east] = Meals.shape(@area).partition.bbox
-      [lat, lon] = Meals.shape(@area).partition.origin
+      [south, west, north, east] = Dining.shape(@area).partition.bbox
+      [lat, lon] = Dining.shape(@area).partition.origin
 
       assert south < lat and lat < north
       assert west < lon and lon < east
@@ -175,7 +175,7 @@ defmodule Tazuna.Datasets.MealsTest do
       # 付けさせるので、区画の件数がそのまま返る件数になる。
       # 実測（Antigravity に 150 件ぶんを返させた）: 150 件が切れずに全部返り、
       # 47,685 文字・2 分 50 秒。1 件あたり約 318 文字・約 1.1 秒
-      target = Meals.area_partition_target()
+      target = Dining.area_partition_target()
       measured_items = 150
       bridge_seconds = 840
 
@@ -191,7 +191,7 @@ defmodule Tazuna.Datasets.MealsTest do
   end
 
   describe "巡回" do
-    setup do: %{sweeps: Meals.sweeps(@area)}
+    setup do: %{sweeps: Dining.sweeps(@area)}
 
     test "名簿の回は機械で引き、足すだけ", %{sweeps: sweeps} do
       # 足すだけにしないと、AI が肉付けしたぶんを、名前と住所しか持たない名簿で上書きする
@@ -215,7 +215,7 @@ defmodule Tazuna.Datasets.MealsTest do
       per_run_cap = 5
 
       for sweep <- sweeps, Map.get(sweep, :cover_days) do
-        minutes = per_run_cap * Meals.area_partition_target() * 1.1 / 60
+        minutes = per_run_cap * Dining.area_partition_target() * 1.1 / 60
 
         assert minutes < sweep.interval_minutes,
                "#{sweep.name} は 1 回に #{round(minutes)} 分かかり、" <>
@@ -227,21 +227,21 @@ defmodule Tazuna.Datasets.MealsTest do
   describe "依頼の中身" do
     test "網羅で頼む" do
       # 古いものが要らなくなることはない —— 期限で落とすと地図に穴が開く
-      assert Meals.attrs(%{}, @area).kind == "stock"
+      assert Dining.attrs(%{}, @area).kind == "stock"
 
       # 店の URL を Chiezo に確かめさせる（書き出すときに開けないものを落とす）
-      assert Meals.attrs(%{}, @area).links
+      assert Dining.attrs(%{}, @area).links
     end
 
     test "巡回の依頼文は、送るときに実物へ入れ替わる" do
-      tidy = Enum.find(Meals.attrs(%{}, @area).sweeps, &(&1.name == "整理"))
+      tidy = Enum.find(Dining.attrs(%{}, @area).sweeps, &(&1.name == "整理"))
 
       assert is_binary(tidy.prompt)
       assert tidy.prompt =~ "足りない店"
     end
 
     test "画面で選んだ相手を巡回に載せる" do
-      attrs = Meals.attrs(%{"整理" => %{backend: "antigravity", model: nil}}, @area)
+      attrs = Dining.attrs(%{"整理" => %{backend: "antigravity", model: nil}}, @area)
       tidy = Enum.find(attrs.sweeps, &(&1.name == "整理"))
 
       assert tidy.backend == "antigravity"
@@ -251,7 +251,7 @@ defmodule Tazuna.Datasets.MealsTest do
 
     test "「Chiezo の既定にまかせる」は落とさない" do
       # 空文字は意思表示で、落とすと一度決めた相手を外せなくなる
-      attrs = Meals.attrs(%{"ざっと見る" => %{backend: ""}}, @area)
+      attrs = Dining.attrs(%{"ざっと見る" => %{backend: ""}}, @area)
 
       assert Enum.find(attrs.sweeps, &(&1.name == "ざっと見る")).backend == ""
     end
@@ -289,7 +289,7 @@ defmodule Tazuna.Datasets.MealsTest do
 
     test "確かめられなかった座標は触らせない" do
       # 当てずっぽうで座標を書くと、正しかったものが落ちる
-      assert Meals.check_prompt() =~ "確かめられなかった座標は触らない"
+      assert Dining.check_prompt() =~ "確かめられなかった座標は触らない"
     end
 
     test "座標が違うのは、消す理由にしない" do
@@ -330,8 +330,8 @@ defmodule Tazuna.Datasets.MealsTest do
       # 名簿は見出しで同じものかを決めているので、同名の別店が 1 件になる
       # （実測で、百科事典の「東京の洋食店」（東京・上野）と地図辞典の熊本の同名店が
       #  1 件に潰れ、本文は東京・座標は熊本になっていた）
-      assert Meals.check_prompt() =~ "1 件に別々の店が混ざっていたら"
-      assert Meals.check_prompt() =~ "新しい見出しで"
+      assert Dining.check_prompt() =~ "1 件に別々の店が混ざっていたら"
+      assert Dining.check_prompt() =~ "新しい見出しで"
     end
 
     test "足すものには必ず座標を入れさせる" do
@@ -345,18 +345,18 @@ defmodule Tazuna.Datasets.MealsTest do
     test "travel-log が読むタグを、どちらの回にも同じ形で書く" do
       # 書き分けると、回によって別の形が返ってくる
       for prompt <- prompts() do
-        assert prompt =~ Meals.kind_tag()
-        assert prompt =~ Meals.genre_tag()
-        assert prompt =~ Meals.area_tag()
-        assert prompt =~ Meals.rank_tag()
-        assert prompt =~ Meals.feature_tag()
+        assert prompt =~ Dining.kind_tag()
+        assert prompt =~ Dining.genre_tag()
+        assert prompt =~ Dining.area_tag()
+        assert prompt =~ Dining.rank_tag()
+        assert prompt =~ Dining.feature_tag()
       end
     end
 
     test "特徴は語彙から選ばせ、確かめられたものだけ付けさせる" do
       # 表記が割れると travel-log の絞り込みが効かない。付いた印は「そうだ」と読まれる
       for prompt <- prompts() do
-        for feature <- Meals.features(), do: assert(prompt =~ feature)
+        for feature <- Dining.features(), do: assert(prompt =~ feature)
         assert prompt =~ "新しい語は作らない"
         assert prompt =~ "確かめられたものだけ"
       end
@@ -396,7 +396,7 @@ defmodule Tazuna.Datasets.MealsTest do
 
   test "travel-log に渡す項目が、画面に出せる形で並ぶ" do
     # ここに書いていない項目は向こうで空欄になるので、気づけるようにする
-    rows = Meals.fields()
+    rows = Dining.fields()
 
     assert Enum.all?(rows, &match?(%{field: _, stored: _, who: _}, &1))
     assert Enum.any?(rows, &(&1.field =~ "座標"))
@@ -405,32 +405,32 @@ defmodule Tazuna.Datasets.MealsTest do
 
   describe "範囲ごとの収集" do
     test "収集の名前は範囲ごと" do
-      assert Meals.collection(@area) == "tazuna_dining_3"
-      assert Meals.definition(@area).collection == "tazuna_dining_3"
+      assert Dining.collection(@area) == "tazuna_dining_3"
+      assert Dining.definition(@area).collection == "tazuna_dining_3"
     end
 
     test "3 つの辞典を範囲の四角で絞る" do
-      specs = Meals.extract(@area)
+      specs = Dining.extract(@area)
 
       assert Enum.map(specs, & &1.source) == ["jawiki", "osm_japan", "overture_japan"]
       for spec <- specs, do: assert(spec.bbox == [35.67, 139.75, 35.69, 139.78])
     end
 
     test "区画は範囲の四角を、細かく割る" do
-      partition = Meals.partition([35.68, 139.765], @area)
+      partition = Dining.partition([35.68, 139.765], @area)
 
       assert partition.bbox == [35.67, 139.75, 35.69, 139.78]
-      assert partition.target == Meals.area_partition_target()
+      assert partition.target == Dining.area_partition_target()
     end
 
     test "起点の既定は範囲の真ん中" do
-      origin = Meals.default_origin(@area)
+      origin = Dining.default_origin(@area)
 
       assert {origin.lat, origin.lon} == {35.68, 139.765}
     end
 
     test "依頼の中身も範囲のもの" do
-      attrs = Meals.attrs(%{}, @area)
+      attrs = Dining.attrs(%{}, @area)
 
       assert attrs.name == "tazuna_dining_3"
       assert attrs.partition.bbox == [35.67, 139.75, 35.69, 139.78]
@@ -438,7 +438,7 @@ defmodule Tazuna.Datasets.MealsTest do
     end
 
     test "ざっと見るで早めに一周し、そのあとは整理がゆっくり回る" do
-      sweeps = Meals.sweeps(@area)
+      sweeps = Dining.sweeps(@area)
 
       assert Enum.map(sweeps, & &1.name) == ["機械収集", "ざっと見る", "整理"]
       scan = Enum.find(sweeps, &(&1.name == "ざっと見る"))
@@ -458,7 +458,7 @@ defmodule Tazuna.Datasets.MealsTest do
     end
 
     test "割り込みも travel-log からの依頼も整理が引き受ける" do
-      definition = Meals.definition(@area)
+      definition = Dining.definition(@area)
 
       assert definition.survey_sweep == "整理"
       assert definition.request_sweep == "整理"
@@ -466,7 +466,7 @@ defmodule Tazuna.Datasets.MealsTest do
     end
 
     test "ざっと見るは、1 件ずつ営業を確かめさせ、足りない店も足させる" do
-      prompt = Meals.check_prompt()
+      prompt = Dining.check_prompt()
 
       assert prompt =~ "1 件ずつ確かめる"
       assert prompt =~ "web で確かめて"
@@ -479,7 +479,7 @@ defmodule Tazuna.Datasets.MealsTest do
       # （申告すると地図に出ないまま、次の回も同じく見つからずに残り続ける）
       assert prompt =~ "時間切れで手を付けられなかった店だけ"
       assert prompt =~ "情報も閉店の情報も見つからなかった店は、申告しないで"
-      assert Meals.attrs(%{}, @area).prompt == prompt
+      assert Dining.attrs(%{}, @area).prompt == prompt
     end
 
     test "どの依頼文にも、隣の区画にある店を見せて足させない" do
@@ -492,7 +492,7 @@ defmodule Tazuna.Datasets.MealsTest do
 
     test "営業日と営業時間を、確かめられた店だけ OSM の書き方で埋めさせる" do
       # ランチ営業・深夜営業の印は、この書き方から機械で読み取る（`OpeningHours`）
-      for prompt <- [Meals.tidy_prompt(), Meals.check_prompt()] do
+      for prompt <- [Dining.tidy_prompt(), Dining.check_prompt()] do
         assert prompt =~ "extra.opening_hours"
         assert prompt =~ "確かめられたときだけ"
         assert prompt =~ "Mo-Fr 11:00-14:30,17:30-22:00; Sa,Su,PH 11:00-21:00; We off"
@@ -503,7 +503,7 @@ defmodule Tazuna.Datasets.MealsTest do
     end
 
     test "整理は、報告・まだ目を通していない店・足りない店を先にし、見直しは残りの時間で" do
-      prompt = Meals.tidy_prompt()
+      prompt = Dining.tidy_prompt()
       order = fn needle -> prompt |> :binary.match(needle) |> elem(0) end
 
       # travel-log からの報告が第一
@@ -523,13 +523,13 @@ defmodule Tazuna.Datasets.MealsTest do
       # 何を調べたかを残させる（あとで確かめられるように）
       assert prompt =~ "`checked`"
 
-      attrs = Meals.attrs(%{}, @area)
+      attrs = Dining.attrs(%{}, @area)
       assert Enum.find(attrs.sweeps, &(&1.name == "整理")).prompt == prompt
-      assert Meals.prompts(@area) == [{"ざっと見る", Meals.check_prompt()}, {"整理", prompt}]
+      assert Dining.prompts(@area) == [{"ざっと見る", Dining.check_prompt()}, {"整理", prompt}]
     end
 
     test "範囲で決まるところだけを取り出せる（範囲を直したときに送る）" do
-      shape = Meals.shape(@area)
+      shape = Dining.shape(@area)
 
       assert Map.keys(shape) |> Enum.sort() == [:description, :extract, :partition]
       assert shape.partition.bbox == [35.67, 139.75, 35.69, 139.78]
@@ -537,7 +537,7 @@ defmodule Tazuna.Datasets.MealsTest do
     end
 
     test "travel-log へは範囲によらず同じ種別に書き出し、key に範囲の番号を付ける" do
-      definition = Meals.definition(@area)
+      definition = Dining.definition(@area)
 
       assert definition.export_key == "dining"
       assert definition.key_prefix == "3-"

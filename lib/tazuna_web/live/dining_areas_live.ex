@@ -1,4 +1,4 @@
-defmodule TazunaWeb.MealAreasLive do
+defmodule TazunaWeb.DiningAreasLive do
   @moduledoc """
   食事処を集める範囲を決める画面（`/datasets/areas`）。**地図に四角を描いて範囲を
   足します**。範囲 1 つにつき Chiezo の収集が 1 つで、データ収集の画面にタブが増えます。
@@ -32,8 +32,8 @@ defmodule TazunaWeb.MealAreasLive do
 
   alias Tazuna.Chiezo
   alias Tazuna.Datasets
-  alias Tazuna.Datasets.MealAreas
-  alias Tazuna.Datasets.Meals
+  alias Tazuna.Datasets.DiningAreas
+  alias Tazuna.Datasets.Dining
   alias Tazuna.Datasets.Requests
   alias TazunaWeb.DatasetsLive
 
@@ -50,7 +50,7 @@ defmodule TazunaWeb.MealAreasLive do
        page_title: "食事処の範囲",
        # データ収集の画面と同じタブ（この画面は「＋ 食事処の範囲」のタブにあたる）
        datasets: Datasets.list(),
-       areas: MealAreas.list(),
+       areas: DiningAreas.list(),
        # 直している範囲（nil なら足している）
        editing: nil,
        map: Tazuna.Datasets.Map.blank(),
@@ -73,7 +73,7 @@ defmodule TazunaWeb.MealAreasLive do
   defp assign_pending(socket) do
     counts =
       Map.new(socket.assigns.areas, fn area ->
-        {area.id, Requests.pending_count(Meals.definition(area))}
+        {area.id, Requests.pending_count(Dining.definition(area))}
       end)
 
     assign(socket, pending_counts: counts)
@@ -85,13 +85,13 @@ defmodule TazunaWeb.MealAreasLive do
 
   @impl true
   def handle_event("route_requests", %{"text" => text}, socket) do
-    areas = MealAreas.list()
+    areas = DiningAreas.list()
     %{areas: routed, outside: outside} = Requests.route(text, areas)
 
     stashed =
       for %{area: area, items: [_ | _] = items} <- routed do
         text = Enum.map_join(items, "\n", & &1.text)
-        {area, Requests.stash(Meals.definition(area), text)}
+        {area, Requests.stash(Dining.definition(area), text)}
       end
 
     holding = for %{area: area, confirms: [_ | _] = confirms} <- routed, do: {area, confirms}
@@ -115,7 +115,7 @@ defmodule TazunaWeb.MealAreasLive do
         else:
           start_async(socket, :route_hold, fn ->
             for {area, confirms} <- holding,
-                do: {area, Requests.hold(Meals.definition(area), confirms)}
+                do: {area, Requests.hold(Dining.definition(area), confirms)}
           end)
 
     {:noreply, socket}
@@ -124,14 +124,14 @@ defmodule TazunaWeb.MealAreasLive do
   # **AI を使わずに、固定した座標をいま反映する**（その範囲の機械収集を 1 回走らせる）。
   # 範囲のタブにある同じボタンと同じもの —— 配ったあとにタブへ移らずに済むように
   def handle_event("apply_locks", %{"id" => id}, socket) do
-    with {n, ""} <- Integer.parse(id), %MealAreas{} = area <- MealAreas.get(n) do
+    with {n, ""} <- Integer.parse(id), %DiningAreas{} = area <- DiningAreas.get(n) do
       applied = Map.put(socket.assigns.applied, area.id, :applying)
 
       {:noreply,
        socket
        |> assign(applied: applied)
        |> start_async({:apply_locks, area.id}, fn ->
-         Requests.apply_now(Meals.definition(area))
+         Requests.apply_now(Dining.definition(area))
        end)}
     else
       _other -> {:noreply, socket}
@@ -213,13 +213,13 @@ defmodule TazunaWeb.MealAreasLive do
   # 作った範囲を直し始める（四角を欄に入れ、地図をその範囲へ寄せる）
   def handle_event("edit_area", %{"id" => id}, socket) do
     case find_area(socket, id) do
-      %MealAreas{} = area ->
+      %DiningAreas{} = area ->
         socket =
           socket
           |> assign(editing: area, draft: draft_of(area), marker: nil, places: nil)
-          |> set_box(MealAreas.bbox(area))
+          |> set_box(DiningAreas.bbox(area))
 
-        {:noreply, frame(socket, MealAreas.bbox(area))}
+        {:noreply, frame(socket, DiningAreas.bbox(area))}
 
       nil ->
         {:noreply, socket}
@@ -229,7 +229,7 @@ defmodule TazunaWeb.MealAreasLive do
   # 地図をその範囲へ寄せるだけ（直さない）
   def handle_event("show_area", %{"id" => id}, socket) do
     case find_area(socket, id) do
-      %MealAreas{} = area -> {:noreply, frame(socket, MealAreas.bbox(area))}
+      %DiningAreas{} = area -> {:noreply, frame(socket, DiningAreas.bbox(area))}
       nil -> {:noreply, socket}
     end
   end
@@ -242,11 +242,11 @@ defmodule TazunaWeb.MealAreasLive do
     draft = Map.merge(socket.assigns.draft, Map.take(params, Map.keys(empty_draft())))
     before = socket.assigns.editing
 
-    case before && MealAreas.update(before, draft) do
+    case before && DiningAreas.update(before, draft) do
       {:ok, area} ->
         socket =
           assign(socket,
-            areas: MealAreas.list(),
+            areas: DiningAreas.list(),
             datasets: Datasets.list(),
             editing: nil,
             draft: empty_draft(),
@@ -254,8 +254,8 @@ defmodule TazunaWeb.MealAreasLive do
             errors: []
           )
 
-        if MealAreas.box_changed?(before, area) do
-          dataset = Meals.definition(area)
+        if DiningAreas.box_changed?(before, area) do
+          dataset = Dining.definition(area)
 
           {:noreply,
            socket
@@ -281,7 +281,7 @@ defmodule TazunaWeb.MealAreasLive do
   def handle_event("create", %{"area" => params}, socket) do
     draft = Map.merge(socket.assigns.draft, Map.take(params, Map.keys(empty_draft())))
 
-    case MealAreas.create(draft) do
+    case DiningAreas.create(draft) do
       {:ok, area} ->
         {:noreply,
          socket
@@ -289,7 +289,7 @@ defmodule TazunaWeb.MealAreasLive do
            :info,
            "範囲「#{area.name}」を作りました。「収集の設定を更新」を押すと、Chiezo にこの範囲の収集ができます。"
          )
-         |> push_navigate(to: ~p"/datasets?view=#{Meals.definition(area).key}")}
+         |> push_navigate(to: ~p"/datasets?view=#{Dining.definition(area).key}")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, draft: draft, errors: error_lines(changeset))}
@@ -299,7 +299,7 @@ defmodule TazunaWeb.MealAreasLive do
   # Chiezo に残っている範囲の収集から、手元に無い範囲を読み戻す（動かす場所を変えたとき）
   def handle_event("restore", _params, socket) do
     socket =
-      case MealAreas.restore() do
+      case DiningAreas.restore() do
         {:ok, %{restored: [], skipped: []}} ->
           put_flash(socket, :info, "Chiezo に、ここに無い範囲の収集はありませんでした。")
 
@@ -312,7 +312,7 @@ defmodule TazunaWeb.MealAreasLive do
               else: "（#{Enum.join(skipped, "・")} は説明か区画が読めず、戻せませんでした）"
 
           socket
-          |> assign(areas: MealAreas.list(), datasets: Datasets.list())
+          |> assign(areas: DiningAreas.list(), datasets: Datasets.list())
           |> assign_pending()
           |> put_flash(:info, "#{length(restored)} 件の範囲（#{names}）を戻しました。#{note}")
 
@@ -324,8 +324,8 @@ defmodule TazunaWeb.MealAreasLive do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    with {n, ""} <- Integer.parse(id), %MealAreas{} = area <- MealAreas.get(n) do
-      MealAreas.delete(area)
+    with {n, ""} <- Integer.parse(id), %DiningAreas{} = area <- DiningAreas.get(n) do
+      DiningAreas.delete(area)
       editing = socket.assigns.editing
 
       socket =
@@ -335,11 +335,11 @@ defmodule TazunaWeb.MealAreasLive do
 
       {:noreply,
        socket
-       |> assign(areas: MealAreas.list(), datasets: Datasets.list())
+       |> assign(areas: DiningAreas.list(), datasets: Datasets.list())
        |> assign_pending()
        |> put_flash(
          :info,
-         "範囲「#{area.name}」を外しました。Chiezo の収集（#{Meals.collection(area)}）は残っているので、要らなければ Chiezo の画面で止めるか消してください。"
+         "範囲「#{area.name}」を外しました。Chiezo の収集（#{Dining.collection(area)}）は残っているので、要らなければ Chiezo の画面で止めるか消してください。"
        )}
     else
       _other -> {:noreply, socket}
@@ -454,7 +454,7 @@ defmodule TazunaWeb.MealAreasLive do
 
     {box,
      {:ok,
-      %{counts: counts, total: total, partitions: ceil(total / Meals.area_partition_target())}}}
+      %{counts: counts, total: total, partitions: ceil(total / Dining.area_partition_target())}}}
   end
 
   defp current_box(socket), do: box_of(socket.assigns.draft)
@@ -468,7 +468,7 @@ defmodule TazunaWeb.MealAreasLive do
   end
 
   defp draft_of(area) do
-    [s, w, n, e] = MealAreas.bbox(area)
+    [s, w, n, e] = DiningAreas.bbox(area)
 
     %{
       "name" => area.name,
@@ -528,7 +528,7 @@ defmodule TazunaWeb.MealAreasLive do
   end
 
   @doc "範囲を図の矩形に（描くため）。"
-  def rect(map, area), do: Tazuna.Datasets.Map.box(map, MealAreas.bbox(area))
+  def rect(map, area), do: Tazuna.Datasets.Map.box(map, DiningAreas.bbox(area))
 
   @doc "いま決めている四角を図の矩形に。決まっていなければ nil。"
   def draft_rect(map, draft) do
@@ -545,7 +545,7 @@ defmodule TazunaWeb.MealAreasLive do
 
   @doc "四角を短く（`35.670,139.750 〜 35.690,139.780`）。"
   def bbox_text(area) do
-    [s, w, n, e] = MealAreas.bbox(area)
+    [s, w, n, e] = DiningAreas.bbox(area)
     "#{fmt2(s)},#{fmt2(w)} 〜 #{fmt2(n)},#{fmt2(e)}"
   end
 

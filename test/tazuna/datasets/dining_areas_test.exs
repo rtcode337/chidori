@@ -1,4 +1,4 @@
-defmodule Tazuna.Datasets.MealAreasTest do
+defmodule Tazuna.Datasets.DiningAreasTest do
   @moduledoc """
   食事処の範囲の番号。見ているのは、**空いているいちばん小さい番号を使うこと**と、
   **Chiezo に同じ名前の収集が残っている番号は使わないこと**です（範囲の番号は
@@ -7,12 +7,12 @@ defmodule Tazuna.Datasets.MealAreasTest do
 
   use Tazuna.DataCase, async: false
 
-  alias Tazuna.Datasets.MealAreas
+  alias Tazuna.Datasets.DiningAreas
 
   @box %{"south" => 35.67, "west" => 139.75, "north" => 35.69, "east" => 139.78}
 
   defp create(name, chiezo_names \\ []),
-    do: MealAreas.create(Map.put(@box, "name", name), fn -> {:ok, chiezo_names} end)
+    do: DiningAreas.create(Map.put(@box, "name", name), fn -> {:ok, chiezo_names} end)
 
   test "消した範囲の番号を、次に作る範囲で埋める" do
     {:ok, first} = create("一つ目")
@@ -20,7 +20,7 @@ defmodule Tazuna.Datasets.MealAreasTest do
     {:ok, third} = create("三つ目")
     assert {first.id, second.id, third.id} == {1, 2, 3}
 
-    MealAreas.delete(second)
+    DiningAreas.delete(second)
     {:ok, again} = create("埋める")
     assert again.id == 2
   end
@@ -32,17 +32,17 @@ defmodule Tazuna.Datasets.MealAreasTest do
 
   test "Chiezo の収集の一覧を読めなければ作らない" do
     assert {:error, changeset} =
-             MealAreas.create(Map.put(@box, "name", "一つ目"), fn ->
+             DiningAreas.create(Map.put(@box, "name", "一つ目"), fn ->
                {:error, :chiezo_unavailable}
              end)
 
     assert {"を決められません（Chiezo の収集の一覧を読めませんでした）", _} = changeset.errors[:id]
-    assert MealAreas.list() == []
+    assert DiningAreas.list() == []
   end
 
   test "入れた値がおかしければ、Chiezo を読む前に断る" do
     assert {:error, changeset} =
-             MealAreas.create(Map.put(@box, "name", ""), fn -> flunk("読まない") end)
+             DiningAreas.create(Map.put(@box, "name", ""), fn -> flunk("読まない") end)
 
     assert changeset.errors[:name]
   end
@@ -66,26 +66,26 @@ defmodule Tazuna.Datasets.MealAreasTest do
       ]
 
       assert {:ok, %{restored: [area], skipped: []}} =
-               MealAreas.restore(fn -> {:ok, collections} end)
+               DiningAreas.restore(fn -> {:ok, collections} end)
 
       assert {area.id, area.name} == {2, "丸の内"}
-      assert MealAreas.bbox(area) == [35.678, 139.76, 35.686, 139.77]
+      assert DiningAreas.bbox(area) == [35.678, 139.76, 35.686, 139.77]
       # 手元にある 1 番は上書きしない
-      assert [%{id: 1, name: "残っている"}, %{id: 2}] = MealAreas.list()
+      assert [%{id: 1, name: "残っている"}, %{id: 2}] = DiningAreas.list()
     end
 
     test "説明か区画が読めない収集は飛ばして名前を返す" do
       broken = %{"name" => "tazuna_dining_5", "description" => "手で書き換えた説明"}
 
       assert {:ok, %{restored: [], skipped: ["tazuna_dining_5"]}} =
-               MealAreas.restore(fn -> {:ok, [broken]} end)
+               DiningAreas.restore(fn -> {:ok, [broken]} end)
     end
 
     test "Chiezo を読めなければ何もしない" do
       assert {:error, :chiezo_unavailable} =
-               MealAreas.restore(fn -> {:error, :chiezo_unavailable} end)
+               DiningAreas.restore(fn -> {:error, :chiezo_unavailable} end)
 
-      assert MealAreas.list() == []
+      assert DiningAreas.list() == []
     end
   end
 end

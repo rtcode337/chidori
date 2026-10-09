@@ -32,14 +32,14 @@
       <p :if={@areas == []} class="muted-note">まだありません。下の地図で四角を描いて足してください。</p>
       <ul :if={@areas != []} class="area-list">
         <li :for={area <- @areas} class={@editing && @editing.id == area.id && "is-editing"}>
-          <.link navigate={~p"/datasets?view=#{Tazuna.Datasets.Meals.definition(area).key}"}>
+          <.link navigate={~p"/datasets?view=#{Tazuna.Datasets.Dining.definition(area).key}"}>
             {area.name}
           </.link>
           <span class="muted-note">{bbox_text(area)}</span>
           <%!-- 控えている依頼の数（travel-log からの依頼を配った先）。頼むのは範囲のタブから --%>
           <.link
             :if={Map.get(@pending_counts, area.id, 0) > 0}
-            navigate={~p"/datasets?view=#{Tazuna.Datasets.Meals.definition(area).key}"}
+            navigate={~p"/datasets?view=#{Tazuna.Datasets.Dining.definition(area).key}"}
             class="area-pending"
           >
             控えている依頼 {Map.get(@pending_counts, area.id)} 件
@@ -345,7 +345,7 @@
                 )}。同じ店が 2 つの辞典に居れば 2 と数えるので、実際はこれより少なくなります）
               </p>
               <p>
-                区画の見込み: <strong>{estimate.partitions} 区画</strong>（1 区画 {Tazuna.Datasets.Meals.area_partition_target()} 件の目安）
+                区画の見込み: <strong>{estimate.partitions} 区画</strong>（1 区画 {Tazuna.Datasets.Dining.area_partition_target()} 件の目安）
               </p>
             <% {:error, _reason} -> %>
               <p class="muted-note">Chiezo から数えられませんでした。</p>

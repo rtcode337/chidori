@@ -1,4 +1,4 @@
-defmodule TazunaWeb.MealAreasLiveTest do
+defmodule TazunaWeb.DiningAreasLiveTest do
   @moduledoc """
   食事処の範囲を決める画面。見ているのは、**地図に描いた四角が範囲の欄に入ること**、
   **名前を付けて作るとその範囲のタブへ移ること**、**広すぎる範囲は断ること**です。
@@ -8,7 +8,7 @@ defmodule TazunaWeb.MealAreasLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias Tazuna.Datasets.MealAreas
+  alias Tazuna.Datasets.DiningAreas
 
   setup do
     System.delete_env("CHIEZO_BASE_URL")
@@ -47,7 +47,7 @@ defmodule TazunaWeb.MealAreasLiveTest do
       |> form("#area-form", area: %{name: "東京駅"})
       |> render_submit()
 
-    [area] = MealAreas.list()
+    [area] = DiningAreas.list()
     assert area.name == "東京駅"
     assert {:error, {:live_redirect, %{to: to}}} = result
     assert to == "/datasets?view=dining-#{area.id}"
@@ -66,7 +66,7 @@ defmodule TazunaWeb.MealAreasLiveTest do
     html = live |> form("#area-form", area: %{name: "広すぎ"}) |> render_submit()
 
     assert html =~ "範囲が広すぎます"
-    assert MealAreas.list() == []
+    assert DiningAreas.list() == []
   end
 
   test "作った範囲はデータ収集の画面のタブになる", %{conn: conn} do
@@ -142,7 +142,7 @@ defmodule TazunaWeb.MealAreasLiveTest do
       assert html =~ "この範囲に直す"
       assert_push_event(live, "map_frame", %{w: w, h: h})
       assert w > 0 and h > 0
-      assert MealAreas.get(area.id)
+      assert DiningAreas.get(area.id)
     end
 
     test "四角を変えると、範囲で決まるところだけを送り、機械収集から走らせ直す", %{
@@ -156,7 +156,7 @@ defmodule TazunaWeb.MealAreasLiveTest do
       |> form("#area-form", area: %{north: "35.8"})
       |> render_submit()
 
-      assert MealAreas.get(area.id).north == 35.8
+      assert DiningAreas.get(area.id).north == 35.8
 
       assert_receive {:patched, url, sent}, 2_000
       assert url =~ "/v1/collect/tazuna_dining_1"
@@ -179,7 +179,7 @@ defmodule TazunaWeb.MealAreasLiveTest do
         |> form("#area-form", area: %{name: "東京駅"})
         |> render_submit()
 
-      assert MealAreas.get(area.id).name == "東京駅"
+      assert DiningAreas.get(area.id).name == "東京駅"
       assert html =~ "走らせ直しません"
       refute_receive {:patched, _url, _sent}, 200
     end
@@ -187,7 +187,7 @@ defmodule TazunaWeb.MealAreasLiveTest do
 
   describe "travel-log からの依頼" do
     test "1 件ずつ座標の入る範囲に控え、どこにも入らないものは控えずに出す", %{conn: conn} do
-      Tazuna.Repo.insert!(%MealAreas{
+      Tazuna.Repo.insert!(%DiningAreas{
         id: 1,
         name: "東京駅",
         south: 35.67,
@@ -196,7 +196,7 @@ defmodule TazunaWeb.MealAreasLiveTest do
         east: 139.78
       })
 
-      Tazuna.Repo.insert!(%MealAreas{
+      Tazuna.Repo.insert!(%DiningAreas{
         id: 2,
         name: "大阪",
         south: 34.6,
@@ -227,7 +227,7 @@ defmodule TazunaWeb.MealAreasLiveTest do
     end
 
     test "全範囲をまとめて書き出す口がある", %{conn: conn} do
-      Tazuna.Repo.insert!(%MealAreas{
+      Tazuna.Repo.insert!(%DiningAreas{
         id: 1,
         name: "東京駅",
         south: 35.67,
@@ -242,15 +242,15 @@ defmodule TazunaWeb.MealAreasLiveTest do
   end
 
   test "位置を固定できた範囲にだけ、AI を使わずにいま反映する口を出す" do
-    tokyo = %MealAreas{id: 1, name: "東京駅"}
-    osaka = %MealAreas{id: 2, name: "大阪"}
+    tokyo = %DiningAreas{id: 1, name: "東京駅"}
+    osaka = %DiningAreas{id: 2, name: "大阪"}
 
     results = [
       {tokyo, {:ok, %{held: ["駅前うどん"], missed: [], failed: []}}},
       {osaka, {:ok, %{held: [], missed: ["見つからない店"], failed: []}}}
     ]
 
-    assert TazunaWeb.MealAreasLive.held_areas(results) == [tokyo]
-    assert TazunaWeb.MealAreasLive.held_areas(:holding) == []
+    assert TazunaWeb.DiningAreasLive.held_areas(results) == [tokyo]
+    assert TazunaWeb.DiningAreasLive.held_areas(:holding) == []
   end
 end

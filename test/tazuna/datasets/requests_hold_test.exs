@@ -181,7 +181,7 @@ defmodule Tazuna.Datasets.RequestsHoldTest do
     end
 
     test "AI を使わずにいま反映するのは、名簿を引く回（機械収集）" do
-      dataset = %{collection: "tazuna_dining_1", module: Tazuna.Datasets.Meals}
+      dataset = %{collection: "tazuna_dining_1", module: Tazuna.Datasets.Dining}
 
       assert Requests.apply_now(dataset) == :ok
       assert_received {:posted, url, _body}

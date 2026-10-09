@@ -7,14 +7,14 @@ defmodule TazunaWeb.AreasExportTest do
 
   use TazunaWeb.ConnCase, async: false
 
-  alias Tazuna.Datasets.MealAreas
+  alias Tazuna.Datasets.DiningAreas
 
   setup do
     System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
     on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
 
     # 東京駅のあたりで重なった 2 つの範囲
-    Tazuna.Repo.insert!(%MealAreas{
+    Tazuna.Repo.insert!(%DiningAreas{
       id: 1,
       name: "広い",
       south: 35.6,
@@ -23,7 +23,7 @@ defmodule TazunaWeb.AreasExportTest do
       east: 139.85
     })
 
-    Tazuna.Repo.insert!(%MealAreas{
+    Tazuna.Repo.insert!(%DiningAreas{
       id: 2,
       name: "狭い",
       south: 35.67,
