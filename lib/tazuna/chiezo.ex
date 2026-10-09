@@ -264,11 +264,20 @@ defmodule Tazuna.Chiezo do
   def nearby(base, name, lat, lon, meters) when is_number(lat) and is_number(lon) do
     dlat = meters / 111_320
     dlon = meters / (111_320 * max(:math.cos(lat * :math.pi() / 180), 0.01))
+    bbox = Enum.join([lat - dlat, lon - dlon, lat + dlat, lon + dlon], ",")
+    nearby_pages(base, name, bbox, 0, [])
+  end
 
+  # total に届くまでページを送る。1 ページで打ち切ると、駅前のように店が密集した
+  # 場所では近くの店が上限の外にこぼれ、そこにある店を「無い」と取り違える
+  # （並びは名前順なので、こぼれるのは名前の後ろのほう）。
+  @nearby_page 200
+  defp nearby_pages(base, name, bbox, offset, acc) do
     query =
       URI.encode_query(%{
-        "bbox" => Enum.join([lat - dlat, lon - dlon, lat + dlat, lon + dlon], ","),
-        "limit" => 50,
+        "bbox" => bbox,
+        "limit" => @nearby_page,
+        "offset" => offset,
         # 冒頭（`opening`）も読む —— 「現地から営業中の報告」で戻した店を見分けるのに使う
         # （`Tazuna.Datasets.ClosedTwins`）
         "fields" => "title,tags,extra,opening",
@@ -278,8 +287,16 @@ defmodule Tazuna.Chiezo do
     case get(base <> "/v1/" <> URI.encode(name) <> "/filter?" <> query) do
       {:ok, %{status: 200, body: body}} ->
         case Jason.decode(body) do
-          {:ok, %{"results" => results}} when is_list(results) -> {:ok, results}
-          _other -> {:error, :chiezo_unexpected_body}
+          {:ok, %{"results" => results} = page} when is_list(results) ->
+            acc = acc ++ results
+            total = page["total"]
+
+            if results != [] and is_integer(total) and length(acc) < total,
+              do: nearby_pages(base, name, bbox, offset + length(results), acc),
+              else: {:ok, acc}
+
+          _other ->
+            {:error, :chiezo_unexpected_body}
         end
 
       {:ok, %{status: status}} ->

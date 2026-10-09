@@ -138,6 +138,48 @@ defmodule Tazuna.Datasets.RequestsHoldTest do
       assert Requests.release_closed(%{collection: "tazuna_dining_1"}, closures) == []
     end
 
+    test "近くの店が 1 ページに収まらなくても、後ろのページまで探す" do
+      # 駅前のように店が密集した場所では、近くの店が 1 ページの上限を超える。
+      # 1 ページ目で打ち切ると、名前順で後ろにある店を「近くに無い」と取り違えていた
+      parent = self()
+
+      filler =
+        for i <- 1..200,
+            do: %{
+              "title" => "店#{i}",
+              "tags" => ["食事処"],
+              "extra" => %{"lat" => 35.6812, "lon" => 139.7665}
+            }
+
+      HttpStub.stub(fn
+        %{method: :get, url: url} ->
+          page =
+            if url =~ "offset=200",
+              do: [
+                %{
+                  "title" => "福々酒場 駅前店",
+                  "tags" => ["食事処"],
+                  "extra" => %{"lat" => 35.6812, "lon" => 139.7665}
+                }
+              ],
+              else: filler
+
+          HttpStub.ok(Jason.encode!(%{"results" => page, "total" => 201}))
+
+        %{method: :post, url: url, body: body} ->
+          send(parent, {:posted, url, Jason.decode!(body)})
+          HttpStub.ok("{}")
+      end)
+
+      confirms = [%{name: "福々酒場 駅前店", lat: 35.6812, lon: 139.7665}]
+
+      assert {:ok, %{held: ["福々酒場 駅前店"], missed: []}} =
+               Requests.hold(%{collection: "tazuna_dining_1"}, confirms)
+
+      assert_received {:posted, "http://chiezo.test/v1/collect/tazuna_dining_1/locks", body}
+      assert body["title"] == "福々酒場 駅前店"
+    end
+
     test "AI を使わずにいま反映するのは、名簿を引く回（機械収集）" do
       dataset = %{collection: "tazuna_dining_1", module: Tazuna.Datasets.Meals}
 
