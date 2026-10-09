@@ -58,6 +58,13 @@
           </span>
         </li>
       </ul>
+      <%!-- 動かす場所を変えたとき、描き直さずに Chiezo に残っている収集へつなぎ直す --%>
+      <div class="button-row">
+        <button type="button" phx-click="restore">Chiezo から範囲を戻す</button>
+        <span class="muted-note">
+          Chiezo に残っている範囲の収集のうち、ここに無いものを読み戻します（Chiezo へは何も送りません）。
+        </span>
+      </div>
     </section>
 
     <%!-- **全範囲を 1 つの ZIP に**（travel-log では範囲によらず 1 つの種別に読み込む）。

@@ -113,6 +113,75 @@ defmodule Tazuna.Datasets.MealAreas do
   end
 
   @doc """
+  Chiezo に残っている範囲の収集から、手元に無い範囲を読み戻します。
+  `{:ok, %{restored: 戻した範囲, skipped: 戻せなかった収集の名前}}` か `{:error, 理由}`。
+
+  **範囲の正本は手元の表ですが、同じ中身が Chiezo の収集にも載っています** ——
+  番号は収集の名前（`tazuna_dining_<番号>`）、四角は区画の指定（`partition.bbox`）、
+  名前は説明（`shape/1` が書く「（〈名前〉の食事処 / travel-log 向け）」）。
+  別の場所で Chidori を動かし直したとき、描き直さずに同じ収集へつなぎ直せる。
+
+  **Chiezo へは何も送りません。** 収集はもう在るので、送ると画面で選んだ相手が
+  既定に戻る（`Tazuna.Datasets.Meals.shape/1` の注）。
+
+  `collections` は Chiezo の収集の一覧を返す関数（テストで差し替える）。
+  """
+  def restore(collections \\ &chiezo_collections/0) do
+    with {:ok, collections} <- collections.() do
+      local = MapSet.new(Repo.all(from(a in __MODULE__, select: a.id)))
+      prefix = Tazuna.Datasets.Meals.area_collection_prefix()
+
+      candidates =
+        for %{"name" => name} = collection when is_binary(name) <- collections,
+            String.starts_with?(name, prefix),
+            {id, ""} <- [Integer.parse(String.replace_prefix(name, prefix, ""))],
+            not MapSet.member?(local, id),
+            do: {id, name, collection}
+
+      {restored, skipped} =
+        candidates
+        |> Enum.sort()
+        |> Enum.reduce({[], []}, fn {id, name, collection}, {restored, skipped} ->
+          case restore_one(id, collection) do
+            {:ok, area} -> {[area | restored], skipped}
+            {:error, _reason} -> {restored, [name | skipped]}
+          end
+        end)
+
+      {:ok, %{restored: Enum.reverse(restored), skipped: Enum.reverse(skipped)}}
+    end
+  end
+
+  defp restore_one(id, collection) do
+    with {:ok, name} <- area_name(collection["description"]),
+         [south, west, north, east] <- get_in(collection, ["partition", "bbox"]) do
+      %__MODULE__{}
+      |> changeset(%{name: name, south: south, west: west, north: north, east: east})
+      |> put_change(:id, id)
+      |> Repo.insert()
+    else
+      _other -> {:error, :unreadable}
+    end
+  end
+
+  # 説明から範囲の名前を読む（`Tazuna.Datasets.Meals.shape/1` が書く形）
+  defp area_name(description) when is_binary(description) do
+    case Regex.run(~r/（(.+)の食事処 \/ travel-log 向け）/u, description) do
+      [_, name] -> {:ok, name}
+      nil -> {:error, :unreadable}
+    end
+  end
+
+  defp area_name(_description), do: {:error, :unreadable}
+
+  defp chiezo_collections do
+    case Tazuna.Datasets.base_url() do
+      {:ok, base} -> Tazuna.Chiezo.collections(base)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
   範囲を直します（名前と四角）。`{:ok, 範囲}` か `{:error, changeset}`。
 
   **Chiezo へ送るのは呼ぶ側**（`Tazuna.Datasets.reshape/1`）。四角が変わったかは

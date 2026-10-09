@@ -46,4 +46,46 @@ defmodule Tazuna.Datasets.MealAreasTest do
 
     assert changeset.errors[:name]
   end
+
+  describe "Chiezo から範囲を戻す" do
+    defp dining(id, name, bbox) do
+      %{
+        "name" => "tazuna_dining_#{id}",
+        "description" => "tazuna のデータ収集（#{name}の食事処 / travel-log 向け）",
+        "partition" => %{"by" => "geo", "bbox" => bbox}
+      }
+    end
+
+    test "手元に無い範囲を、番号・名前・四角そのままで戻す" do
+      {:ok, _kept} = create("残っている", ["tazuna_dining_2"])
+
+      collections = [
+        dining(1, "残っている", [35.6, 139.7, 35.61, 139.71]),
+        dining(2, "丸の内", [35.678, 139.76, 35.686, 139.77]),
+        %{"name" => "tazuna_news", "description" => "x"}
+      ]
+
+      assert {:ok, %{restored: [area], skipped: []}} =
+               MealAreas.restore(fn -> {:ok, collections} end)
+
+      assert {area.id, area.name} == {2, "丸の内"}
+      assert MealAreas.bbox(area) == [35.678, 139.76, 35.686, 139.77]
+      # 手元にある 1 番は上書きしない
+      assert [%{id: 1, name: "残っている"}, %{id: 2}] = MealAreas.list()
+    end
+
+    test "説明か区画が読めない収集は飛ばして名前を返す" do
+      broken = %{"name" => "tazuna_dining_5", "description" => "手で書き換えた説明"}
+
+      assert {:ok, %{restored: [], skipped: ["tazuna_dining_5"]}} =
+               MealAreas.restore(fn -> {:ok, [broken]} end)
+    end
+
+    test "Chiezo を読めなければ何もしない" do
+      assert {:error, :chiezo_unavailable} =
+               MealAreas.restore(fn -> {:error, :chiezo_unavailable} end)
+
+      assert MealAreas.list() == []
+    end
+  end
 end

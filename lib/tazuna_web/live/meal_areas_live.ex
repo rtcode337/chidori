@@ -296,6 +296,33 @@ defmodule TazunaWeb.MealAreasLive do
     end
   end
 
+  # Chiezo に残っている範囲の収集から、手元に無い範囲を読み戻す（動かす場所を変えたとき）
+  def handle_event("restore", _params, socket) do
+    socket =
+      case MealAreas.restore() do
+        {:ok, %{restored: [], skipped: []}} ->
+          put_flash(socket, :info, "Chiezo に、ここに無い範囲の収集はありませんでした。")
+
+        {:ok, %{restored: restored, skipped: skipped}} ->
+          names = Enum.map_join(restored, "・", & &1.name)
+
+          note =
+            if skipped == [],
+              do: "",
+              else: "（#{Enum.join(skipped, "・")} は説明か区画が読めず、戻せませんでした）"
+
+          socket
+          |> assign(areas: MealAreas.list(), datasets: Datasets.list())
+          |> assign_pending()
+          |> put_flash(:info, "#{length(restored)} 件の範囲（#{names}）を戻しました。#{note}")
+
+        {:error, _reason} ->
+          put_flash(socket, :error, "Chiezo の収集の一覧を読めませんでした。")
+      end
+
+    {:noreply, socket}
+  end
+
   def handle_event("delete", %{"id" => id}, socket) do
     with {n, ""} <- Integer.parse(id), %MealAreas{} = area <- MealAreas.get(n) do
       MealAreas.delete(area)
