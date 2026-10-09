@@ -1,5 +1,5 @@
 defmodule Chidori.Relations.MarksTest do
-  use Chidori.DataCase, async: true
+  use Chidori.DataCase, async: false
 
   alias Chidori.Relations.Marks
 
@@ -13,14 +13,14 @@ defmodule Chidori.Relations.MarksTest do
     assert mark.seen
     assert mark.seen_on == ~D[2026-09-12]
     assert mark.note == "回顧展で見た"
-    assert Marks.get("painters", "フィンセント・ファン・ゴッホ").id == mark.id
+    assert Marks.get("painters", "フィンセント・ファン・ゴッホ").doc_id == mark.doc_id
   end
 
   test "同じノードに書き直しても増えない" do
     {:ok, first} = Marks.put("painters", "クロード・モネ", attrs())
     {:ok, second} = Marks.put("painters", "クロード・モネ", attrs(%{"note" => "書き直した"}))
 
-    assert first.id == second.id
+    assert first.doc_id == second.doc_id
     assert second.note == "書き直した"
   end
 

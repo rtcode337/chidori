@@ -3,7 +3,7 @@ defmodule Chidori.News.InterestsTest do
   興味トピックの読み書き。**選べば末尾に足し、もう一度選べば外す**。
   """
 
-  use Chidori.DataCase, async: true
+  use Chidori.DataCase, async: false
 
   alias Chidori.News.Interests
 

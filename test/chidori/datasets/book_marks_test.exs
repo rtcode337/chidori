@@ -4,7 +4,7 @@ defmodule Chidori.Datasets.BookMarksTest do
   **読んだ本だけが上位の枠から外す集まりに入ること**です。
   """
 
-  use Chidori.DataCase, async: true
+  use Chidori.DataCase, async: false
 
   alias Chidori.Datasets.BookMarks
 

@@ -16,6 +16,9 @@ defmodule Chidori.Application do
         # 画面で決めた巡回の間隔（`Chidori.CollectPace`）。**読めなければ既定の間隔**
         # のまま動く（テストでは DB を持たないプロセスから読むので、ここは空振りする）
         Supervisor.child_spec({Task, &Chidori.CollectPace.load_all/0}, id: :collect_paces),
+        # 利用者が書いたこと（興味トピック・読んだ・見た記録）。Chiezo の置き場から読んで
+        # 手元に持つ。**読めなくても起動は止めない**（読めるまで読み直す）
+        Chidori.DataStore,
         {DNSCluster, query: Application.get_env(:chidori, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Chidori.PubSub},
         # 外部への取得はこの下で動かす。収集を持つ GenServer では待たない ——

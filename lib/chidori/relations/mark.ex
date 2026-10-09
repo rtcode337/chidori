@@ -4,7 +4,8 @@ defmodule Chidori.Relations.Mark do
 
   **図の中身とは別のもの**です。ノードそのものは Chiezo から読んでいて、
   読み直すたびに入れ替わります。ここに入るのは利用者が書いたことなので、
-  図が入れ替わっても残ります。
+  図が入れ替わっても残ります。置き場は Chiezo の `chidori_data`（`Chidori.Relations.Marks`）で、
+  `doc_id` はその文書の番号。
   """
 
   use Ecto.Schema
@@ -13,14 +14,14 @@ defmodule Chidori.Relations.Mark do
 
   @note_max 2_000
 
-  schema "relation_marks" do
+  @primary_key false
+  embedded_schema do
+    field(:doc_id, :integer)
     field(:view, :string)
     field(:node_name, :string)
     field(:seen, :boolean, default: false)
     field(:seen_on, :date)
     field(:note, :string, default: "")
-
-    timestamps(type: :utc_datetime)
   end
 
   @fields ~w(view node_name seen seen_on note)a
@@ -31,7 +32,6 @@ defmodule Chidori.Relations.Mark do
     |> update_change(:note, &String.trim/1)
     |> validate_required([:view, :node_name])
     |> validate_length(:note, max: @note_max)
-    |> unique_constraint([:view, :node_name])
   end
 
   @doc """

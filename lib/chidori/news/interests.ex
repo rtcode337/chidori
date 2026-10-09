@@ -6,50 +6,67 @@ defmodule Chidori.News.Interests do
   **興味トピックの要約**（ふつうの要約とは別の 1 本）の依頼文に書き込みます
   （`Chidori.News.attrs/3`）。依頼文は Chiezo に置いてあるので、選び直したら
   送り直す必要があります（画面がそうします）。
+
+  **置き場は Chiezo の `chidori_data`**（`Chidori.DataStore`）。1 語 1 文書で、
+  タグは `興味トピック` と `話題:<収集>`、脇書きに収集・語・並び順を持ちます。
   """
 
-  import Ecto.Query
-
-  alias Chidori.News.Interest
-  alias Chidori.Repo
+  alias Chidori.DataStore
 
   @doc "選んだ語（選んだ順）。"
   def list(collection) when is_binary(collection) do
-    Interest
-    |> where([i], i.collection == ^collection)
-    |> order_by([i], asc: i.position, asc: i.id)
-    |> select([i], i.name)
-    |> Repo.all()
+    collection
+    |> docs()
+    |> Enum.map(& &1.extra["name"])
   end
 
   def list(_collection), do: []
 
+  defp docs(collection) do
+    DataStore.interest_tag()
+    |> DataStore.docs()
+    |> Enum.filter(&(&1.extra["collection"] == collection and is_binary(&1.extra["name"])))
+    |> Enum.sort_by(&{&1.extra["position"] || 0, &1.doc_id})
+  end
+
   @doc """
   選ぶ・外す。**選んでいれば外し、選んでいなければ末尾に足します**。
-  返すのは選び直したあとの語の並び。
+  返すのは選び直したあとの語の並び（書けなかったときは選び直す前のまま）。
   """
   def toggle(collection, name) when is_binary(collection) and is_binary(name) do
     name = String.trim(name)
+    current = docs(collection)
 
-    case Repo.get_by(Interest, collection: collection, name: name) do
+    case Enum.find(current, &(&1.extra["name"] == name)) do
+      _any when name == "" ->
+        :ok
+
       nil ->
-        position =
-          (Repo.aggregate(where(Interest, collection: ^collection), :max, :position) || 0) + 1
+        position = Enum.max(Enum.map(current, &(&1.extra["position"] || 0)), fn -> 0 end) + 1
+        DataStore.add(record(collection, name, position))
 
-        %Interest{}
-        |> Interest.changeset(%{collection: collection, name: name, position: position})
-        |> Repo.insert()
-
-      interest ->
-        Repo.delete(interest)
+      doc ->
+        DataStore.delete(doc.doc_id)
     end
 
     list(collection)
   end
 
+  @doc "1 語の文書の形（前の表から写すときにも使う）。"
+  def record(collection, name, position) do
+    title = "興味トピック: #{collection} / #{name}"
+
+    %{
+      title: title,
+      text: title,
+      tags: [DataStore.interest_tag(), "話題:" <> collection],
+      extra: %{"collection" => collection, "name" => name, "position" => position}
+    }
+  end
+
   @doc """
   話題に興味トピックを載せます（`:interests`）。**依頼文を組む直前に呼びます** ——
-  依頼文を組む関数そのものは DB を読みません（そのほうが、何を送るかを確かめやすい）。
+  依頼文を組む関数そのものは置き場を読みません（そのほうが、何を送るかを確かめやすい）。
   """
   def attach(%{interests_from: from} = topic) when is_binary(from),
     do: Map.put(topic, :interests, list(from))
@@ -58,4 +75,15 @@ defmodule Chidori.News.Interests do
     do: Map.put(topic, :interests, list(collection))
 
   def attach(topic), do: topic
+
+  @doc false
+  # 前の表（news_interests）の中身を、置き場の記録の形で返す（一度だけ写す。`Chidori.DataStore`）
+  def legacy_records do
+    %{rows: rows} =
+      Chidori.Repo.query!(
+        "SELECT collection, name, position FROM news_interests ORDER BY collection, position, id"
+      )
+
+    for [collection, name, position] <- rows, do: record(collection, name, position)
+  end
 end

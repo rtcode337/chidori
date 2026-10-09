@@ -2,8 +2,10 @@ defmodule Chidori.Datasets.BookMarks do
   @moduledoc """
   技術書に付けた「読んだ」印とメモの置き場（`Chidori.Relations.Marks` と同じ形）。
 
-  **利用者が書いたことは Chidori が持ちます。** 本棚は Chiezo から読んでいますが、
-  「この本はもう読んだ」は利用者ごとの事情なので、Chiezo には置きません。
+  **利用者が書いたことは Chidori の側で持ちます。** 本棚は Chiezo の収集から読んで
+  いますが、「この本はもう読んだ」は利用者ごとの事情なので、収集には書きません。
+  置き場は Chiezo の `chidori_data`（`Chidori.DataStore`。記録の形は
+  `Chidori.DataStore.MarkRecords`、種類は `books`）。
 
   **読んだ本は「いま勧められている上位」から外します**（`read_titles/0` →
   `ChidoriWeb.TopBooks`）。上位の枠は「次に何を読むか」を決めるためのもので、
@@ -11,31 +13,28 @@ defmodule Chidori.Datasets.BookMarks do
   残し、読んだことが分かる印を付けます。
   """
 
-  import Ecto.Query
-
   alias Chidori.Datasets.BookMark
-  alias Chidori.Repo
+  alias Chidori.DataStore.MarkRecords
+
+  @view "books"
 
   @doc "付いている印を、本の見出しで引ける形で返します。読めなければ空。"
   def all do
-    BookMark |> Repo.all() |> Map.new(&{&1.title, &1})
-  rescue
-    _error -> %{}
+    Map.new(MarkRecords.for_view(@view), fn {title, doc} -> {title, mark_of(title, doc)} end)
   end
 
   @doc "読んだ本の見出し（上位の枠から外すもの）。読めなければ空。"
   def read_titles do
-    BookMark
-    |> where([m], m.read == true)
-    |> select([m], m.title)
-    |> Repo.all()
-    |> MapSet.new()
-  rescue
-    _error -> MapSet.new()
+    for {title, %BookMark{read: true}} <- all(), into: MapSet.new(), do: title
   end
 
   @doc "1 冊ぶん。まだ付いていなければ `nil`。"
-  def get(title) when is_binary(title), do: Repo.get_by(BookMark, title: title)
+  def get(title) when is_binary(title) do
+    case MarkRecords.for_view(@view) do
+      %{^title => doc} -> mark_of(title, doc)
+      _none -> nil
+    end
+  end
 
   @doc """
   印を書き込みます。**何も書かれていない印は残さず消します**。
@@ -45,21 +44,42 @@ defmodule Chidori.Datasets.BookMarks do
     mark = get(title) || %BookMark{}
     changeset = BookMark.changeset(mark, Map.put(attrs, "title", title))
 
-    case Ecto.Changeset.apply_action(changeset, :insert) do
-      {:ok, applied} ->
-        if BookMark.blank?(applied), do: delete(mark), else: Repo.insert_or_update(changeset)
-
-      {:error, _changeset} = error ->
-        error
+    with {:ok, applied} <- Ecto.Changeset.apply_action(changeset, :insert) do
+      if BookMark.blank?(applied), do: delete(mark), else: save(applied, changeset)
     end
   end
 
-  defp delete(%BookMark{id: nil}), do: {:ok, nil}
+  defp save(%BookMark{} = mark, changeset) do
+    fields = %{done: mark.read, on: mark.read_on, note: mark.note}
 
-  defp delete(%BookMark{} = mark) do
-    case Repo.delete(mark) do
-      {:ok, _mark} -> {:ok, nil}
-      {:error, _changeset} = error -> error
+    case MarkRecords.put(@view, mark.title, fields, mark.doc_id) do
+      {:ok, doc_id} -> {:ok, %{mark | doc_id: doc_id}}
+      {:error, _reason} -> {:error, Ecto.Changeset.add_error(changeset, :title, "を保存できませんでした")}
     end
+  end
+
+  defp delete(%BookMark{doc_id: doc_id} = mark) do
+    case MarkRecords.delete(doc_id) do
+      :ok ->
+        {:ok, nil}
+
+      {:error, _reason} ->
+        {:error, mark |> Ecto.Changeset.change() |> Ecto.Changeset.add_error(:title, "を消せませんでした")}
+    end
+  end
+
+  defp mark_of(title, doc) do
+    %{done: done, on: on, note: note} = MarkRecords.fields(doc)
+    %BookMark{doc_id: doc.doc_id, title: title, read: done, read_on: on, note: note}
+  end
+
+  @doc false
+  # 前の表（book_marks）の中身を、置き場の記録の形で返す（一度だけ写す。`Chidori.DataStore`）
+  def legacy_records do
+    %{rows: rows} =
+      Chidori.Repo.query!("SELECT title, read, read_on, note FROM book_marks ORDER BY id")
+
+    for [title, read, read_on, note] <- rows,
+        do: MarkRecords.record(@view, title, read, read_on, note)
   end
 end

@@ -11,6 +11,7 @@ defmodule Chidori.Http do
   @callback get(url :: String.t(), opts :: keyword()) :: response()
   @callback post(url :: String.t(), body :: binary(), opts :: keyword()) :: response()
   @callback patch(url :: String.t(), body :: binary(), opts :: keyword()) :: response()
+  @callback delete(url :: String.t(), opts :: keyword()) :: response()
 
   @doc """
   いま使う実装。テストは `config/test.exs` でスタブへ差し替えます。
@@ -20,6 +21,7 @@ defmodule Chidori.Http do
   def get(url, opts \\ []), do: impl().get(url, opts)
   def post(url, body, opts \\ []), do: impl().post(url, body, opts)
   def patch(url, body, opts \\ []), do: impl().patch(url, body, opts)
+  def delete(url, opts \\ []), do: impl().delete(url, opts)
 end
 
 defmodule Chidori.Http.Httpc do
@@ -38,6 +40,11 @@ defmodule Chidori.Http.Httpc do
   @impl true
   def get(url, opts) do
     request(:get, {charlist(url), headers(opts)}, opts)
+  end
+
+  @impl true
+  def delete(url, opts) do
+    request(:delete, {charlist(url), headers(opts)}, opts)
   end
 
   @impl true

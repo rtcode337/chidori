@@ -27,6 +27,10 @@ defmodule Chidori.DataCase do
   def setup_sandbox(tags) do
     pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Chidori.Repo, shared: not tags[:async])
     on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+
+    # 利用者が書いたことの置き場（`Chidori.DataStore`）は 1 つのプロセスが持つので、
+    # 並べて走らないテストのたびに空にする。並べて走るテストは置き場に書かないこと
+    unless tags[:async], do: Chidori.DataStore.reset()
   end
 
   @doc "変更セットのエラーを、項目名 → メッセージの並びにする。"

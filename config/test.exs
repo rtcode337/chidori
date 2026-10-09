@@ -25,6 +25,9 @@ config :chidori, ChidoriWeb.Endpoint,
 # 相手の都合で落ちるうえに相手への負担にもなる
 config :chidori, :http_client, Chidori.HttpStub
 
+# 利用者が書いたことの置き場は手元だけで持つ（Chiezo に届かない）
+config :chidori, :data_store, Chidori.DataStore.Memory
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

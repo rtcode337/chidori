@@ -5,6 +5,7 @@ defmodule Chidori.Datasets.BookMark do
 
   **本棚の中身とは別のもの**です。本は Chiezo から読んでいて、読み直すたびに
   入れ替わります。ここに入るのは利用者が書いたことなので、本棚が入れ替わっても残ります。
+  置き場は Chiezo の `chidori_data`（`Chidori.Datasets.BookMarks`）で、`doc_id` はその文書の番号。
   """
 
   use Ecto.Schema
@@ -13,13 +14,13 @@ defmodule Chidori.Datasets.BookMark do
 
   @note_max 2_000
 
-  schema "book_marks" do
+  @primary_key false
+  embedded_schema do
+    field(:doc_id, :integer)
     field(:title, :string)
     field(:read, :boolean, default: false)
     field(:read_on, :date)
     field(:note, :string, default: "")
-
-    timestamps(type: :utc_datetime)
   end
 
   @fields ~w(title read read_on note)a
@@ -30,7 +31,6 @@ defmodule Chidori.Datasets.BookMark do
     |> update_change(:note, &String.trim/1)
     |> validate_required([:title])
     |> validate_length(:note, max: @note_max)
-    |> unique_constraint(:title)
   end
 
   @doc """

@@ -29,6 +29,9 @@ defmodule Chidori.HttpStub do
   @impl true
   def patch(url, body, opts), do: respond(%{method: :patch, url: url, body: body, opts: opts})
 
+  @impl true
+  def delete(url, opts), do: respond(%{method: :delete, url: url, body: nil, opts: opts})
+
   defp respond(request) do
     case Application.get_env(:chidori, @key) do
       nil -> {:error, :no_stub_configured}
