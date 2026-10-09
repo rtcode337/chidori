@@ -2,7 +2,7 @@
 #
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 services:
-  tazuna:
-    image: tazuna:local
+  app:
+    image: chidori:local
     build:
       context: .

@@ -30,7 +30,7 @@ export default {
     this.onFullscreenChange = () => {
       if (document.fullscreenElement || !frame.classList.contains("frame-fullscreen")) return
       frame.classList.remove("frame-fullscreen")
-      frame.contentWindow && frame.contentWindow.dispatchEvent(new Event("tazuna:frame-fullscreen-exit"))
+      frame.contentWindow && frame.contentWindow.dispatchEvent(new Event("chidori:frame-fullscreen-exit"))
       fit(frame)
     }
     document.addEventListener("fullscreenchange", this.onFullscreenChange)

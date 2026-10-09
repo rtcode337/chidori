@@ -86,7 +86,7 @@ export default {
       // 保存が始まる前に消すと落とせないブラウザがあるので、少し置いてから
       setTimeout(() => URL.revokeObjectURL(link.href), 60_000)
     } catch (_error) {
-      this.error = "書き出せませんでした（tazuna に届きませんでした）"
+      this.error = "書き出せませんでした（Chidori に届きませんでした）"
     } finally {
       this.busy = false
       clearInterval(this.timer)

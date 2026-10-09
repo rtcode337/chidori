@@ -1,9 +1,9 @@
-defmodule Tazuna.Repo.Migrations.CreateSurveyPlans do
+defmodule Chidori.Repo.Migrations.CreateSurveyPlans do
   @moduledoc """
   収集ごとの「整理をどこから・いつ頼むか」。
 
   **Chiezo には持たせない。** どこを先に見てほしいか、何時に回したいかは利用者の
-  都合で、Chiezo は題材も都合も持たない側。時計は tazuna が持ち、Chiezo には
+  都合で、Chiezo は題材も都合も持たない側。時計は Chidori が持ち、Chiezo には
   「いまこの区画を見て」としか言わない（要約と同じ立場）。
   """
 

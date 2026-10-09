@@ -1,4 +1,4 @@
-defmodule Tazuna.DataCase do
+defmodule Chidori.DataCase do
   @moduledoc """
   DB を触るテストの土台。
 
@@ -11,11 +11,11 @@ defmodule Tazuna.DataCase do
 
   using do
     quote do
-      import Tazuna.DataCase
+      import Chidori.DataCase
       import Ecto.Changeset
       import Ecto.Query
 
-      alias Tazuna.Repo
+      alias Chidori.Repo
     end
   end
 
@@ -25,7 +25,7 @@ defmodule Tazuna.DataCase do
   end
 
   def setup_sandbox(tags) do
-    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Tazuna.Repo, shared: not tags[:async])
+    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Chidori.Repo, shared: not tags[:async])
     on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
   end
 

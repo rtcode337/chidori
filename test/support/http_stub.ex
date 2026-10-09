@@ -1,4 +1,4 @@
-defmodule Tazuna.HttpStub do
+defmodule Chidori.HttpStub do
   @moduledoc """
   テスト用の HTTP。応答はテストが差し込みます。
 
@@ -6,17 +6,17 @@ defmodule Tazuna.HttpStub do
   「たまたま通った」で済ませないため。
   """
 
-  @behaviour Tazuna.Http
+  @behaviour Chidori.Http
 
   @key :http_stub_responder
 
   @doc """
   応答を決める関数を差し込みます。`%{method:, url:, body:, opts:}` を受け取り、
-  `Tazuna.Http` の戻り値を返してください。
+  `Chidori.Http` の戻り値を返してください。
   """
   def stub(fun) when is_function(fun, 1) do
-    Application.put_env(:tazuna, @key, fun)
-    ExUnit.Callbacks.on_exit(fn -> Application.delete_env(:tazuna, @key) end)
+    Application.put_env(:chidori, @key, fun)
+    ExUnit.Callbacks.on_exit(fn -> Application.delete_env(:chidori, @key) end)
     :ok
   end
 
@@ -30,7 +30,7 @@ defmodule Tazuna.HttpStub do
   def patch(url, body, opts), do: respond(%{method: :patch, url: url, body: body, opts: opts})
 
   defp respond(request) do
-    case Application.get_env(:tazuna, @key) do
+    case Application.get_env(:chidori, @key) do
       nil -> {:error, :no_stub_configured}
       fun -> fun.(request)
     end

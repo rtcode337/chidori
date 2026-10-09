@@ -21,7 +21,7 @@ const HANDLE_PX = 14
 // 取っ手の種類 → 動かす辺（n = 北・s = 南・w = 西・e = 東）
 const HANDLES = {n: "n", s: "s", w: "w", e: "e", nw: "nw", ne: "ne", sw: "sw", se: "se"}
 
-// メルカトルの逆（`Tazuna.Datasets.Map` の `mercator/1` と対）
+// メルカトルの逆（`Chidori.Datasets.Map` の `mercator/1` と対）
 const latOf = (merc) => (2 * Math.atan(Math.exp(merc * Math.PI / 180)) - Math.PI / 2) * 180 / Math.PI
 
 export default panZoom({

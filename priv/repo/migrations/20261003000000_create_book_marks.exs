@@ -1,6 +1,6 @@
-defmodule Tazuna.Repo.Migrations.CreateBookMarks do
+defmodule Chidori.Repo.Migrations.CreateBookMarks do
   @moduledoc """
-  技術書に付けた「読んだ」印とメモ（`Tazuna.Datasets.BookMarks`）。
+  技術書に付けた「読んだ」印とメモ（`Chidori.Datasets.BookMarks`）。
 
   1 行 1 冊。鍵は本棚の 1 冊の見出し（Chiezo の文書の見出し）。
   **行が無いことは「読んでいない」**を意味します。

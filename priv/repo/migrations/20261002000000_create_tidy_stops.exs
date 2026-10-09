@@ -1,6 +1,6 @@
-defmodule Tazuna.Repo.Migrations.CreateTidyStops do
+defmodule Chidori.Repo.Migrations.CreateTidyStops do
   @moduledoc """
-  整理を自動で回さない収集（設定ページの「Chiezo 収集」で選ぶ。`Tazuna.CollectPace`）。
+  整理を自動で回さない収集（設定ページの「Chiezo 収集」で選ぶ。`Chidori.CollectPace`）。
 
   1 行 1 収集。**行が無いことは「自動で回す」**（既定）を意味します。
   """

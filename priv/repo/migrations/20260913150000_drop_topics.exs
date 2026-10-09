@@ -1,9 +1,9 @@
-defmodule Tazuna.Repo.Migrations.DropTopics do
+defmodule Chidori.Repo.Migrations.DropTopics do
   @moduledoc """
   話題の表を落とす。
 
   この表が持っていたのは設定だけ(誰に頼むか)で、名前も収集名も関心もコードの側
-  (`Tazuna.Topics.defined/0`)にある。誰に頼むかは巡回ごとに画面から選んで Chiezo へ
+  (`Chidori.Topics.defined/0`)にある。誰に頼むかは巡回ごとに画面から選んで Chiezo へ
   送る形になったので、持ち主は Chiezo ひとつになった —— こちらに写しを残すと、
   どちらが本物か分からなくなる。
   """

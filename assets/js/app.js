@@ -22,7 +22,7 @@ import "phoenix_html"
 // Establish Phoenix Socket and LiveView configuration.
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
-import {hooks as colocatedHooks} from "phoenix-colocated/tazuna"
+import {hooks as colocatedHooks} from "phoenix-colocated/chidori"
 // 図を引きずって動かし、つまんで拡大するところ。**画面をまたいで同じ操作**にする
 // ため、テンプレートの中ではなくここに置く（中身は共通の ./pan_zoom で、
 // 倍率の幅や札の留め方といった図ごとの事情だけをそれぞれが足す）

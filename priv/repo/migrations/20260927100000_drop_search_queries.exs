@@ -1,9 +1,9 @@
-defmodule Tazuna.Repo.Migrations.DropSearchQueries do
+defmodule Chidori.Repo.Migrations.DropSearchQueries do
   @moduledoc """
   検索文の控えを落とす。**考えるのも控えるのも Chiezo に移した**
   （機械収集の巡回の依頼文に `{queries}` を書くと、その巡回の相手が考える）。
 
-  tazuna に持っていた頃は、Chiezo で収集を作り直しても前の収集の検索文が残り、
+  Chidori に持っていた頃は、Chiezo で収集を作り直しても前の収集の検索文が残り、
   新しい収集ではまだ走っていない検索文が「0 件だった」と数えられて、
   最初の組が一度も走らないまま置き換わった。
   """

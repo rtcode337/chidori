@@ -1,4 +1,4 @@
-defmodule Tazuna.Repo.Migrations.CreateHomePanels do
+defmodule Chidori.Repo.Migrations.CreateHomePanels do
   @moduledoc """
   トップページに並べる枠（設定ページで選ぶ）。1 行 1 枠で、並びは選んだ順。
 

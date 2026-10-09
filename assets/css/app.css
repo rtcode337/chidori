@@ -1,10 +1,10 @@
 @import "tailwindcss" source(none);
-@import "phoenix-colocated/tazuna/colocated.css";
+@import "phoenix-colocated/chidori/colocated.css";
 
 @source "../css";
 @source "../js";
 @source "../../lib/tazuna_web";
-@source "../../_build/*/phoenix-colocated/tazuna/*/";
+@source "../../_build/*/phoenix-colocated/chidori/*/";
 
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
@@ -12,11 +12,11 @@
 
 [data-phx-session], [data-phx-teleported-src] { display: contents; }
 
-/* ここから下は tazuna の画面のスタイル。Tailwind の入力に置いてあるので
+/* ここから下は Chidori の画面のスタイル。Tailwind の入力に置いてあるので
    `mix assets.build` の出力1本にまとまる。手元にだけあるファイルを配ると、
    クリーンなチェックアウトから作ったイメージが無装飾になる */
 
-/* 保存したときなどの知らせ（`TazunaWeb.CoreComponents.flash/1`）。**画面の流れに入れず、
+/* 保存したときなどの知らせ（`ChidoriWeb.CoreComponents.flash/1`）。**画面の流れに入れず、
    右上に浮かせる** —— 流れに入ると、出るたびにヘッダーごと押し下げて画面が崩れる */
 .flash-toast { position: fixed; top: 1rem; right: 1rem; z-index: 50; width: min(24rem, calc(100vw - 2rem)); }
 .flash-toast[hidden] { display: none; }
@@ -902,7 +902,7 @@ ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column:
 .theme-children li { color: #334155; font-size: .9rem; line-height: 1.7; }
 .theme-children li::marker { color: #cbd5e1; }
 
-/* 見に行った記録(展覧会で実物を見た、など)。tazuna にだけ残る */
+/* 見に行った記録(展覧会で実物を見た、など)。Chidori にだけ残る */
 .seen-mark { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: 0.8rem; }
 .seen-mark summary { cursor: pointer; font-weight: 700; font-size: 0.9rem; }
 .seen-mark textarea { width: 100%; font: inherit; }
@@ -1171,7 +1171,7 @@ a.top-book-cover { display: block; }
 .area-errors { color: #b91c1c; margin: 0; padding-left: 1.2rem; }
 /* 食事処の範囲の一覧で、控えている依頼の数（範囲のタブへ） */
 .area-pending { margin-left: .5rem; padding: .1rem .5rem; border-radius: 999px; background: #fff3d6; color: #8a5a00; font-size: .8rem; font-weight: 700; text-decoration: none; }
-/* 「Chiezo 収集」の表で、Chidori の定義と違う収集の印（`Tazuna.CollectDrift`） */
+/* 「Chiezo 収集」の表で、Chidori の定義と違う収集の印（`Chidori.CollectDrift`） */
 .collect-drift { margin: .4rem 0; padding: .35rem .55rem; border: 1px solid #f0c36d; border-radius: .5rem; background: #fff8e6; font-size: .82rem; }
 .collect-drift summary { color: #8a5a00; font-weight: 700; cursor: pointer; }
 .collect-drift ul { margin: .3rem 0; padding-left: 1.1rem; }

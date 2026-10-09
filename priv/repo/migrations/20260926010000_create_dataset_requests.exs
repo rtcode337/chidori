@@ -1,4 +1,4 @@
-defmodule Tazuna.Repo.Migrations.CreateDatasetRequests do
+defmodule Chidori.Repo.Migrations.CreateDatasetRequests do
   @moduledoc """
   travel-log から届いた依頼（「区画を引いて頼む」）の控え。
 

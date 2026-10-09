@@ -1,4 +1,4 @@
-defmodule Tazuna.Repo.Migrations.AddDigestResultToNotifySettings do
+defmodule Chidori.Repo.Migrations.AddDigestResultToNotifySettings do
   use Ecto.Migration
 
   def change do

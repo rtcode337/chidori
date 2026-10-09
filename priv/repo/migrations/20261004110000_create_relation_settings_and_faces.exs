@@ -1,12 +1,12 @@
-defmodule Tazuna.Repo.Migrations.CreateRelationSettingsAndFaces do
+defmodule Chidori.Repo.Migrations.CreateRelationSettingsAndFaces do
   @moduledoc """
   関連図の 2 つの置き場。
 
   - `relation_settings` —— 図ごとの設定。いまは**名簿の知名度の下限**だけ
     （芸能人の図はカテゴリだけで 3 万人に届くので、月の閲覧数で切ってから AI に回し、
     落ち着いたら下げて広げる）。Chiezo に送る設定は図の画面のほか設定画面からも
-    送るので、どこから送っても同じ値になるよう tazuna に持つ
-  - `face_thumbs` —— 顔写真の小さな写し。**1 人 1 回だけ**取りに行き、あとは tazuna が
+    送るので、どこから送っても同じ値になるよう Chidori に持つ
+  - `face_thumbs` —— 顔写真の小さな写し。**1 人 1 回だけ**取りに行き、あとは Chidori が
     配る（見るたびに写真の置き場へ取りに行かせない）。取れなかったことも残す
     （無いものを取りに行き続けない）
   """

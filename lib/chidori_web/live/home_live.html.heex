@@ -1,0 +1,218 @@
+<Layouts.flash_group flash={@flash} />
+<main class="relations-page home-page">
+  <div>
+    <ChidoriWeb.MainNav.main_nav active={:home} />
+
+    <%!-- 設定ページで選んだ枠。**最初の枠が開いたときに出る**。
+         **右端の「…」で全部の枠を縦の一覧から選べる** —— 枠が増えると、狭い画面では
+         タブの列を何度も横へ送らないと目当てに届かない --%>
+    <div :if={length(@panels) > 1} class="home-tabs-row">
+      <nav
+        id="home-tabs"
+        class="relation-tabs"
+        phx-hook="ScrollTabs"
+        aria-label="トップページの枠"
+      >
+        <.link
+          :for={panel <- @panels}
+          patch={~p"/?panel=#{panel.key}"}
+          class={if @panel && @panel.key == panel.key, do: "selected"}
+          aria-current={if @panel && @panel.key == panel.key, do: "page"}
+        >
+          {panel.name}
+        </.link>
+      </nav>
+      <%!-- 一覧の外を押すと閉じる（「…」は一覧と同じ囲みの中なので、押しても外とみなさない） --%>
+      <div class="home-tab-more" phx-click-away={JS.hide(to: "#home-tab-menu")}>
+        <button
+          type="button"
+          class="home-tab-more-button"
+          aria-label="枠を一覧から選ぶ"
+          aria-haspopup="true"
+          aria-controls="home-tab-menu"
+          phx-click={JS.toggle(to: "#home-tab-menu")}
+        >
+          …
+        </button>
+        <ul
+          id="home-tab-menu"
+          class="home-tab-menu"
+          style="display: none"
+          phx-window-keydown={JS.hide(to: "#home-tab-menu")}
+          phx-key="Escape"
+        >
+          <li :for={panel <- @panels}>
+            <button
+              type="button"
+              class={if @panel && @panel.key == panel.key, do: "selected"}
+              aria-current={if @panel && @panel.key == panel.key, do: "page"}
+              phx-click={JS.hide(to: "#home-tab-menu") |> JS.patch(~p"/?panel=#{panel.key}")}
+            >
+              {panel.name}
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <%!-- 枠の中を左右に払うと、隣のタブへ（`PanelSwipe`）。タブの列・表・関連図の中では払わない --%>
+    <div id="home-panels" phx-hook="PanelSwipe">
+      <%!-- 話題の要約と、興味トピックの要約。**全文を見せ、右上のアイコンで全画面に開く**
+         （全画面では左右のスワイプで前後の要約へ。最新情報の画面と同じ部品） --%>
+      <section
+        :if={@panel && @panel.kind in [:topic, :interest]}
+        class="home-panel"
+        aria-label={@panel.name}
+      >
+        <% kind = digest_kind(@panel) %>
+        <% digests = if @news, do: NewsLive.digests_of(@news, kind), else: [] %>
+        <p :if={@news == nil or (@news.status == :loading and digests == [])} class="muted-note">
+          読み込んでいます…
+        </p>
+        <%= if digest = List.first(digests) do %>
+          <%!-- **全文をそのまま見せる**（押さなくても読める）。全画面は右上のアイコンから ——
+             本文を押して開く形にすると、本文の中のリンクや目次を押す動きと取り合う --%>
+          <div class="home-digest">
+            <ChidoriWeb.FullscreenButton.fullscreen_button
+              zoom={nil}
+              class="home-digest-full"
+              phx-click="open_digest"
+              phx-value-index="0"
+            />
+            <ChidoriWeb.Report.report
+              title={digest.title}
+              at={digest.collected_at}
+              body={digest.summary}
+              label={if kind == :interest, do: "興味トピック", else: @panel.name}
+              articles={@news.articles}
+              cited={digest.cited}
+              id_prefix="home"
+              hero={NewsLive.hero?(@panel.topic)}
+            />
+          </div>
+        <% else %>
+          <p :if={(@news && @news.status != :loading) and kind == :main} class="muted-note">
+            まだ要約がありません（{@panel.name}の画面で、要約を作る時刻を決めると溜まっていきます）。
+          </p>
+          <p :if={(@news && @news.status != :loading) and kind == :interest} class="muted-note">
+            まだ興味トピックの要約がありません（{@panel.topic.name}の画面で、トピックの網の札から興味トピックを選ぶと書かれるようになります）。
+          </p>
+        <% end %>
+        <p><a href={~p"/news?view=#{@panel.topic.collection}"}>{@panel.topic.name}の画面へ</a></p>
+      </section>
+
+      <%!-- 書き手ごとの要約（市況ニュース。売買提案の AI がそれぞれ自分で書いたもの） --%>
+      <section
+        :if={@panel && @panel.kind == :ai_digests}
+        class="home-panel"
+        aria-label={@panel.name}
+      >
+        <ChidoriWeb.AiDigests.ai_digests
+          digests={@ai_digests}
+          label={@panel.name}
+          id_prefix="home-ai"
+        />
+        <p><a href={~p"/news?view=#{@panel.topic.collection}"}>{@panel.topic.name}の画面へ</a></p>
+      </section>
+
+      <%!-- 関連図は画面ごと埋め込む（操作も同じ。頭のメニューと設定は出さない） --%>
+      <section
+        :if={@panel && @panel.kind == :relations}
+        class="home-panel"
+        aria-label={@panel.name}
+      >
+        <%!-- **高さは中身に合わせる**（`AutoHeight`）。決め打ちにすると枠の中にもう 1 つ
+           スクロールができて、ページのスクロールと二重になる --%>
+        <iframe
+          id={"home-embed-#{@panel.view}"}
+          phx-hook="AutoHeight"
+          scrolling="no"
+          allowfullscreen
+          allow="fullscreen"
+          class="home-embed"
+          src={~p"/relations?view=#{@panel.view}&embed=1"}
+          title={@panel.name}
+          loading="lazy"
+        ></iframe>
+        <p><a href={~p"/relations?view=#{@panel.view}"}>関連図の画面へ</a></p>
+      </section>
+
+      <section :if={@panel && @panel.kind == :events} class="home-panel" aria-label={@panel.name}>
+        <h2 class="news-section-title">これからの注目イベント</h2>
+        <p :if={@events in [nil, :loading]} class="muted-note">読み込んでいます…</p>
+        <p :if={match?({:error, _}, @events)} class="muted-note">イベントを読めませんでした。</p>
+        <%= if match?({:ok, _}, @events) do %>
+          <% list = upcoming(elem(@events, 1), Chidori.Topics.home_attention(@panel.topic)) %>
+          <p :if={list == []} class="muted-note">これから 2 か月の、注目度の高いイベントはまだありません。</p>
+          <ul :if={list != []} class="event-day-list home-events">
+            <li :for={entry <- list} class={["event-item", "is-#{entry.attention}"]}>
+              <img
+                :if={ChidoriWeb.NewsLive.entry_thumb(entry)}
+                class="event-thumb"
+                src={ChidoriWeb.NewsLive.entry_thumb(entry)}
+                alt=""
+                loading="lazy"
+              />
+              <div class="event-item-head">
+                <span class={["event-chip", "is-#{entry.attention}"]}>
+                  {ChidoriWeb.NewsLive.day_label(entry.date)}
+                </span>
+                <a :if={entry.url} href={entry.url} target="_blank" rel="noreferrer">{entry.title}</a>
+                <strong :if={!entry.url}>{entry.title}</strong>
+              </div>
+              <p class="event-item-facts">
+                <span :if={Chidori.News.Events.abroad?(entry)} class="event-abroad-mark">海外</span>
+                {ChidoriWeb.NewsLive.event_facts(entry)}
+              </p>
+              <p :if={Chidori.News.Events.description(entry) != ""} class="event-item-detail">
+                {Chidori.News.Events.description(entry)}
+              </p>
+            </li>
+          </ul>
+        <% end %>
+        <p><a href={~p"/news?view=#{@panel.topic.collection}"}>{@panel.name}の画面へ</a></p>
+      </section>
+
+      <section :if={@panel && @panel.kind == :books} class="home-panel" aria-label={@panel.name}>
+        <p :if={@books in [nil, :loading]} class="muted-note">読み込んでいます…</p>
+        <p :if={match?({:error, _}, @books)} class="muted-note">本棚を読めませんでした。</p>
+        <%= if match?({:ok, _}, @books) do %>
+          <h2 class="news-section-title">
+            オライリー以外の未読の上位 {ChidoriWeb.TopBooks.count()} 冊
+          </h2>
+          <ChidoriWeb.TopBooks.top_books
+            books={elem(@books, 1)}
+            read={@read_books}
+            open_event="open_book"
+            opened={@opened_book}
+            posts={@book_posts}
+          />
+          <%!-- **オライリーの本は別の枠に**（Kindle で読めないので、上の順位とは分けて数える） --%>
+          <h2 class="news-section-title">オライリーの未読の上位 {ChidoriWeb.TopBooks.count()} 冊</h2>
+          <ChidoriWeb.TopBooks.top_books
+            books={elem(@books, 1)}
+            read={@read_books}
+            oreilly
+            open_event="open_book"
+            opened={@opened_book}
+            posts={@book_posts}
+          />
+        <% end %>
+
+        <p :if={match?({:ok, _}, @books)}><a href={~p"/datasets?view=books"}>本棚をぜんぶ見る</a></p>
+      </section>
+    </div>
+
+    <%!-- 全画面の要約（左右のスワイプで前後の要約へ） --%>
+    <NewsLive.digest_viewer
+      :if={@news && @panel && @panel.kind in [:topic, :interest]}
+      news={@news}
+      open={@digest_open}
+      full={@digest_full}
+      kind={digest_kind(@panel)}
+      section={@digest_section}
+      label={if @panel.kind == :interest, do: "興味トピック", else: @panel.name}
+      hero={NewsLive.hero?(@panel.topic)}
+    />
+  </div>
+</main>

@@ -1,4 +1,4 @@
-defmodule Tazuna.Repo.Migrations.CreatePendingRequests do
+defmodule Chidori.Repo.Migrations.CreatePendingRequests do
   @moduledoc """
   travel-log から届いた依頼のうち、**まだ Chiezo に頼んでいないもの**（1 件ずつ）。
 

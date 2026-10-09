@@ -1,13 +1,13 @@
-defmodule Tazuna.Repo.Migrations.CreateSentNotices do
+defmodule Chidori.Repo.Migrations.CreateSentNotices do
   @moduledoc """
   知らせたものの記録。
 
   **同じものを二度知らせない**ために要る。まとめは Chiezo 側に溜まっていて、
-  tazuna は時々読みに行くだけなので、**読み直すたびに同じまとめが返ってくる** ——
+  Chidori は時々読みに行くだけなので、**読み直すたびに同じまとめが返ってくる** ——
   何を知らせたかを覚えていないと、読むたびに通知が飛ぶ。
 
   **メモリでは足りない。** 知らせた記録が再起動で消えると、立ち上げ直した拍子に
-  前のまとめをもう一度知らせることになる(`Tazuna.Repo` の説明にある「通知の記録」が
+  前のまとめをもう一度知らせることになる(`Chidori.Repo` の説明にある「通知の記録」が
   これ)。
   """
 

@@ -1,6 +1,6 @@
-defmodule Tazuna.Repo.Migrations.CreateSearchQueries do
+defmodule Chidori.Repo.Migrations.CreateSearchQueries do
   @moduledoc """
-  機械収集が引く**検索文の控え**（`Tazuna.Datasets.BookQueries`）。
+  機械収集が引く**検索文の控え**（`Chidori.Datasets.BookQueries`）。
 
   **同じ検索文で引き直しても、同じ記事が返るだけ**なので、決めた時刻ごとに AI に
   新しい検索文を考えさせて差し替える。考えさせるときに「これまでに使った検索文と、

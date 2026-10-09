@@ -1,11 +1,11 @@
-defmodule Tazuna.Repo.Migrations.CreateRelationMarks do
+defmodule Chidori.Repo.Migrations.CreateRelationMarks do
   @moduledoc """
   関連図のノードに付ける「見た」印とメモ。
 
   図に出ているのは Chiezo から読んだものだけで、**利用者が自分で書いたことは
   どこにも残せなかった**。画家の展覧会へ行った、この人の絵を実物で見た、といった
   記録は Chiezo には置けない —— あちらは題材も好みも持たない側なので、
-  利用者ごとの事情は tazuna が持つ(README「Chiezo との関係」)。
+  利用者ごとの事情は Chidori が持つ(README「Chiezo との関係」)。
 
   **暫定の形**。いまは 1 ノードに 1 件で、見たかどうか・いつ・ひとこと、だけを持つ。
   同じ画家を何度も見に行く記録(展覧会ごとに 1 件)が要るようになったら、

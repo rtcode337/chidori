@@ -1,6 +1,6 @@
-defmodule Tazuna.Repo.Migrations.CreateClosedTwinChecks do
+defmodule Chidori.Repo.Migrations.CreateClosedTwinChecks do
   @moduledoc """
-  閉店の片割れを確かめてもらった控え（`Tazuna.Datasets.ClosedTwins`）。
+  閉店の片割れを確かめてもらった控え（`Chidori.Datasets.ClosedTwins`）。
 
   **同じ組を二度頼まないため**に持ちます。確かめた AI が「別の店なので残す」と
   判断した 1 件は、そのまま生きて残る —— 控えが無いと、毎日同じ店を頼み直すことになる。

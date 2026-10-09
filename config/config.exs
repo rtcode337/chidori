@@ -7,19 +7,19 @@
 # General application configuration
 import Config
 
-config :tazuna,
-  ecto_repos: [Tazuna.Repo],
+config :chidori,
+  ecto_repos: [Chidori.Repo],
   generators: [timestamp_type: :utc_datetime]
 
 # Configure the endpoint
-config :tazuna, TazunaWeb.Endpoint,
+config :chidori, ChidoriWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
-    formats: [html: TazunaWeb.ErrorHTML, json: TazunaWeb.ErrorJSON],
+    formats: [html: ChidoriWeb.ErrorHTML, json: ChidoriWeb.ErrorJSON],
     layout: false
   ],
-  pubsub_server: Tazuna.PubSub,
+  pubsub_server: Chidori.PubSub,
   live_view: [signing_salt: "WR5N6hZj"]
 
 # Configure LiveView
@@ -30,7 +30,7 @@ config :phoenix_live_view,
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.25.4",
-  tazuna: [
+  chidori: [
     args:
       ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
     cd: Path.expand("../assets", __DIR__),
@@ -40,7 +40,7 @@ config :esbuild,
 # Configure tailwind (the version is required)
 config :tailwind,
   version: "4.3.0",
-  tazuna: [
+  chidori: [
     args: ~w(
       --input=assets/css/app.css
       --output=priv/static/assets/css/app.css

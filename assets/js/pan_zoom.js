@@ -429,7 +429,7 @@ const base = {
       document.documentElement.classList.remove("in-frame-fullscreen")
       this.onFullscreen()
     }
-    window.addEventListener("tazuna:frame-fullscreen-exit", this.onFrameExit)
+    window.addEventListener("chidori:frame-fullscreen-exit", this.onFrameExit)
   },
 
   unbind() {
@@ -440,7 +440,7 @@ const base = {
     this.el.removeEventListener("pointercancel", this.onPointerUp, true)
     this.el.removeEventListener("click", this.onClickCapture, true)
     document.removeEventListener("fullscreenchange", this.onFullscreen)
-    window.removeEventListener("tazuna:frame-fullscreen-exit", this.onFrameExit)
+    window.removeEventListener("chidori:frame-fullscreen-exit", this.onFrameExit)
   },
 }
 

@@ -1,0 +1,1165 @@
+<Layouts.flash_group flash={@flash} />
+
+<main class="relations-page collect-page">
+  <div>
+    <ChidoriWeb.MainNav.main_nav active={:datasets} />
+
+    <%!-- 集めるものごとのタブ。**収集も溜まる先も別**なので、1 つに混ぜると
+         どちらの状態を見ているのか読めなくなる。並ぶのは `Chidori.Datasets` の
+         定義そのもの（定義はコードにある）。**見出しの上に置く**（関連図と同じ）——
+         見出しと説明は選んだものなので、切り替える口がその下にあると、
+         どこまでが切り替わるのかが読めない --%>
+    <nav
+      id="dataset-tabs"
+      class="relation-tabs"
+      phx-hook="ScrollTabs"
+      aria-label="集めるもの"
+    >
+      <.link
+        :for={dataset <- @datasets}
+        patch={~p"/datasets?view=#{dataset.key}"}
+        class={if @view == dataset.key, do: "selected"}
+        aria-current={if @view == dataset.key, do: "page"}
+      >
+        {dataset.name}
+      </.link>
+      <%!-- 食事処は範囲ごとのタブ。**範囲を足す口はタブの並びの端に置く** --%>
+      <.link navigate={~p"/datasets/areas"} class="add-tab">＋ 食事処の範囲</.link>
+    </nav>
+
+    <section class="relations-intro">
+      <p>{@dataset.eyebrow}</p>
+      <h1>{@dataset.title}</h1>
+      <p>{@dataset.description}</p>
+
+      <%!-- **開くたびには取りに行かない。** Chiezo の側は数時間に 1 度しか動かないので、
+           いつのものを見ているかを出して、取り直すかは読む人に決めてもらう --%>
+      <p class="relation-checked">
+        <span class="muted-note">
+          <%= if at = checked_at(assigns) do %>
+            最後に取得: <strong>{Jst.format(at)}（{Jst.ago(at)}）</strong>
+          <% else %>
+            まだ取得していません
+          <% end %>
+        </span>
+        <%!-- 本棚を持たない対象は、設定欄を開いているときだけ読み直すものがある --%>
+        <% loading = reloading?(assigns) %>
+        <button
+          :if={Chidori.Datasets.listed?(@dataset) || @settings_open}
+          type="button"
+          phx-click="reload"
+          disabled={loading}
+          aria-busy={if loading, do: "true"}
+          class={if loading, do: "is-loading"}
+        >
+          {if loading, do: "取得しています…", else: "最新の情報を取得"}
+        </button>
+      </p>
+    </section>
+
+    <%!-- **本棚**（読む側のアプリを持たない対象だけ）。**設定より先に置く** ——
+         この対象で読みに来るのは、溜まった本のほう --%>
+    <%!-- **いま止めている通信**（Pi-hole の監視アプリ の「1件ずつ流す」）。押した時点から先を
+         5 秒ごとに Chiezo 越しに読み、新しいものを上に 1 件 1 行で足す --%>
+    <section
+      :if={@dataset[:listing]}
+      class="live-blocked"
+      aria-label="いま止めている通信"
+    >
+      <h2>
+        いま止めている通信 <span :if={@live_on} class="live-dot" aria-hidden="true"></span>
+      </h2>
+      <p class="button-row">
+        <button :if={!@live_on} type="button" phx-click="live_start">流す</button>
+        <button :if={@live_on} type="button" phx-click="live_stop">止める</button>
+        <button :if={@live_rows != []} type="button" phx-click="live_clear">消す</button>
+        <span class="muted-note">
+          押した時点から先に Pi-hole が止めた問い合わせを、5 秒ごとに 1 件 1 行で足します（同じドメインでも来るたびに 1 行）。
+        </span>
+      </p>
+      <p :if={@live_error} class="muted-note">{reason_text(@live_error)}</p>
+      <p :if={@live_on and @live_rows == [] and !@live_error} class="muted-note">
+        待っています…
+      </p>
+      <%!-- 溜めているドメインだけ押せる（詳細は溜めたものから開くので） --%>
+      <% known =
+        case @shelf do
+          {:ok, domains} when is_list(domains) -> MapSet.new(domains, & &1.domain)
+          _other -> MapSet.new()
+        end %>
+      <table :if={@live_rows != []} class="live-table">
+        <thead>
+          <tr>
+            <th>時刻</th><th>ドメイン</th><th>アクセス元</th><th>止め方</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={row <- @live_rows}>
+            <td>{Jst.format(row.at)}</td>
+            <td class="live-domain">
+              <button
+                :if={MapSet.member?(known, row.domain)}
+                type="button"
+                class="domain-name"
+                phx-click="open_domain"
+                phx-value-domain={row.domain}
+              >
+                {row.domain}
+              </button>
+              <span :if={!MapSet.member?(known, row.domain)}>{row.domain}</span>
+            </td>
+            <td>
+              {row.client}<span :if={row.client_name} class="muted-note">（{row.client_name}）</span>
+            </td>
+            <td class="muted-note">{row.status}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <%!-- **Pi-hole のドメイン**（設定より先に置く。見に来るのは溜まったドメインのほう）。
+         気になる通信を先に、止めた回数の多い順。押すと調べた中身の全文が開く --%>
+    <section
+      :if={@dataset[:listing] && match?({:ok, _}, @shelf)}
+      class="domains"
+      aria-label="ドメイン"
+    >
+      <% {:ok, all_domains} = @shelf %>
+      <% domains = domains_shown(all_domains, @domain_filter, @domain_marks) %>
+      <h2>
+        ドメイン
+        <span class="muted-note">
+          （{length(all_domains)} 件・調べたもの {Enum.count(all_domains, & &1.researched)} 件）
+        </span>
+      </h2>
+      <p :if={all_domains == []} class="muted-note">
+        まだありません。Chiezo で Pi-hole の取り込み（ソース「pihole」）を焼き、下の設定から依頼して有効にすると、機械収集が引いてきます。
+      </p>
+      <p :if={all_domains != []} class="domain-filters" role="group" aria-label="絞り込み">
+        <button
+          :for={
+            {key, label, n} <- [
+              {"all", "すべて", length(all_domains)},
+              {"unseen", "まだ見ていない",
+               Enum.count(all_domains, &(!domain_seen?(@domain_marks, &1.domain)))},
+              {"watch", "気になる通信", Enum.count(all_domains, & &1.watch)},
+              {"blocked", "止めたもの", Enum.count(all_domains, & &1.blocked)},
+              {"caution", "要注意", Enum.count(all_domains, &(&1.verdict == "要注意"))}
+            ]
+          }
+          type="button"
+          class={["domain-filter", @domain_filter == key && "is-on"]}
+          phx-click="filter_domains"
+          phx-value-filter={key}
+          aria-pressed={to_string(@domain_filter == key)}
+        >
+          {label}（{n}）
+        </button>
+      </p>
+      <ul :if={domains != []} class="domain-list">
+        <li
+          :for={d <- domains}
+          class={[
+            "domain-row",
+            d.watch && "is-watch",
+            domain_seen?(@domain_marks, d.domain) && "is-seen"
+          ]}
+        >
+          <p class="domain-head">
+            <button
+              type="button"
+              class="domain-name"
+              phx-click="open_domain"
+              phx-value-domain={d.domain}
+            >
+              {d.domain}
+            </button>
+            <span :if={d.verdict} class={verdict_class(d.verdict)}>{d.verdict}</span>
+            <span
+              :if={domain_mark_summary(domain_mark_of(@domain_marks, d.domain))}
+              class="seen-badge"
+            >
+              {domain_mark_summary(domain_mark_of(@domain_marks, d.domain))}
+            </span>
+            <span :if={d.watch} class="domain-badge is-watch">気になる通信</span>
+            <span :if={d.blocked} class="domain-badge">止めた {d.blocked_count} 回</span>
+            <span :if={d.last_seen} class="muted-note">最後に見たのは {Jst.format(d.last_seen)}</span>
+            <span :for={reason <- d.reasons} class="domain-reason">{reason}</span>
+          </p>
+          <p class="domain-summary">
+            <span :if={!d.researched} class="muted-note">まだ調べていません。</span>
+            {d.summary}
+          </p>
+        </li>
+      </ul>
+    </section>
+
+    <section
+      :if={@dataset[:derived] && match?({:ok, [_ | _]}, @shelf)}
+      class="bookshelf"
+      aria-label="本棚"
+    >
+      <% {:ok, all_books} = @shelf %>
+      <% near_count = Enum.count(all_books, &(&1.near != [])) %>
+      <% books =
+        if @shelf_near_only, do: Enum.filter(all_books, &(&1.near != [])), else: all_books %>
+      <%!-- **上位の数冊を先に**（トップページと同じ枠）。本棚は何百冊にもなるので、
+           いま何が勧められているかを一目で見るには長すぎる --%>
+      <%!-- **読んだ本は外す**（この枠は次に何を読むかを決めるためのもの） --%>
+      <h2>オライリー以外の未読の上位 {ChidoriWeb.TopBooks.count()} 冊</h2>
+      <%!-- 押すと本棚の詳細と同じもの（勧めている記事つき）が開く --%>
+      <ChidoriWeb.TopBooks.top_books
+        books={all_books}
+        open_event="open_book"
+        read={read_titles(@book_marks)}
+      />
+      <%!-- **オライリーの本は別の枠に**（Kindle で読めないので、上の順位とは分けて数える） --%>
+      <h2>オライリーの未読の上位 {ChidoriWeb.TopBooks.count()} 冊</h2>
+      <ChidoriWeb.TopBooks.top_books
+        books={all_books}
+        oreilly
+        open_event="open_book"
+        read={read_titles(@book_marks)}
+      />
+      <h2>本棚 <span class="muted-note">（{length(all_books)} 冊・おすすめ度の高い順）</span></h2>
+      <%!-- **興味トピックに近い本は強調する**（技術ニュースで選んだもの。言い換えと
+           すぐ下の子も近いと数える）。絞り込みは押したときだけ --%>
+      <p :if={near_count > 0} class="shelf-near">
+        <button
+          type="button"
+          class={["shelf-near-toggle", @shelf_near_only && "is-on"]}
+          phx-click="toggle_shelf_near"
+          aria-pressed={to_string(@shelf_near_only)}
+        >
+          ★ 興味トピックに近い本だけ（{near_count} 冊）
+        </button>
+      </p>
+      <p class="muted-note">
+        おすすめ度は<strong>その本を勧めている記事の本数</strong>です（機械が数えたもの）。 {Chidori.Datasets.Bookshelf.classic_sources()} 本以上で「定番」。表紙は
+        <a href="https://www.hanmoto.com/" target="_blank" rel="noreferrer">版元ドットコム</a>
+        の書影です。
+      </p>
+      <ol class="book-list">
+        <li
+          :for={book <- books}
+          class={[
+            "book-card",
+            book.near != [] && "is-near",
+            book_mark_of(@book_marks, book.title).read && "is-read"
+          ]}
+        >
+          <%!-- **本を押すと詳細が開く**（ほかの画面の詳細と同じくモーダル）。
+               表紙も押せる —— 目に入るのは表紙のほうが先 --%>
+          <button
+            type="button"
+            class={["book-cover", !book.cover_url && "is-empty"]}
+            phx-click="open_book"
+            phx-value-title={book.title}
+            aria-label={"#{book.name} の詳細を開く"}
+          >
+            <%!-- 表紙の無い本は 404 が返る。**壊れた画像の印を出さず、枠だけ残す** --%>
+            <img
+              :if={book.cover_url}
+              src={book.cover_url}
+              alt=""
+              loading="lazy"
+              onerror="this.classList.add('is-missing')"
+            />
+          </button>
+          <div class="book-body">
+            <p class="book-title">
+              <button
+                type="button"
+                class="book-name"
+                phx-click="open_book"
+                phx-value-title={book.title}
+              >
+                {book.name}
+              </button>
+              <span :if={book.classic} class="book-badge">定番</span>
+              <%!-- **読んだ本は印で分かるように**（本棚には残す。上位の枠からは外す） --%>
+              <span
+                :if={book_mark_summary(book_mark_of(@book_marks, book.title))}
+                class="read-badge"
+              >
+                {book_mark_summary(book_mark_of(@book_marks, book.title))}
+              </span>
+            </p>
+            <p class="book-score">
+              記事 {book.docs} 本が勧めている<span :if={book.recent > 0}>（直近 {book.recent} 本）</span>
+            </p>
+            <p :if={book.near != []} class="book-near">★ 興味: {Enum.join(book.near, "・")}</p>
+            <p :if={book.fields != []} class="book-fields">{Enum.join(book.fields, "・")}</p>
+            <p :if={book.topics != []} class="book-topics">
+              <span :for={topic <- book.topics} class="book-topic">{topic}</span>
+            </p>
+            <p :if={book.note != ""} class="book-note">{book.note}</p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <%!-- Chiezo の状態と、そこへ送る設定を **1 つの枠にまとめる**（関連図と同じ形）。
+         状態を見る場所と、直す場所と、押す場所が離れていると、何がどこへ効くのか
+         読めない --%>
+    <%!-- 設定はページの名前を冠した 1 つの枠にまとめる（他の画面と同じ形）--%>
+    <section class="settings-panel" aria-label={"#{@dataset.title}の設定"}>
+      <%!-- **設定は畳んでおき、開いたときに Chiezo から読む**（関連図と同じ）。
+           本棚を見に来るたびに、収集の状態・巡回・相手の一覧まで運んでいた。
+           <details> にしないのは、開いたことをサーバーが知る必要があるため --%>
+      <h2 class="settings-heading">
+        <button
+          type="button"
+          id="settings-toggle"
+          phx-click="toggle_settings"
+          aria-expanded={to_string(@settings_open)}
+          aria-controls="chiezo-settings"
+        >
+          <span class="settings-caret" aria-hidden="true">{if @settings_open, do: "▾", else: "▸"}</span>
+          {@dataset.title}の設定
+        </button>
+      </h2>
+
+      <div :if={@settings_open} id="chiezo-settings">
+        <%!-- **誰が集めて、どこに残るか**を設定の頭に置く（ページの下に置いていた頃は、
+           設定を読む人の目に入らなかった）。主役ではないので小さく --%>
+        <p class="muted-note collect-origin">
+          集めるのは
+          <a href="https://github.com/rtcode337/chiezo" target="_blank" rel="noreferrer">Chiezo</a>
+          の「集める」層です。Chidori が持つのは依頼と進み具合だけで、
+          溜まったものは Chiezo のソース「{@dataset.collection}」として残ります
+          （読むのは{@dataset.reader}です）。
+        </p>
+        <%!-- **区画の地図は見出しのすぐ下に置く。** どこまで見終わったかを最初に
+           見たいので、状態の数字や巡回の表より先に出す --%>
+        <%!-- **区画の一覧。** どこがまだ見られていないかは、ここにしか無い ——
+           「ここを先に見てほしい」を頼む口でもある。数百あるので畳んで置く --%>
+        <% rows = partition_rows(@state, @dataset.partition_sweeps) %>
+
+        <%!-- **区画を地図にして出す。** 「8,185 区画のうち 2 つ見終わり」と数で言われても、
+           それがどこなのかは読めない —— 押した四角から、その場で頼める --%>
+        <%!-- **travel-log へはファイルで渡す。** ブラウザから直接 Chiezo を読ませるには
+           CORS を開けたうえで Chiezo 自身を https で出す必要があり、LAN の中だけで
+           使う機械にそこまでさせる理由がない。中身は travel-log-data と同じ形なので、
+           向こうはリポジトリから取り込むのと同じ画面で入れられる --%>
+        <%!-- **地図の右上に小さく置く。** 書き出すのは集まった結果なので、区画の進み具合と
+           並べて見える場所がよい。主役の操作（送る・頼む）と並べると同じ重さに見える --%>
+        <div :if={Chidori.Datasets.TravelLog.exportable?(@dataset)} class="export-corner">
+          <%!-- **リンクと分かる見た目にする。** 押すと降ってくるだけで、画面の状態は
+             何も変わらない —— ボタンに寄せると「送る」「走らせる」と同じ重さに見える --%>
+          <%!-- 組み立てに十数秒かかるので、**待っている間も押したと分かる**ように
+             JS で取りに行く（DownloadLink）。JS が無ければ素のリンクとして働く --%>
+          <a
+            id={"download-#{@dataset.key}"}
+            class="download-link"
+            href={~p"/datasets/#{@dataset.key}/travel-log.zip"}
+            download
+            phx-hook="DownloadLink"
+            data-status={"download-status-#{@dataset.key}"}
+          >
+            ⬇ travel-log 用の ZIP を書き出す
+          </a>
+          <span
+            id={"download-status-#{@dataset.key}"}
+            class="download-status"
+            role="status"
+            phx-update="ignore"
+          ></span>
+          <p class="muted-note">
+            AI が目を通したものだけが入ります（settings.json と spots.csv）。
+            目を通したあとで消えたもの（閉店など）は exclude.txt に入り、
+            travel-log で読み込むと消えます。取り出しに十数秒かかります。
+          </p>
+        </div>
+
+        <.partition_map
+          map={Chidori.Datasets.Map.build(rows)}
+          sweeps={@dataset.partition_sweeps}
+          picked={@picked}
+          find_query={@map_query}
+          find_places={@map_places}
+          marker={@map_marker}
+        />
+
+        <% picked = picked_row(rows, @picked) %>
+        <section :if={picked} class="partition-picked" aria-label="選んだ区画">
+          <h3>選んだ区画</h3>
+          <dl class="collect-facts">
+            <div>
+              <dt>範囲（南西 / 北東）</dt>
+              <dd>{picked.key}</dd>
+            </div>
+            <div>
+              <dt>この区画にあるもの</dt>
+              <dd>{picked.count} 件</dd>
+            </div>
+            <div>
+              <dt>見終わった巡回</dt>
+              <dd>{if picked.by, do: "#{picked.by}（#{picked.seen}）", else: "まだ"}</dd>
+            </div>
+          </dl>
+          <%!-- **この区画に控えている travel-log からの依頼**（下の「控えている依頼」と同じもの）。
+             区画を地図で選んだところで、何が溜まっているかを見て、そのまま頼めるように --%>
+          <% waiting =
+            if @dataset.reader == "travel-log",
+              do: Enum.find(@pending, &(&1.key == picked.key)) %>
+          <div :if={@dataset.reader == "travel-log"} class="partition-pending">
+            <h4>
+              travel-log からの依頼（控えている {if waiting, do: length(waiting.items), else: 0} 件）
+            </h4>
+            <%= if waiting do %>
+              <p class="muted-note">{Jst.format(waiting.since)} から溜まっています。</p>
+              <pre>{Enum.map_join(waiting.items, "\n", & &1.text)}</pre>
+              <.request_picker
+                id="request-picker-partition"
+                backends={@backends}
+                backend={@request_backend}
+                model={@request_model}
+              />
+              <div class="button-row">
+                <button
+                  type="button"
+                  phx-click="send_pending"
+                  phx-value-key={waiting.key}
+                  disabled={@requesting != nil}
+                  phx-disable-with="頼んでいます…"
+                >
+                  この区画を頼む
+                </button>
+                <button
+                  type="button"
+                  phx-click="drop_pending"
+                  phx-value-key={waiting.key}
+                  data-confirm={"この#{length(waiting.items)} 件の控えを、頼まずに捨てます。よいですか？"}
+                >
+                  控えを捨てる
+                </button>
+              </div>
+            <% else %>
+              <p class="muted-note">この区画に控えている依頼はありません。</p>
+            <% end %>
+          </div>
+          <%!-- **Chiezo の「選んだ区画で 1 回走らせる」と同じ形**にする ——
+             割り込み（進み具合にも印にも触らない）は、押しても画面が変わらず
+             「何が起きたのか分からない」になっていた。こちらは**ふつうの回として
+             走る**ので、印が付き、読み直せば結果が見える --%>
+          <form phx-submit="run_partition" phx-change="pick_run" class="collect-form">
+            <input type="hidden" name="key" value={picked.key} />
+            <% {plain, hands} = by_kind(@backends) %>
+            <% models = models_for(@backends, @run_backend) %>
+            <p>
+              <label>
+                どの巡回として<br />
+                <select name="sweep">
+                  <%!-- 手で回す回・機械で引く回は出さない（選んでも Chiezo が断る） --%>
+                  <option
+                    :for={name <- runnable_sweeps(@state, @dataset.partition_sweeps)}
+                    value={name}
+                    selected={name == @run_sweep}
+                  >
+                    {name}
+                  </option>
+                </select>
+              </label>
+            </p>
+            <p>
+              <label>
+                頼む相手<br />
+                <%!-- 欄の名前を `run|backend` にしておくと、モデルの入れ替えは
+                   収集の表と同じ台本が引き受ける（`pages.BACKEND_PICKER_SCRIPT`）--%>
+                <select name="run|backend">
+                  <option value="">巡回の設定のまま</option>
+                  <option :for={b <- plain} value={b.id} selected={b.id == @run_backend}>
+                    {b.label}
+                  </option>
+                  <optgroup
+                    :if={hands != []}
+                    label="ワーカー（枠を見て振り替える）"
+                  >
+                    <option :for={b <- hands} value={b.id} selected={b.id == @run_backend}>
+                      {b.label}
+                    </option>
+                  </optgroup>
+                </select>
+              </label>
+              <label :if={models != []}>
+                モデル<br />
+                <select name="run|model">
+                  <option value="">モデルは相手の既定</option>
+                  <option :for={m <- models} value={m} selected={m == @run_model}>{m}</option>
+                </select>
+              </label>
+            </p>
+            <p class="muted-note">
+              <strong>ふつうの回として走ります</strong> —— この区画に「見た」印が付き、
+              進み具合も次の予定も進みます。AI の呼び出しは<strong>この 1 区画ぶん</strong>です。
+            </p>
+            <div class="button-row">
+              <button type="submit" disabled={@asking} phx-disable-with="走らせています…">
+                この区画で 1 回走らせる
+              </button>
+              <button type="button" phx-click="unpick_partition">やめる</button>
+            </div>
+          </form>
+        </section>
+
+        <h3>Chiezo の収集</h3>
+        <p aria-live="polite">{status_message(@state)}</p>
+        <p class="muted-note">{push_note(@state)}</p>
+
+        <dl :if={collection_facts(@state) != []} class="collect-facts">
+          <div :for={{label, value} <- collection_facts(@state)}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        </dl>
+
+        <%!-- **選んだところはサーバーが覚える**（`phx-change`）。覚えないと、状態が
+           届いた拍子にフォームが描き直され、選んだ相手が元の値に戻る --%>
+        <form id="collect-form" phx-submit="collect" phx-change="pick_sweep">
+          <.sweep_table
+            state={@state}
+            picks={@picks}
+            backends={@backends}
+          />
+
+          <p class="muted-note">
+            収集の名前は「{@dataset.collection}」です（Chiezo のソース名。<strong>後から変えません</strong>
+            —— 変えると、それまで溜めた先を見失います）。
+          </p>
+          <div class="button-row">
+            <button
+              type="submit"
+              phx-disable-with="送っています…"
+              disabled={@state.pushing}
+            >
+              {collect_label(@state)}
+            </button>
+          </div>
+        </form>
+
+        <p :if={@state.collection && @state.collection.url} class="muted-note">
+          <a href={@state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
+        </p>
+
+        <%!-- **依頼文は「Chiezo の収集」のためのもの**なので、その節の中に置く --%>
+        <%!-- **機械で引いたものと AI が書いたものの線引きが、ここでいちばん大事なところ**。
+           どちらも Chiezo が持っているものなので、1 つにまとめて出す --%>
+        <details class="news-prompt">
+          <summary>Chiezo への依頼文</summary>
+
+          <%!-- 抽出の指定と区画の割り方は、**持つ対象だけ**（技術書はどちらも持たない） --%>
+          <% extract = extract_text(assigns) %>
+          <% partition = partition_text(assigns) %>
+          <%= if extract do %>
+            <h3>抽出の指定（辞典から機械的に引く条件）</h3>
+            <p class="news-prompt-note">
+              名前・座標・住所・電話・サイト・ジャンル・紹介文は、この指定で辞典から引いています。 <strong>AI は関わりません</strong>（決まった結果が出ます）。 <strong>何本かに分けて書いてあれば、書いた順が優先の順</strong>です ——
+              <code>provides</code>
+              はその辞典が<strong>勝ちにいく項目</strong>で、
+              そこに書いていない項目は、どの辞典も埋めなかったときだけ使われます。
+            </p>
+            <pre>{extract}</pre>
+          <% end %>
+
+          <%= if partition do %>
+            <h3>区画の割り方</h3>
+            <p class="news-prompt-note">
+              巡回はここで割った区画を 1 つずつ回ります。<strong>母集団は集めたもの自身</strong>なので、
+              座標が直れば区画も追随し、育ちすぎた区画・空になった区画は Chiezo が割り直します。
+            </p>
+            <pre>{partition}</pre>
+          <% end %>
+
+          <h3>指示文（AI に頼んでいる内容）</h3>
+          <p :if={extract} class="news-prompt-note">
+            AI が書くのは<strong>辞典に書いていないこと</strong>だけです ——
+            まだ開いているか、食べに行く価値があるか、どんな店か。
+            どこを見るかは Chiezo が区画で渡すので、指示文には書いてありません。
+          </p>
+          <div :for={{name, text} <- sweep_prompts(assigns)}>
+            <h3>{name}</h3>
+            <pre>{text}</pre>
+          </div>
+        </details>
+
+        <%!-- **この収集から作る収集**（本棚・話題の網）。**親の下に置く** ——
+           別のタブにすると、何から作られたものかが読めなくなる --%>
+        <%!-- **囲まずに上に線を引くだけ**（ほかの節と同じ形）。設定の枠の中でさらに
+           囲むと、枠の中に枠が入り、どこまでが 1 つの設定なのか読みにくい --%>
+        <section
+          :if={@dataset[:derived]}
+          class="settings-block lined-block"
+          aria-label="この収集から作るもの"
+        >
+          <h3>{@dataset.derived.name()}</h3>
+          <p>
+            上の収集に付いた<strong>タグから機械で作ります</strong>。
+            数えるのは Chiezo で、<strong>AI がやるのは整えるところだけ</strong>です
+            （言い換えを畳む・分野を付ける・技術書でない語を外す・一言で説明する）。
+          </p>
+          <%!-- **親の収集と同じ形で出す**（状態・巡回ごとの相手・送る）。ボタンだけだと、
+             いま Chiezo にあるのか、どの相手に頼んでいるのかが読めない --%>
+          <p aria-live="polite">{status_message(@derived_state)}</p>
+
+          <dl :if={@derived_state.collection} class="collect-facts">
+            <div :for={{label, value} <- collection_facts(@derived_state)}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          </dl>
+
+          <form
+            id="derived-collect-form"
+            phx-submit="collect_derived"
+            phx-change="pick_derived_sweep"
+          >
+            <.sweep_table state={@derived_state} picks={@derived_picks} backends={@backends} />
+            <p class="muted-note">
+              溜め先は別の収集です（<code>{@dataset.derived.collection()}</code>）。
+              <strong>止めた状態で作ります</strong>
+              —— 動き出すのは Chiezo の管理画面で
+              有効にしたときだけです。
+            </p>
+            <div class="button-row">
+              <button
+                type="submit"
+                phx-disable-with="送っています…"
+                disabled={@derived_state.pushing}
+              >
+                {collect_label(@derived_state)}
+              </button>
+            </div>
+          </form>
+
+          <p :if={@derived_state.collection && @derived_state.collection.url} class="muted-note">
+            <a href={@derived_state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
+          </p>
+
+          <%!-- 本棚の収集に何を頼んでいるか（親の収集と同じ形）。機械収集の回は AI を呼ばず、
+             記事のタグを数えるだけなので、その指定を出す --%>
+          <details class="news-prompt">
+            <summary>Chiezo への依頼文</summary>
+            <%= if extract = derived_extract(@dataset) do %>
+              <h3>抽出の指定（記事のタグを機械で数える条件）</h3>
+              <p class="news-prompt-note">
+                上の収集の記事に付いた「本:」のタグを数えます。<strong>AI は関わりません</strong>。
+              </p>
+              <pre>{extract}</pre>
+            <% end %>
+            <div :for={{name, text} <- derived_prompts(@dataset)}>
+              <h3>{name}</h3>
+              <pre>{text}</pre>
+            </div>
+          </details>
+        </section>
+
+        <details :if={rows != []} class="partition-list">
+          <% progress = partition_progress(rows, @dataset.partition_sweeps) %>
+          <summary>
+            区画（<span :if={progress}>{elem(progress, 1)} / </span>{length(rows)}）
+          </summary>
+          <p class="muted-note">
+            <span :if={progress}>
+              「/」の前は「{elem(progress, 0)}」が見終わった区画の数です（先の巡回が一周したら、次の巡回の数に変わります）。
+            </span>
+            まだ見ていないものが先に表示されます。
+            区画は<strong>座標で</strong>切ってあります（鍵は「南西の緯度経度／北東の緯度経度」）。
+            店の多いところは細かく、少ないところは粗くなります。 <strong>押すと、その区画を先に調べてもらえます</strong>（印が付くので、
+            巡回が同じところをもう一度見ることはありません）。
+          </p>
+          <table class="partition-table">
+            <thead>
+              <tr>
+                <th>区画</th>
+                <th>件数</th>
+                <th>見終わった巡回</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={row <- Enum.take(rows, shown_partitions())}>
+                <td>{row.key}</td>
+                <td>{row.count}</td>
+                <td>{if row.by, do: "#{row.by}（#{row.seen}）", else: "まだ"}</td>
+                <td>
+                  <button type="button" phx-click="pick_partition" phx-value-key={row.key}>
+                    選ぶ
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p :if={length(rows) > shown_partitions()} class="muted-note">
+            先頭の {shown_partitions()} 区画だけ出しています（残り {length(rows) - shown_partitions()} 区画）。
+            並びは「いちばん長く見ていない順」なので、上から順に回ってきます。
+          </p>
+        </details>
+
+        <%!-- **travel-log からの依頼**（travel-log が読む収集だけ）。管理画面の
+           「修正・追加の依頼」のテキストを貼ると、**1 件ずつ控える**（すぐには頼まない）。
+           区画ごとに溜まった件数を見て、「この区画を頼む」で、その区画の回に依頼を補足として
+           載せて頼む。**開いた状態で出す** —— この節に来るのはたいてい依頼を貼るためで、
+           畳んであると 1 手余計にかかる --%>
+        <details :if={@state.collection && @dataset.reader == "travel-log"} class="ask-more" open>
+          <summary>travel-log からの依頼</summary>
+          <form phx-submit="travel_log_request">
+            <p>
+              <label>
+                travel-log の「修正・追加の依頼」のテキスト<br />
+                <textarea
+                  name="text"
+                  rows="6"
+                  placeholder="- [修正] 店名 (35.68123,139.76712): 閉店している&#10;- [追加] (35.68000,139.76000): うどんの名店がある"
+                ></textarea>
+              </label>
+            </p>
+            <p class="muted-note">
+              travel-log の管理画面の「渡すテキスト」をそのまま貼ってください。 <strong>すぐには頼まず、1 件ずつ控えます</strong>（同じ依頼を貼り直しても 1 件のまま）。
+              下の「控えている依頼」で区画ごとの件数を見て、溜まった区画から「この区画を頼む」で頼んでください
+              —— 1 件しか無い区画にも 1 回ずつ AI の回が走ると、枠を使い潰します。
+              「[位置確認]」（位置OK）と「[位置修正]」（ピンを動かして指した位置）の行は AI を使わないので、貼った時点でその店の座標を Chiezo に固定させます（位置修正は動かした先の座標で）。
+            </p>
+            <div class="button-row">
+              <button type="submit" phx-disable-with="控えています…">控える</button>
+            </div>
+          </form>
+        </details>
+        <p :if={held_message(@held)} class="muted-note" aria-live="polite">
+          {held_message(@held)}
+        </p>
+        <%!-- **AI を使わずに、いま反映する**（機械収集の回を 1 回走らせて焼き直す）。固定は
+             次に焼くときから効くので、待たずに travel-log へ出したいときに押す。AI の回を
+             待たせない・枠を使わない —— 依頼のうち、AI の要らない直しだけを先に済ませる口 --%>
+        <%!-- **まだ焼いていない固定があれば出す**（固定した直後の画面に限らない。範囲の画面で
+             依頼を配ったときや、画面を移ったあとでも押せるように）。焼けば 0 件になって消える
+             —— 固定の記録そのものは反映後も残るので、その数では出さない --%>
+        <div
+          :if={
+            @dataset.reader == "travel-log" and
+              (match?({:ok, %{held: [_ | _]}}, @held) or
+                 (@state.collection && Map.get(@state.collection, :locks_pending, 0) > 0))
+          }
+          class="button-row"
+        >
+          <button type="button" phx-click="apply_locks" phx-disable-with="頼んでいます…">
+            AI を使わずにいま反映する
+          </button>
+          <span
+            :if={@state.collection && Map.get(@state.collection, :locks_pending, 0) > 0}
+            class="muted-note"
+          >
+            まだ反映していない固定が {@state.collection.locks_pending} 件あります。待たずに出したいときに押してください（機械収集を 1 回走らせます。AI は使いません）。
+          </span>
+        </div>
+        <p :if={@applied} class="muted-note" aria-live="polite">{applied_message(@applied)}</p>
+        <p :if={stashed_message(@stashed)} class="muted-note" aria-live="polite">
+          {stashed_message(@stashed)}
+        </p>
+
+        <%!-- **控えている依頼を、区画ごとに件数の多い順に並べる。** どの区画から頼むかを
+           件数で決められるように。区画は座標から見るたびに引くので、区画を割り直しても迷子にならない --%>
+        <section
+          :if={@dataset.reader == "travel-log" and @pending != []}
+          class="request-results"
+          aria-label="控えている依頼"
+        >
+          <header class="request-results-head">
+            <h3>控えている依頼（{Enum.sum(Enum.map(@pending, &length(&1.items)))} 件）</h3>
+          </header>
+          <p class="muted-note">
+            「この区画を頼む」で、その区画の「{Requests.sweep(@dataset)}」を 1 回走らせ、溜まった依頼を補足として載せます。
+            ふつうの回として走るので、区画には印が付きます。Chiezo が受けたら控えから消えます（断られたら残ります）。
+          </p>
+          <.request_picker
+            id="request-picker-pending"
+            backends={@backends}
+            backend={@request_backend}
+            model={@request_model}
+          />
+          <details :for={group <- @pending} class="request-result">
+            <summary>
+              <span class="request-scope">
+                {if group.key, do: group.key, else: "どの区画にも入らない"}
+              </span>
+              <span class="request-state">{length(group.items)} 件</span>
+              <span class="request-when">{Jst.format(group.since)} から</span>
+            </summary>
+            <pre>{Enum.map_join(group.items, "\n", & &1.text)}</pre>
+            <div class="button-row">
+              <button
+                :if={group.key}
+                type="button"
+                phx-click="send_pending"
+                phx-value-key={group.key}
+                disabled={@requesting != nil}
+                phx-disable-with="頼んでいます…"
+              >
+                この区画を頼む
+              </button>
+              <button
+                type="button"
+                phx-click="drop_pending"
+                phx-value-key={group.key || ""}
+                data-confirm={"この#{length(group.items)} 件の控えを、頼まずに捨てます。よいですか？"}
+              >
+                控えを捨てる
+              </button>
+            </div>
+            <p :if={!group.key} class="muted-note">
+              範囲の外の座標です。範囲を広げると、その区画に入り直します。
+            </p>
+          </details>
+        </section>
+        <% sweep = Requests.sweep(@dataset) %>
+        <p
+          :if={request_message(@requesting, @requested, sweep)}
+          class="muted-note"
+          aria-live="polite"
+        >
+          {request_message(@requesting, @requested, sweep)}
+        </p>
+
+        <%!-- **依頼と、その結果を並べる。** 結果は Chiezo の変更履歴から、頼んだ後に
+           同じ区画を見た回を引き当てたもの。見出しを押すと、Chiezo の画面で
+           その 1 件の「直す前との違い」が開く。**結果はどれも畳んで出す** ——
+           開いて置くと、足した・直した見出しの一覧が依頼の欄の下を長く埋める --%>
+        <section
+          :if={@dataset.reader == "travel-log" and @request_results != []}
+          class="request-results"
+          aria-label="依頼の結果"
+        >
+          <header class="request-results-head">
+            <h3>依頼の結果</h3>
+            <button type="button" phx-click="reload_request_results">読み直す</button>
+          </header>
+          <details :for={entry <- @request_results} class="request-result">
+            <summary>
+              <span class="request-when">{Jst.format(entry.log.requested_at)}</span>
+              <span class="request-scope">
+                座標 {entry.log.points} 件 → 区画 {length(entry.log.keys)} つ
+              </span>
+              <span class={[
+                "request-state",
+                entry.result && entry.unfinished == [] && "has-result",
+                entry.unfinished != [] && "is-partial"
+              ]}>
+                {request_state(entry)}
+              </span>
+            </summary>
+
+            <%= if entry.result && entry.result.status == "ok" do %>
+              <%!-- **止まった理由と、見ていない区画を出す。** 件数だけ並べると、頼んだ区画が
+                   全部片付いたように読める。頼み直すには、同じテキストをもう一度貼る --%>
+              <div :if={entry.unfinished != []} class="request-partial">
+                <p>
+                  頼んだ {length(entry.log.keys)} 区画のうち {length(entry.unfinished)} 区画は見ていません。
+                  直したいところが残っていれば、同じテキストをもう一度貼って頼み直してください。
+                </p>
+                <p :if={entry.result.error != ""} class="muted-note">理由: {entry.result.error}</p>
+              </div>
+              <%!-- 最後まで見た回（見終えた区画を控えていない古い回も含む）でも、Chiezo が
+                   添え書きを残していれば出す（見送った区画・見られなかった件数など） --%>
+              <p :if={entry.unfinished == [] and entry.result.error != ""} class="muted-note">
+                Chiezo の控え: {entry.result.error}
+              </p>
+              <p class="muted-note">
+                {Jst.format(entry.result.at)} に終わった回{if entry.result.backend,
+                  do:
+                    "（#{entry.result.backend}#{if entry.result.model, do: " / #{entry.result.model}", else: ""}）",
+                  else: ""}。見出しを押すと、Chiezo の画面で直す前との違いが開きます。
+              </p>
+              <.change_lists change={entry.result} collection={@dataset.collection} />
+              <p
+                :if={entry.result.added + entry.result.updated + entry.result.removed == 0}
+                class="muted-note"
+              >
+                この回では何も変わりませんでした。
+              </p>
+            <% end %>
+
+            <details class="request-text">
+              <summary>依頼の中身</summary>
+              <pre>{entry.log.text}</pre>
+            </details>
+          </details>
+        </section>
+
+        <%!-- **最近の回**（自動で回った回も、依頼で走った回も）。依頼の結果は依頼ごとに
+           回を引き当てるので、整理やざっと見るが何を直したのかはここで見る。
+           依頼で走った回には印を付ける（同じ回が上の依頼の結果にも出る）。
+           **どれも畳んで出す**（依頼の結果と同じ理由） --%>
+        <section :if={@recent_runs != []} class="request-results" aria-label="最近の回">
+          <header class="request-results-head">
+            <h3>最近の回</h3>
+            <button type="button" phx-click="reload_recent_runs">読み直す</button>
+          </header>
+          <details
+            :for={%{change: run, by_request: by_request} <- @recent_runs}
+            class="request-result"
+          >
+            <summary>
+              <span class="request-when">{Jst.format(run.at)}</span>
+              <span class="request-scope">
+                {run.sweep}{if run_scope(run) != "", do: "・#{run_scope(run)}", else: ""}
+              </span>
+              <span :if={by_request} class="run-by-request">依頼</span>
+              <span class={[
+                "request-state",
+                run.status == "ok" && run.added + run.updated + run.removed > 0 && "has-result"
+              ]}>
+                {run_state(run)}
+              </span>
+            </summary>
+            <p :if={run.status == "ok" and run.error != ""} class="muted-note">
+              Chiezo の控え: {run.error}
+            </p>
+            <p class="muted-note">
+              {if run.backend,
+                do: "#{run.backend}#{if run.model, do: " / #{run.model}", else: ""}。",
+                else: ""}見出しを押すと、Chiezo の画面で直す前との違いが開きます。
+            </p>
+            <.change_lists change={run} collection={@dataset.collection} />
+          </details>
+        </section>
+
+        <%!-- **何が溜まるのかを、使う側の項目で書く。** ここで「どの項目がどこから
+           来るか」が読めないと、足りない項目に気づけない。**読む相手も単位も対象ごとに
+           違う**ので、文面は定義の側が持つ --%>
+        <section class="settings-block lined-block" aria-label={"#{@dataset.reader} に渡す中身"}>
+          <h3>{@dataset.reader} に渡す中身</h3>
+          <p>
+            {@dataset.unit}で溜まります。{@dataset.reader}は <strong>タグ「{@dataset.module.kind_tag()}」</strong>で拾い、次の項目を読みます。
+          </p>
+          <table class="sweep-table">
+            <thead>
+              <tr>
+                <th>項目</th>
+                <th>収集の中身</th>
+                <th>誰が入れるか</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={row <- field_rows(@dataset)}>
+                <td>{row.field}</td>
+                <td>{row.stored}</td>
+                <td>{row.who}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p :if={@dataset[:note]} class="muted-note">{@dataset[:note]}</p>
+        </section>
+      </div>
+    </section>
+
+    <%!-- **ドメインの詳細**（ほかの画面の詳細と同じくモーダル）。観測した事実（機械）と、
+         調べた中身（AI）を分けて出す --%>
+    <% domain = opened_domain(assigns) %>
+    <div :if={domain} class="artwork-backdrop" phx-window-keydown="close_domain" phx-key="Escape">
+      <section
+        class="artwork domain-detail"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="domain-detail-title"
+        phx-click-away="close_domain"
+      >
+        <div class="artwork-head">
+          <strong id="domain-detail-title">
+            {domain.domain}
+            <span :if={domain.verdict} class={verdict_class(domain.verdict)}>{domain.verdict}</span>
+          </strong>
+          <button type="button" phx-click="close_domain">閉じる</button>
+        </div>
+        <%!-- 見た記録（関連図の「見た記録」と同じ形）。**Chidori にだけ残す** --%>
+        <% mark = domain_mark_of(@domain_marks, domain.domain) %>
+        <details class="seen-mark" open={Map.has_key?(@domain_marks, domain.domain)}>
+          <summary>
+            見た記録
+            <span :if={domain_mark_summary(mark)} class="seen-badge">
+              {domain_mark_summary(mark)}
+            </span>
+          </summary>
+          <form id="domain-mark" phx-submit="save_domain_mark">
+            <input type="hidden" name="domain" value={domain.domain} />
+            <p class="seen-row">
+              <label><input type="checkbox" name="seen" checked={mark.seen} /> 見た</label>
+              <label>見た日 <input type="date" name="seen_on" value={domain_seen_on(mark)} /></label>
+            </p>
+            <p>
+              <label>
+                メモ（何の通信だったか・どうしたか）<br />
+                <textarea
+                  name="note"
+                  rows="3"
+                  placeholder="例: テレビの視聴データ送信。止めたままでよい"
+                >{mark.note}</textarea>
+              </label>
+            </p>
+            <p class="muted-note">
+              ここに書いたことは Chidori にだけ残ります（Chiezo へは送りません）。「まだ見ていない」で絞ると、見たものは一覧から外れます。
+              <strong>印もメモも空にして保存すると、記録ごと消えます。</strong>
+            </p>
+            <button type="submit" phx-disable-with="保存しています…">記録を保存</button>
+            <span :if={@domain_mark_saved == domain.domain} class="muted-note">保存しました。</span>
+          </form>
+        </details>
+
+        <h3>観測したこと</h3>
+        <ul class="domain-facts">
+          <li :if={domain.first_seen}>
+            最初に見たのは {Jst.format(domain.first_seen)}、最後に見たのは {Jst.format(domain.last_seen)}
+          </li>
+          <li>
+            問い合わせ {domain.queries} 回<span :if={domain.blocked}>（うち Pi-hole が止めたのは {domain.blocked_count} 回）</span>
+          </li>
+          <li :if={domain.watched_at}>気になる通信に挙がったのは {Jst.format(domain.watched_at)}</li>
+          <li :for={fact <- domain.observed}>{fact}</li>
+        </ul>
+        <table :if={domain.clients != []} class="domain-clients">
+          <thead>
+            <tr>
+              <th>アクセス元</th><th>回数</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={c <- domain.clients}>
+              <td>{c.ip}<span :if={c.name} class="muted-note">（{c.name}）</span></td>
+              <td>{c.count}</td>
+            </tr>
+          </tbody>
+        </table>
+        <h3>調べたこと</h3>
+        <%= case @domain_docs[domain.domain] do %>
+          <% {:ok, text} when domain.researched and text != "" -> %>
+            <div class="domain-research">{text}</div>
+          <% {:ok, _text} -> %>
+            <p class="muted-note">まだ調べていません（整理の回が順に調べます）。</p>
+          <% {:error, reason} -> %>
+            <p class="muted-note">読めませんでした（{reason_text(reason)}）。</p>
+          <% _loading -> %>
+            <p class="muted-note">読んでいます…</p>
+        <% end %>
+      </section>
+    </div>
+
+    <%!-- **本の詳細**（ほかの画面の詳細と同じくモーダル）。勧めている記事と、その本について
+       Chiezo へ頼む口（本棚の整理の回への割り込み）を置く —— 頼みごとは本を見ながら
+       思いつくので、設定の欄に離して置くと、どの本の話か書き直すことになる --%>
+    <% book = opened_book(assigns) %>
+    <div :if={book} class="artwork-backdrop" phx-window-keydown="close_book" phx-key="Escape">
+      <section
+        class="artwork book-detail"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="book-detail-title"
+        phx-click-away="close_book"
+      >
+        <div class="artwork-head">
+          <strong id="book-detail-title">
+            {book.name} <span :if={book.classic} class="book-badge">定番</span>
+          </strong>
+          <button type="button" phx-click="close_book">閉じる</button>
+        </div>
+        <div class="book-detail-body">
+          <span :if={book.cover_url} class="book-detail-cover">
+            <img src={book.cover_url} alt="" onerror="this.classList.add('is-missing')" />
+          </span>
+          <div>
+            <p class="book-score">
+              記事 {book.docs} 本が勧めている<span :if={book.recent > 0}>（直近 {book.recent} 本）</span>
+            </p>
+            <p :if={book.near != []} class="book-near">★ 興味: {Enum.join(book.near, "・")}</p>
+            <p :if={book.fields != []} class="book-fields">{Enum.join(book.fields, "・")}</p>
+            <p :if={book.topics != []} class="book-topics">
+              <span :for={topic <- book.topics} class="book-topic">{topic}</span>
+            </p>
+            <p :if={book.note != ""} class="book-note">{book.note}</p>
+            <p :if={book.page_url} class="muted-note">
+              ISBN {book.isbn}・<a href={book.page_url} target="_blank" rel="noreferrer">版元ドットコムで見る ↗</a>
+            </p>
+            <p :if={!book.page_url} class="muted-note">
+              ISBN はまだ分かっていません（本棚の整理の回が調べると、表紙も出ます）。
+            </p>
+          </div>
+        </div>
+
+        <%!-- 読んだ記録（関連図の「見た記録」と同じ形）。**Chidori にだけ残す** --%>
+        <% mark = book_mark_of(@book_marks, book.title) %>
+        <details class="seen-mark" open={Map.has_key?(@book_marks, book.title)}>
+          <summary>
+            読んだ記録
+            <span :if={book_mark_summary(mark)} class="seen-badge">{book_mark_summary(mark)}</span>
+          </summary>
+          <form id="book-mark" phx-submit="save_book_mark">
+            <input type="hidden" name="title" value={book.title} />
+            <p class="seen-row">
+              <label><input type="checkbox" name="read" checked={mark.read} /> 読んだ</label>
+              <label>読んだ日 <input type="date" name="read_on" value={read_on_value(mark)} /></label>
+            </p>
+            <p>
+              <label>
+                メモ（感想・どこが役に立ったか）<br />
+                <textarea
+                  name="note"
+                  rows="3"
+                  placeholder="例: 3 章の命名の話はすぐ使えた。後半は飛ばし読み"
+                >{mark.note}</textarea>
+              </label>
+            </p>
+            <p class="muted-note">
+              ここに書いたことは Chidori にだけ残ります（Chiezo へは送りません）。読んだ本は「いま勧められている未読の上位」から外れます。
+              <strong>印もメモも空にして保存すると、記録ごと消えます。</strong>
+            </p>
+            <button type="submit" phx-disable-with="保存しています…">記録を保存</button>
+            <span :if={@book_mark_saved == book.title} class="muted-note">保存しました。</span>
+          </form>
+        </details>
+
+        <h3>勧めている記事</h3>
+        <%= case @book_posts[book.title] do %>
+          <% {:ok, [_ | _] = posts} -> %>
+            <ul class="book-posts">
+              <li :for={post <- posts}>
+                <a :if={post.url} href={post.url} target="_blank" rel="noreferrer">{post.title}</a>
+                <span :if={!post.url}>{post.title}</span>
+                <span :if={post.published_at != ""} class="muted-note">
+                  {String.slice(post.published_at, 0, 10)}
+                </span>
+              </li>
+            </ul>
+          <% {:ok, []} -> %>
+            <p class="muted-note">記事が見つかりませんでした。</p>
+          <% {:error, reason} -> %>
+            <p class="muted-note">{reason_text(reason)}</p>
+          <% _loading -> %>
+            <p class="muted-note">記事を読んでいます…</p>
+        <% end %>
+
+        <form id="book-ask" phx-submit="ask_book" class="article-ask">
+          <input type="hidden" name="title" value={book.title} />
+          <label>
+            この本を Chiezo に調べ直してもらう<br />
+            <textarea
+              name="note"
+              rows="3"
+              placeholder="例: 表紙が別の本になっている / 分野が違う / 第 2 版が出ている"
+            ></textarea>
+          </label>
+          <p class="muted-note">
+            本棚の収集（{@dataset.derived && @dataset.derived.collection()}）の「整理」の回として、
+            この本だけを 1 回調べ直します（分野・タグ・説明・ISBN を確かめ、違っていれば直す）。
+            定時の巡回の進み具合にも次の予定にも触りません。書き添えたことは補足として渡します。
+          </p>
+          <div class="button-row">
+            <button type="submit" disabled={@book_asking} phx-disable-with="頼んでいます…">
+              Chiezo に頼む
+            </button>
+          </div>
+          <p :if={ask_message(@book_asked)} class="muted-note" aria-live="polite">
+            {ask_message(@book_asked)}
+          </p>
+        </form>
+      </section>
+    </div>
+  </div>
+</main>

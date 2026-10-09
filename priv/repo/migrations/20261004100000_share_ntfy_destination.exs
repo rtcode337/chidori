@@ -1,4 +1,4 @@
-defmodule Tazuna.Repo.Migrations.ShareNtfyDestination do
+defmodule Chidori.Repo.Migrations.ShareNtfyDestination do
   @moduledoc """
   ntfy の宛先（トピック名と場所）を、話題ごとから**全部の通知で 1 つ**にする。
 

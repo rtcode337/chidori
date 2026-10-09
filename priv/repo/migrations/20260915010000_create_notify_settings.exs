@@ -1,13 +1,13 @@
-defmodule Tazuna.Repo.Migrations.CreateNotifySettings do
+defmodule Chidori.Repo.Migrations.CreateNotifySettings do
   @moduledoc """
   話題ごとの通知先。
 
   **環境変数だけでは、宛先を変えるのに立て直しが要る。** 通知先は運用しながら
   決めるもの（試しに別のトピックへ流す、しばらく止める）なので、画面から直せる
   必要がある。**Chiezo の収集の設定とは立場が違う** —— あちらは向こうが持っている
-  ものを読んでいるだけだが、通知先は tazuna にしか無い。
+  ものを読んでいるだけだが、通知先は Chidori にしか無い。
 
-  **話題の定義そのものは持たない**(`Tazuna.Topics.defined/0`)。DB に定義を持たせて
+  **話題の定義そのものは持たない**(`Chidori.Topics.defined/0`)。DB に定義を持たせて
   いた頃は、コードに足した話題が既に使っている環境へ永遠に届かなかった。
   ここに置くのは、利用者が決めることだけ。
   """

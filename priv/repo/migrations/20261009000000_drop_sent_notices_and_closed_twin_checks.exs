@@ -1,4 +1,4 @@
-defmodule Tazuna.Repo.Migrations.DropSentNoticesAndClosedTwinChecks do
+defmodule Chidori.Repo.Migrations.DropSentNoticesAndClosedTwinChecks do
   use Ecto.Migration
 
   # 知らせ済みの記録（sent_notices）は、新しいまとめと押されたときにしか知らせない

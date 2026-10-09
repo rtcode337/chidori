@@ -1,4 +1,4 @@
-defmodule Tazuna.Repo.Migrations.DropNationalMealsLeftovers do
+defmodule Chidori.Repo.Migrations.DropNationalMealsLeftovers do
   use Ecto.Migration
 
   # 食事処は範囲ごとの収集（tazuna_dining_<範囲の番号>）だけになったので、

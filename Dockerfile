@@ -27,11 +27,11 @@ FROM debian@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229
 RUN apt-get update \
   && apt-get install --yes --no-install-recommends ca-certificates libstdc++6 libncurses6 openssl \
   && rm -rf /var/lib/apt/lists/* \
-  && groupadd --system --gid 10001 tazuna \
-  && useradd --system --uid 10001 --gid tazuna --create-home tazuna
+  && groupadd --system --gid 10001 chidori \
+  && useradd --system --uid 10001 --gid chidori --create-home chidori
 
 WORKDIR /app
-COPY --from=builder --chown=tazuna:tazuna /app/_build/prod/rel/tazuna ./
+COPY --from=builder --chown=chidori:chidori /app/_build/prod/rel/chidori ./
 
 # 日本語を扱うので UTF-8 を明示する。空のままだと VM が latin1 で動き、
 # Elixir が文字の扱いで警告を出す
@@ -41,10 +41,10 @@ ENV LANG=C.UTF-8 \
     PHX_SERVER=true \
     PORT=7000
 
-USER tazuna
+USER chidori
 EXPOSE 7000
 
 # 起動のたびに移行を当ててから立てる。**リリースに Mix は入らない**ので
-# `Tazuna.Release.migrate/0` を呼ぶ。当て終わっている移行は飛ばされるだけなので、
+# `Chidori.Release.migrate/0` を呼ぶ。当て終わっている移行は飛ばされるだけなので、
 # 何度起動しても同じ結果になる
-CMD ["sh", "-c", "bin/tazuna eval 'Tazuna.Release.migrate()' && exec bin/tazuna start"]
+CMD ["sh", "-c", "bin/chidori eval 'Chidori.Release.migrate()' && exec bin/chidori start"]

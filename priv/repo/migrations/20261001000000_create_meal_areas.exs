@@ -1,6 +1,6 @@
-defmodule Tazuna.Repo.Migrations.CreateMealAreas do
+defmodule Chidori.Repo.Migrations.CreateMealAreas do
   @moduledoc """
-  食事処を集める範囲（`Tazuna.Datasets.MealAreas`）。1 行 1 範囲で、**範囲ごとに
+  食事処を集める範囲（`Chidori.Datasets.MealAreas`）。1 行 1 範囲で、**範囲ごとに
   Chiezo の収集が 1 つ**できます（`tazuna_dining_<id>`）。
 
   日本全体を 1 つの収集で回していた頃は、59.7 万件・4,105 区画で一周のめどが立たず、

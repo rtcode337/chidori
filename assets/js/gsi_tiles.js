@@ -2,7 +2,7 @@
 //
 // 区画の地図と食事処の範囲の地図で同じものを使う。図の器に `.tile-layer` の層を置き、
 // 当て直すたび（`painted()`）に `paintTiles(hook, 層, ppu)` を呼ぶ。図の svg には
-// 投影の枠（`data-west` / `data-top` / `data-scale`。`Tazuna.Datasets.Map` の `frame`）を
+// 投影の枠（`data-west` / `data-top` / `data-scale`。`Chidori.Datasets.Map` の `frame`）を
 // 書いておく。
 //
 // **参照元は送らない**（画面のアドレスを外へ出さない）。タイルを出しているあいだは

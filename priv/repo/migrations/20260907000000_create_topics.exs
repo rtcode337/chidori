@@ -1,4 +1,4 @@
-defmodule Tazuna.Repo.Migrations.CreateTopics do
+defmodule Chidori.Repo.Migrations.CreateTopics do
   @moduledoc """
   話題(関心テーマ)ごとの設定。
 

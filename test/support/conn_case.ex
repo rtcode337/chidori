@@ -1,4 +1,4 @@
-defmodule TazunaWeb.ConnCase do
+defmodule ChidoriWeb.ConnCase do
   @moduledoc """
   This module defines the test case to be used by
   tests that require setting up a connection.
@@ -11,7 +11,7 @@ defmodule TazunaWeb.ConnCase do
   we enable the SQL sandbox, so changes done to the database
   are reverted at the end of every test. If you are using
   PostgreSQL, you can even run database tests asynchronously
-  by setting `use TazunaWeb.ConnCase, async: true`, although
+  by setting `use ChidoriWeb.ConnCase, async: true`, although
   this option is not recommended for other databases.
   """
 
@@ -20,20 +20,20 @@ defmodule TazunaWeb.ConnCase do
   using do
     quote do
       # The default endpoint for testing
-      @endpoint TazunaWeb.Endpoint
+      @endpoint ChidoriWeb.Endpoint
 
-      use TazunaWeb, :verified_routes
+      use ChidoriWeb, :verified_routes
 
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
-      import TazunaWeb.ConnCase
+      import ChidoriWeb.ConnCase
     end
   end
 
   setup tags do
     # DB を触る画面のテストも sandbox に包む(DataCase と同じ理由)
-    Tazuna.DataCase.setup_sandbox(tags)
+    Chidori.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 end

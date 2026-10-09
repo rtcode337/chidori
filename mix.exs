@@ -1,9 +1,9 @@
-defmodule Tazuna.MixProject do
+defmodule Chidori.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :tazuna,
+      app: :chidori,
       version: "0.1.0",
       elixir: "~> 1.20",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -20,7 +20,7 @@ defmodule Tazuna.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {Tazuna.Application, []},
+      mod: {Chidori.Application, []},
       # :inets と :ssl は外部への HTTP に使う。ここへ書かないとリリースへ入らず、
       # 開発サーバーでは動くのにコンテナでは :httpc が見つからずに落ちる。
       extra_applications: [:logger, :runtime_tools, :inets, :ssl]
@@ -76,10 +76,10 @@ defmodule Tazuna.MixProject do
       # 単体では通るのに並べると落ちる、という追いにくい壊れ方をする
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
-      "assets.build": ["compile", "tailwind tazuna", "esbuild tazuna"],
+      "assets.build": ["compile", "tailwind chidori", "esbuild chidori"],
       "assets.deploy": [
-        "tailwind tazuna --minify",
-        "esbuild tazuna --minify",
+        "tailwind chidori --minify",
+        "esbuild chidori --minify",
         "phx.digest"
       ],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]

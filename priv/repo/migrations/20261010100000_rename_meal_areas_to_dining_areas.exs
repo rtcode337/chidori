@@ -1,6 +1,6 @@
-defmodule Tazuna.Repo.Migrations.RenameMealAreasToDiningAreas do
+defmodule Chidori.Repo.Migrations.RenameMealAreasToDiningAreas do
   @moduledoc """
-  食事処の範囲の表を `dining_areas` に改める（`Tazuna.Datasets.DiningAreas`）。
+  食事処の範囲の表を `dining_areas` に改める（`Chidori.Datasets.DiningAreas`）。
   Chiezo の収集（`tazuna_dining_<番号>`）と travel-log の種別（`dining`）が dining なので、
   手元の名前もそちらに揃える。
 

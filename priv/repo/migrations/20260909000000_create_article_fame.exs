@@ -1,4 +1,4 @@
-defmodule Tazuna.Repo.Migrations.CreateArticleFame do
+defmodule Chidori.Repo.Migrations.CreateArticleFame do
   @moduledoc """
   記事の知名度（月次ページビュー）の控え。
 
