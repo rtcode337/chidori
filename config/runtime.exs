@@ -34,8 +34,8 @@ if config_env() == :dev do
         # Gettext translations
         ~r"priv/gettext/.*\.po$"E,
         # Router, Controllers, LiveViews and LiveComponents
-        ~r"lib/tazuna_web/router\.ex$"E,
-        ~r"lib/tazuna_web/(controllers|live|components)/.*\.(ex|heex)$"E
+        ~r"lib/chidori_web/router\.ex$"E,
+        ~r"lib/chidori_web/(controllers|live|components)/.*\.(ex|heex)$"E
       ]
     ]
 end

@@ -5,7 +5,7 @@ defmodule Chidori.ArtworkTest do
 
   # 覚え書きはアプリ全体で 1 つなので、テストのあいだで持ち越さない
   setup do
-    :ets.delete_all_objects(:tazuna_artwork)
+    :ets.delete_all_objects(:chidori_artwork)
     :ok
   end
 

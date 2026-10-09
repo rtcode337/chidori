@@ -38,7 +38,7 @@ defmodule Chidori.Artwork do
   # **一覧から選びます** —— 一覧に無い値を書くと、絵が 1 枚残らず消えます
   @thumb_width 500
 
-  @table :tazuna_artwork
+  @table :chidori_artwork
   # 覚えておく長さ。**永久には持たない** —— 画像の無かった作品に後から画像が付く
   @ttl_ms 24 * 60 * 60 * 1000
 

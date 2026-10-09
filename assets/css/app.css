@@ -3,7 +3,7 @@
 
 @source "../css";
 @source "../js";
-@source "../../lib/tazuna_web";
+@source "../../lib/chidori_web";
 @source "../../_build/*/phoenix-colocated/chidori/*/";
 
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);

@@ -6,7 +6,7 @@ defmodule ChidoriWeb.Endpoint do
   # Set :encryption_salt if you would also like to encrypt it.
   @session_options [
     store: :cookie,
-    key: "_tazuna_key",
+    key: "_chidori_key",
     signing_salt: "u3QrxUqv",
     same_site: "Lax"
   ]
