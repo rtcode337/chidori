@@ -2,13 +2,17 @@
 #
 #   docker compose -f docker-compose.dev.yml up -d
 #   mix ecto.setup && mix phx.server
+#
+# プロジェクト名を固定する。ディレクトリ名から決めさせると docker-compose.yml と同じ
+# 名前になり、こちらを立てたときに本番の構成の db コンテナを開発の設定で作り直してしまう
+name: chidori-dev
 services:
   db:
     image: postgres:18-alpine
     environment:
-      POSTGRES_USER: tazuna
-      POSTGRES_PASSWORD: tazuna
-      POSTGRES_DB: tazuna_dev
+      POSTGRES_USER: chidori
+      POSTGRES_PASSWORD: chidori
+      POSTGRES_DB: chidori_dev
       TZ: Asia/Tokyo
       PGDATA: /data/postgres/18/docker
     ports:
