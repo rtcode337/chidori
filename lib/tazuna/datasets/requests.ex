@@ -1,6 +1,6 @@
 defmodule Tazuna.Datasets.Requests do
   @moduledoc """
-  travel-log から届いた「修正・追加の依頼」を、**その場所を含む区画の情報収集**として
+  travel-log から届いた「修正・追加の依頼」を、**その場所を含む区画の整理**として
   Chiezo に頼むところ。
 
   travel-log の管理画面の「渡すテキスト」をそのまま貼る前提です
@@ -590,7 +590,7 @@ defmodule Tazuna.Datasets.Requests do
   defp inside?({lat, lon}, {s, w, n, e}), do: lat >= s and lat <= n and lon >= w and lon <= e
 
   @doc """
-  区画を名指しして、情報収集の巡回を 1 回走らせます。**区画ごとの補足を載せます**
+  区画を名指しして、依頼を引き受ける巡回（`sweep/1`）を 1 回走らせます。**区画ごとの補足を載せます**
   （`plan/2` の `keys` と `notes`）。
 
   取り込み中なら空くまで待ちます（`deadline` は `System.monotonic_time(:millisecond)` の値）。
@@ -620,16 +620,16 @@ defmodule Tazuna.Datasets.Requests do
   end
 
   @doc """
-  依頼を走らせる巡回。**範囲の収集は整理、全国版は情報収集**（対象の定義の
-  `request_sweep`）。どちらも「確かめて直す・消す・足す」を引き受ける回です。
+  依頼を走らせる巡回（対象の定義の `request_sweep`。食事処は整理）。
+  「確かめて直す・消す・足す」を引き受ける回です。
   """
-  def sweep(dataset), do: dataset[:request_sweep] || dataset[:survey_plan_sweep]
+  def sweep(dataset), do: dataset[:request_sweep]
 
   @doc """
-  依頼の頭に付ける前置き。**依頼を、情報収集のいつもの仕事より先に済ませてもらう**
+  依頼の頭に付ける前置き。**依頼を、区画のいつもの仕事より先に済ませてもらう**
   ための文です。
 
-  情報収集の依頼文は「足りない店を足す」を主な仕事と言い切っていて、Chiezo は依頼を
+  巡回の依頼文は区画のいつもの仕事（確かめる・足りない店を足す）を頼んでいて、Chiezo は依頼を
   その後ろに「いつもの仕事に加えて」「確かめてから反映」と足します。これだと、
   **閉店の報告は後回しになり、しかも web で閉店を確かめられない小さな店は
   「確かめられなかった」として残ります** —— 実際、現地で潰れていると報告した店の

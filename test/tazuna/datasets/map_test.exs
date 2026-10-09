@@ -133,21 +133,6 @@ defmodule Tazuna.Datasets.MapTest do
     assert untouched.by == nil
   end
 
-  test "起点のピンを区画と同じ置き方で立てる" do
-    rows = [row("35.0,139.0/36.0,140.0"), row("34.0,135.0/35.0,136.0")]
-
-    map = PartitionMap.build(rows, origin: {35.5, 139.5})
-    [tokyo] = Enum.filter(map.rects, &(&1.key == "35.0,139.0/36.0,140.0"))
-
-    # 起点はその区画の四角の中に落ちる
-    assert map.origin.x > tokyo.x and map.origin.x < tokyo.x + tokyo.width
-    assert map.origin.y > tokyo.y and map.origin.y < tokyo.y + tokyo.height
-  end
-
-  test "起点が決まっていなければピンを立てない" do
-    assert PartitionMap.build([row("35.0,139.0/36.0,140.0")]).origin == nil
-  end
-
   test "座標で切っていない区画は地図にしない" do
     # 名前で切った区画を並べても、地図の意味にならない
     assert PartitionMap.build([row("関東"), row("近畿")]).rects == []

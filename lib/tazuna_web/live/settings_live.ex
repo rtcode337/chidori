@@ -185,13 +185,12 @@ defmodule TazunaWeb.SettingsLive do
     end
   end
 
-  # **tazuna が起こす回の時刻を直す**（要約の回は `Notify.Settings` の digest_at、
-  # データ収集の情報収集の回は `SurveyPlans` の run_at）。Chiezo には送らない
+  # **tazuna が起こす回の時刻を直す**（要約の回は `Notify.Settings` の digest_at）。
+  # Chiezo には送らない
   def handle_event("save_wake", %{"collection" => name, "kind" => kind, "times" => times}, socket) do
     result =
       case kind do
         "digest" -> Tazuna.Notify.Settings.put(name, %{"digest_at" => times})
-        "survey" -> Tazuna.Datasets.SurveyPlans.put_times(name, times)
         _other -> {:error, :unknown}
       end
 

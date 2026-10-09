@@ -75,7 +75,7 @@ defmodule Tazuna.CollectPaceTest do
         "requested_by" => "tazuna",
         "sweeps" => [%{"name" => "整理", "by_caller" => true}]
       },
-      %{"name" => "tazuna_meals", "sweeps" => [%{"name" => "ざっと見る"}, %{"name" => "情報収集"}]},
+      %{"name" => "tazuna_dining_1", "sweeps" => [%{"name" => "機械収集"}, %{"name" => "ざっと見る"}]},
       # 他のアプリの収集には送らない
       %{"name" => "tl_lunch", "requested_by" => "travel-log", "sweeps" => [%{"name" => "整理"}]}
     ]
@@ -92,11 +92,11 @@ defmodule Tazuna.CollectPaceTest do
     end)
 
     assert {:ok, %{sent: sent, failed: []}} = CollectPace.apply("http://chiezo.test")
-    assert Enum.sort(sent) == [{"tazuna_meals", "ざっと見る"}, {"tazuna_tech", "整理"}]
+    assert Enum.sort(sent) == [{"tazuna_dining_1", "ざっと見る"}, {"tazuna_tech", "整理"}]
 
     assert_received {:patched, "http://chiezo.test/v1/collect/tazuna_tech/sweeps/整理", body}
     assert body == %{"interval_minutes" => 720, "keep_per_run" => true}
-    assert_received {:patched, "http://chiezo.test/v1/collect/tazuna_meals/sweeps/ざっと見る", _}
+    assert_received {:patched, "http://chiezo.test/v1/collect/tazuna_dining_1/sweeps/ざっと見る", _}
     refute_received {:patched, _url, _body}
   end
 

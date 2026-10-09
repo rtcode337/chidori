@@ -20,7 +20,7 @@ defmodule Tazuna.SweepNamesTest do
         Enum.flat_map(topics, &(Tazuna.Themes.sweeps(&1) |> names_of())) ++
         names_of(Tazuna.Datasets.Books.sweeps()) ++
         names_of(Tazuna.Datasets.Bookshelf.sweeps()) ++
-        names_of(Tazuna.Datasets.Meals.sweeps())
+        names_of(Tazuna.Datasets.Meals.sweeps(%{id: 1}))
 
     for name <- Enum.uniq(all) do
       assert name in SweepNames.all(), "語彙に無い巡回の名前: #{name}"

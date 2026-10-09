@@ -373,10 +373,9 @@
         </div>
 
         <.partition_map
-          map={Tazuna.Datasets.Map.build(rows, origin: origin_of(@plan))}
+          map={Tazuna.Datasets.Map.build(rows)}
           sweeps={@dataset.partition_sweeps}
           picked={@picked}
-          origin_label={@plan && @plan.place}
           find_query={@map_query}
           find_places={@map_places}
           marker={@map_marker}
@@ -504,80 +503,6 @@
           </form>
         </section>
 
-        <%!-- **起点。** ざっと見るも情報収集も、ここから近い順に区画を広げる。
-           **Chiezo の収集の起点にも同じものを送る**（区画を選ぶのは Chiezo）。
-           区画の地図のすぐ下に置く —— どこから広がっているかを地図と並べて読むため --%>
-        <section
-          :if={@plan && Tazuna.Datasets.uses_origin?(@dataset)}
-          class="survey-plan"
-          aria-label="起点"
-        >
-          <h3>起点</h3>
-          <p class="muted-note">
-            「ざっと見る」も「情報収集」も、この起点から近い順に区画を広げます（決めていなければ東京駅）。
-            決め直すと、Chiezo の収集の起点も書き換えます。
-          </p>
-          <p :if={@origin_note} class="warn-note">{@origin_note}</p>
-
-          <dl class="collect-facts">
-            <div>
-              <dt>起点</dt>
-              <dd>
-                <%!-- 決めた時刻が無いのは既定（東京駅）のまま --%>
-                {@plan.place}（{Float.round(@plan.lat, 4)}, {Float.round(@plan.lon, 4)}）<%!--
-                **その座標を地図で確かめる口は、座標のすぐ後ろに**。地名で選んだので、
-                同じ名前の別の場所（駅と交差点など）を選んでいないかは、地図で見ないと
-                分からない。場所を取らないようアイコンにする（名前は読み上げとヒントで） --%><a
-                  class="map-open"
-                  href={google_maps_url(@plan)}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="Google マップで開く"
-                  aria-label="Google マップで開く"
-                ><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path
-                  d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"
-                  fill="currentColor"
-                /></svg></a>
-                <%!-- **いつ決めたかは次の行に**（狭い画面で座標の途中から折り返すと読みにくい） --%>
-                <span class="muted-note origin-when">
-                  {if @plan.place_set_at,
-                    do: "#{Jst.format(@plan.place_set_at)} に決めました",
-                    else: "既定のままです"}
-                </span>
-              </dd>
-            </div>
-          </dl>
-
-          <form id="place-search" phx-submit="search_place" class="survey-row">
-            <input
-              type="search"
-              name="q"
-              value={@place_query}
-              placeholder="起点の地名（例: 銀座、京都駅）"
-              aria-label="起点の地名"
-            />
-            <button type="submit">探す</button>
-          </form>
-          <%= cond do %>
-            <% @places == :loading -> %>
-              <p class="muted-note">探しています…</p>
-            <% match?({:error, _reason}, @places) -> %>
-              <p class="warn-note">探せませんでした: {reason_text(elem(@places, 1))}</p>
-            <% match?({:ok, []}, @places) -> %>
-              <p class="muted-note">見つかりませんでした。別の書き方で探してください。</p>
-            <% match?({:ok, _found}, @places) -> %>
-              <ul class="place-candidates">
-                <li :for={{place, index} <- Enum.with_index(elem(@places, 1))}>
-                  <button type="button" phx-click="pick_place" phx-value-index={index}>
-                    {place.name}
-                  </button>
-                  <span class="muted-note">{place_label(place)}</span>
-                </li>
-              </ul>
-            <% true -> %>
-          <% end %>
-        </section>
-
         <h3>Chiezo の収集</h3>
         <p aria-live="polite">{status_message(@state)}</p>
         <p class="muted-note">{push_note(@state)}</p>
@@ -596,7 +521,6 @@
             state={@state}
             picks={@picks}
             backends={@backends}
-            triggered={List.wrap(@dataset[:survey_plan_sweep])}
           />
 
           <p class="muted-note">
@@ -658,58 +582,6 @@
             <pre>{text}</pre>
           </div>
         </details>
-
-        <%!-- **情報収集の時刻。** 情報収集は 1 区画に何分もかかる仕事なので、Chiezo の
-           時計では走らせず、決めた時刻に tazuna が起こす（見る区画は Chiezo が選ぶ）。
-           **巡回の表のすぐ下に置く** —— 表の「時計なし・頼まれたとき」が、いつ頼まれる
-           のかをすぐ下で読めるように --%>
-        <section :if={@plan} class="survey-plan" aria-label={"#{@dataset.survey_plan_sweep}の時刻"}>
-          <h3>{@dataset.survey_plan_sweep}の時刻</h3>
-          <p :if={Tazuna.Datasets.uses_origin?(@dataset)} class="muted-note">
-            決めた時刻に Chidori が情報収集を 1 回起こします。見る区画は Chiezo が選びます
-            （その巡回で見た古い順、同じなら起点に近い順）。
-            Chiezo が取り込み中なら、次の予定の時刻まで空くのを待って頼みます。
-          </p>
-          <dl class="collect-facts">
-            <div>
-              <dt>次に頼む</dt>
-              <dd>{next_survey(@plan) || "時刻が決まっていません"}</dd>
-            </div>
-            <div :if={@plan.last_result not in [nil, ""]}>
-              <dt>前回</dt>
-              <dd>{@plan.last_result}</dd>
-            </div>
-          </dl>
-
-          <.form
-            for={@plan_form}
-            id="survey-times"
-            phx-submit="save_survey_times"
-            class="survey-row"
-          >
-            <input
-              type="text"
-              name={@plan_form[:run_at].name}
-              value={@plan_form[:run_at].value}
-              placeholder="頼む時刻（例: 03:00,15:00）"
-              aria-label="頼む時刻"
-            />
-            <button type="submit">時刻を保存</button>
-          </.form>
-          <p :for={{message, _opts} <- @plan_form[:run_at].errors} class="warn-note">{message}</p>
-
-          <div class="button-row">
-            <button
-              :if={Tazuna.Datasets.ready_to_survey?(@dataset, @plan)}
-              type="button"
-              phx-click="survey_now"
-              disabled={@surveying}
-              phx-disable-with="頼んでいます…"
-            >
-              {if @surveying, do: "頼んでいます…", else: "いま 1 回頼む"}
-            </button>
-          </div>
-        </section>
 
         <%!-- **この収集から作る収集**（本棚・話題の網）。**親の下に置く** ——
            別のタブにすると、何から作られたものかが読めなくなる --%>

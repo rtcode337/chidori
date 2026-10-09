@@ -200,9 +200,8 @@
                 </td>
                 <td>
                   {sweep.clock}
-                  <%!-- **tazuna が起こす回は、ここで時刻を直せる**（要約の回は各話題の画面、
-                       情報収集の回はデータ収集の画面と同じ値）。Chiezo には送らない
-                       —— 時計を持つのは tazuna --%>
+                  <%!-- **tazuna が起こす回は、ここで時刻を直せる**（要約の回は各話題の画面と
+                       同じ値）。Chiezo には送らない —— 時計を持つのは tazuna --%>
                   <form
                     :if={sweep[:wake]}
                     id={"wake-#{collection.name}-#{index}"}

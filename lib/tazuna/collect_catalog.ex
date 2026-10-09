@@ -77,7 +77,7 @@ defmodule Tazuna.CollectCatalog do
           label: Map.get(dataset, :title, dataset.name),
           screen: "/datasets?view=#{dataset.key}",
           attrs: &Datasets.call(dataset, :attrs, [&1]),
-          # 起点を差し込んで送る（データ収集の画面と同じ道）。比べるのも同じもの
+          # データ収集の画面と同じ道で送る。比べるのも同じもの
           outgoing: fn -> Datasets.outgoing(dataset) end,
           push: fn _base, choices -> Datasets.push(dataset, choices) end
         }
@@ -112,7 +112,7 @@ defmodule Tazuna.CollectCatalog do
   @doc """
   表の行。**tazuna の収集を画面の並びで**出し、Chiezo の状態（`Tazuna.CollectOverview`
   の行）を巡回の名前で重ねます。Chiezo にまだ無い収集は `in_chiezo: false` で、巡回は
-  定義のもの。**tazuna の定義に無い Chiezo の収集**（全国の食事処のように画面から外した
+  定義のもの。**tazuna の定義に無い Chiezo の収集**（画面から外した
   もの）は後ろに並べ、`push` は nil（相手だけを送る）。
   """
   def rows(chiezo_rows) do

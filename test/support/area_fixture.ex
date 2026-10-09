@@ -1,7 +1,7 @@
 defmodule Tazuna.AreaFixture do
   @moduledoc """
   食事処の範囲を 1 つ作る（番号 1・東京のあたり）。食事処は範囲ごとのタブなので、
-  画面や情報収集を見るテストはこれを作ってから開く（`dining-1` / `tazuna_dining_1`）。
+  画面を見るテストはこれを作ってから開く（`dining-1` / `tazuna_dining_1`）。
   """
 
   alias Tazuna.Datasets.MealAreas

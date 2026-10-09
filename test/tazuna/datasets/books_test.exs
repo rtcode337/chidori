@@ -128,7 +128,6 @@ defmodule Tazuna.Datasets.BooksTest do
       assert sweeps["機械収集"].prompt =~ "{queries}"
       # Chiezo の時計で回す（tazuna は起こさない）
       assert Map.get(sweeps["機械収集"], :enabled, true)
-      refute Map.has_key?(Books.definition(), :survey_plan_sweep)
     end
 
     test "検索文を考える相手も、画面で選んだものを載せる" do

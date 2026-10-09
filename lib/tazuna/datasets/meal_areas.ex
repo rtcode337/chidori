@@ -43,7 +43,7 @@ defmodule Tazuna.Datasets.MealAreas do
   @doc "四角（`[南, 西, 北, 東]`。Chiezo の順）。"
   def bbox(%{south: south, west: west, north: north, east: east}), do: [south, west, north, east]
 
-  @doc "真ん中（起点の既定に使う）。"
+  @doc "真ん中（区画を広げる起点に使う）。"
   def center(%{south: south, west: west, north: north, east: east}),
     do: {(south + north) / 2, (west + east) / 2}
 

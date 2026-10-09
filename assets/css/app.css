@@ -165,20 +165,6 @@ article p:last-child { color: #475569; line-height: 1.7; }
 #chiezo-settings { margin-top: .6rem; }
 /* 図の出どころの一文。下の状態の表と詰まらないよう少し空ける */
 .settings-panel .origin-note { margin-bottom: .8rem; }
-/* 整理の起点と時刻 */
-.survey-plan { margin: 1rem 0 1.25rem; }
-/* 入力欄とボタンは**同じ行に保つ**（狭い画面では入力欄のほうを縮める）。
-   折り返すと、保存のボタンがどの欄のものか読めなくなる */
-.survey-row { display: flex; flex-wrap: nowrap; align-items: center; gap: .4rem; margin: .6rem 0 0; }
-.survey-row input { flex: 1 1 auto; min-width: 0; }
-.survey-row button { flex: none; white-space: nowrap; }
-/* 起点を地図で開く口。**座標のすぐ後ろのアイコン**（外へ出るので、押せると分かる色に） */
-.map-open { display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; margin-left: .25rem; vertical-align: -.35em; border: 1px solid #dcdff0; border-radius: .45rem; background: #fff; color: #554bc0; text-decoration: none; }
-.map-open:hover { border-color: #8b84d6; background: #f4f3ff; }
-/* いつ決めたかは座標の下の行に */
-.origin-when { display: block; margin-top: .15rem; font-size: .72rem; white-space: nowrap; }
-.place-candidates { display: flex; flex-wrap: wrap; gap: .35rem .9rem; margin: .5rem 0 0; padding: 0; list-style: none; }
-.place-candidates li { display: flex; align-items: baseline; gap: .35rem; }
 /* 区画の表。**数と時刻とボタンは折り返さない**（「ま/だ」と割れると読めない）。
    幅は区画の名前の列が引き受ける */
 /* travel-log からの依頼の結果。**足した・直した・消したを色で分ける** */
@@ -205,10 +191,6 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .request-changes.is-removed h4 { color: #b42318; }
 .request-text { margin-top: .6rem; }
 .request-text pre { white-space: pre-wrap; font-size: .8rem; }
-/* 起点のピン。**区画の色と取り違えない赤**で、白い縁で区画から浮かせる。押す口ではない */
-.origin-pin { pointer-events: none; }
-.origin-pin path { fill: #e0433a; stroke: #fff; stroke-width: 1.2; }
-.origin-pin circle { fill: #fff; }
 .partition-table th, .partition-table td { white-space: nowrap; }
 .partition-table td:first-child { white-space: normal; }
 /* **ボタンだけの行は右に寄せる**（設定欄）。左に置くと説明文の続きに見え、
@@ -1024,7 +1006,7 @@ ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column:
 .article-detail-image { display: block; max-width: 100%; max-height: 14rem; margin: .5rem 0; border-radius: .5rem; object-fit: cover; }
 .article-ask { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid #e2e5ef; }
 .article-ask textarea { width: 100%; margin-top: .3rem; }
-/* 地名で探して寄った場所の印（起点のピンとは色を変える） */
+/* 地名で探して寄った場所の印 */
 .find-pin { pointer-events: none; }
 .find-pin path { fill: #2f6fdb; stroke: #fff; stroke-width: 1.2; }
 .find-pin circle { fill: #fff; }

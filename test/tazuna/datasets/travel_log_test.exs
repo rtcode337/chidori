@@ -4,7 +4,9 @@ defmodule Tazuna.Datasets.TravelLogTest do
   alias Tazuna.Datasets
   alias Tazuna.Datasets.TravelLog
 
-  defp dataset, do: Tazuna.Datasets.Meals.definition()
+  @area %{id: 3, name: "東京駅", south: 35.67, west: 139.75, north: 35.69, east: 139.78}
+
+  defp dataset, do: Tazuna.Datasets.Meals.definition(@area)
 
   defp doc(overrides) do
     Map.merge(
@@ -80,13 +82,13 @@ defmodule Tazuna.Datasets.TravelLogTest do
       doubted = tags ++ ["閉店の可能性あり"]
       row = TravelLog.row(doc(%{"tags" => doubted, "extra" => extra}), dataset())
       assert row["categories"] == "個室あり|閉店の可能性あり|位置確認済み"
-      assert Tazuna.Datasets.Meals.attrs().locked_doubt_tag == "閉店の可能性あり"
+      assert Tazuna.Datasets.Meals.attrs(%{}, @area).locked_doubt_tag == "閉店の可能性あり"
     end
 
-    test "鍵は Chiezo の doc_id" do
+    test "鍵は Chiezo の doc_id（頭に範囲の番号）" do
       # 焼き直しても引き継がれる番号。名前を鍵にすると、AI が表記を直した回で
       # 別のスポットが増える
-      assert TravelLog.row(doc(%{}), dataset())["key"] == "12345"
+      assert TravelLog.row(doc(%{}), dataset())["key"] == "3-12345"
     end
 
     test "説明文には、どの辞典から来たかを必ず書く" do
@@ -167,7 +169,7 @@ defmodule Tazuna.Datasets.TravelLogTest do
       # 消えたものは spots.csv に載らないだけでは、travel-log に前の回で入ったぶんが消えない
       docs = [removed(300, true), removed(20, true), removed(300, true)]
 
-      assert TravelLog.excluded_keys(docs, dataset()) == ["20", "300"]
+      assert TravelLog.excluded_keys(docs, dataset()) == ["3-20", "3-300"]
     end
 
     test "最初の目通しで弾かれたもの・印の無いものは出さない" do
@@ -200,7 +202,7 @@ defmodule Tazuna.Datasets.TravelLogTest do
         %{"series" => "和食", "categories" => ""}
       ]
 
-      %{"series" => series} = Jason.decode!(TravelLog.settings_json("meals", "食事処", rows))
+      %{"series" => series} = Jason.decode!(TravelLog.settings_json("dining", "食事処", rows))
 
       assert Enum.map(series, & &1["series"]) == ["和食", "カフェ"]
       assert Enum.all?(series, &String.starts_with?(&1["color"], "#"))
@@ -219,16 +221,16 @@ defmodule Tazuna.Datasets.TravelLogTest do
 
     test "カテゴリの並びは語彙のまま渡し、シリーズには混ぜない" do
       rows = [%{"series" => "和食", "categories" => "ランチ営業"}]
-      json = Jason.decode!(TravelLog.settings_json("meals", "食事処", rows, ["ランチ営業", "深夜営業"]))
+      json = Jason.decode!(TravelLog.settings_json("dining", "食事処", rows, ["ランチ営業", "深夜営業"]))
 
       assert Enum.map(json["series"], & &1["series"]) == ["和食"]
       assert json["categories"] == ["ランチ営業", "深夜営業"]
     end
 
     test "キーと呼び名は、そのまま travel-log の種別になる" do
-      settings = Jason.decode!(TravelLog.settings_json("meals", "食事処", []))
+      settings = Jason.decode!(TravelLog.settings_json("dining", "食事処", []))
 
-      assert settings["key"] == "meals"
+      assert settings["key"] == "dining"
       assert settings["label"] == "食事処"
       # ランクは A〜E が入るので使う
       assert settings["settings"]["rank_enabled"] == true
@@ -248,8 +250,6 @@ defmodule Tazuna.Datasets.TravelLogTest do
   end
 
   describe "範囲の収集の書き出し" do
-    @area %{id: 3, name: "東京駅", south: 35.67, west: 139.75, north: 35.69, east: 139.78}
-
     test "スポットの key に範囲の番号を付ける（範囲どうしで key をぶつけない）" do
       doc = %{
         "doc_id" => 1234,

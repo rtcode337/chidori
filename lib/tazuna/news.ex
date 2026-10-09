@@ -747,7 +747,7 @@ defmodule Tazuna.News do
   defp look_ahead_of(_topic), do: nil
 
   # 先の月を探す回（技術イベント。`Tazuna.Topics` の `look_ahead`）。巡回の名前は
-  # 「情報収集」—— 食事処と同じく、足りないものを外から探して足す仕事。
+  # 「情報収集」—— 足りないものを外から探して足す仕事。
   # **足すだけ**（今あるものは整理が見る）。**整理を置かない話題**（`standalone`）では、
   # 終わったものを消してタグを揃えるのもこの回なので、足すだけにしない
   defp look_ahead_sweeps(topic, standalone \\ false) do

@@ -19,15 +19,12 @@ defmodule Tazuna.Datasets do
   alias Tazuna.Datasets.MealAreas
   alias Tazuna.Datasets.Meals
   alias Tazuna.Datasets.Pihole
-  alias Tazuna.Datasets.SurveyPlan
-  alias Tazuna.Datasets.SurveyPlans
 
   @doc """
   tazuna が持っている収集の対象。**この並びがタブの並び**。
 
   **食事処は範囲ごとに 1 つ**（`Tazuna.Datasets.MealAreas`。画面で地図に四角を描いて
-  足す）。日本全体を 1 つで回していた頃は、費用がかさみ抜け漏れも多すぎた ——
-  全国版（`Meals.definition/0`）はタブに出さない（Chiezo の収集は止めて残す）。
+  足す）。日本全体を 1 つで回していた頃は、費用がかさみ抜け漏れも多すぎた。
   """
   def defined,
     do: [
@@ -91,19 +88,16 @@ defmodule Tazuna.Datasets do
   def push(%{collection: name} = dataset, choices \\ %{}) do
     with {:ok, base} <- base_url(),
          {:ok, existing} <- Chiezo.collection(base, name) do
-      # **起点は tazuna が持っているものを送る**（画面で決め直したもの）。定義の既定を
-      # 送ると、送り直すたびに東京駅へ戻る
       attrs = outgoing(dataset, choices)
       if existing, do: Chiezo.patch(base, name, attrs), else: Chiezo.request(base, attrs)
     end
   end
 
   @doc """
-  `push/2` が送る設定（起点を差し込んだもの）。**「Chiezo 収集」の表で、Chiezo の今の
-  設定と突き合わせるのにも使う** —— 送るものと比べるものを別々に組むと、片方だけ直る。
+  `push/2` が送る設定。**「Chiezo 収集」の表で、Chiezo の今の設定と突き合わせるのにも
+  使う** —— 送るものと比べるものを別々に組むと、片方だけ直る。
   """
-  def outgoing(dataset, choices \\ %{}),
-    do: dataset |> call(:attrs, [choices]) |> with_origin(dataset)
+  def outgoing(dataset, choices \\ %{}), do: call(dataset, :attrs, [choices])
 
   @doc """
   範囲を変えたあとで、**範囲で決まるところだけを Chiezo へ送り、機械収集から
@@ -125,9 +119,7 @@ defmodule Tazuna.Datasets do
     with {:ok, base} <- base_url(),
          {:ok, existing} <- Chiezo.collection(base, name) do
       if existing do
-        attrs = dataset |> call(:shape) |> with_origin(dataset)
-
-        with :ok <- Chiezo.patch(base, name, attrs) do
+        with :ok <- Chiezo.patch(base, name, call(dataset, :shape)) do
           # 範囲を変えたのは人なので、止めている収集でも走らせる（`Chiezo.by_hand/1`）
           case Chiezo.by_hand(fn -> Chiezo.run(base, name, sweep: module.roster_sweep_name()) end) do
             :ok -> :ok
@@ -139,73 +131,6 @@ defmodule Tazuna.Datasets do
       end
     end
   end
-
-  @doc """
-  起点と時刻（tazuna が持つもの）。**起点を決めていなければ、対象の既定**
-  （食事処なら東京駅）を入れて返します。
-  """
-  def plan(%{collection: name} = dataset), do: SurveyPlans.get(name, default_origin(dataset))
-
-  @doc """
-  決めた時刻に起こしてよいか。**起点を持つ対象は起点が決まっていること**
-  （食事処）。起点を持たない対象（技術書）は、いつでもよい。
-  """
-  def ready_to_survey?(dataset, plan) do
-    not uses_origin?(dataset) or SurveyPlan.placed?(plan)
-  end
-
-  @doc "起点を持つ対象か（区画を起点から広げる）。"
-  def uses_origin?(%{module: module}) do
-    Code.ensure_loaded(module)
-    function_exported?(module, :default_origin, 0)
-  end
-
-  def uses_origin?(_dataset), do: false
-
-  defp default_origin(%{module: module} = dataset) do
-    if function_exported?(module, :default_origin, 0), do: call(dataset, :default_origin)
-  end
-
-  @doc """
-  起点を決め直します。**Chiezo の収集の起点も一緒に書き換えます** ——
-  ざっと見る（Chiezo の時計で回る）も同じ起点から広げるためです。
-  Chiezo は起点の変更を「並び順だけの違い」として扱うので、区画の見た記録は捨てません。
-
-  tazuna に保存できても Chiezo へ送れなかったときは `{:error, {:not_sent, 理由}}` ——
-  次に「収集の設定を更新」を押せば、保存した起点が送られます。
-  """
-  def put_origin(%{collection: name} = dataset, place) do
-    with {:ok, plan} <- SurveyPlans.put_place(name, place) do
-      case send_origin(dataset, name, plan) do
-        :ok -> {:ok, plan}
-        {:error, reason} -> {:error, {:not_sent, reason}}
-      end
-    end
-  end
-
-  defp send_origin(dataset, name, plan) do
-    with {:ok, base} <- base_url(),
-         {:ok, existing} <- Chiezo.collection(base, name) do
-      # まだ収集が無ければ送る先が無い（作るときに、保存した起点が載る）
-      if existing,
-        do:
-          Chiezo.patch(base, name, %{partition: call(dataset, :partition, [[plan.lat, plan.lon]])}),
-        else: :ok
-    end
-  end
-
-  # 区画の割り方に起点を持つ対象だけ、保存した起点に差し替える
-  defp with_origin(%{partition: %{origin: _origin} = partition} = attrs, dataset) do
-    case plan(dataset) do
-      %SurveyPlan{lat: lat, lon: lon} when is_number(lat) and is_number(lon) ->
-        %{attrs | partition: %{partition | origin: [lat, lon]}}
-
-      _unplaced ->
-        attrs
-    end
-  end
-
-  defp with_origin(attrs, _dataset), do: attrs
 
   @doc """
   「この区画を先に調べて」を Chiezo へ割り込ませます。

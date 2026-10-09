@@ -27,10 +27,6 @@ defmodule TazunaWeb.DatasetsLive do
   alias Tazuna.Datasets.BookMarks
   alias Tazuna.Datasets.Requests
   alias Tazuna.Datasets.ShelfCache
-  alias Tazuna.Datasets.Survey
-  alias Tazuna.Datasets.SurveyPlan
-  alias Tazuna.Datasets.SurveyPlans
-  alias Tazuna.Datasets.SurveyScheduler
   alias Tazuna.Jst
 
   # 区画の一覧に出す数。**数百あるので全部は並べない**（並びは次に回ってくる順なので、
@@ -109,18 +105,10 @@ defmodule TazunaWeb.DatasetsLive do
        # 上と同じ理由でサーバー側
        request_backend: nil,
        request_model: nil,
-       # 起点と情報収集の時刻（tazuna が持つ）。起点の候補は探したときだけ引く
-       plan: nil,
-       plan_form: nil,
        # 区画の地図の地名検索（打った語・候補・寄った場所の印）
        map_query: "",
        map_places: nil,
        map_marker: nil,
-       places: nil,
-       place_query: "",
-       # 起点を Chiezo へ送れなかったときだけ出す一言
-       origin_note: nil,
-       surveying: false,
        # 設定欄を開いているか。**開いたときに初めて Chiezo から読む**（関連図と同じ）
        settings_open: false,
        # 本棚を最後に Chiezo から読んだ時刻（覚え書きのもの）
@@ -164,8 +152,6 @@ defmodule TazunaWeb.DatasetsLive do
         live_cursor: nil,
         live_error: nil
       )
-      |> assign_plan(dataset)
-      |> assign(places: nil, place_query: "")
 
     # **本棚のある対象は、開いただけでは Chiezo と話さない。** 本棚は覚え書きを出し、
     # 設定は開いたときに読む。**まだ 1 度も本棚を読んでいないときだけ**取りに行く
@@ -193,71 +179,6 @@ defmodule TazunaWeb.DatasetsLive do
     else
       {:noreply, socket |> assign(settings_open: true) |> load_settings()}
     end
-  end
-
-  # ---- 起点と情報収集の時刻 ------------------------------------------------
-
-  # 起点の候補を地図辞典から探す。**待たずに引く**（数百ミリ秒〜数秒かかる）
-  def handle_event("search_place", %{"q" => q}, socket) do
-    q = String.trim(q || "")
-
-    cond do
-      q == "" ->
-        {:noreply, assign(socket, places: nil, place_query: "")}
-
-      base = Chiezo.base_url() ->
-        {:noreply,
-         socket
-         |> assign(place_query: q, places: :loading)
-         |> start_async(:places, fn -> Chiezo.places(base, q) end)}
-
-      true ->
-        {:noreply, assign(socket, places: {:error, :chiezo_not_configured})}
-    end
-  end
-
-  # 候補から起点を決める。**Chiezo の収集の起点も一緒に書き換える** ——
-  # 区画を選ぶのは Chiezo で、ざっと見るも情報収集もその起点から広げる
-  def handle_event("pick_place", %{"index" => index}, socket) do
-    with {:ok, places} when is_list(places) <- socket.assigns.places,
-         {i, ""} <- Integer.parse(index),
-         %{} = place <- Enum.at(places, i),
-         result = Datasets.put_origin(socket.assigns.dataset, place),
-         true <- saved?(result) do
-      {:noreply,
-       socket
-       |> assign_plan(socket.assigns.dataset)
-       |> assign(places: nil, place_query: "", origin_note: origin_note(result))}
-    else
-      _other -> {:noreply, socket}
-    end
-  end
-
-  def handle_event("save_survey_times", %{"survey_plan" => %{"run_at" => run_at}}, socket) do
-    case SurveyPlans.put_times(socket.assigns.dataset.collection, run_at) do
-      {:ok, _plan} -> {:noreply, assign_plan(socket, socket.assigns.dataset)}
-      {:error, changeset} -> {:noreply, assign(socket, plan_form: to_form(changeset))}
-    end
-  end
-
-  # いま 1 回頼む（時刻を待たずに）。取り込み中なら空くのを 1 時間まで待つ
-  def handle_event("survey_now", _params, socket) do
-    dataset = socket.assigns.dataset
-    plan = socket.assigns.plan
-
-    {:noreply,
-     socket
-     |> assign(surveying: true)
-     |> start_async(:survey, fn ->
-       # 画面から押した 1 回（止めている収集でも走らせる。定時の回は囲まない）
-       result =
-         Tazuna.Chiezo.by_hand(fn ->
-           Survey.run(dataset, plan, System.monotonic_time(:millisecond) + 60 * 60 * 1000)
-         end)
-
-       SurveyPlans.mark_result(dataset.collection, Survey.result_text(result))
-       result
-     end)}
   end
 
   @impl true
@@ -297,7 +218,7 @@ defmodule TazunaWeb.DatasetsLive do
     {:noreply, assign(socket, picked: picked, asked: nil)}
   end
 
-  # **地図の上で地名を探す**（起点と同じ地図辞典）。候補を出すだけで、図はまだ動かさない
+  # **地図の上で地名を探す**（地図辞典）。候補を出すだけで、図はまだ動かさない
   def handle_event("search_map_place", %{"q" => q}, socket) do
     q = String.trim(q || "")
 
@@ -717,21 +638,11 @@ defmodule TazunaWeb.DatasetsLive do
   def handle_async(:ask, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, asking: false, asked: {:error, :collection_crashed})}
 
-  def handle_async(:places, {:ok, result}, socket), do: {:noreply, assign(socket, places: result)}
-
   def handle_async(:map_places, {:ok, result}, socket),
     do: {:noreply, assign(socket, map_places: result)}
 
   def handle_async(:map_places, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, map_places: {:error, :chiezo_unavailable})}
-
-  def handle_async(:places, {:exit, _reason}, socket),
-    do: {:noreply, assign(socket, places: {:error, :chiezo_unavailable})}
-
-  # 頼んだあとは収集の状態も読み直す（区画に「見た」印が付くのは走り終えてからだが、
-  # 頼めたかどうかは前回の記録に出る）
-  def handle_async(:survey, _result, socket),
-    do: {:noreply, socket |> assign(surveying: false) |> assign_plan(socket.assigns.dataset)}
 
   def handle_async(:backends, {:ok, backends}, socket),
     do: {:noreply, assign(socket, backends: backends)}
@@ -779,18 +690,6 @@ defmodule TazunaWeb.DatasetsLive do
 
   # **まだ何も読んでいない状態。** 「収集が無い」と区別する —— 読めていないのに
   # 「まだ作られていません」と出すと、押した人は作り直そうとする
-  # 起点と情報収集の時刻を読む（tazuna が持つものなので、DB から。起点の既定つき）
-  defp assign_plan(socket, %{survey_plan_sweep: sweep} = dataset) when is_binary(sweep) do
-    plan = Datasets.plan(dataset)
-
-    assign(socket,
-      plan: plan,
-      plan_form: to_form(SurveyPlan.changeset(plan, %{}))
-    )
-  end
-
-  defp assign_plan(socket, _dataset), do: assign(socket, plan: nil, plan_form: nil)
-
   # この収集から作る収集を持つ対象だけ読む
   defp read_derived(socket, %{derived: derived} = dataset) when not is_nil(derived) do
     socket
@@ -837,34 +736,7 @@ defmodule TazunaWeb.DatasetsLive do
     |> load_recent_runs()
   end
 
-  @doc "次に頼む予定（JST の文字列）。時刻を書いていなければ nil。"
-  def next_survey(%SurveyPlan{} = plan), do: plan |> SurveyScheduler.next() |> Jst.format()
-  def next_survey(_plan), do: nil
-
-  # tazuna に保存できたか（Chiezo へ送れなかっただけなら、保存はできている）
-  defp saved?({:ok, _plan}), do: true
-  defp saved?({:error, {:not_sent, _reason}}), do: true
-  defp saved?(_result), do: false
-
-  defp origin_note({:error, {:not_sent, reason}}),
-    do:
-      "起点は保存しましたが、Chiezo へ送れませんでした（#{reason_text(reason)}）。" <>
-        "「収集の設定を更新」を押すと、保存した起点が送られます。"
-
-  defp origin_note(_result), do: nil
-
-  @doc """
-  その座標を Google マップで開く URL。**座標で引く**（地名で引くと、同じ名前の
-  別の場所が出ることがある）。
-  """
-  def google_maps_url(%SurveyPlan{lat: lat, lon: lon}) when is_number(lat) and is_number(lon),
-    do:
-      "https://www.google.com/maps/search/?" <>
-        URI.encode_query(%{"api" => "1", "query" => "#{lat},#{lon}"})
-
-  def google_maps_url(_plan), do: nil
-
-  @doc "起点の候補を見分ける一言（地域と種別）。"
+  @doc "地名の候補を見分ける一言（地域と種別）。"
   def place_label(place) do
     [place[:area], place[:feature]] |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join("・")
   end
@@ -945,7 +817,7 @@ defmodule TazunaWeb.DatasetsLive do
   travel-log からの依頼の一言。**何区画で頼んだか**と、**どの区画にも入らなかった座標**を
   言います —— 外れた座標を黙って落とすと、その依頼だけが誰にも読まれません。
   """
-  def request_message(requesting, requested, sweep \\ "情報収集")
+  def request_message(requesting, requested, sweep \\ "整理")
 
   def request_message(%{keys: keys, points: points, missed: missed}, _requested, sweep) do
     "座標 #{length(points)} 件を含む区画 #{length(keys)} つで、#{sweep}を頼んでいます" <>
@@ -1062,8 +934,8 @@ defmodule TazunaWeb.DatasetsLive do
 
   # **抽出の指定を持たない対象もある**（技術書は記事を溜めてからタグで数えるので、
   # 辞典から引かない）。持たなければ nil で、画面はその見出しごと出さない
-  def extract_text(%{dataset: %{module: module} = dataset}) do
-    if defines?(module, :extract, 0),
+  def extract_text(%{dataset: dataset}) do
+    if defines?(dataset, :extract, 0),
       do: Jason.encode!(Datasets.call(dataset, :extract), pretty: true)
   end
 
@@ -1072,11 +944,9 @@ defmodule TazunaWeb.DatasetsLive do
     do: Jason.encode!(spec, pretty: true)
 
   # 区画で回らない対象（技術書）は nil（画面はその見出しごと出さない）
-  def partition_text(%{dataset: %{module: module} = dataset}) do
-    if defines?(module, :partition, 1) do
-      plan = Datasets.plan(dataset)
-      Jason.encode!(Datasets.call(dataset, :partition, [[plan.lat, plan.lon]]), pretty: true)
-    end
+  def partition_text(%{dataset: dataset}) do
+    if defines?(dataset, :shape, 0),
+      do: Jason.encode!(Datasets.call(dataset, :shape).partition, pretty: true)
   end
 
   # travel-log から依頼を受ける対象だけ読む（依頼の口があるのはそこだけ）
@@ -1255,13 +1125,10 @@ defmodule TazunaWeb.DatasetsLive do
   def more_than_shown(count, titles) when count > length(titles), do: count - length(titles)
   def more_than_shown(_count, _titles), do: 0
 
-  @doc "区画の地図に立てる起点（`{緯度, 経度}`。決まっていなければ nil）。"
-  def origin_of(%SurveyPlan{lat: lat, lon: lon}) when is_number(lat) and is_number(lon),
-    do: {lat, lon}
-
-  def origin_of(_plan), do: nil
-
-  defp defines?(module, name, arity) do
+  # 対象の関数を持つか。**範囲を持つ対象は範囲を最後の引数に足して呼ぶ**ので
+  # （`Datasets.call/3`）、そのぶん引数が 1 つ多い
+  defp defines?(%{module: module} = dataset, name, arity) do
+    arity = if dataset[:area], do: arity + 1, else: arity
     Code.ensure_loaded?(module) and function_exported?(module, name, arity)
   end
 

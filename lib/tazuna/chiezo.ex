@@ -18,7 +18,7 @@ defmodule Tazuna.Chiezo do
   @page_limit 500
   # 取り込みが空くのを待つあいだ、確かめ直す間隔
   @busy_poll_ms 60_000
-  # 起点の地名を引く辞典と、候補の数
+  # 地名を引く辞典と、候補の数
   @place_source "osm_japan"
   @place_limit 8
 
@@ -450,7 +450,7 @@ defmodule Tazuna.Chiezo do
   Chiezo は、止めている収集でも人が押した 1 回は走らせます —— AI の使い過ぎを気にして
   収集を止めていても、区画を名指しした 1 回や travel-log からの依頼は頼みたいため。
 
-  **定時の時計（要約・情報収集）は囲まない**約束です。止めた収集が
+  **定時の時計（要約）は囲まない**約束です。止めた収集が
   時計で動かないことが、止めた意味なので。印はプロセスに置くので、**囲むのは Chiezo を
   呼ぶプロセスの中**（Task を起こすなら Task の中で囲む）。
   """
@@ -553,7 +553,7 @@ defmodule Tazuna.Chiezo do
   end
 
   @doc """
-  地名の候補（`%{name, title, lat, lon, area, feature}` の並び）。**起点を決めるのに使います**。
+  地名の候補（`%{name, title, lat, lon, area, feature}` の並び）。**地図の地名検索と、範囲を描くのに使います**。
 
   地図辞典（`#{@place_source}`）で引き、見出しごとに座標を取り直します ——
   検索の結果には座標が付いてこないためです。座標を持たないものは落とします。
@@ -835,7 +835,7 @@ defmodule Tazuna.Chiezo do
       backend: item["backend"],
       model: item["model"],
       effort: item["effort"],
-      # 巡回（ざっと / じっくり）。**相手も区画の進み具合も巡回ごとに違う**ので、
+      # 巡回（ざっと見る / 整理）。**相手も区画の進み具合も巡回ごとに違う**ので、
       # 収集に 1 つだけ持たせると、そこに出る値はどちらか片方のものにしかならない
       sweeps: sweeps_of(item),
       partitions_total: item["partitions_total"] || 0,
@@ -925,7 +925,7 @@ defmodule Tazuna.Chiezo do
   @doc """
   区画の一覧（鍵・母集団の数・見終えた巡回）。
 
-  **巡回ごとに別々の印を持ちます** —— ざっとが見終えた区画を調査はまだ見ていない、
+  **巡回ごとに別々の印を持ちます** —— ざっと見るが見終えた区画を整理はまだ見ていない、
   が普通に起きます。
   """
   def partitions_of(%{"partitions" => list}) when is_list(list) do

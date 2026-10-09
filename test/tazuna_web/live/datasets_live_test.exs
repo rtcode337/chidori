@@ -397,14 +397,6 @@ defmodule TazunaWeb.DatasetsLiveTest do
       refute html =~ ~s(<option value="機械収集")
     end
 
-    test "範囲の収集には、時刻を決める欄も起点の欄も出さない", %{conn: conn} do
-      # ざっと見るも整理も Chiezo の時計で回り、区画は範囲の真ん中から広げる
-      {_live, html} = shown(conn)
-
-      refute html =~ ~s(id="survey-times")
-      refute html =~ ~s(aria-label="起点")
-    end
-
     test "一覧からも、その区画を選べる", %{conn: conn} do
       # 一覧と地図は同じ 1 つの口へ繋ぐ（押した先で何が起きるかが変わらないように）
       {live, _html} = shown(conn)

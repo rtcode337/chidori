@@ -46,13 +46,9 @@ defmodule Tazuna.Application do
 
   # 要約を作る時刻の時計。テストでは立てない —— 1 分ごとに起きて Chiezo を
   # 叩きに行かれると、何を見ているのか分からないテストになります
-  # 整理を頼む時刻の時計も同じ扱い（テストでは立てない）
   defp scheduler do
     if Application.get_env(:tazuna, :digest_scheduler, true),
-      do: [
-        Tazuna.Digest.Scheduler,
-        Tazuna.Datasets.SurveyScheduler
-      ],
+      do: [Tazuna.Digest.Scheduler],
       else: []
   end
 

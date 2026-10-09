@@ -1,6 +1,6 @@
 // 区画の地図の操作。**共通の仕組み**（`./pan_zoom`）に、この図だけの事情を足したもの。
 //
-// 足しているのは倍率の幅と、境目を出す近さと、起点のピンの大きさと、寄ったときに敷く
+// 足しているのは倍率の幅と、境目を出す近さと、ピンの大きさと、寄ったときに敷く
 // 地理院タイル（`./gsi_tiles`）です。
 import {panZoom} from "./pan_zoom"
 import {paintTiles} from "./gsi_tiles"
@@ -19,7 +19,7 @@ const MIN_SCALE = 0.2
 // 覆って白く飛びます。寄ったときだけなら、画面に出るのは数十区画です
 const CLOSE_AT = 4
 
-// 起点のピンを、画面の上で何倍に見せるか（図の 1 単位 = 画面 1px のときの大きさが 1）。
+// 探して寄った場所のピンを、画面の上で何倍に見せるか（図の 1 単位 = 画面 1px のときの大きさが 1）。
 // **倍率で割り戻して、寄っても引いても同じ大きさに見せる**
 const PIN_PX = 1.6
 
@@ -38,7 +38,7 @@ export default panZoom({
     this.handleEvent("map_focus", ({x, y}) => this.centerOn(x, y, FOCUS_SCALE))
   },
 
-  // ピン（起点と、探して寄った場所）を、倍率で割り戻した大きさに置き直す。タイルも置き直す
+  // ピン（探して寄った場所）を、倍率で割り戻した大きさに置き直す。タイルも置き直す
   painted() {
     const ppu = this.view && this.view.ppu
     if (!this.svg || !(ppu > 0)) { return }

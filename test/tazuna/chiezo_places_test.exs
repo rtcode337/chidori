@@ -1,6 +1,6 @@
 defmodule Tazuna.ChiezoPlacesTest do
   @moduledoc """
-  地名で探す（`Tazuna.Chiezo.places/2`。起点の欄と、範囲を描く地図が使う）。
+  地名で探す（`Tazuna.Chiezo.places/2`。区画の地図と、範囲を描く地図が使う）。
 
   **「〇〇駅」は「駅」を外した語でも探し、駅を先に並べる。** 地図辞典（OSM）は駅名に
   「駅」を付けない決まりで、本物の東京駅は「東京」として入っている —— 「東京駅」で

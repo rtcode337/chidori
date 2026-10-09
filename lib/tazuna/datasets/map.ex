@@ -54,12 +54,12 @@ defmodule Tazuna.Datasets.Map do
   読めない鍵は落とします —— 座標で切っていない収集（区画が名前で切られているもの）
   では、地図にする意味がありません。
   """
-  def build(rows, opts \\ []) do
+  def build(rows) do
     boxes = rows |> Enum.map(&with_box/1) |> Enum.reject(&is_nil/1)
 
     case bounds(boxes) do
       nil ->
-        %{rects: [], coast: [], width: @width, height: 0, visited: 0, origin: nil, frame: nil}
+        %{rects: [], coast: [], width: @width, height: 0, visited: 0, frame: nil}
 
       {south, west, north, east} ->
         scale = @width / max(east - west, 1.0e-9)
@@ -74,19 +74,11 @@ defmodule Tazuna.Datasets.Map do
           width: @width,
           height: Float.round(height, 1),
           visited: Enum.count(boxes, &(stage(&1) > 0)),
-          # 起点のピン。**区画と同じ置き方で投影する**（別々に置くとずれて重なる）
-          origin: origin(opts[:origin], west, top, scale),
           # 緯度経度を図の座標へ直すための枠（`xy/3`。地名で探した場所へ寄せるのに使う）
           frame: %{west: west, top: top, scale: scale}
         }
     end
   end
-
-  # 起点（`{緯度, 経度}`）を図の座標へ。渡されなければ nil（ピンを立てない）
-  defp origin({lat, lon}, west, top, scale) when is_number(lat) and is_number(lon),
-    do: %{x: round1((lon - west) * scale), y: round1((top - mercator(lat)) * scale)}
-
-  defp origin(_none, _west, _top, _scale), do: nil
 
   @doc """
   緯度経度を、その図の座標へ。**区画と同じ置き方で投影する**（ずれると、探した場所と
@@ -94,7 +86,7 @@ defmodule Tazuna.Datasets.Map do
   """
   def xy(%{frame: %{west: west, top: top, scale: scale}}, lat, lon)
       when is_number(lat) and is_number(lon),
-      do: origin({lat, lon}, west, top, scale)
+      do: %{x: round1((lon - west) * scale), y: round1((top - mercator(lat)) * scale)}
 
   def xy(_map, _lat, _lon), do: nil
 

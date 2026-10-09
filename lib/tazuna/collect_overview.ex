@@ -15,7 +15,6 @@ defmodule Tazuna.CollectOverview do
   alias Tazuna.Chiezo
   alias Tazuna.Notify.Setting
   alias Tazuna.Notify.Settings
-  alias Tazuna.Datasets.SurveyPlans
 
   @doc """
   Chiezo から読んで、画面に出す形にします。`{:ok, map}` か `{:error, 理由}`。
@@ -82,7 +81,7 @@ defmodule Tazuna.CollectOverview do
             # 時計を外した巡回（依頼元が名指しで起こす。整理を自動で回さない収集など）
             by_caller: sweep["by_caller"] == true,
             clock: clock(sweep, collection["name"]),
-            # **tazuna が起こす回の時刻**（画面で直せる）。`{:digest | :survey, 時刻の文字列}`。
+            # **tazuna が起こす回の時刻**（画面で直せる）。`{:digest, 時刻の文字列}`。
             # 時刻を持つのは tazuna で、Chiezo の側には時計が無い
             wake: wake(sweep, collection["name"]),
             # **ワーカーは `worker` の欄に入っている**（`backend` は相手を名指ししたときだけ）
@@ -156,12 +155,6 @@ defmodule Tazuna.CollectOverview do
       sweep["once"] ->
         "一度きり"
 
-      survey_sweep?(sweep, collection) ->
-        case survey_times(collection) do
-          "" -> "Chidori が起こす（時刻を決めていません）"
-          times -> "Chidori が起こす（" <> String.replace(times, ",", "・") <> "）"
-        end
-
       sweep["by_caller"] ->
         "自動では回さない"
 
@@ -174,28 +167,12 @@ defmodule Tazuna.CollectOverview do
   end
 
   @doc """
-  tazuna が起こす回の時刻。**要約の回**（`on_demand`。各話題の「要約を作る時刻」）と、
-  **データ収集の情報収集の回**（`Tazuna.Datasets.Survey`。データ収集の画面の時刻）。
+  tazuna が起こす回の時刻。**要約の回**（`on_demand`。各話題の「要約を作る時刻」）だけ。
   ほかの回は nil。
   """
   def wake(sweep, collection) do
-    cond do
-      sweep["on_demand"] -> {:digest, Settings.get(collection).digest_at || ""}
-      survey_sweep?(sweep, collection) -> {:survey, survey_times(collection)}
-      true -> nil
-    end
+    if sweep["on_demand"], do: {:digest, Settings.get(collection).digest_at || ""}
   end
-
-  # データ収集の情報収集の回か（tazuna が決めた時刻に名指しで起こす回）
-  defp survey_sweep?(sweep, collection) do
-    sweep["by_caller"] == true and
-      Enum.any?(
-        Tazuna.Datasets.list(),
-        &(&1.collection == collection and &1[:survey_plan_sweep] == sweep["name"])
-      )
-  end
-
-  defp survey_times(collection), do: SurveyPlans.get(collection).run_at || ""
 
   defp digest_times(collection) do
     collection
