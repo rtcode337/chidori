@@ -1,7 +1,7 @@
 defmodule Chidori.Datasets.OpeningHours do
   @moduledoc """
-  地図辞典（OpenStreetMap）の営業時間（`opening_hours`）から、**昼に開いているか**と
-  **夜遅くまで開いているか**だけを読み取ります。
+  地図辞典（OpenStreetMap）の営業時間（`opening_hours`）から、**朝に開いているか**・
+  **昼に開いているか**・**夜遅くまで開いているか**だけを読み取ります。
 
   **曜日は見ません。** 知りたいのは「ランチをやっている店か」で、「今日の昼に開いているか」
   ではないので、どれか 1 日でも当てはまれば付けます。書式は `Mo-Fr 11:00-15:00; Sa off`
@@ -10,6 +10,10 @@ defmodule Chidori.Datasets.OpeningHours do
   （`24/7` だけは「一日中」として読みます）。
   """
 
+  # 朝食を出す店とみなす時刻。**この時刻をまたいで開いていれば**朝食営業（モーニングの
+  # ある喫茶店・朝定食の店。9 時開店の店は朝食というより昼前の営業なので入れない）
+  @breakfast_at 8 * 60
+
   # 昼に開いているとみなす時刻。**この時刻をまたいで開いていれば**ランチ営業
   @lunch_at 12 * 60 + 30
 
@@ -17,10 +21,13 @@ defmodule Chidori.Datasets.OpeningHours do
   @late_after 22 * 60
 
   @doc """
-  営業時間から読み取れる特徴（`:lunch` / `:late`）。読めなければ空。
+  営業時間から読み取れる特徴（`:breakfast` / `:lunch` / `:late`）。読めなければ空。
 
       iex> Chidori.Datasets.OpeningHours.features("Mo-Fr 11:00-15:00, 17:00-23:30")
       [:lunch, :late]
+
+      iex> Chidori.Datasets.OpeningHours.features("Mo-Sa 07:00-18:00")
+      [:breakfast, :lunch]
   """
   def features(text) when is_binary(text) do
     text = String.trim(text)
@@ -35,7 +42,11 @@ defmodule Chidori.Datasets.OpeningHours do
             {minutes(h1, m1), minutes(h2, m2)}
           end)
 
-    [lunch: Enum.any?(ranges, &lunch?/1), late: Enum.any?(ranges, &late?/1)]
+    [
+      breakfast: Enum.any?(ranges, &open_at?(&1, @breakfast_at)),
+      lunch: Enum.any?(ranges, &open_at?(&1, @lunch_at)),
+      late: Enum.any?(ranges, &late?/1)
+    ]
     |> Enum.filter(fn {_feature, yes} -> yes end)
     |> Enum.map(fn {feature, _yes} -> feature end)
   end
@@ -48,9 +59,11 @@ defmodule Chidori.Datasets.OpeningHours do
   defp span({from, to}) when to <= from, do: {from, to + 24 * 60}
   defp span(range), do: range
 
-  defp lunch?(range) do
+  # その時刻をまたいで開いているか。**日付をまたぐ時間帯は翌日のその時刻も見る**
+  # （`22:00-09:00` は翌朝 8 時に開いている）
+  defp open_at?(range, at) do
     {from, to} = span(range)
-    from <= @lunch_at and @lunch_at < to
+    Enum.any?([at, at + 24 * 60], &(from <= &1 and &1 < to))
   end
 
   defp late?(range) do

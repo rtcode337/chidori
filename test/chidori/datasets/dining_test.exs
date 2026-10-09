@@ -63,7 +63,7 @@ defmodule Chidori.Datasets.DiningTest do
 
     test "travel-log が読む事実は、元の 1 件からそのまま運ぶ", %{by_source: by_source} do
       # 読む側が 1 件ずつ辞典を引き直さずに済むように
-      # 営業時間はランチ営業・深夜営業を機械で読み取るのに使う
+      # 営業時間は朝食営業・ランチ営業・深夜営業を機械で読み取るのに使う
       for key <- ~w(lat lon address website phone opening_hours) do
         assert key in by_source["osm_japan"].extra
       end
@@ -491,7 +491,7 @@ defmodule Chidori.Datasets.DiningTest do
     end
 
     test "営業日と営業時間を、確かめられた店だけ OSM の書き方で埋めさせる" do
-      # ランチ営業・深夜営業の印は、この書き方から機械で読み取る（`OpeningHours`）
+      # 朝食営業・ランチ営業・深夜営業の印は、この書き方から機械で読み取る（`OpeningHours`）
       for prompt <- [Dining.tidy_prompt(), Dining.check_prompt()] do
         assert prompt =~ "extra.opening_hours"
         assert prompt =~ "確かめられたときだけ"

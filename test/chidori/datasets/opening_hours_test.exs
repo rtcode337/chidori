@@ -15,8 +15,16 @@ defmodule Chidori.Datasets.OpeningHoursTest do
     assert OpeningHours.features("Su 11:30-21:00") == [:lunch]
   end
 
-  test "一日中開いている店は両方" do
-    assert OpeningHours.features("24/7") == [:lunch, :late]
+  test "朝 8 時をまたいで開いていれば朝食営業（9 時開店は入れない）" do
+    assert OpeningHours.features("Mo-Sa 07:00-11:00") == [:breakfast]
+    assert OpeningHours.features("Mo-Fr 09:00-14:00") == [:lunch]
+    # 夜通し開いて朝に閉まる店も、朝 8 時に開いていれば入る
+    assert OpeningHours.features("Fr,Sa 22:00-09:00") == [:breakfast, :late]
+    assert OpeningHours.features("Fr,Sa 22:00-05:00") == [:late]
+  end
+
+  test "一日中開いている店は全部" do
+    assert OpeningHours.features("24/7") == [:breakfast, :lunch, :late]
   end
 
   test "読めないものは何も付けない" do

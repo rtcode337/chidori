@@ -159,7 +159,7 @@ defmodule Chidori.Datasets.Dining do
   # 店の特徴（「特徴:ランチ営業」）。**travel-log のカテゴリになる**ので、
   # 語彙は Chidori が持つ —— AI に決めさせると表記が割れて、絞り込みが効かなくなる。
   # 並びがそのまま travel-log の絞り込みの並びになる
-  @features ~w(ランチ営業 深夜営業 ゆっくりできる 1人で入りやすい 個室あり 子連れ歓迎 予約がおすすめ)
+  @features ~w(朝食営業 ランチ営業 深夜営業 ゆっくりできる 1人で入りやすい 個室あり 子連れ歓迎 予約がおすすめ)
 
   # 人が現地で位置を確かめた店のカテゴリ。**Chiezo の固定（`Chiezo.locked_tag/0`）から
   # 機械で付ける**ので、AI に頼む語彙（`@features`）には入れない —— 入れると AI が
@@ -174,7 +174,7 @@ defmodule Chidori.Datasets.Dining do
   @doubt_category "閉店の可能性あり"
 
   # 営業時間から機械で読み取れる特徴（`Chidori.Datasets.OpeningHours`）
-  @hours_features [lunch: "ランチ営業", late: "深夜営業"]
+  @hours_features [breakfast: "朝食営業", lunch: "ランチ営業", late: "深夜営業"]
 
   @doc "この収集の目印のタグ。**travel-log はこれで 1 件を拾います**。"
   def kind_tag, do: "食事処"
@@ -328,7 +328,7 @@ defmodule Chidori.Datasets.Dining do
       %{
         field: "カテゴリ（categories）",
         stored: "タグ「#{feature_tag()}:…」と extra.opening_hours",
-        who: "営業時間から機械で（ランチ営業・深夜営業）、残りは AI"
+        who: "営業時間から機械で（朝食営業・ランチ営業・深夜営業）、残りは AI"
       },
       %{
         field: "ランク（rank）",
@@ -434,7 +434,7 @@ defmodule Chidori.Datasets.Dining do
       provides: ~w(extra),
       body: "opening",
       # `area` は都道府県。**travel-log の地域が機械で決まる**
-      # `opening_hours` は**ランチ営業・深夜営業を機械で読み取る**ため（`categories/2`）。
+      # `opening_hours` は**朝食営業・ランチ営業・深夜営業を機械で読み取る**ため（`categories/2`）。
       # 持っているのは地図辞典の飲食店の 1 割ほど
       # `wikidata` は使っていません（上と同じ理由で運びません）
       extra: ~w(lat lon area address website phone opening_hours),
@@ -912,7 +912,7 @@ defmodule Chidori.Datasets.Dining do
       24 時間制の時刻で書いてください。定休日は `off`、昼と夜で分かれていれば `,` で並べ、
       日付をまたぐ閉店は `18:00-02:00` のように書きます。
       例: `Mo-Fr 11:00-14:30,17:30-22:00; Sa,Su,PH 11:00-21:00; We off`。
-      **ここからランチ営業・深夜営業の印が機械で付く**ので、書式を崩さないでください
+      **ここから朝食営業・ランチ営業・深夜営業の印が機械で付く**ので、書式を崩さないでください
     - tags: **いま付いているタグは、直すもの以外そのまま残してください**
       （返した内容で丸ごと置き換わるので、書かなかったタグは消えます）
       - "#{kind_tag()}" —— この一覧の目印。**必ず残してください**
