@@ -188,8 +188,8 @@ defmodule TazunaWeb.SettingsLiveTest do
     assert html =~ ~s(name="ntfy[topic]")
     assert html =~ ~s(name="ntfy[base_url]")
 
-    # 知らせるかどうかは話題ごと（直すのは各画面）。いまどうなっているかは並べる
-    assert html =~ "知らせる"
+    # 知らせるかどうかは話題ごと。いまどうなっているかはチェックで並べる
+    assert html =~ ~r|<input type="checkbox" checked[^>]*phx-value-collection="tazuna_tech"|
 
     live
     |> form("#ntfy-form", ntfy: %{topic: " shared-topic ", base_url: "http://ntfy.test/"})
@@ -207,6 +207,25 @@ defmodule TazunaWeb.SettingsLiveTest do
     assert html =~ "http:// か https:// で書いてください"
     # 書いたものは消さない
     assert html =~ ~s(value="ntfy.test")
+  end
+
+  test "通知タブで、話題ごとに知らせるかをその場で切り替える", %{conn: conn} do
+    {:ok, live, _html} = live(conn, ~p"/settings?tab=notify")
+    refute Tazuna.Notify.Settings.get("tazuna_tech").notify
+
+    html =
+      live
+      |> element(~s(#notify-topics input[phx-value-collection="tazuna_tech"]))
+      |> render_click()
+
+    assert Tazuna.Notify.Settings.get("tazuna_tech").notify
+    assert html =~ "知らせるようにしました"
+
+    live
+    |> element(~s(#notify-topics input[phx-value-collection="tazuna_tech"]))
+    |> render_click()
+
+    refute Tazuna.Notify.Settings.get("tazuna_tech").notify
   end
 
   test "tazuna が起こす回は、表の中で時刻を直せる", %{conn: conn} do

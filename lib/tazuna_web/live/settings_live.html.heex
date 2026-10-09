@@ -353,10 +353,21 @@
 
       <section class="settings-block">
         <h3>知らせる話題</h3>
-        <ul id="notify-topics">
+        <p class="muted-note">チェックを入れた話題は、要約ができたら知らせます（押したらすぐ反映します）。</p>
+        <%!-- **ここで切り替えられる**（各話題の画面の「通知」と同じ値）。話題ごとの画面を
+             渡り歩かないと、どれを知らせているかを揃えられなかった --%>
+        <ul id="notify-topics" class="notify-topics">
           <li :for={topic <- @notify_topics}>
-            <.link navigate={~p"/news?view=#{topic.collection}"}>{topic.name}</.link>
-            — {if topic.notify, do: "知らせる", else: "知らせない"}
+            <label>
+              <input
+                type="checkbox"
+                checked={topic.notify}
+                phx-click="toggle_notify"
+                phx-value-collection={topic.collection}
+              />
+              {topic.name}
+            </label>
+            <.link navigate={~p"/news?view=#{topic.collection}"} class="muted-note">話題の画面へ</.link>
           </li>
         </ul>
       </section>

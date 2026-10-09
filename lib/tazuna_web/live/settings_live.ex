@@ -86,7 +86,7 @@ defmodule TazunaWeb.SettingsLive do
 
   defp ntfy_form(attrs \\ %{}), do: to_form(Destination.change(attrs), as: :ntfy)
 
-  # 要約を作る話題と、それぞれ知らせるかどうか（直すのは各画面）
+  # 要約を作る話題と、それぞれ知らせるかどうか（ここでも各話題の画面でも切り替えられる）
   defp notify_topics do
     for topic <- Topics.list(), Topics.digest?(topic) do
       %{
@@ -225,6 +225,28 @@ defmodule TazunaWeb.SettingsLive do
          socket
          |> assign(ntfy_form: to_form(%{changeset | action: :validate}, as: :ntfy))
          |> put_flash(:error, "通知先を保存できませんでした: " <> first_error(changeset))}
+    end
+  end
+
+  # 話題ごとに知らせるかを切り替える。**押したらすぐ保存する**（保存ボタンを押し忘れると、
+  # チェックの見た目と実際がずれたまま残る）
+  def handle_event("toggle_notify", %{"collection" => collection}, socket) do
+    case Enum.find(socket.assigns.notify_topics, &(&1.collection == collection)) do
+      nil ->
+        {:noreply, socket}
+
+      topic ->
+        socket =
+          case Settings.put(collection, %{"notify" => to_string(not topic.notify)}) do
+            {:ok, _setting} ->
+              word = if topic.notify, do: "知らせないようにしました", else: "知らせるようにしました"
+              put_flash(socket, :info, "#{topic.name}を#{word}。")
+
+            {:error, changeset} ->
+              put_flash(socket, :error, "保存できませんでした: " <> first_error(changeset))
+          end
+
+        {:noreply, assign(socket, notify_topics: notify_topics())}
     end
   end
 
