@@ -273,4 +273,23 @@ defmodule ChidoriWeb.SettingsLiveTest do
     # 整理は tazuna_tech と tazuna_old の 2 本（どちらも時計で回る）
     assert pace =~ "Chidori に 2 本・動いている"
   end
+
+  test "Chiezo から戻した結果は、変えたものだけを並べる" do
+    alias ChidoriWeb.SettingsLive
+
+    assert SettingsLive.restore_text(
+             {:ok,
+              %{
+                paces: [{:tidy, 1440}],
+                stopped: ["tazuna_books"],
+                resumed: [],
+                min_pageviews: nil
+              }}
+           ) == "Chiezo の設定から戻しました（整理を1 日ごとに、整理を自動で回さない: tazuna_books）。"
+
+    assert SettingsLive.restore_text(
+             {:ok, %{paces: [], stopped: [], resumed: [], min_pageviews: nil}}
+           ) =~
+             "変えたものはありません"
+  end
 end

@@ -35,6 +35,7 @@ defmodule ChidoriWeb.SettingsLive do
        overview: nil,
        home_keys: [],
        pace_message: nil,
+       restore_message: nil,
        # 収集ごとに選んでいるもの（`%{収集 => %{"sweeps" => 巡回ごとの相手, "tidy" => bool}}`）。
        # **覚えておく** —— 表を読み直すとフォームは Chiezo の値に戻るので、覚えていないと
        # 選んだところが勝手に元へ戻る
@@ -126,6 +127,12 @@ defmodule ChidoriWeb.SettingsLive do
   def handle_async({:send, name}, {:exit, _reason}, socket),
     do: {:noreply, update(socket, :sent, &Map.put(&1, name, "送れませんでした。"))}
 
+  def handle_async(:restore, {:ok, result}, socket),
+    do: {:noreply, socket |> assign(restore_message: restore_text(result)) |> load("chiezo")}
+
+  def handle_async(:restore, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, restore_message: restore_text({:error, :chiezo_unavailable}))}
+
   def handle_async(:pace, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, pace_message: pace_text({:error, :chiezo_unavailable}))}
 
@@ -138,6 +145,20 @@ defmodule ChidoriWeb.SettingsLive do
 
   # **保存してから送る。** 送れなくても保存は残る（次に「収集の設定を更新」を押した
   # ときにも、この間隔で組んで送られる）
+  # Chiezo に残っている設定から戻す（`Chidori.SettingsRestore`）
+  def handle_event("restore_settings", _params, socket) do
+    case News.chiezo_base_url() do
+      nil ->
+        {:noreply, assign(socket, restore_message: "Chiezo の場所が設定されていません。")}
+
+      base ->
+        {:noreply,
+         socket
+         |> assign(restore_message: "Chiezo を読んでいます…")
+         |> start_async(:restore, fn -> Chidori.SettingsRestore.run(base) end)}
+    end
+  end
+
   def handle_event("save_pace", %{"pace" => pace}, socket) do
     saved =
       for kind <- CollectPace.kinds(),
@@ -407,6 +428,33 @@ defmodule ChidoriWeb.SettingsLive do
 
   @doc "整理の巡回か（自動で回すかを選ぶ口を出す）。"
   def tidy_sweep?(sweep), do: sweep.name == Chidori.SweepNames.tidy()
+
+  @doc "Chiezo の設定から戻した結果の言い方。**変えたものだけ**並べる。"
+  def restore_text({:ok, %{paces: [], stopped: [], resumed: [], min_pageviews: nil}}),
+    do: "Chiezo の設定と同じでした（変えたものはありません）。"
+
+  def restore_text({:ok, result}) do
+    parts =
+      Enum.map(result.paces, fn {kind, minutes} ->
+        "#{CollectPace.sweep_name(kind)}を#{CollectPace.label(minutes)}ごとに"
+      end) ++
+        if(result.stopped == [],
+          do: [],
+          else: ["整理を自動で回さない: #{Enum.join(result.stopped, "・")}"]
+        ) ++
+        if(result.resumed == [],
+          do: [],
+          else: ["整理を自動で回す: #{Enum.join(result.resumed, "・")}"]
+        ) ++
+        if(result.min_pageviews,
+          do: ["芸能人の図の知名度の下限を月 #{result.min_pageviews} 閲覧に"],
+          else: []
+        )
+
+    "Chiezo の設定から戻しました（" <> Enum.join(parts, "、") <> "）。"
+  end
+
+  def restore_text({:error, _reason}), do: "Chiezo の収集の一覧を読めませんでした。"
 
   @doc "間隔を送った結果の言い方。"
   def pace_text({:ok, %{sent: sent, failed: []}}),

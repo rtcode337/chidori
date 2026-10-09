@@ -134,6 +134,13 @@ defmodule Chidori.CollectPace do
     end
   end
 
+  @doc """
+  整理を自動で回すかを**手元にだけ**覚えます（Chiezo へは送らない。Chiezo に残っている
+  設定から戻すとき —— `Chidori.SettingsRestore`）。
+  """
+  def put_stop(collection, stop?) when is_binary(collection) and is_boolean(stop?),
+    do: save_stop(collection, stop?)
+
   defp save_stop(collection, true) do
     %TidyStop{collection: collection}
     |> Ecto.Changeset.change()

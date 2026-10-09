@@ -302,6 +302,25 @@
         </form>
         <p :if={@pace_message} class="muted-note" aria-live="polite">{@pace_message}</p>
       </section>
+
+      <%!-- 動かす場所を変えたとき・DB を作り直したときに、Chiezo に残っている設定から戻す
+           （`Chidori.SettingsRestore`。Chiezo へは何も送らない） --%>
+      <section class="settings-block">
+        <h3>Chiezo から設定を戻す</h3>
+        <p class="muted-note">
+          巡回の間隔・整理を自動で回さない収集・芸能人の図の知名度の下限を、Chiezo の収集に残っている設定に合わせます。Chiezo へは何も送りません。食事処の範囲は範囲の画面から戻します。
+        </p>
+        <div class="button-row">
+          <button
+            type="button"
+            phx-click="restore_settings"
+            phx-disable-with="読んでいます…"
+          >
+            Chiezo から戻す
+          </button>
+        </div>
+        <p :if={@restore_message} class="muted-note" aria-live="polite">{@restore_message}</p>
+      </section>
     </section>
 
     <%!-- トップページに並べる枠。**選んだ枠がタブになり、最初の枠が開いたときに出る** --%>
