@@ -76,16 +76,4 @@ defmodule Chidori.Relations.Marks do
     %{done: done, on: on, note: note} = MarkRecords.fields(doc)
     %Mark{doc_id: doc.doc_id, view: view, node_name: name, seen: done, seen_on: on, note: note}
   end
-
-  @doc false
-  # 前の表（relation_marks）の中身を、置き場の記録の形で返す（一度だけ写す。`Chidori.DataStore`）
-  def legacy_records do
-    %{rows: rows} =
-      Chidori.Repo.query!(
-        "SELECT view, node_name, seen, seen_on, note FROM relation_marks ORDER BY id"
-      )
-
-    for [view, name, seen, seen_on, note] <- rows,
-        do: MarkRecords.record(view, name, seen, seen_on, note)
-  end
 end

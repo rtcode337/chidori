@@ -72,14 +72,4 @@ defmodule Chidori.Datasets.BookMarks do
     %{done: done, on: on, note: note} = MarkRecords.fields(doc)
     %BookMark{doc_id: doc.doc_id, title: title, read: done, read_on: on, note: note}
   end
-
-  @doc false
-  # 前の表（book_marks）の中身を、置き場の記録の形で返す（一度だけ写す。`Chidori.DataStore`）
-  def legacy_records do
-    %{rows: rows} =
-      Chidori.Repo.query!("SELECT title, read, read_on, note FROM book_marks ORDER BY id")
-
-    for [title, read, read_on, note] <- rows,
-        do: MarkRecords.record(@view, title, read, read_on, note)
-  end
 end

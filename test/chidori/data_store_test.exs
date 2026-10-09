@@ -1,15 +1,13 @@
 defmodule Chidori.DataStoreTest do
   @moduledoc """
   利用者が書いたことの置き場（Chiezo の `chidori_data`）。見ているのは、
-  **置き場が無ければ作ってから読むこと**、**全部をページを送って読むこと**、
-  **前の表からは置き場にまだ無いものだけを写すこと**です。
+  **置き場が無ければ作ってから読むこと**、**全部をページを送って読むこと**です。
   """
 
   use Chidori.DataCase, async: false
 
   alias Chidori.DataStore
   alias Chidori.HttpStub
-  alias Chidori.News.Interests
 
   @base "http://chiezo.test:7010"
 
@@ -66,24 +64,5 @@ defmodule Chidori.DataStoreTest do
 
       assert_received {:posted, %{"tags" => "見た・読んだ,種類:books", "extra" => %{"key" => "本"}}}
     end
-  end
-
-  test "前の表からは、置き場にまだ無いものだけを写す" do
-    Chidori.Repo.query!(
-      "INSERT INTO news_interests (collection, name, position, inserted_at, updated_at) " <>
-        "VALUES ('tazuna_tech', 'LLM', 1, now(), now()), ('tazuna_tech', 'Rust', 2, now(), now())"
-    )
-
-    # 起動したときと同じく読み直させる（手元だけの実装は空を返す）
-    send(DataStore, :load)
-    :sys.get_state(DataStore)
-    assert Interests.list("tazuna_tech") == ["LLM", "Rust"]
-
-    # 置き場にもうあるもの（別の Chidori が写した・選んだもの）は写さない
-    DataStore.reset()
-    Interests.toggle("tazuna_tech", "Rust")
-    send(DataStore, :load)
-    :sys.get_state(DataStore)
-    assert Enum.sort(Interests.list("tazuna_tech")) == ["LLM", "Rust"]
   end
 end

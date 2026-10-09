@@ -52,7 +52,7 @@ defmodule Chidori.News.Interests do
     list(collection)
   end
 
-  @doc "1 語の文書の形（前の表から写すときにも使う）。"
+  @doc "1 語の文書の形。"
   def record(collection, name, position) do
     title = "興味トピック: #{collection} / #{name}"
 
@@ -75,15 +75,4 @@ defmodule Chidori.News.Interests do
     do: Map.put(topic, :interests, list(collection))
 
   def attach(topic), do: topic
-
-  @doc false
-  # 前の表（news_interests）の中身を、置き場の記録の形で返す（一度だけ写す。`Chidori.DataStore`）
-  def legacy_records do
-    %{rows: rows} =
-      Chidori.Repo.query!(
-        "SELECT collection, name, position FROM news_interests ORDER BY collection, position, id"
-      )
-
-    for [collection, name, position] <- rows, do: record(collection, name, position)
-  end
 end

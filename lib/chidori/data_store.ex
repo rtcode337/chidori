@@ -16,11 +16,6 @@ defmodule Chidori.DataStore do
   1 件は Chiezo の文書 1 つで、`%{doc_id, title, tags, extra}` の形で持ちます。
   何の記録かはタグで分けます（`interest_tag/0`・`mark_tag/0`）。
 
-  **前の表からは、置き場にまだ無いものだけを写します**（`news_interests`・
-  `book_marks`・`relation_marks`）。同じ興味トピック（話題と語）・同じ記録（種類と
-  見出し）が置き場にあれば写さないので、何度読み直しても、別の Chidori が先に
-  写していても二重にならない。表は写し終えたあとの移行で消す。
-
   Chiezo との読み書きは `backend/0` が受け持ちます（テストは手元だけで持つ実装に
   差し替える）。
   """
@@ -94,8 +89,7 @@ defmodule Chidori.DataStore do
   def handle_info(:load, state) do
     case backend().load() do
       {:ok, docs} ->
-        state = %{state | docs: Map.new(docs, &{&1.doc_id, &1}), ready: true}
-        {:noreply, import_legacy(state)}
+        {:noreply, %{state | docs: Map.new(docs, &{&1.doc_id, &1}), ready: true}}
 
       {:error, reason} ->
         Logger.warning("chidori_data を読めませんでした（#{inspect(reason)}）。読み直します")
@@ -146,44 +140,6 @@ defmodule Chidori.DataStore do
       :ok -> {:reply, :ok, %{state | docs: Map.delete(state.docs, doc_id)}}
       error -> {:reply, error, state}
     end
-  end
-
-  # ---- 前の表から一度だけ写す ---------------------------------------------
-
-  defp import_legacy(state) do
-    state
-    |> import_kind(@interest_tag, &Chidori.News.Interests.legacy_records/0)
-    |> import_kind(@mark_tag, &legacy_marks/0)
-  end
-
-  # 何の記録か（興味トピックは話題と語、読んだ・見た記録は種類と見出し）
-  defp identity(%{extra: extra}),
-    do: {extra["collection"], extra["view"], extra["name"], extra["key"]}
-
-  defp legacy_marks,
-    do: Chidori.Datasets.BookMarks.legacy_records() ++ Chidori.Relations.Marks.legacy_records()
-
-  # 置き場にまだ無いものだけ写す（同じものかは `identity/1` で見る）
-  defp import_kind(state, tag, records) do
-    have =
-      for doc <- Map.values(state.docs), tag in doc.tags, into: MapSet.new(), do: identity(doc)
-
-    records.()
-    |> Enum.reject(&MapSet.member?(have, identity(&1)))
-    |> Enum.reduce(state, fn attrs, acc ->
-      case backend().add(attrs) do
-        {:ok, doc} ->
-          put_in(acc.docs[doc.doc_id], doc)
-
-        {:error, reason} ->
-          Logger.warning("前の表から写せませんでした（#{inspect(reason)}）: #{attrs.title}")
-          acc
-      end
-    end)
-  rescue
-    error ->
-      Logger.warning("前の表を読めませんでした: #{Exception.message(error)}")
-      state
   end
 end
 

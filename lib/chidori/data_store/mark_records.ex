@@ -58,7 +58,7 @@ defmodule Chidori.DataStore.MarkRecords do
   def delete(nil), do: :ok
   def delete(doc_id), do: DataStore.delete(doc_id)
 
-  @doc "1 件の文書の形（前の表から写すときにも使う）。"
+  @doc "1 件の文書の形。"
   def record(view, key, done, on, note) do
     title = "#{if(view == "books", do: "読んだ", else: "見た")}: #{view} / #{key}"
     on = if match?(%Date{}, on), do: Date.to_iso8601(on), else: on
