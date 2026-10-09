@@ -4,7 +4,7 @@
 # docker-compose.yml との違いは 3 点だけ:
 #   1. `${...}` を使わず、値を YAML に直接書く（`.env` もシェルの環境変数も無い前提のため）
 #   2. データの置き場を絶対パスで書く（相対パスの基準になるチェックアウトが無いため）
-#   3. サービス名と DB のユーザー名・DB 名を chidori にする（docker-compose.yml の tazuna は
+#   3. DB のユーザー名・DB 名を chidori にする（docker-compose.yml の tazuna は
 #      開発コードの名残。既存の DB を作り直さずに済むよう、あちらは変えずに残している）
 # **docker-compose.yml のサービス・環境変数を変えたら、こちらにも同じ変更を入れること**
 # （値の直書きぶん古くなりやすい）。
@@ -43,7 +43,7 @@ x-db-env: &db-env
   PGDATA: "/data/postgres/18/docker"
 
 services:
-  chidori:
+  app:
     image: ghcr.io/rtcode337/chidori:latest
     restart: unless-stopped
     depends_on:
@@ -101,18 +101,18 @@ services:
 # Chiezo への依頼が応答を待ったまま時間切れになること。
 #
 # その場合は chiezo のネットワークに相乗りする（ホストのポートを経由しない）。
-# 上の chidori サービスの `networks: [default, chiezo]` と、下の networks: の定義を
+# 上の app サービスの `networks: [default, chiezo]` と、下の networks: の定義を
 # セットで外す（片方だけでは効かない）。そのうえで CHIEZO_BASE_URL を
 # "http://chiezo-app:7010" にする（chiezo-app はコンテナ名なので、相手のプロジェクト名が
 # 何でもこの名前で引ける）。
 #
 # 注意:
 # - `networks:` を書くと既定のネットワークに自動で入らなくなる。`default` を並べ忘れると
-#   chidori が db に繋がらず、移行が失敗して起動ごと落ちる
+#   app が db に繋がらず、移行が失敗して起動ごと落ちる
 # - ネットワーク名は環境で変わる。`<プロジェクト名>_default` で、プロジェクト名は
 #   compose の `name:` か、NAS の管理画面で付けたスタック名。`docker network ls` で実物を確かめる
 # - `external: true` はそのネットワークが既に在ることが前提。chiezo を同じホストで
-#   動かしていない環境でこれを書くと、chidori が起動できなくなる（だから既定では書いていない）
+#   動かしていない環境でこれを書くと、app が起動できなくなる（だから既定では書いていない）
 #
 # networks:
 #   chiezo:

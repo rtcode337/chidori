@@ -1,6 +1,6 @@
 # 本番の形。イメージは GHCR から pull する（手元のソースからは docker-compose.build.yml を重ねる）。
 services:
-  tazuna:
+  app:
     image: ghcr.io/rtcode337/chidori:latest
     restart: unless-stopped
     depends_on:
