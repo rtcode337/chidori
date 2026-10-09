@@ -16,6 +16,18 @@
    `mix assets.build` の出力1本にまとまる。手元にだけあるファイルを配ると、
    クリーンなチェックアウトから作ったイメージが無装飾になる */
 
+/* 保存したときなどの知らせ（`TazunaWeb.CoreComponents.flash/1`）。**画面の流れに入れず、
+   右上に浮かせる** —— 流れに入ると、出るたびにヘッダーごと押し下げて画面が崩れる */
+.flash-toast { position: fixed; top: 1rem; right: 1rem; z-index: 50; width: min(24rem, calc(100vw - 2rem)); }
+.flash-toast[hidden] { display: none; }
+.flash-box { display: flex; align-items: flex-start; gap: .6rem; padding: .75rem .9rem; border: 1px solid #c7d2fe; border-radius: .8rem; background: #eef2ff; color: #1e1b4b; font-size: .9rem; line-height: 1.55; box-shadow: 0 10px 24px rgba(15, 23, 42, .12); cursor: pointer; }
+.flash-box.is-error { border-color: #fecaca; background: #fef2f2; color: #7f1d1d; }
+.flash-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.flash-text p { margin: 0; }
+.flash-title { font-weight: 700; }
+.flash-close { flex: none; padding: 0 .3rem; border: 0; background: transparent; color: inherit; font-size: 1.1rem; line-height: 1.4; opacity: .55; }
+.flash-close:hover { opacity: .9; }
+
 /* 全ページ共通 */
 :root { color: #0f172a; background: #fafaf9; font-family: ui-sans-serif, system-ui, sans-serif; }
 * { box-sizing: border-box; }

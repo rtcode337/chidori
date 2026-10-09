@@ -63,24 +63,18 @@ defmodule TazunaWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class="flash-toast"
       {@rest}
     >
-      <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
-      ]}>
-        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
-          <p :if={@title} class="font-semibold">{@title}</p>
+      <%!-- **見た目は app.css の .flash-toast で付ける。** 雛形のクラス（daisyUI の
+           toast・alert と heroicons）はこのアプリでは読み込んでいないので、素のまま
+           画面の頭に流れ込み、ヘッダーごと押し下げていた --%>
+      <div class={["flash-box", @kind == :info && "is-info", @kind == :error && "is-error"]}>
+        <div class="flash-text">
+          <p :if={@title} class="flash-title">{@title}</p>
           <p>{msg}</p>
         </div>
-        <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
-        </button>
+        <button type="button" class="flash-close" aria-label="閉じる">×</button>
       </div>
     </div>
     """
