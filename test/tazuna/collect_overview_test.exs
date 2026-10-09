@@ -83,6 +83,9 @@ defmodule Tazuna.CollectOverviewTest do
   test "名前は tazuna が置いた説明の頭から取る" do
     label = &CollectOverview.label(%{"name" => "x", "description" => &1})
 
+    assert label.("Chidori の「技術ニュース」。技術に関する…") == "技術ニュース"
+
+    # 送り直す前の説明（開発コードの tazuna を名乗っていた頃のもの）も読む
     assert label.("tazuna の「技術ニュース」。技術に関する…") == "技術ニュース"
     # 話題とその網を見分けられるように
     assert label.("tazuna の「技術ニュース」のトピック（記事のタグから作る話題の網）") == "技術ニュースのトピック"

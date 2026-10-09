@@ -63,7 +63,7 @@ defmodule Tazuna.RelationsTest do
 
       assert_received {:requested, payload}
       assert payload["prompt"] =~ "{current}"
-      assert payload["requested_by"] == "tazuna"
+      assert payload["requested_by"] == "chidori"
 
       # **回る先は Chiezo に割らせる。** 全員が必ずどこかの区画に入る見出し順で、
       # 1 区画 25 人 —— **1 回の答えが長くなりすぎない大きさ**にしてある

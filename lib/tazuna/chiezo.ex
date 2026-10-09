@@ -11,7 +11,7 @@ defmodule Tazuna.Chiezo do
 
   alias Tazuna.Http
 
-  @user_agent "tazuna"
+  @user_agent "chidori"
   @timeout 15_000
   @connect_timeout 5_000
   # 1 回に引ける上限（Chiezo 側の決まり。これより大きいと 422 で断られる）
@@ -413,7 +413,7 @@ defmodule Tazuna.Chiezo do
     # **区画を名指しすると、その区画に印が付く**（先に見てほしいと頼んだのだから、
     # 巡回が同じところをもう一度見る必要は無い）
     body =
-      %{note: note, titles: titles, requested_by: "tazuna"}
+      %{note: note, titles: titles, requested_by: "chidori"}
       |> then(&if(sweep, do: Map.put(&1, :sweep, sweep), else: &1))
       |> then(&if(partition, do: Map.put(&1, :partition, partition), else: &1))
       # **その回だけの依頼文**。材料（数えたタグなど）を作れるのは tazuna の側なので、

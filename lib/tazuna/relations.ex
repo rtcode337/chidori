@@ -43,7 +43,7 @@ defmodule Tazuna.Relations do
   # （@page_size と掛けた数が実質の上限になる）。無限に回ると、向こうの応答が
   # 壊れたときに終われなくなる
   @max_pages 40
-  @user_agent "tazuna"
+  @user_agent "chidori"
 
   # 回る先の割り方。**見出しの順に 25 人ずつ**で、300 区画ほどになる
   # （日本語版 Wikipedia の「〜の画家」は 323 カテゴリ・のべ 14,735 記事）。
@@ -1412,7 +1412,7 @@ defmodule Tazuna.Relations do
   defp base_attrs(name, choices) do
     %{
       name: name,
-      description: "tazuna の関連図（画家の影響と時代）",
+      description: "Chidori の関連図（画家の影響と時代）",
       prompt: painters_prompt(),
       interval_minutes: Tazuna.SweepNames.scan_minutes(),
       partition: @partition,
@@ -1430,7 +1430,7 @@ defmodule Tazuna.Relations do
       verify_tags: [
         %{prefix: Graph.related_tag(), source: "jawiki"}
       ],
-      requested_by: "tazuna"
+      requested_by: "chidori"
     }
   end
 

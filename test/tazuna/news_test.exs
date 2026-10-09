@@ -257,7 +257,7 @@ defmodule Tazuna.NewsTest do
 
       assert_receive {:created, payload}, 2_000
       assert payload["name"] == "tazuna_news"
-      assert payload["requested_by"] == "tazuna"
+      assert payload["requested_by"] == "chidori"
       # 実行のたびに進む印を使う（前回以降を集めるため）
       assert payload["prompt"] =~ "{cursor}"
       assert payload["prompt"] =~ "next_cursor"

@@ -58,10 +58,14 @@ defmodule Tazuna.CollectOverview do
     end
   end
 
-  @doc "tazuna が頼んだ収集か（Chiezo には他のアプリの収集も並ぶ）。"
+  @doc """
+  Chidori が頼んだ収集か（Chiezo には他のアプリの収集も並ぶ）。**名乗りは開発コードの
+  tazuna だった頃のものも受ける** —— 「収集の設定を更新」で送り直すまで、Chiezo には
+  前の名乗りのまま残っている。
+  """
   def ours?(collection),
     do:
-      collection["requested_by"] == "tazuna" or
+      collection["requested_by"] in ["chidori", "tazuna"] or
         String.starts_with?(collection["name"] || "", "tazuna_")
 
   defp collection_row(collection, worker_names) do
@@ -118,21 +122,21 @@ defmodule Tazuna.CollectOverview do
   end
 
   @doc """
-  画面に出す名前。**tazuna が置いた説明の頭から取ります** —— 話題は「tazuna の「〜」」、
-  トピックの網は「〜のトピック」、関連図とデータ収集は括弧の中。
-  読めなければ収集の名前のまま。
+  画面に出す名前。**Chidori が置いた説明の頭から取ります** —— 話題は「Chidori の「〜」」、
+  トピックの網は「〜のトピック」、関連図とデータ収集は括弧の中。説明の頭が開発コードの
+  「tazuna の」のもの（送り直す前の説明）も読む。読めなければ収集の名前のまま。
   """
   def label(collection) do
     description = collection["description"] || ""
 
     cond do
-      match = Regex.run(~r/^tazuna の「([^」]+)」のトピック/u, description) ->
+      match = Regex.run(~r/^(?:Chidori|tazuna) の「([^」]+)」のトピック/u, description) ->
         Enum.at(match, 1) <> "のトピック"
 
-      match = Regex.run(~r/^tazuna の「([^」]+)」/u, description) ->
+      match = Regex.run(~r/^(?:Chidori|tazuna) の「([^」]+)」/u, description) ->
         Enum.at(match, 1)
 
-      match = Regex.run(~r{^tazuna の(?:関連図|データ収集)（([^。／/）]+)}u, description) ->
+      match = Regex.run(~r{^(?:Chidori|tazuna) の(?:関連図|データ収集)（([^。／/）]+)}u, description) ->
         match |> Enum.at(1) |> String.trim()
 
       true ->

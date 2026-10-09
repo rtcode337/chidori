@@ -304,7 +304,7 @@ defmodule Tazuna.Datasets.TravelLog do
   先頭の `#` の行は注記で、travel-log は読み飛ばします。
   """
   def exclude_txt(keys) do
-    ["# tazuna の収集で消えたスポット（閉店・重複など）の key" | keys]
+    ["# Chidori の収集で消えたスポット（閉店・重複など）の key" | keys]
     |> Enum.join("\r\n")
     |> Kernel.<>("\r\n")
   end
@@ -363,7 +363,7 @@ defmodule Tazuna.Datasets.TravelLog do
       clean(Map.get(doc, "opening")),
       hours(extra),
       "出典: #{if from == [], do: "不明", else: Enum.join(from, " / ")}" <>
-        "（tazuna の収集「#{collection}」から書き出し）",
+        "（Chidori の収集「#{collection}」から書き出し）",
       Tazuna.Datasets.ShopLinks.pick(extra, name, links)
     ]
     |> Enum.reject(&(&1 == ""))

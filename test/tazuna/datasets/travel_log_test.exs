@@ -188,7 +188,7 @@ defmodule Tazuna.Datasets.TravelLogTest do
     test "1 行に 1 つの key で、注記の行は # で始める" do
       # travel-log は空行と # で始まる行を読み飛ばす
       assert TravelLog.exclude_txt(["20", "300"]) ==
-               "# tazuna の収集で消えたスポット（閉店・重複など）の key\r\n20\r\n300\r\n"
+               "# Chidori の収集で消えたスポット（閉店・重複など）の key\r\n20\r\n300\r\n"
     end
   end
 

@@ -51,7 +51,7 @@ defmodule Tazuna.Datasets.DiningAreasTest do
     defp dining(id, name, bbox) do
       %{
         "name" => "tazuna_dining_#{id}",
-        "description" => "tazuna のデータ収集（#{name}の食事処 / travel-log 向け）",
+        "description" => "Chidori のデータ収集（#{name}の食事処 / travel-log 向け）",
         "partition" => %{"by" => "geo", "bbox" => bbox}
       }
     end

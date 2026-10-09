@@ -28,7 +28,7 @@ defmodule Tazuna.News.Hatena do
   @ttl_minutes 60
   # 続けて引くときに空ける間（ミリ秒）。1 回で 2〜3 本しか引かないが、加減はこちらでする
   @pause_ms 1_000
-  @user_agent "tazuna"
+  @user_agent "chidori"
 
   def start_link(_opts), do: Agent.start_link(fn -> %{} end, name: __MODULE__)
 

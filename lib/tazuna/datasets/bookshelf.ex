@@ -376,13 +376,13 @@ defmodule Tazuna.Datasets.Bookshelf do
   def attrs(choices \\ %{}) do
     %{
       name: collection(),
-      description: "tazuna のデータ収集（定番の技術書。記事のタグから作る本棚）",
+      description: "Chidori のデータ収集（定番の技術書。記事のタグから作る本棚）",
       prompt: tidy_prompt(),
       interval_minutes: SweepNames.tidy_minutes(),
       kind: "stock",
       extract: extract_spec(),
       sweeps: with_choices(sweeps(), choices),
-      requested_by: "tazuna"
+      requested_by: "chidori"
     }
   end
 

@@ -154,7 +154,7 @@ defmodule Tazuna.Relations.People do
   def attrs(choices \\ %{}) do
     %{
       name: collection(),
-      description: "tazuna の関連図（芸能人のつながり）",
+      description: "Chidori の関連図（芸能人のつながり）",
       prompt: prompt(),
       interval_minutes: Tazuna.SweepNames.scan_minutes(),
       partition: @partition,
@@ -163,7 +163,7 @@ defmodule Tazuna.Relations.People do
       kind: "stock",
       # 名簿にいない相手を指す関連のタグは、Chiezo が焼く前に落とす
       verify_tags: [%{prefix: Graph.related_tag(), source: "jawiki"}],
-      requested_by: "tazuna"
+      requested_by: "chidori"
     }
   end
 

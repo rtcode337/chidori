@@ -586,7 +586,7 @@ defmodule Tazuna.Datasets.Dining do
       # 口コミサイトの番号や、地図辞典に残った古い URL を、書き出すときに落とすため
       # （`Tazuna.Datasets.ShopLinks`）
       links: true,
-      requested_by: "tazuna"
+      requested_by: "chidori"
     }
     |> Map.merge(shape(area))
   end
@@ -599,7 +599,7 @@ defmodule Tazuna.Datasets.Dining do
     %{lat: lat, lon: lon} = default_origin(area)
 
     %{
-      description: "tazuna のデータ収集（#{area.name}の食事処 / travel-log 向け）",
+      description: "Chidori のデータ収集（#{area.name}の食事処 / travel-log 向け）",
       extract: extract(area),
       partition: partition([lat, lon], area)
     }

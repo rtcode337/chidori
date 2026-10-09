@@ -30,7 +30,7 @@ defmodule Tazuna.News do
   alias Tazuna.News.Interests
   alias Tazuna.News.Report
 
-  @user_agent "tazuna"
+  @user_agent "chidori"
 
   # Chiezo は LAN 内なので短くてよい。ただし「いま集めさせる」は AI が動くので長い
   @request_timeout 15_000
@@ -636,7 +636,7 @@ defmodule Tazuna.News do
         kind: "flow",
         feed: feed_spec(topic),
         sweeps: with_choices(sweeps(topic), choices),
-        requested_by: "tazuna"
+        requested_by: "chidori"
       }
       |> Map.merge(if(Topics.ages_out?(topic), do: %{}, else: %{keep_days: 0}))
       # **絵は Chiezo に縮めて持たせる**（書いた話題だけ。`Tazuna.Topics` の `thumbs`）
@@ -1746,9 +1746,9 @@ defmodule Tazuna.News do
   defp interest_of(_topic), do: @default_interest
 
   defp description(%{name: name} = topic) when is_binary(name),
-    do: "tazuna の「#{name}」。#{interest_of(topic)}"
+    do: "Chidori の「#{name}」。#{interest_of(topic)}"
 
-  defp description(_topic), do: "tazuna のニュース。#{@default_interest}"
+  defp description(_topic), do: "Chidori のニュース。#{@default_interest}"
 
   @critical_keywords ~w(
     地震 津波 避難 警報 台風 大雨 災害 感染症 選挙 首相 日銀 金利 戦争

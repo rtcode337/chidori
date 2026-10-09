@@ -302,14 +302,14 @@ defmodule Tazuna.Datasets.Books do
   def attrs(choices \\ %{}) do
     %{
       name: collection(),
-      description: "tazuna のデータ収集（技術書を勧めている記事）",
+      description: "Chidori のデータ収集（技術書を勧めている記事）",
       prompt: read_prompt(),
       interval_minutes: Tazuna.SweepNames.tidy_minutes(),
       feed: feed_spec(),
       sweeps: with_choices(sweeps(), choices),
       # **網羅。** 2022 年の記事も根拠として生きている（期限で落とすと数が減る）
       kind: "stock",
-      requested_by: "tazuna"
+      requested_by: "chidori"
     }
   end
 

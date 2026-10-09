@@ -199,7 +199,7 @@ defmodule Tazuna.Datasets.Pihole do
   def attrs(choices \\ %{}) do
     %{
       name: collection(),
-      description: "tazuna のデータ収集（Pi-hole が止めたドメインと気になる通信）",
+      description: "Chidori のデータ収集（Pi-hole が止めたドメインと気になる通信）",
       prompt: research_prompt(),
       interval_minutes: SweepNames.tidy_minutes(),
       # **名簿を引く指定は持たない**（前の版で送ったものを消す。残っていると、
@@ -209,7 +209,7 @@ defmodule Tazuna.Datasets.Pihole do
       sweeps: with_choices(sweeps(), choices),
       # **網羅。** 一度調べたドメインは、また出てきたときに読み直さずに済むよう残す
       kind: "stock",
-      requested_by: "tazuna"
+      requested_by: "chidori"
     }
   end
 

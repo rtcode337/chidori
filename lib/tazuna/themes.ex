@@ -103,13 +103,13 @@ defmodule Tazuna.Themes do
   def attrs(topic, choices \\ %{}) do
     %{
       name: collection_name(topic),
-      description: "tazuna の「#{topic.name}」のトピック（記事のタグから作る話題の網）",
+      description: "Chidori の「#{topic.name}」のトピック（記事のタグから作る話題の網）",
       prompt: tidy_prompt(topic),
       interval_minutes: Tazuna.SweepNames.tidy_minutes(),
       kind: "stock",
       extract: extract_spec(topic),
       sweeps: with_choices(sweeps(topic), choices),
-      requested_by: "tazuna"
+      requested_by: "chidori"
     }
   end
 
