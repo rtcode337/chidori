@@ -67,4 +67,47 @@ defmodule Tazuna.Datasets.RequestsPendingTest do
     assert Requests.drop(@dataset, Enum.map(items, & &1.id)) == 1
     assert Requests.pending(@dataset, partitions([@tokyo])) == []
   end
+
+  describe "報告に名前の出てくる店が近くで消えていたら、その店の区画で頼む" do
+    defp shop(title, lat, lon, removed?) do
+      %{
+        "title" => title,
+        "tags" => if(removed?, do: ["食事処", "_chiezo_removed"], else: ["食事処"]),
+        "extra" => %{"lat" => lat, "lon" => lon}
+      }
+    end
+
+    test "消えた店の座標で振り分け、依頼の文は報告のまま" do
+      # 報告の座標（南の区画）と、消えた店の座標（北の区画）が数百 m ずれている
+      text = "- [追加] (35.62,139.75): 駅前の焼肉店 がある（営業している）"
+      gone = shop("駅前の焼肉店", 35.68, 139.75, true)
+
+      assert {:ok, %{added: 1}} = Requests.stash(@dataset, text, fn _item -> [gone] end)
+
+      north = "35.65,139.7/35.7,139.8"
+      south = "35.6,139.7/35.65,139.8"
+
+      assert [%{key: ^north, items: [%{text: ^text}]}] =
+               Requests.pending(@dataset, partitions([south, north]))
+    end
+
+    test "同じ名前の生きている店が近くにあれば、報告の座標のまま" do
+      item = %{text: "- [追加] (35.62,139.75): 駅前の焼肉店", lat: 35.62, lon: 139.75}
+      docs = [shop("駅前の焼肉店", 35.68, 139.75, true), shop("駅前の焼肉店 (123)", 35.621, 139.75, false)]
+
+      assert Requests.revive_point(item, docs) == item
+    end
+
+    test "短い名前は見ない（理由の文に紛れて別の店を指しかねない）" do
+      item = %{text: "- [追加] (35.62,139.75): 和食の店がある", lat: 35.62, lon: 139.75}
+
+      assert Requests.revive_point(item, [shop("和", 35.68, 139.75, true)]) == item
+    end
+
+    test "名前の出てこない消えた店では動かさない" do
+      item = %{text: "- [追加] (35.62,139.75): そば屋", lat: 35.62, lon: 139.75}
+
+      assert Requests.revive_point(item, [shop("駅前の焼肉店", 35.68, 139.75, true)]) == item
+    end
+  end
 end

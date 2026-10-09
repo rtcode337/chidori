@@ -291,10 +291,17 @@ defmodule Tazuna.Datasets.Requests do
 
   **同じ依頼を貼り直しても 1 件のまま**（テキストが同じものは足さない）。
   返すのは `{:ok, %{added: 件数, skipped: 件数}}`。
+
+  **報告に名前の出てくる店が近くで消えていたら、その店のいる区画で頼みます**
+  （`revive_point/2`）。`nearby` は依頼 1 件の近くの文書を返す関数（テストで差し替える）。
   """
-  def stash(%{collection: name}, text) do
+  def stash(%{collection: name} = dataset, text, nearby \\ nil) do
+    nearby = nearby || (&chiezo_nearby(dataset, &1))
+
     results =
       for item <- items(text) do
+        item = revive_point(item, nearby.(item))
+
         %PendingRequest{}
         |> PendingRequest.changeset(Map.put(item, :collection, name))
         |> Repo.insert(on_conflict: :nothing, conflict_target: [:collection, :text])
@@ -309,6 +316,63 @@ defmodule Tazuna.Datasets.Requests do
        added: Enum.count(results, &(&1 == :added)),
        skipped: Enum.count(results, &(&1 == :skipped))
      }}
+  end
+
+  @doc """
+  依頼を振り分ける座標。**報告に名前の出てくる店が近くで消えていたら、その店の座標**、
+  そうでなければ報告の座標のままです（`item` の `lat` / `lon` を差し替えて返す。
+  依頼のテキストは変えない —— AI に入れさせる座標は報告のもの）。
+
+  消えた店は、それがいる区画の「消したもの」にしか並ばない。報告の座標は辞典の座標と
+  数百 m ずれることがあり、報告の座標の区画で頼むと、AI は消えたことを知らずに同じ
+  見出しで足し直し、Chiezo は「見せていない既存の 1 件」として弾く（何度頼んでも
+  入らない）。消えた店の区画で頼めば、AI に消えたものとして見え、戻す印を付けて戻せる。
+
+  **近くに同じ名前の生きている店があれば差し替えない**（戻すものが無い）。名前は
+  3 文字以上のものだけを見る —— 短い名前は理由の文の中に紛れて、別の店を指しかねない。
+  `docs` は近くの文書（消えたものを含む）。
+  """
+  def revive_point(%{text: text, lat: lat, lon: lon} = item, docs) when is_list(docs) do
+    said = squash(text)
+
+    {gone, alive} =
+      docs
+      |> Enum.filter(fn doc ->
+        name = Tazuna.Datasets.ClosedTwins.normalize(doc["title"] || "")
+        String.length(name) >= 3 and String.contains?(said, name)
+      end)
+      |> Enum.split_with(&(Chiezo.removed_tag() in (&1["tags"] || [])))
+
+    case {alive, Enum.min_by(gone, &distance(&1, lat, lon), fn -> nil end)} do
+      {[], %{"extra" => %{"lat" => la, "lon" => lo}}} when is_number(la) and is_number(lo) ->
+        %{item | lat: la, lon: lo}
+
+      _keep ->
+        item
+    end
+  end
+
+  def revive_point(item, _docs), do: item
+
+  # 消えた店を探す広さ（メートル）。報告の座標と辞典の座標は数百 m ずれることがある
+  @revive_meters 1000
+
+  # 依頼 1 件の近くの文書（消えたものを含む）。Chiezo を読めなければ空（報告の座標のまま）
+  defp chiezo_nearby(%{collection: name}, %{lat: lat, lon: lon}) do
+    with {:ok, base} <- Datasets.base_url(),
+         {:ok, docs} <- Chiezo.nearby(base, name, lat, lon, @revive_meters) do
+      docs
+    else
+      _error -> []
+    end
+  end
+
+  # 報告の文を、店の名前と同じ形に揃える（`ClosedTwins.normalize/1` の札を落とさない版）
+  defp squash(text) do
+    text
+    |> :unicode.characters_to_nfkc_binary()
+    |> String.downcase()
+    |> String.replace(~r/[\s・･\-‐－_'’&＆.。、,]/u, "")
   end
 
   @doc """
@@ -564,6 +628,9 @@ defmodule Tazuna.Datasets.Requests do
   とだけ書いていた頃は、閉店していないと報告した店まで消えたまま戻らなかった
   （その一文は、閉店を報告した店を戻させないためのもの）。
 
+  **「ある」と報告された店が消えていたら、足し直さずに戻させます。** 戻す印を付けずに
+  同じ見出しで返すと、消えたまま変わらない —— 足したつもりで何度頼んでも入らなかった。
+
   **現地で「ある」「変わった」と報告された店は、web で見つからなくても足させます。**
   「確かめてから足す」とだけ書いていた頃は、web に出ていない小さな店が足されず、
   同じ場所で web に出ている別の店（改装前の名前など）に置き換えられたり、
@@ -591,6 +658,10 @@ defmodule Tazuna.Datasets.Requests do
       （tags に "#{Tazuna.Chiezo.restore_tag()}" を入れて、同じ見出しで返す。消えた店は上の
       「消したもの」に並んでいます）。現地で営業を見た報告なので、消したときの理由
       （「閉店した」など）より報告を信じてください。戻すときは body に「現地から営業中の報告」と書く
+    - **「ある」「追加」と書かれた店が、上の「消したもの」に並んでいたら、新しく足さずに
+      戻してください**（tags に "#{Tazuna.Chiezo.restore_tag()}" を入れて、消したものと同じ
+      見出しで返す。座標は報告のものを入れる）。現地で見た報告なので、消したときの理由より
+      報告を信じてください。戻すときは body に「現地から営業中の報告」と書く
     - **閉店の報告があった店は、いま消えていても戻さないでください**（戻す印を付けない）
     - 名前は地図に出している名前です。見出しの末尾の「 (数字)」が落ちていることが
       あります —— **座標の近い、同じ名前の 1 件**を指しています
