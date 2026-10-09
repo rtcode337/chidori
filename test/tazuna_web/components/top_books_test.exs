@@ -2,7 +2,7 @@ defmodule TazunaWeb.TopBooksTest do
   @moduledoc """
   本棚の上位の枠（技術書の画面とトップページ）。見ているのは、**10 冊まで並ぶこと**、
   **順位を書名の左に文字で出すこと**、**表紙を押しても書名と同じく本の頁へ行くこと**、
-  **オライリーの本を別の枠に分けること**です。
+  **オライリーの本を別の枠に分けること**、**分けた枠でも総合の順位を添えること**です。
   """
 
   use ExUnit.Case, async: true
@@ -89,5 +89,18 @@ defmodule TazunaWeb.TopBooksTest do
 
     assert html =~
              ~r|<a href="https://example.com/kindle"[^>]*onclick="event.stopPropagation\(\)"[^>]*>\s*Kindle で探す|
+  end
+
+  test "どちらの枠にも、オライリーも混ぜた未読の中での総合の順位を添える" do
+    books = [book(1, %{oreilly: true}), book(2), book(3), book(4, %{oreilly: true})]
+    read = MapSet.new(["本2"])
+
+    general = render_component(&TopBooks.top_books/1, books: books, read: read)
+    # 本2 は読んだので数えない（本1・本3・本4 の順）
+    assert general =~ ~r|本3\s*</a>\s*<span class="top-book-overall">（総合 2位）</span>|
+
+    oreilly = render_component(&TopBooks.top_books/1, books: books, read: read, oreilly: true)
+    assert oreilly =~ ~r|本1\s*</a>\s*<span class="top-book-overall">（総合 1位）</span>|
+    assert oreilly =~ ~r|本4\s*</a>\s*<span class="top-book-overall">（総合 3位）</span>|
   end
 end

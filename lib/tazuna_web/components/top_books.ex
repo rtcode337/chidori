@@ -36,13 +36,21 @@ defmodule TazunaWeb.TopBooks do
   attr :posts, :any, default: nil
 
   def top_books(assigns) do
-    unread =
-      Enum.filter(assigns.books, fn book ->
-        Map.get(book, :oreilly, false) == assigns.oreilly and
-          not MapSet.member?(assigns.read, book.title)
-      end)
+    all_unread = Enum.reject(assigns.books, &MapSet.member?(assigns.read, &1.title))
+    unread = Enum.filter(all_unread, &(Map.get(&1, :oreilly, false) == assigns.oreilly))
 
-    assigns = assign(assigns, shown: Enum.with_index(Enum.take(unread, @count), 1))
+    # **総合の順位も添える**（オライリーも混ぜた未読の中での順位）。枠を分けると、
+    # もう一方の枠の何位と並ぶのかが読めなくなる
+    overall =
+      all_unread
+      |> Enum.with_index(1)
+      |> Map.new(fn {book, rank} -> {book.title, rank} end)
+
+    assigns =
+      assign(assigns,
+        shown: Enum.with_index(Enum.take(unread, @count), 1),
+        overall: overall
+      )
 
     ~H"""
     <ol class="top-books">
@@ -104,6 +112,8 @@ defmodule TazunaWeb.TopBooks do
               {book.name}
             </a>
             <span :if={!book.page_url}>{book.name}</span>
+            <%!-- 総合の順位は書名の後ろに（順位の欄に入れると、書名の書き出しがそろわない） --%>
+            <span class="top-book-overall">（総合 {@overall[book.title]}位）</span>
             <span :if={book.classic} class="book-badge">定番</span>
           </p>
           <p class="top-book-score">

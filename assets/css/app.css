@@ -1046,6 +1046,8 @@ ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column:
 /* 順位。**書名の左に文字で出す**（丸い印にすると未読の数のように見える）。
    幅を 2 桁ぶんにそろえて、10位でも書名の書き出しがずれないようにする */
 .top-book-rank { display: inline-block; width: 2.6em; color: #4f46b9; font-weight: 800; white-space: nowrap; }
+/* 総合の順位（オライリーも混ぜた順位）。枠の中の順位より控えめに */
+.top-book-overall { color: #6b7280; font-size: .82em; font-weight: 600; white-space: nowrap; }
 .top-book-cover { flex: none; width: 72px; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 4px; background: #eef0f7; }
 .top-book-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
 /* 読んだ本（本棚の一覧）。**消さずに薄くする** —— 本棚には残し、読んだことが一目で分かる */
