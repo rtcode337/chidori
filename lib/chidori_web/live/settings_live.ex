@@ -272,14 +272,14 @@ defmodule ChidoriWeb.SettingsLive do
         {:noreply,
          socket
          |> assign(ntfy_form: ntfy_form())
-         |> put_flash(:info, "通知先を保存しました。")}
+         |> put_flash(:info, "ntfy の設定を保存しました。")}
 
       {:error, changeset} ->
         # 書いたものは消さない
         {:noreply,
          socket
          |> assign(ntfy_form: to_form(%{changeset | action: :validate}, as: :ntfy))
-         |> put_flash(:error, "通知先を保存できませんでした: " <> first_error(changeset))}
+         |> put_flash(:error, "ntfy の設定を保存できませんでした: " <> first_error(changeset))}
     end
   end
 

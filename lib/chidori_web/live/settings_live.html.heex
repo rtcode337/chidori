@@ -397,6 +397,19 @@
         class="settings-block"
       >
         <h3>ntfy に送る</h3>
+        <%!-- **送る・送らないはトピック名と別に切り替える**（名前を消して止めると、
+             戻すときに名前を覚えておく羽目になる）。外したときも値が届くよう、隠し欄を先に置く --%>
+        <p>
+          <input type="hidden" name={f[:enabled].name} value="false" />
+          <label>
+            <input
+              type="checkbox"
+              name={f[:enabled].name}
+              value="true"
+              checked={Phoenix.HTML.Form.normalize_value("checkbox", f[:enabled].value)}
+            /> ntfy に送る
+          </label>
+        </p>
         <p>
           <label>
             通知先（ntfy のトピック名）<br />
@@ -415,11 +428,11 @@
           </label>
         </p>
         <p class="muted-note">
-          <strong>通知先を空にすると、ntfy へは送らなくなります</strong>（登録した端末には送ります。要約は時刻どおりに作ります）。
+          <strong>「ntfy に送る」を外すと、ntfy へは送らなくなります</strong>（トピック名は残ります。登録した端末には送ります。要約は時刻どおりに作ります）。通知先が空のときも送りません。
           既定の通知先は持ちません —— 公開の ntfy では、推測できる名前は誰でも読めるので、<strong>推測されない名前</strong>にしてください。場所は書かなければ公式の公開サーバーへ送ります。
         </p>
         <div class="button-row">
-          <button type="submit">通知先を保存</button>
+          <button type="submit">ntfy の設定を保存</button>
         </div>
       </.form>
 

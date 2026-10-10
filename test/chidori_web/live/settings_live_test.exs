@@ -192,12 +192,19 @@ defmodule ChidoriWeb.SettingsLiveTest do
     assert html =~ ~r|<input type="checkbox" checked[^>]*phx-value-collection="tazuna_tech"|
 
     live
-    |> form("#ntfy-form", ntfy: %{topic: " shared-topic ", base_url: "http://ntfy.test/"})
+    |> form("#ntfy-form",
+      ntfy: %{enabled: "true", topic: " shared-topic ", base_url: "http://ntfy.test/"}
+    )
     |> render_submit()
 
     assert Chidori.Ntfy.topic() == "shared-topic"
     assert Chidori.Ntfy.base_url() == "http://ntfy.test"
     assert Chidori.Ntfy.ready("tazuna_tech") == {:ok, {"http://ntfy.test", "shared-topic"}}
+
+    # 「ntfy に送る」を外すと、トピック名を残して止まる
+    live |> form("#ntfy-form", ntfy: %{enabled: "false"}) |> render_submit()
+    assert Chidori.Ntfy.topic() == "shared-topic"
+    refute Chidori.Ntfy.enabled?()
 
     html =
       live

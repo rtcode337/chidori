@@ -7,8 +7,10 @@ defmodule Chidori.Notify.Destination do
   全部の画面を回る羽目になっていました。話題ごとに決めるのは**知らせるかどうか**
   だけです（`Chidori.Notify.Setting` の `notify`）。
 
-  **行は 1 つだけ**持ちます。まだ書かれていなければ空の宛先を返します ——
-  空のトピックは「知らせない」です。
+  **行は 1 つだけ**持ちます。まだ書かれていなければ空の宛先を返します。
+
+  **送るかどうかは `enabled` で切り替えます**（トピック名は残したまま止められる）。
+  トピック名が空でも送りません（送る先が無い）。
   """
 
   use Ecto.Schema
@@ -21,13 +23,14 @@ defmodule Chidori.Notify.Destination do
   schema "ntfy_settings" do
     field(:topic, :string, default: "")
     field(:base_url, :string, default: "")
+    field(:enabled, :boolean, default: true)
 
     timestamps(type: :utc_datetime)
   end
 
   def changeset(destination, attrs) do
     destination
-    |> cast(attrs, [:topic, :base_url])
+    |> cast(attrs, [:topic, :base_url, :enabled])
     |> update_change(:topic, &String.trim/1)
     |> update_change(:base_url, &(&1 |> String.trim() |> String.trim_trailing("/")))
     |> validate_length(:topic, max: 200)
@@ -39,10 +42,10 @@ defmodule Chidori.Notify.Destination do
   @doc "いまの宛先。**無ければ空のもの**を返します。"
   def get do
     Repo.one(from(d in __MODULE__, order_by: [asc: d.id], limit: 1)) ||
-      %__MODULE__{topic: "", base_url: ""}
+      %__MODULE__{topic: "", base_url: "", enabled: true}
   end
 
-  @doc "宛先を書き換えます。**トピックを空にすれば、どの話題も知らせなくなります**。"
+  @doc "宛先を書き換えます。"
   def put(attrs) do
     get() |> changeset(attrs) |> Repo.insert_or_update()
   end

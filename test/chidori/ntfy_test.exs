@@ -29,6 +29,22 @@ defmodule Chidori.NtfyTest do
     assert Ntfy.ready("tazuna_tech") == {:error, :ntfy_topic_missing}
   end
 
+  test "「ntfy に送る」を外せば、トピック名を残したまま送らない" do
+    Destination.put(%{"topic" => "shared"})
+    Settings.put("tazuna_tech", %{"notify" => "true"})
+    assert Ntfy.usable?()
+
+    Destination.put(%{"enabled" => "false"})
+    assert Ntfy.topic() == "shared"
+    refute Ntfy.usable?()
+    assert Ntfy.ready("tazuna_tech") == {:error, :ntfy_off}
+    # ntfy しか送り先が無ければ、どこにも送らない
+    assert Chidori.Notify.ready("tazuna_tech") == {:error, :no_destination}
+
+    Destination.put(%{"enabled" => "true"})
+    assert Chidori.Notify.ready("tazuna_tech") == {:ok, [:ntfy]}
+  end
+
   test "場所は画面で書いたほうが勝つ" do
     # 既定は環境の事情なので環境変数から取る
     System.put_env("NTFY_BASE_URL", "http://default.test")

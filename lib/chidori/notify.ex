@@ -52,7 +52,7 @@ defmodule Chidori.Notify do
   def ready(collection) do
     if Settings.get(collection).notify do
       channels =
-        [ntfy: Ntfy.topic() != nil, push: Subscriptions.list() != []]
+        [ntfy: Ntfy.usable?(), push: Subscriptions.list() != []]
         |> Enum.filter(&elem(&1, 1))
         |> Enum.map(&elem(&1, 0))
 

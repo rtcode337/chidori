@@ -68,15 +68,23 @@ defmodule Chidori.Ntfy do
     end
   end
 
+  @doc "ntfy へ送る設定か（設定の「通知」タブの「ntfy に送る」）。"
+  def enabled?, do: Destination.get().enabled != false
+
+  @doc "ntfy へ送れる状態か（送る設定で、トピック名もある）。"
+  def usable?, do: enabled?() and topic() != nil
+
   @doc """
   その話題を知らせられる状態か。**押す前に読めるようにするため**に、理由まで返します。
 
   - `:notify_off` —— その話題は知らせない設定（話題の画面の「知らせる」）
+  - `:ntfy_off` —— ntfy へ送らない設定（設定の「通知」タブ）
   - `:ntfy_topic_missing` —— 宛先が決まっていない（設定の「通知」タブ）
   """
   def ready(collection) do
     cond do
       not Settings.get(collection).notify -> {:error, :notify_off}
+      not enabled?() -> {:error, :ntfy_off}
       topic() == nil -> {:error, :ntfy_topic_missing}
       true -> {:ok, {base_url(), topic()}}
     end
