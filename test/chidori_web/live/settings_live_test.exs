@@ -228,6 +228,105 @@ defmodule ChidoriWeb.SettingsLiveTest do
     refute Chidori.Notify.Settings.get("tazuna_tech").notify
   end
 
+  describe "この端末に通知を送る（Web Push）" do
+    defp device_subscription(endpoint) do
+      {ua_public, _ua_private} = :crypto.generate_key(:ecdh, :prime256v1)
+
+      %{
+        "endpoint" => endpoint,
+        "keys" => %{
+          "p256dh" => Chidori.WebPush.b64(ua_public),
+          "auth" => Chidori.WebPush.b64(:crypto.strong_rand_bytes(16))
+        }
+      }
+    end
+
+    test "送り手の公開鍵を端末へ渡し、端末を登録・確認・解除できる", %{conn: conn} do
+      {:ok, live, html} = live(conn, ~p"/settings?tab=notify")
+
+      assert html =~ "この端末に通知を送る"
+      assert html =~ ~s(phx-hook="WebPush")
+      assert html =~ ~s(data-key="#{Chidori.WebPush.public_key()}")
+      assert html =~ "登録してある端末はありません"
+
+      html =
+        live
+        |> element("#web-push")
+        |> render_hook("push_subscribe", %{
+          "subscription" => device_subscription("https://push.example.com/send/a"),
+          "user_agent" =>
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
+        })
+
+      assert html =~ "この端末（iPhone）を登録しました"
+      # 登録した日時は日本時間で出す
+      assert html =~ ~s(id="push-devices")
+      assert html =~ "JST に登録"
+      assert html =~ "テスト通知を送る"
+
+      live
+      |> element("#web-push")
+      |> render_hook("push_unsubscribe", %{"endpoint" => "https://push.example.com/send/a"})
+
+      assert Chidori.WebPush.Subscriptions.list() == []
+    end
+
+    test "鍵の形が違う登録は断って、理由を出す", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/settings?tab=notify")
+
+      html =
+        live
+        |> element("#web-push")
+        |> render_hook("push_subscribe", %{
+          "subscription" => %{"endpoint" => "https://push.example.com/x", "keys" => %{}},
+          "user_agent" => ""
+        })
+
+      assert html =~ "この端末を登録できませんでした"
+      assert Chidori.WebPush.Subscriptions.list() == []
+    end
+
+    test "一覧から外せて、テスト通知の結果を出す", %{conn: conn} do
+      {:ok, alive} =
+        Chidori.WebPush.Subscriptions.subscribe(
+          device_subscription("https://push.example.com/send/alive"),
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/140.0 Safari/537.36"
+        )
+
+      {:ok, _gone} =
+        Chidori.WebPush.Subscriptions.subscribe(
+          device_subscription("https://push.example.com/send/gone"),
+          ""
+        )
+
+      {:ok, removed} =
+        Chidori.WebPush.Subscriptions.subscribe(
+          device_subscription("https://push.example.com/send/removed"),
+          ""
+        )
+
+      HttpStub.stub(fn %{url: url} ->
+        if url =~ "gone",
+          do: {:ok, %{status: 410, body: ""}},
+          else: {:ok, %{status: 201, body: ""}}
+      end)
+
+      {:ok, live, html} = live(conn, ~p"/settings?tab=notify")
+      assert html =~ "Mac Chrome"
+
+      live |> element(~s(#push-devices button[phx-value-id="#{removed.id}"])) |> render_click()
+      refute Enum.any?(Chidori.WebPush.Subscriptions.list(), &(&1.id == removed.id))
+
+      live |> element("#test-push") |> render_click()
+      html = render_async(live)
+
+      assert html =~ "1 台に送りました"
+      assert html =~ "受け取れなくなっていた 1 台の登録を外しました"
+      assert [%{id: id}] = Chidori.WebPush.Subscriptions.list()
+      assert id == alive.id
+    end
+  end
+
   test "chidori が起こす回は、表の中で時刻を直せる", %{conn: conn} do
     # 要約の回は Chiezo 側に時計が無く、時刻を持つのは Chidori（各話題の画面と同じ値）
     Chidori.Notify.Settings.put("tazuna_news", %{"digest_at" => "07:00"})

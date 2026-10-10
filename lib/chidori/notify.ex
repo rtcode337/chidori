@@ -12,6 +12,7 @@ defmodule Chidori.Notify do
   alias Chidori.News
   alias Chidori.Notify.Settings
   alias Chidori.Ntfy
+  alias Chidori.WebPush.Subscriptions
 
   require Logger
 
@@ -31,10 +32,33 @@ defmodule Chidori.Notify do
   @doc """
   まとめ 1 件を知らせます。`opts` は呼び出し側との互換のために受け取るだけです
   （知らせ済みかどうかを見ないので、`force` の有無で動きは変わりません）。
+
+  **送り先は 2 つあり、両方へ送ります** —— ntfy（宛先が決まっていれば）と、
+  登録した端末（Web Push。`Chidori.WebPush.Subscriptions`）。**どちらか 1 つでも
+  届けば知らせた扱い**にします（画面の「最後に知らせた」を進める）。
   """
   def deliver(collection, digest, _opts \\ []) do
-    with {:ok, _ready} <- Ntfy.ready(collection) do
-      send_and_record(collection, digest)
+    with {:ok, channels} <- ready(collection) do
+      send_and_record(collection, digest, channels)
+    end
+  end
+
+  @doc """
+  その話題を知らせられる状態か。返すのは送り先の並び（`:ntfy`・`:push`）。
+
+  - `:notify_off` —— その話題は知らせない設定（話題の画面の「知らせる」）
+  - `:no_destination` —— ntfy の宛先も、登録した端末も無い（設定の「通知」タブ）
+  """
+  def ready(collection) do
+    if Settings.get(collection).notify do
+      channels =
+        [ntfy: Ntfy.topic() != nil, push: Subscriptions.list() != []]
+        |> Enum.filter(&elem(&1, 1))
+        |> Enum.map(&elem(&1, 0))
+
+      if channels == [], do: {:error, :no_destination}, else: {:ok, channels}
+    else
+      {:error, :notify_off}
     end
   end
 
@@ -43,23 +67,93 @@ defmodule Chidori.Notify do
   """
   def last_sent_at(collection), do: Settings.get(collection).last_sent_at
 
-  defp send_and_record(collection, digest) do
-    case Ntfy.notify(collection, digest.title, News.digest_text(digest),
-           click: click_url(collection)
-         ) do
-      :ok ->
-        Settings.mark_sent(collection, DateTime.utc_now())
-        {:ok, :sent}
+  defp send_and_record(collection, digest, channels) do
+    results = Enum.map(channels, &{&1, send_to(&1, collection, digest)})
 
-      {:error, reason} ->
-        # 届かなかったものは時刻を進めない（画面に「知らせた」と出さない）
-        Logger.warning("ntfy へ知らせられなかった（#{collection}）: #{inspect(reason)}")
-        {:error, reason}
+    for {channel, {:error, reason}} <- results do
+      Logger.warning("#{channel} へ知らせられなかった（#{collection}）: #{inspect(reason)}")
+    end
+
+    # **1 つでも届けば知らせた扱い。** 全部だめなら時刻を進めない
+    # （画面に「知らせた」と出すと、届いていないことに気づけない）
+    if Enum.any?(results, fn {_channel, result} -> result == :ok end) do
+      Settings.mark_sent(collection, DateTime.utc_now())
+      {:ok, :sent}
+    else
+      [{_channel, error} | _rest] = results
+      error
     end
   end
 
+  defp send_to(:ntfy, collection, digest) do
+    Ntfy.notify(collection, notice_title(collection, digest.title), News.digest_text(digest),
+      click: click_url(collection)
+    )
+  end
+
+  defp send_to(:push, collection, digest) do
+    results =
+      Subscriptions.deliver_all(
+        notice_title(collection, digest.title),
+        push_body(digest),
+        open_path(collection),
+        tag: "digest-" <> collection
+      )
+
+    cond do
+      Enum.any?(results, fn {_s, result} -> result == :ok end) -> :ok
+      Enum.all?(results, fn {_s, result} -> result == :expired end) -> {:error, :push_expired}
+      true -> {:error, :push_failed}
+    end
+  end
+
+  # 端末の通知に出す本文。**要旨だけを短く** —— 出典の URL は通知からは押せず、
+  # 中身の大きさにも上限がある（配信先によっては 4KB）。続きは押して開いた画面で読む
+  @push_body_length 180
+
   @doc false
-  # 押したときに開く先。**通知の 1 行だけでは足りない**ので、続きを読む場所を添える。
+  def push_body(digest) do
+    text =
+      digest
+      |> News.digest_text()
+      |> String.split("\n")
+      |> Enum.reject(&(String.starts_with?(&1, "→") or &1 =~ ~r{\Ahttps?://}))
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.join("\n")
+
+    if String.length(text) > @push_body_length,
+      do: String.slice(text, 0, @push_body_length - 1) <> "…",
+      else: text
+  end
+
+  @doc """
+  通知の見出し。**どの話題のまとめか分かるように、話題の名前を頭に付けます** ——
+  まとめの見出しは「まとめ: …（日時）」で、通知の一覧に並ぶと話題が読めない。
+  「まとめ」で始まる見出しは「〈話題〉のまとめ: …」に、それ以外は「〈話題〉｜…」にします。
+  """
+  def notice_title(collection, title) do
+    case Chidori.Topics.get(collection) do
+      %{name: name} when is_binary(name) ->
+        if String.starts_with?(title, "まとめ"),
+          do: name <> "の" <> title,
+          else: name <> "｜" <> title
+
+      _unknown ->
+        title
+    end
+  end
+
+  @doc """
+  通知を押したときに開く画面（その話題の最新情報で、**いちばん新しいまとめを全画面で開く**）。
+  Web Push はこのまま使います（同じ場所の画面を開くので、相対の行き先で足りる）。
+  """
+  def open_path(collection),
+    do: "/news?" <> URI.encode_query(view: collection, digest: "latest")
+
+  @doc false
+  # ntfy で押したときに開く先。**通知の 1 行だけでは足りない**ので、続きを読む場所を添える。
+  # 開く画面は端末の通知と同じ（`open_path/1`）。
   #
   # **手元しか指せないときは添えません**（`PHX_HOST` が既定のまま）。通知を開くのは
   # たいてい別の機械 —— 電話で押しても `localhost` は自分自身を指すので、開けない
@@ -68,7 +162,7 @@ defmodule Chidori.Notify do
   def click_url(collection, url \\ ChidoriWeb.Endpoint.url()) do
     if local?(url),
       do: nil,
-      else: url <> "/news?view=" <> URI.encode_www_form(collection)
+      else: url <> open_path(collection)
   end
 
   defp local?(url) do

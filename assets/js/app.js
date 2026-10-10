@@ -40,13 +40,15 @@ import ScrollTabs from "./scroll_tabs"
 import AutoHeight from "./auto_height"
 // 映画の札の「近くの上映館を Gemini に聞く」。押したときに現在地を添える
 import AskNearby from "./ask_nearby"
+// 設定の「通知」タブの「この端末に通知を送る」（Web Push の購読）
+import WebPush from "./web_push"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, PartitionMap, AreaDraw, RelationMap, DownloadLink, DigestSwipe, PanelSwipe, TopicMap, SortableList, ScrollTabs, AutoHeight, AskNearby},
+  hooks: {...colocatedHooks, PartitionMap, AreaDraw, RelationMap, DownloadLink, DigestSwipe, PanelSwipe, TopicMap, SortableList, ScrollTabs, AutoHeight, AskNearby, WebPush},
 })
 
 // Show progress bar on live navigation and form submits
@@ -56,6 +58,13 @@ window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()
+
+// 通知（Web Push）を受けて出す service worker。**どの画面からも入れておく** ——
+// 通知を押して開いた画面を、すでに開いている Chidori へ移すには、その画面を
+// service worker が受け持っている必要がある。https（か localhost）でないと入らない
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {})
+}
 
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()

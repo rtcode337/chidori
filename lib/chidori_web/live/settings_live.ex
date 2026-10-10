@@ -7,6 +7,8 @@ defmodule ChidoriWeb.SettingsLive do
     前回・次回）と、ワーカーと取り込みの待ち行列。**待ち行列が溜まってきたときに、
     何がどれだけの間隔で回っているかを 1 枚で読むため**（`Chidori.CollectOverview`）。
     **収集ごとに、巡回の相手と整理を自動で回すかを選んで送れる**
+  - 通知 —— まとめの知らせ先（ntfy の宛先と、通知を受け取る端末。`Chidori.WebPush`）と、
+    知らせる話題
   """
 
   use ChidoriWeb, :live_view
@@ -22,6 +24,10 @@ defmodule ChidoriWeb.SettingsLive do
   alias Chidori.Notify.Destination
   alias Chidori.Notify.Settings
   alias Chidori.Topics
+  alias Chidori.WebPush
+  alias Chidori.WebPush.Subscriptions
+
+  require Logger
 
   # **トップページを先頭に**（いちばん触る設定。開いたときに出る）
   @tabs [{"home", "トップページ"}, {"chiezo", "Chiezo 収集"}, {"notify", "通知"}]
@@ -80,7 +86,14 @@ defmodule ChidoriWeb.SettingsLive do
 
   # 通知の宛先。**全部の通知で 1 つ**（話題ごとに決めるのは知らせるかどうかだけ）
   defp load(socket, "notify") do
-    assign(socket, ntfy_form: ntfy_form(), notify_topics: notify_topics())
+    assign(socket,
+      ntfy_form: ntfy_form(),
+      notify_topics: notify_topics(),
+      push_key: push_key(),
+      push_devices: Subscriptions.list(),
+      push_message: nil,
+      push_testing: false
+    )
   end
 
   defp load(socket, _tab), do: socket
@@ -96,6 +109,16 @@ defmodule ChidoriWeb.SettingsLive do
         notify: Settings.get(topic.collection).notify
       }
     end
+  end
+
+  # 送り手の公開鍵（無ければここで作る）。**表がまだ無い DB では nil**（マイグレーション前）——
+  # 通知のタブごと落とすより、端末の欄だけ出さないほうが ntfy の設定を続けられる
+  defp push_key do
+    WebPush.public_key()
+  rescue
+    error in [Postgrex.Error, DBConnection.ConnectionError] ->
+      Logger.warning("送り手の鍵を読めなかった: #{Exception.message(error)}")
+      nil
   end
 
   # 収集の表は **Chidori の画面の並び**で、Chiezo にまだ無い収集も出す（`CollectCatalog`）
@@ -132,6 +155,18 @@ defmodule ChidoriWeb.SettingsLive do
 
   def handle_async(:restore, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, restore_message: restore_text({:error, :chiezo_unavailable}))}
+
+  def handle_async(:test_push, {:ok, results}, socket) do
+    {:noreply,
+     assign(socket,
+       push_testing: false,
+       push_message: Subscriptions.result_text(results),
+       push_devices: Subscriptions.list()
+     )}
+  end
+
+  def handle_async(:test_push, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, push_testing: false, push_message: "送れませんでした。")}
 
   def handle_async(:pace, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, pace_message: pace_text({:error, :chiezo_unavailable}))}
@@ -246,6 +281,67 @@ defmodule ChidoriWeb.SettingsLive do
          |> assign(ntfy_form: to_form(%{changeset | action: :validate}, as: :ntfy))
          |> put_flash(:error, "通知先を保存できませんでした: " <> first_error(changeset))}
     end
+  end
+
+  # この端末を登録する（`assets/js/web_push.js` が、ブラウザの作った宛先を渡してくる）。
+  # **結果は返事で返す** —— 端末の側は、登録できたかで出す一言とボタンを変える
+  def handle_event("push_subscribe", %{"subscription" => subscription} = params, socket)
+      when is_map(subscription) do
+    case Subscriptions.subscribe(subscription, params["user_agent"] || "") do
+      {:ok, device} ->
+        {:reply, %{ok: true},
+         assign(socket,
+           push_devices: Subscriptions.list(),
+           push_message: "この端末（#{device.label}）を登録しました。"
+         )}
+
+      {:error, changeset} ->
+        {:reply, %{ok: false},
+         assign(socket, push_message: "この端末を登録できませんでした: " <> first_error(changeset))}
+    end
+  end
+
+  # この端末で受け取るのをやめた（ブラウザの側はもう宛先を捨てている）
+  def handle_event("push_unsubscribe", %{"endpoint" => endpoint}, socket)
+      when is_binary(endpoint) do
+    Subscriptions.delete_endpoint(endpoint)
+
+    {:noreply,
+     assign(socket,
+       push_devices: Subscriptions.list(),
+       push_message: "この端末では受け取らないようにしました。"
+     )}
+  end
+
+  # この端末が登録してあるか（ブラウザが宛先を持っていても、一覧から外したものは未登録）
+  def handle_event("push_check", %{"endpoint" => endpoint}, socket) do
+    {:reply, %{registered: Enum.any?(socket.assigns.push_devices, &(&1.endpoint == endpoint))},
+     socket}
+  end
+
+  def handle_event("remove_device", %{"id" => id}, socket) do
+    with {id, ""} <- Integer.parse(to_string(id)), do: Subscriptions.delete(id)
+
+    {:noreply,
+     socket
+     |> assign(push_devices: Subscriptions.list(), push_message: "端末を外しました。")
+     |> push_event("web_push:refresh", %{})}
+  end
+
+  # **全部の端末へ送って、結果を出す。** 登録しただけでは、届くかどうかは分からない
+  # （通知を切っている・配信先が受け取らない）
+  def handle_event("test_push", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(push_testing: true, push_message: "送っています…")
+     |> start_async(:test_push, fn ->
+       Subscriptions.deliver_all(
+         "Chidori のテスト通知",
+         "この端末に届いています。押すと設定の「通知」タブを開きます。",
+         "/settings?tab=notify",
+         tag: "test"
+       )
+     end)}
   end
 
   # 話題ごとに知らせるかを切り替える。**押したらすぐ保存する**（保存ボタンを押し忘れると、

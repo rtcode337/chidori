@@ -331,7 +331,52 @@
         <p>SETTINGS</p>
         <h1>通知</h1>
         <p>
-          要約ができたときに知らせる ntfy の宛先です。全部の通知で共通で、知らせるかどうかは各画面の「通知」で決めます。
+          要約ができたときの知らせ先です。ntfy と、通知を受け取るように登録した端末の両方へ送ります（どちらか一方だけでも構いません）。全部の通知で共通で、知らせるかどうかは話題ごとに決めます。
+        </p>
+      </section>
+
+      <%!-- 端末へ直接知らせる（Web Push）。**ntfy のアプリが無くても受け取れる** ——
+           iPhone ではホーム画面に入れた Chidori が通知を受け取れる --%>
+      <section id="web-push-section" class="settings-block">
+        <h3>この端末に通知を送る</h3>
+        <p class="muted-note">
+          通知を押すと、その話題のいちばん新しいまとめを開きます。iPhone では、Safari の共有メニューから「ホーム画面に追加」し、ホーム画面の Chidori から開いてここで登録してください。
+        </p>
+        <div
+          :if={@push_key}
+          id="web-push"
+          phx-hook="WebPush"
+          phx-update="ignore"
+          data-key={@push_key}
+          class="web-push"
+        >
+          <p data-role="state" aria-live="polite">この端末の様子を確かめています…</p>
+          <div class="button-row">
+            <button type="button" data-role="enable" hidden>この端末で受け取る</button>
+            <button type="button" data-role="disable" hidden>この端末では受け取らない</button>
+          </div>
+        </div>
+        <p :if={!@push_key} class="muted-note">
+          端末を登録する表がまだありません（DB の更新を済ませると使えます）。
+        </p>
+
+        <ul :if={@push_devices != []} id="push-devices" class="notify-topics">
+          <li :for={device <- @push_devices}>
+            <span>
+              {if device.label == "", do: "端末", else: device.label}
+              <span class="muted-note">{Chidori.Jst.format(device.inserted_at)} に登録</span>
+            </span>
+            <button type="button" phx-click="remove_device" phx-value-id={device.id}>外す</button>
+          </li>
+        </ul>
+        <p :if={@push_key && @push_devices == []} class="muted-note">登録してある端末はありません。</p>
+        <div :if={@push_devices != []} class="button-row">
+          <button type="button" id="test-push" phx-click="test_push" disabled={@push_testing}>
+            テスト通知を送る
+          </button>
+        </div>
+        <p :if={@push_message} id="push-message" class="muted-note" aria-live="polite">
+          {@push_message}
         </p>
       </section>
 
@@ -343,6 +388,7 @@
         phx-change="edit_ntfy"
         class="settings-block"
       >
+        <h3>ntfy に送る</h3>
         <p>
           <label>
             通知先（ntfy のトピック名）<br />
@@ -361,7 +407,7 @@
           </label>
         </p>
         <p class="muted-note">
-          <strong>通知先を空にすると、どの話題も知らせなくなります</strong>（要約は時刻どおりに作ります）。
+          <strong>通知先を空にすると、ntfy へは送らなくなります</strong>（登録した端末には送ります。要約は時刻どおりに作ります）。
           既定の通知先は持ちません —— 公開の ntfy では、推測できる名前は誰でも読めるので、<strong>推測されない名前</strong>にしてください。場所は書かなければ公式の公開サーバーへ送ります。
         </p>
         <div class="button-row">
@@ -371,7 +417,7 @@
 
       <section class="settings-block">
         <h3>知らせる話題</h3>
-        <p class="muted-note">チェックを入れた話題は、要約ができたら知らせます（押したらすぐ反映します）。</p>
+        <p class="muted-note">チェックを入れた話題は、要約ができたら ntfy と登録した端末へ知らせます（押したらすぐ反映します）。</p>
         <%!-- **ここで切り替えられる**（各話題の画面の「通知」と同じ値）。話題ごとの画面を
              渡り歩かないと、どれを知らせているかを揃えられなかった --%>
         <ul id="notify-topics" class="notify-topics">

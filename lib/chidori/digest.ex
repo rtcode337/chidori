@@ -195,12 +195,12 @@ defmodule Chidori.Digest do
   # 通知はその後に付いてくるもの —— 知らせない設定・宛先が無いのは失敗ではない
   # （失敗として残すと、要約はできているのに画面に「止まりました」と出る）
   defp deliver_if_set(collection, digest) do
-    case Chidori.Ntfy.ready(collection) do
-      {:ok, _ready} ->
+    case Notify.ready(collection) do
+      {:ok, _channels} ->
         tell(collection, "知らせています…")
         Notify.deliver(collection, digest)
 
-      {:error, reason} when reason in [:notify_off, :ntfy_topic_missing] ->
+      {:error, reason} when reason in [:notify_off, :no_destination] ->
         {:ok, :made}
     end
   end
@@ -394,7 +394,15 @@ defmodule Chidori.Digest do
     do: "次の予定の時刻まで待ちましたが、Chiezo の取り込みが空きませんでした。"
 
   def error_text(:timed_out), do: "Chiezo の返事を待ちましたが、時間内に終わりませんでした。"
-  def error_text(:ntfy_topic_missing), do: "通知先が決まっていません（設定の「通知」タブ）。"
+
+  def error_text(:no_destination),
+    do: "通知先（ntfy のトピックか、通知を受ける端末）がありません（設定の「通知」タブ）。"
+
+  def error_text(:push_failed), do: "登録した端末へ送れませんでした。"
+
+  def error_text(:push_expired),
+    do: "登録した端末が通知を受け取れなくなっていました（設定の「通知」タブで登録し直してください）。"
+
   def error_text(:notify_off), do: "この話題は知らせない設定です。"
   def error_text({:chiezo_refused, _status, reason}) when is_binary(reason), do: reason
   def error_text(_reason), do: "まとめを作れませんでした。"

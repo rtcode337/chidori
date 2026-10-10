@@ -55,7 +55,9 @@ defmodule Chidori.NotifyTest do
     assert_receive {:notified, url, sent}, 2_000
     assert url == "http://ntfy.test/"
     assert sent["topic"] == "chidori-tech"
-    assert sent["title"] == @digest.title
+    # どの話題のまとめか分かるように、話題の名前を頭に付けて送る
+    assert sent["title"] == Notify.notice_title(@collection, @digest.title)
+    assert sent["title"] =~ "技術ニュース"
   end
 
   test "出典の URL は、そのまま本文に残す" do
@@ -70,8 +72,9 @@ defmodule Chidori.NotifyTest do
 
   test "続きを読む先を添える" do
     # 通知の 1 行だけでは足りない
+    # 開くのは端末の通知と同じ画面（いちばん新しいまとめを全画面で）
     assert Notify.click_url(@collection, "https://chidori.example.com") ==
-             "https://chidori.example.com/news?view=tazuna_tech"
+             "https://chidori.example.com/news?view=tazuna_tech&digest=latest"
   end
 
   test "手元しか指せないときは、開く先を添えない" do
@@ -96,7 +99,7 @@ defmodule Chidori.NotifyTest do
     # 無言で何もしないと、設定を間違えているのかまとめがまだ無いのかが分からない
     Destination.put(%{"topic" => ""})
 
-    assert Notify.deliver(@collection, @digest) == {:error, :ntfy_topic_missing}
+    assert Notify.deliver(@collection, @digest) == {:error, :no_destination}
   end
 
   test "知らせない設定の話題は送らない" do
@@ -119,8 +122,9 @@ defmodule Chidori.NotifyTest do
   test "宛先が空なら、そもそも送らない" do
     # **既定の宛先は持たない** —— 公開の ntfy では誰でも読めるところへ流れる
     Destination.put(%{"topic" => ""})
+    HttpStub.stub(fn request -> flunk("送らないはず: #{inspect(request.url)}") end)
 
-    assert Notify.deliver(@collection, @digest) == {:error, :ntfy_topic_missing}
+    assert Notify.deliver(@collection, @digest) == {:error, :no_destination}
   end
 
   test "同じまとめでも、押されれば送る" do
@@ -151,6 +155,115 @@ defmodule Chidori.NotifyTest do
 
   test "まとめが無ければ何もしない" do
     assert Notify.deliver_latest(@collection, %{digests: []}) == {:ok, :nothing_to_send}
+  end
+
+  describe "登録した端末へ（Web Push）" do
+    @endpoint "https://push.example.com/send/device-1"
+
+    defp register_device do
+      {ua_public, _ua_private} = :crypto.generate_key(:ecdh, :prime256v1)
+
+      {:ok, _subscription} =
+        Chidori.WebPush.Subscriptions.subscribe(%{
+          "endpoint" => @endpoint,
+          "keys" => %{
+            "p256dh" => Chidori.WebPush.b64(ua_public),
+            "auth" => Chidori.WebPush.b64(:crypto.strong_rand_bytes(16))
+          }
+        })
+    end
+
+    # ntfy と端末のそれぞれに、決めた状態で答える
+    defp stub_channels(ntfy_status, push_status) do
+      parent = self()
+
+      HttpStub.stub(fn
+        %{url: "http://ntfy.test/", body: body} ->
+          send(parent, {:ntfy, Jason.decode!(body)})
+          {:ok, %{status: ntfy_status, body: "{}"}}
+
+        %{url: @endpoint, opts: opts} ->
+          send(parent, {:push, opts})
+          {:ok, %{status: push_status, body: ""}}
+      end)
+    end
+
+    test "端末だけでも知らせる（ntfy の宛先は要らない）" do
+      Destination.put(%{"topic" => ""})
+      register_device()
+      stub_channels(200, 201)
+
+      assert Notify.ready(@collection) == {:ok, [:push]}
+      assert Notify.deliver(@collection, @digest) == {:ok, :sent}
+      assert_receive {:push, _opts}
+      refute_receive {:ntfy, _sent}
+      assert Notify.last_sent_at(@collection)
+    end
+
+    test "ntfy と端末の両方へ送る" do
+      register_device()
+      stub_channels(200, 201)
+
+      assert Notify.ready(@collection) == {:ok, [:ntfy, :push]}
+      assert Notify.deliver(@collection, @digest) == {:ok, :sent}
+      assert_receive {:ntfy, _sent}
+      assert_receive {:push, _opts}
+    end
+
+    test "知らせない設定の話題は、端末へも送らない" do
+      # 話題ごとの「知らせる」は ntfy と端末の両方に効く
+      Settings.put(@collection, %{"notify" => "false"})
+      register_device()
+      HttpStub.stub(fn request -> flunk("送らないはず: #{inspect(request.url)}") end)
+
+      assert Notify.deliver(@collection, @digest) == {:error, :notify_off}
+    end
+
+    test "どちらか 1 つ届けば、知らせた扱いにする" do
+      # ntfy が落ちていても端末には届いている。「知らせていない」と出すと、
+      # 届いた知らせと画面が食い違う
+      register_device()
+      stub_channels(500, 201)
+
+      assert Notify.deliver(@collection, @digest) == {:ok, :sent}
+      assert Notify.last_sent_at(@collection)
+    end
+
+    test "全部届かなければ、知らせた扱いにしない" do
+      register_device()
+      stub_channels(500, 500)
+
+      assert Notify.deliver(@collection, @digest) == {:error, {:ntfy_status, 500}}
+      refute Notify.last_sent_at(@collection)
+    end
+
+    test "受け取れなくなった端末は消し、届かなかったことにする" do
+      Destination.put(%{"topic" => ""})
+      register_device()
+      stub_channels(200, 410)
+
+      assert Notify.deliver(@collection, @digest) == {:error, :push_expired}
+      assert Chidori.WebPush.Subscriptions.list() == []
+      refute Notify.last_sent_at(@collection)
+
+      # 消したあとは宛先が無い
+      assert Notify.deliver(@collection, @digest) == {:error, :no_destination}
+    end
+
+    test "押すと開くのは、その話題のいちばん新しいまとめ" do
+      assert Notify.open_path(@collection) == "/news?view=tazuna_tech&digest=latest"
+    end
+
+    test "端末の通知には要旨だけを短く載せる（出典の URL は載せない）" do
+      # 通知からは URL を押せず、中身の大きさにも上限がある
+      body = Notify.push_body(@digest)
+
+      assert body =~ "この期間は基盤の入れ替えが続きました。"
+      refute body =~ "https://"
+
+      assert String.length(Notify.push_body(%{@digest | summary: String.duplicate("あ", 500)})) <=
+               180
+    end
   end
 
   describe "通知に流す文" do
@@ -213,5 +326,14 @@ defmodule Chidori.NotifyTest do
       assert text =~ "新しい版が出ました。"
       assert text =~ "https://example.com/1"
     end
+  end
+
+  test "通知の見出しに、どの話題のまとめかを付ける" do
+    assert Notify.notice_title("tazuna_tech", "まとめ: 新しい版が出た（2026-10-10 07:00 JST）") ==
+             "技術ニュースのまとめ: 新しい版が出た（2026-10-10 07:00 JST）"
+
+    assert Notify.notice_title("tazuna_tech", "週の振り返り") == "技術ニュース｜週の振り返り"
+    # 話題の定義に無い収集は、見出しのまま
+    assert Notify.notice_title("unknown_x", "まとめ: X") == "まとめ: X"
   end
 end

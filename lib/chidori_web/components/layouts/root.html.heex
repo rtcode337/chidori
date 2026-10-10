@@ -13,6 +13,15 @@
     <link rel="icon" href={~p"/images/icon-64.png"} type="image/png" sizes="64x64" />
     <link rel="apple-touch-icon" href={~p"/images/icon-180.png"} />
     <meta name="theme-color" content="#f97316" />
+    <%!-- ホーム画面に入れたときの名前と見た目（PWA）。**通知を受けるにはここが要る** ——
+         iPhone はホーム画面から開いた Chidori にだけ Web Push を許す。
+         manifest と sw.js は**素の名前で指す**（`~p` を通すとハッシュ付きの名前になり、
+         service worker は名前が変わるたびに別物として入り直す）。どちらも
+         `ChidoriWeb.static_paths/0` に入れてあるので、根から配れる --%>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Chidori" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>

@@ -57,6 +57,7 @@ defmodule ChidoriWeb.NewsLive do
         # （`:main` = ふつうのまとめ / `:interest` = 興味トピックの要約）
         digest_open: nil,
         digest_kind: :main,
+        digest_wanted: false,
         # 興味トピック（話題ごと。Chidori が持つ）
         interests: [],
         # トピックの網で選んでいる語と、その記事（読み込み中は `:loading`）
@@ -131,11 +132,34 @@ defmodule ChidoriWeb.NewsLive do
         cal_day: nil,
         cal_places: [],
         works: nil,
-        ai_digests: nil
+        ai_digests: nil,
+        # 通知から開いたとき（`digest=latest`）。まとめが届いたら全画面で開く
+        digest_wanted: params["digest"] == "latest"
       )
 
-    {:noreply, socket |> load_themes() |> load_calendar() |> load_works() |> load_ai_digests()}
+    {:noreply,
+     socket
+     |> open_wanted_digest()
+     |> load_themes()
+     |> load_calendar()
+     |> load_works()
+     |> load_ai_digests()}
   end
+
+  # **通知を押して来たら、いちばん新しいまとめを全画面で開く。** 通知の本文は要旨だけ
+  # なので、押した人が読みたいのはその続き（話題の画面を開いて、まとめを探して押す、
+  # の手間を省く）。まとめは収集の状態と一緒に後から届くので、届くまで待って 1 度だけ開く
+  defp open_wanted_digest(%{assigns: %{digest_wanted: true, news: news}} = socket) do
+    if digests_of(news, :main) == [] do
+      socket
+    else
+      socket
+      |> assign(digest_wanted: false, digest_kind: :main, digest_section: nil)
+      |> show_digest(0)
+    end
+  end
+
+  defp open_wanted_digest(socket), do: socket
 
   # 要約を別の収集から読む話題（市況ニュース）。書き手ごとに最新の 1 本（`Chidori.News.AiDigests`）
   defp load_ai_digests(socket) do
@@ -817,7 +841,7 @@ defmodule ChidoriWeb.NewsLive do
 
     # 話題を切り替えた直後は、前の話題の結果が遅れて届くことがある
     if topic && news.name == topic.collection do
-      {:noreply, assign(socket, news: news)}
+      {:noreply, socket |> assign(news: news) |> open_wanted_digest()}
     else
       {:noreply, socket}
     end
@@ -1234,7 +1258,9 @@ defmodule ChidoriWeb.NewsLive do
 
   @doc "知らせられる状態か。**押せない口は出さない**。"
   def can_notify?(nil), do: false
-  def can_notify?(%{collection: collection}), do: match?({:ok, _ready}, Ntfy.ready(collection))
+
+  def can_notify?(%{collection: collection}),
+    do: match?({:ok, _channels}, Notify.ready(collection))
 
   @doc "最後に知らせた時刻。押した結果がここに出ます。"
   def last_sent_text(nil), do: nil
@@ -1247,8 +1273,10 @@ defmodule ChidoriWeb.NewsLive do
   end
 
   @doc false
-  def notify_error(:ntfy_topic_missing), do: "通知先が決まっていません（設定の「通知」タブ）。"
-  def notify_error(:notify_off), do: "この話題は知らせない設定です。"
+  def notify_error(reason)
+      when reason in [:no_destination, :notify_off, :push_failed, :push_expired],
+      do: Digest.error_text(reason)
+
   def notify_error(:ntfy_unavailable), do: "ntfy に接続できませんでした。"
   def notify_error({:ntfy_status, status}), do: "ntfy が #{status} を返しました。"
   def notify_error(reason), do: "知らせられませんでした（#{inspect(reason)}）。"
@@ -1270,15 +1298,18 @@ defmodule ChidoriWeb.NewsLive do
   def notify_note(nil), do: nil
 
   def notify_note(%{collection: collection}) do
-    case Ntfy.ready(collection) do
-      {:ok, {base, ntfy_topic}} ->
-        "#{base} の「#{ntfy_topic}」へ送ります。"
+    case Notify.ready(collection) do
+      {:ok, channels} ->
+        Enum.map_join(channels, "と、", fn
+          :ntfy -> "#{Ntfy.base_url()} の「#{Ntfy.topic()}」"
+          :push -> "登録した端末 #{length(Chidori.WebPush.Subscriptions.list())} 台"
+        end) <> "へ送ります。"
 
       {:error, :notify_off} ->
         "この話題は知らせません。"
 
-      {:error, :ntfy_topic_missing} ->
-        "知らせる設定ですが、通知先（ntfy のトピック名）が決まっていないので送れません。"
+      {:error, :no_destination} ->
+        "知らせる設定ですが、通知先（ntfy のトピック名か、通知を受ける端末）が無いので送れません。"
     end
   end
 

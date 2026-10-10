@@ -34,6 +34,11 @@
 .notify-topics label { display: flex; align-items: center; gap: .5rem; font-weight: 600; cursor: pointer; }
 .notify-topics input { width: 1.05rem; height: 1.05rem; accent-color: #4f46b9; }
 .notify-topics .muted-note { font-size: .8rem; white-space: nowrap; }
+/* この端末に通知を送る（Web Push）。様子の一言と、登録した端末の並び */
+.web-push > p { margin: .4rem 0 0; color: #4b5468; font-size: .85rem; line-height: 1.7; }
+.web-push .button-row { justify-content: flex-start; }
+.notify-topics li > span { font-weight: 600; }
+.notify-topics li > span .muted-note { margin-left: .5rem; font-weight: 400; }
 
 /* 全ページ共通 */
 :root { color: #0f172a; background: #fafaf9; font-family: ui-sans-serif, system-ui, sans-serif; }

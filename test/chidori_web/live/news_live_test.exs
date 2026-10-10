@@ -318,6 +318,25 @@ defmodule ChidoriWeb.NewsLiveTest do
       refute html =~ "digest-viewer"
     end
 
+    test "通知から開くと、いちばん新しいまとめを全画面で開く", %{conn: conn} do
+      # 通知の本文は要旨だけ。押した人が読みたいのはその続き
+      Chidori.News.subscribe("tazuna_news")
+      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news&digest=latest")
+      assert_receive {:news_updated, %{status: :ready}}, 2_000
+
+      html = render(live)
+      assert html =~ "digest-viewer"
+      assert html =~ "1 / 2"
+      assert html =~ "今日の動き"
+
+      # 閉じたら、収集の状態が届き直しても開き直さない（1 度だけ）
+      html = live |> element(".digest-viewer-close") |> render_click()
+      refute html =~ "digest-viewer"
+      Chidori.News.refresh(Chidori.News.server("tazuna_news"))
+      assert_receive {:news_updated, %{status: :ready}}, 2_000
+      refute render(live) =~ "digest-viewer"
+    end
+
     test "記事一覧は見出しを付けて、ふだんは畳んでおく", %{conn: conn} do
       html = shown(conn)
 
