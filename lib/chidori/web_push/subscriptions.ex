@@ -126,7 +126,7 @@ defmodule Chidori.WebPush.Subscriptions do
     do: "配信元が #{status} を返しました"
 
   def reason_text({:push_status, status, body}), do: "配信元が #{status} を返しました（#{body}）"
-  def reason_text(:push_unavailable), do: "配信元に繋がりませんでした"
+  def reason_text({:push_unavailable, reason}), do: "配信元に繋がりませんでした（#{inspect(reason)}）"
   def reason_text(:bad_subscription), do: "登録の中身が読めません（登録し直してください）"
   def reason_text(other), do: inspect(other)
 

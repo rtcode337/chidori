@@ -283,4 +283,36 @@ defmodule Chidori.WebPushTest do
     refute Chidori.WebPush.subject_ok?("http://chidori.example.com:7000")
     refute Chidori.WebPush.subject_ok?("https://localhost")
   end
+
+  describe "配信元に繋がらないとき" do
+    test "1 度だけ送り直す（閉じられた接続を使い回して落ちることがある）" do
+      subscribe("https://push.example.com/send/retry")
+      me = self()
+
+      HttpStub.stub(fn _request ->
+        send(me, :tried)
+
+        if Process.get(:tried_once),
+          do: {:ok, %{status: 201, body: ""}},
+          else:
+            (
+              Process.put(:tried_once, true)
+              {:error, :socket_closed_remotely}
+            )
+      end)
+
+      assert [{_subscription, :ok}] = Subscriptions.deliver_all("見出し", "本文", "/")
+      assert_received :tried
+      assert_received :tried
+    end
+
+    test "送り直しても繋がらなければ、理由を添えて返す" do
+      subscribe("https://push.example.com/send/down")
+      HttpStub.stub(fn _request -> {:error, :timeout} end)
+
+      results = Subscriptions.deliver_all("見出し", "本文", "/")
+      assert [{_subscription, {:error, {:push_unavailable, :timeout}}}] = results
+      assert Subscriptions.result_text(results) =~ "配信元に繋がりませんでした（:timeout）"
+    end
+  end
 end

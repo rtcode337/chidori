@@ -56,16 +56,11 @@ defmodule Chidori.WebPush do
         {"urgency", "normal"}
       ]
 
-      case Http.post(subscription.endpoint, body,
-             headers: headers,
-             content_type: "application/octet-stream",
-             timeout: @timeout,
-             connect_timeout: @connect_timeout
-           ) do
+      case post_once_more(subscription.endpoint, body, headers) do
         {:ok, %{status: status}} when status in [200, 201, 202] -> :ok
         {:ok, %{status: status}} when status in [404, 410] -> :expired
         {:ok, %{status: status, body: body}} -> {:error, {:push_status, status, short(body)}}
-        {:error, _reason} -> {:error, :push_unavailable}
+        {:error, reason} -> {:error, {:push_unavailable, reason}}
       end
     else
       :error -> {:error, :bad_subscription}
@@ -100,6 +95,21 @@ defmodule Chidori.WebPush do
     salt <>
       <<@record_size::unsigned-big-32, byte_size(as_public)::unsigned-8>> <>
       as_public <> ciphertext <> tag
+  end
+
+  # **繋がらなかったら 1 度だけ送り直す。** OTP の HTTP は配信元への接続を使い回すので、
+  # 前に送ってから時間が空くと、向こうが閉じた接続に送って `socket_closed_remotely` で
+  # 落ちることがある（張り直せば届く）。中身は同じものを送ってよい
+  defp post_once_more(endpoint, body, headers, tries \\ 2) do
+    case Http.post(endpoint, body,
+           headers: headers,
+           content_type: "application/octet-stream",
+           timeout: @timeout,
+           connect_timeout: @connect_timeout
+         ) do
+      {:error, _reason} when tries > 1 -> post_once_more(endpoint, body, headers, tries - 1)
+      result -> result
+    end
   end
 
   @doc """
