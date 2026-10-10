@@ -214,6 +214,20 @@ defmodule Chidori.WebPushTest do
       assert Subscriptions.result_text(results) =~ "2 台の登録を外しました"
     end
 
+    test "届かなかった端末は、配信元が返した理由まで出す" do
+      subscribe("https://push.example.com/send/refused")
+
+      HttpStub.stub(fn _request ->
+        {:ok, %{status: 403, body: ~s({"reason":"BadJwtToken"})}}
+      end)
+
+      text = "見出し" |> Subscriptions.deliver_all("本文", "/") |> Subscriptions.result_text()
+
+      assert text =~ "1 台は送れませんでした"
+      assert text =~ "403"
+      assert text =~ "BadJwtToken"
+    end
+
     test "ほかの失敗では消さない" do
       # 配信先の一時的な不調で、端末の登録まで失わない
       subscribe()
@@ -262,5 +276,11 @@ defmodule Chidori.WebPushTest do
 
       assert Subscriptions.label("") == "端末"
     end
+  end
+
+  test "送り手の名乗りは、https で手元の名前でないときだけ通るものとみなす" do
+    assert Chidori.WebPush.subject_ok?("https://chidori.example.com")
+    refute Chidori.WebPush.subject_ok?("http://chidori.example.com:7000")
+    refute Chidori.WebPush.subject_ok?("https://localhost")
   end
 end

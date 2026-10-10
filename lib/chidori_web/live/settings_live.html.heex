@@ -359,6 +359,14 @@
         <p :if={!@push_key} class="muted-note">
           端末を登録する表がまだありません（DB の更新を済ませると使えます）。
         </p>
+        <%!-- 送り手の名乗り（VAPID の sub）。**https でないと iPhone への通知が断られる**
+             （配信元が 403 BadJwtToken を返す）ので、ここで目に見えるようにする --%>
+        <p class={["muted-note", !Chidori.WebPush.subject_ok?() && "push-subject-bad"]}>
+          送り手の名乗り: <code>{Chidori.WebPush.subject()}</code>
+          <span :if={!Chidori.WebPush.subject_ok?()}>
+            —— https の URL ではないので、iPhone への通知は断られます。PHX_HOST を外から開く名前に、PHX_SCHEME を https にして起動し直してください。
+          </span>
+        </p>
 
         <ul :if={@push_devices != []} id="push-devices" class="notify-topics">
           <li :for={device <- @push_devices}>

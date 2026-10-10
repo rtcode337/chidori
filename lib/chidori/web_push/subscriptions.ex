@@ -96,6 +96,8 @@ defmodule Chidori.WebPush.Subscriptions do
 
   @doc """
   送った結果の言い方（「2 台に送りました」）。**届かなかった台数と、消した台数も出します**。
+  **届かなかった端末は、配信元が返した理由まで出します** —— 台数だけでは、送り手の
+  名乗りが断られたのか（403）、配信元に繋がらなかったのかが画面から分からない。
   """
   def result_text([]), do: "登録してある端末がありません。"
 
@@ -106,10 +108,27 @@ defmodule Chidori.WebPush.Subscriptions do
     failed = count.(&match?({:error, _}, &1))
 
     ["#{sent} 台に送りました。"]
-    |> then(&if(failed > 0, do: &1 ++ ["#{failed} 台は送れませんでした。"], else: &1))
+    |> then(&if(failed > 0, do: &1 ++ ["#{failed} 台は送れませんでした（#{failures(results)}）。"], else: &1))
     |> then(&if(expired > 0, do: &1 ++ ["受け取れなくなっていた #{expired} 台の登録を外しました。"], else: &1))
     |> Enum.join("")
   end
+
+  defp failures(results) do
+    Enum.map_join(
+      for({subscription, {:error, reason}} <- results, do: {subscription, reason}),
+      "、",
+      fn {subscription, reason} -> "#{subscription.label}: #{reason_text(reason)}" end
+    )
+  end
+
+  @doc "届かなかった理由の言い方。"
+  def reason_text({:push_status, status, body}) when body in [nil, ""],
+    do: "配信元が #{status} を返しました"
+
+  def reason_text({:push_status, status, body}), do: "配信元が #{status} を返しました（#{body}）"
+  def reason_text(:push_unavailable), do: "配信元に繋がりませんでした"
+  def reason_text(:bad_subscription), do: "登録の中身が読めません（登録し直してください）"
+  def reason_text(other), do: inspect(other)
 
   @doc """
   画面で見分けるための端末の名前（「iPhone」「Mac Chrome」）。ブラウザの名乗りから作ります。

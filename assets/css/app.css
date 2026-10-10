@@ -885,6 +885,8 @@ ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column:
 .event-item-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .5rem; overflow-wrap: anywhere; }
 .event-item-head .event-chip { display: inline-block; }
 .event-item-facts { margin: .2rem 0 0; color: #4b5068; font-size: .82rem; }
+/* 送り手の名乗りが https でないとき（iPhone への通知が断られる） */
+.push-subject-bad { color: #b91c1c; }
 /* 映画の札の「近くの上映館を Gemini に聞く」 */
 .ask-nearby { margin: .3rem 0 0; font-size: .82rem; }
 .ask-nearby a { color: #4a3fc0; font-weight: 700; }

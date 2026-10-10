@@ -130,6 +130,20 @@ defmodule Chidori.WebPush do
   @doc "送り手を名乗る URL（Chidori の URL）。"
   def subject, do: ChidoriWeb.Endpoint.url()
 
+  @doc """
+  送り手の名乗りが通るものか。**https で、手元の名前（localhost）でないこと** ——
+  Apple の配信元は http の URL を名乗ると 403（`BadJwtToken`）で断る。
+  """
+  def subject_ok?(subject \\ subject()) do
+    case URI.parse(subject) do
+      %URI{scheme: "https", host: host} when is_binary(host) ->
+        host not in ["localhost", "127.0.0.1", "::1"]
+
+      _other ->
+        false
+    end
+  end
+
   @doc "base64url（詰め物なし）。"
   def b64(binary), do: Base.url_encode64(binary, padding: false)
 
