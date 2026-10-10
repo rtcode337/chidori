@@ -88,6 +88,7 @@
               cited={digest.cited}
               id_prefix="home"
               hero={NewsLive.hero?(@panel.topic)}
+              ask_theaters={Chidori.Topics.works(@panel.topic) == Chidori.News.Movies}
             />
           </div>
         <% else %>
