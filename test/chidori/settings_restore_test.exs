@@ -26,13 +26,13 @@ defmodule Chidori.SettingsRestoreTest do
 
   test "Chiezo に残っている間隔・整理の止め方・知名度の下限に揃える" do
     collections = [
-      collection("tazuna_news", [sweep("整理", 1440)]),
-      collection("tazuna_tech", [sweep("整理", 1440)]),
+      collection("chidori_news", [sweep("整理", 1440)]),
+      collection("chidori_tech", [sweep("整理", 1440)]),
       # 送れなかった収集が混ざっていても、いちばん多い間隔を戻す
-      collection("tazuna_market", [sweep("整理", 720)]),
+      collection("chidori_market", [sweep("整理", 720)]),
       # 時計を外した巡回の間隔は数えない（止める前の値のまま残っている）
-      collection("tazuna_books", [sweep("整理", 360, %{"by_caller" => true})]),
-      collection("tazuna_people", [sweep("ざっと見る", 240), sweep("整理", 1440)], %{
+      collection("chidori_books", [sweep("整理", 360, %{"by_caller" => true})]),
+      collection("chidori_people", [sweep("ざっと見る", 240), sweep("整理", 1440)], %{
         "extract" => %{"source" => "jawiki", "min_extra" => %{"pageviews_month" => 3000}}
       }),
       # 他のアプリの収集は見ない
@@ -43,23 +43,23 @@ defmodule Chidori.SettingsRestoreTest do
 
     assert result.paces == [{:tidy, 1440}, {:scan, 240}]
     assert CollectPace.minutes(:tidy) == 1440
-    assert result.stopped == ["tazuna_books"]
-    assert CollectPace.tidy_stopped?("tazuna_books")
+    assert result.stopped == ["chidori_books"]
+    assert CollectPace.tidy_stopped?("chidori_books")
     assert result.min_pageviews == 3000
     assert Settings.min_pageviews("people") == 3000
   end
 
   test "Chiezo で整理の時計が戻っていれば、手元の「回さない」を外す" do
-    CollectPace.stop_tidy("tazuna_news", true, nil)
+    CollectPace.stop_tidy("chidori_news", true, nil)
 
-    assert {:ok, %{resumed: ["tazuna_news"], stopped: []}} =
-             SettingsRestore.run(fn -> {:ok, [collection("tazuna_news", [sweep("整理", 720)])]} end)
+    assert {:ok, %{resumed: ["chidori_news"], stopped: []}} =
+             SettingsRestore.run(fn -> {:ok, [collection("chidori_news", [sweep("整理", 720)])]} end)
 
-    refute CollectPace.tidy_stopped?("tazuna_news")
+    refute CollectPace.tidy_stopped?("chidori_news")
   end
 
   test "同じなら何も変えない" do
-    collections = [collection("tazuna_news", [sweep("整理", 720), sweep("ざっと見る", 120)])]
+    collections = [collection("chidori_news", [sweep("整理", 720), sweep("ざっと見る", 120)])]
 
     assert {:ok, %{paces: [], stopped: [], resumed: [], min_pageviews: nil}} =
              SettingsRestore.run(fn -> {:ok, collections} end)

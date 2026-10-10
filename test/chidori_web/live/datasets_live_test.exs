@@ -47,7 +47,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
     # 集めるのは Chiezo で、どこに残り誰が読むのかを、設定の頭で読めること
     [_, settings] = String.split(html, "テスト範囲の食事処の設定", parts: 2)
-    assert settings =~ ~r|collect-origin.*「集める」層です.*tazuna_dining_1.*読むのはtravel-logです|s
+    assert settings =~ ~r|collect-origin.*「集める」層です.*chidori_dining_1.*読むのはtravel-logです|s
   end
 
   test "Pi-hole のタブで、いま止めている通信を流せる", %{conn: conn} do
@@ -214,7 +214,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
   describe "Chiezo の収集の枠" do
     @collection %{
-      "name" => "tazuna_dining_1",
+      "name" => "chidori_dining_1",
       "description" => "Chidori のデータ収集（日本の食事処 / travel-log 向け）",
       "enabled" => true,
       "interval_minutes" => 60,
@@ -264,7 +264,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
         %{url: "http://chiezo.test:7010/v1/sources"} ->
           Chidori.HttpStub.ok(
-            Jason.encode!(%{"sources" => [%{"name" => "tazuna_dining_1", "docs" => 42}]})
+            Jason.encode!(%{"sources" => [%{"name" => "chidori_dining_1", "docs" => 42}]})
           )
 
         # 変更履歴。**依頼した区画をちょうど見た回**が 1 つある（依頼の結果として引き当たる）
@@ -373,7 +373,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       render_async(live)
 
       assert_receive {:patched, url, sent}, 2_000
-      assert url =~ "/v1/collect/tazuna_dining_1"
+      assert url =~ "/v1/collect/chidori_dining_1"
       assert sent["kind"] == "stock"
 
       # 辞典は 3 つ。**書いた順がそのまま優先の順**なので、並びごと送る
@@ -663,7 +663,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       |> render_click()
 
       assert_receive {:posted, url, sent}, 2_000
-      assert url =~ "/v1/collect/tazuna_dining_1/run"
+      assert url =~ "/v1/collect/chidori_dining_1/run"
       assert url =~ URI.encode_query(%{"sweep" => "整理"})
       assert sent["partitions"] == ["35.6,139.7/35.7,139.8"]
       note = sent["notes"]["35.6,139.7/35.7,139.8"]
@@ -678,12 +678,12 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       assert html =~ "控えている依頼（1 件）"
 
       # **依頼と、その結果を並べる**（頼んだ区画をちょうど見た回を引き当てる）
-      assert [log] = Chidori.Datasets.Requests.recent("tazuna_dining_1")
+      assert [log] = Chidori.Datasets.Requests.recent("chidori_dining_1")
       assert log.keys == ["35.6,139.7/35.7,139.8"]
       assert log.status == "sent"
       assert html =~ "依頼の結果"
       assert html =~ "足した 25 ・直した 1 ・消した 1"
-      assert html =~ "/admin/collect/tazuna_dining_1/doc?title="
+      assert html =~ "/admin/collect/chidori_dining_1/doc?title="
 
       # 控えは頼まずに捨てられる
       html =
@@ -699,7 +699,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       {:ok, _log} =
         %Chidori.Datasets.RequestLog{}
         |> Chidori.Datasets.RequestLog.changeset(%{
-          collection: "tazuna_dining_1",
+          collection: "chidori_dining_1",
           keys: ["35.6,139.7/35.7,139.8"],
           text: "- [修正] 駅前うどん (35.65,139.75): 閉店している",
           points: 1,
@@ -744,7 +744,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
   describe "この収集から作る収集（本棚）" do
     # 親の収集と同じ形で出す —— 状態・巡回ごとの相手・送る
     @shelf %{
-      "name" => "tazuna_books",
+      "name" => "chidori_books",
       "enabled" => false,
       "interval_minutes" => 1440,
       "kind" => "stock",
@@ -766,10 +766,10 @@ defmodule ChidoriWeb.DatasetsLiveTest do
         %{method: :get, url: "http://chiezo.test:7010/v1/collect"} ->
           Chidori.HttpStub.ok(Jason.encode!(%{"collections" => [@shelf]}))
 
-        %{method: :get, url: "http://chiezo.test:7010/v1/collect/tazuna_books" <> _rest} ->
+        %{method: :get, url: "http://chiezo.test:7010/v1/collect/chidori_books" <> _rest} ->
           Chidori.HttpStub.ok(Jason.encode!(@shelf))
 
-        %{method: :get, url: "http://chiezo.test:7010/v1/tazuna_book_posts/filter?" <> _query} ->
+        %{method: :get, url: "http://chiezo.test:7010/v1/chidori_book_posts/filter?" <> _query} ->
           Chidori.HttpStub.ok(
             Jason.encode!(%{
               "results" => [
@@ -781,7 +781,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
             })
           )
 
-        %{method: :get, url: "http://chiezo.test:7010/v1/tazuna_books/filter?" <> _query} ->
+        %{method: :get, url: "http://chiezo.test:7010/v1/chidori_books/filter?" <> _query} ->
           Chidori.HttpStub.ok(
             Jason.encode!(%{
               "results" => [
@@ -842,8 +842,8 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     end
 
     test "興味トピックに近い本を強調し、絞り込める", %{conn: conn} do
-      Chidori.News.Interests.toggle("tazuna_tech", "設計・アーキテクチャ")
-      Chidori.News.Interests.toggle("tazuna_tech", "監視")
+      Chidori.News.Interests.toggle("chidori_tech", "設計・アーキテクチャ")
+      Chidori.News.Interests.toggle("chidori_tech", "監視")
 
       {:ok, live, _html} = open_live(conn, ~p"/datasets?view=books")
       html = render_async(live)
@@ -893,7 +893,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
       assert render_async(live) =~ "Chiezo に頼みました"
       assert_receive {:posted, url, body}, 2_000
-      assert url =~ "/v1/collect/tazuna_books/focus"
+      assert url =~ "/v1/collect/chidori_books/focus"
       assert body["titles"] == ["本:リーダブルコード"]
       assert body["sweep"] == "整理"
       assert body["note"] =~ "リーダブルコードについて"
@@ -986,7 +986,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       render_async(live)
 
       assert_receive {:patched, url, sent}, 2_000
-      assert url =~ "/v1/collect/tazuna_books"
+      assert url =~ "/v1/collect/chidori_books"
       tidy = Enum.find(sent["sweeps"], &(&1["name"] == "整理"))
       assert tidy["backend"] == "antigravity"
     end

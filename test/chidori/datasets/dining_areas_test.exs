@@ -2,7 +2,7 @@ defmodule Chidori.Datasets.DiningAreasTest do
   @moduledoc """
   食事処の範囲の番号。見ているのは、**空いているいちばん小さい番号を使うこと**と、
   **Chiezo に同じ名前の収集が残っている番号は使わないこと**です（範囲の番号は
-  Chiezo の収集の名前 `tazuna_dining_<番号>` になる）。
+  Chiezo の収集の名前 `chidori_dining_<番号>` になる）。
   """
 
   use Chidori.DataCase, async: false
@@ -26,7 +26,7 @@ defmodule Chidori.Datasets.DiningAreasTest do
   end
 
   test "Chiezo に収集が残っている番号は使わない（前の範囲の店を引き継がない）" do
-    {:ok, area} = create("一つ目", ["tazuna_dining_1", "tazuna_dining_2", "tazuna_news"])
+    {:ok, area} = create("一つ目", ["chidori_dining_1", "chidori_dining_2", "chidori_news"])
     assert area.id == 3
   end
 
@@ -50,19 +50,19 @@ defmodule Chidori.Datasets.DiningAreasTest do
   describe "Chiezo から範囲を戻す" do
     defp dining(id, name, bbox) do
       %{
-        "name" => "tazuna_dining_#{id}",
+        "name" => "chidori_dining_#{id}",
         "description" => "Chidori のデータ収集（#{name}の食事処 / travel-log 向け）",
         "partition" => %{"by" => "geo", "bbox" => bbox}
       }
     end
 
     test "手元に無い範囲を、番号・名前・四角そのままで戻す" do
-      {:ok, _kept} = create("残っている", ["tazuna_dining_2"])
+      {:ok, _kept} = create("残っている", ["chidori_dining_2"])
 
       collections = [
         dining(1, "残っている", [35.6, 139.7, 35.61, 139.71]),
         dining(2, "丸の内", [35.678, 139.76, 35.686, 139.77]),
-        %{"name" => "tazuna_news", "description" => "x"}
+        %{"name" => "chidori_news", "description" => "x"}
       ]
 
       assert {:ok, %{restored: [area], skipped: []}} =
@@ -75,9 +75,9 @@ defmodule Chidori.Datasets.DiningAreasTest do
     end
 
     test "説明か区画が読めない収集は飛ばして名前を返す" do
-      broken = %{"name" => "tazuna_dining_5", "description" => "手で書き換えた説明"}
+      broken = %{"name" => "chidori_dining_5", "description" => "手で書き換えた説明"}
 
-      assert {:ok, %{restored: [], skipped: ["tazuna_dining_5"]}} =
+      assert {:ok, %{restored: [], skipped: ["chidori_dining_5"]}} =
                DiningAreas.restore(fn -> {:ok, [broken]} end)
     end
 

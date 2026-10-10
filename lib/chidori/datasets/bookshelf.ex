@@ -21,7 +21,7 @@ defmodule Chidori.Datasets.Bookshelf do
   alias Chidori.Themes
   alias Chidori.Themes.Search
 
-  @collection "tazuna_books"
+  @collection "chidori_books"
 
   # 1 冊ごとに必ず付く印
   @kind_tag "技術書"
@@ -34,7 +34,7 @@ defmodule Chidori.Datasets.Bookshelf do
   @topic_tag "話題"
 
   # 話題の語彙を持つ技術ニュースの話題
-  @tech_topics "tazuna_tech"
+  @tech_topics "chidori_tech"
 
   # 定番と候補の印
   @classic_tag "定番"

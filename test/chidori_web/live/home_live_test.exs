@@ -11,7 +11,7 @@ defmodule ChidoriWeb.HomeLiveTest do
   alias Chidori.Home
 
   test "選んだ枠が選んだ順にタブで並び、最初の枠が開く", %{conn: conn} do
-    Home.put(["books", "topic:tazuna_tech", "relations:painters"])
+    Home.put(["books", "topic:chidori_tech", "relations:painters"])
 
     {:ok, _live, html} = live(conn, ~p"/")
 
@@ -29,7 +29,7 @@ defmodule ChidoriWeb.HomeLiveTest do
   end
 
   test "右端の「…」の一覧から、どの枠へも移れる", %{conn: conn} do
-    Home.put(["books", "topic:tazuna_tech", "relations:painters"])
+    Home.put(["books", "topic:chidori_tech", "relations:painters"])
 
     {:ok, live, html} = live(conn, ~p"/")
 
@@ -43,7 +43,7 @@ defmodule ChidoriWeb.HomeLiveTest do
     |> element("#home-tab-menu button", "技術ニュース")
     |> render_click()
 
-    assert_patch(live, "/?panel=topic%3Atazuna_tech")
+    assert_patch(live, "/?panel=topic%3Achidori_tech")
   end
 
   test "関連図は画面ごと埋め込む（頭のメニューは出さない）", %{conn: conn} do
@@ -83,8 +83,8 @@ defmodule ChidoriWeb.HomeLiveTest do
     event = fn title, attention -> %{title: title, date: ~D[2026-10-08], attention: attention} end
     entries = [event.("高", :high), event.("中", :mid), event.("低", :low)]
 
-    comedy = Enum.find(Chidori.Topics.list(), &(&1.collection == "tazuna_comedy"))
-    tech = Enum.find(Chidori.Topics.list(), &(&1.collection == "tazuna_events"))
+    comedy = Enum.find(Chidori.Topics.list(), &(&1.collection == "chidori_comedy"))
+    tech = Enum.find(Chidori.Topics.list(), &(&1.collection == "chidori_events"))
 
     assert Enum.map(
              ChidoriWeb.HomeLive.upcoming(entries, Chidori.Topics.home_attention(comedy), today),
@@ -104,7 +104,7 @@ defmodule ChidoriWeb.HomeLiveTest do
     on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
 
     Chidori.HttpStub.stub(fn
-      %{url: "http://chiezo.test:7010/v1/tazuna_books/filter?" <> _} ->
+      %{url: "http://chiezo.test:7010/v1/chidori_books/filter?" <> _} ->
         Chidori.HttpStub.ok(
           Jason.encode!(%{
             "results" => [
@@ -118,7 +118,7 @@ defmodule ChidoriWeb.HomeLiveTest do
           })
         )
 
-      %{url: "http://chiezo.test:7010/v1/tazuna_book_posts/filter?" <> _} ->
+      %{url: "http://chiezo.test:7010/v1/chidori_book_posts/filter?" <> _} ->
         Chidori.HttpStub.ok(
           Jason.encode!(%{
             "results" => [
@@ -160,22 +160,22 @@ defmodule ChidoriWeb.HomeLiveTest do
   end
 
   test "知らない枠は保存しない", %{conn: _conn} do
-    Home.put(["nosuch", "topic:tazuna_news"])
-    assert Home.selected_keys() == ["topic:tazuna_news"]
+    Home.put(["nosuch", "topic:chidori_news"])
+    assert Home.selected_keys() == ["topic:chidori_news"]
   end
 
   test "並べられる枠は、要約を作る話題と関連図と技術書" do
     keys = Enum.map(Home.catalog(), & &1.key)
 
-    assert "topic:tazuna_news" in keys
-    assert "topic:tazuna_movies" in keys
+    assert "topic:chidori_news" in keys
+    assert "topic:chidori_movies" in keys
 
     # 要約を作らずカレンダーを持つ話題（技術イベント）は注目イベントとして並べる
-    refute "topic:tazuna_events" in keys
-    assert "events:tazuna_events" in keys
+    refute "topic:chidori_events" in keys
+    assert "events:chidori_events" in keys
 
     # 要約を別の収集から読む話題（市況ニュース）は、書き手ごとの要約として同じキーで並べる
-    assert %{kind: :ai_digests} = Enum.find(Home.catalog(), &(&1.key == "topic:tazuna_market"))
+    assert %{kind: :ai_digests} = Enum.find(Home.catalog(), &(&1.key == "topic:chidori_market"))
     assert "relations:painters" in keys
     assert "books" in keys
   end
@@ -183,12 +183,12 @@ defmodule ChidoriWeb.HomeLiveTest do
   test "興味トピックの要約は、網を育てる話題のすぐ後ろに「〜興味ニュース」で並ぶ" do
     catalog = Home.catalog()
     keys = Enum.map(catalog, & &1.key)
-    at = Enum.find_index(keys, &(&1 == "topic:tazuna_tech"))
+    at = Enum.find_index(keys, &(&1 == "topic:chidori_tech"))
 
-    assert Enum.at(keys, at + 1) == "interest:tazuna_tech"
-    assert Enum.find(catalog, &(&1.key == "interest:tazuna_tech")).name == "技術興味ニュース"
+    assert Enum.at(keys, at + 1) == "interest:chidori_tech"
+    assert Enum.find(catalog, &(&1.key == "interest:chidori_tech")).name == "技術興味ニュース"
     # 網を育てない話題（映画）には無い
-    refute "interest:tazuna_movies" in keys
+    refute "interest:chidori_movies" in keys
     assert Home.interest_name("映画") == "映画（興味）"
   end
 
@@ -212,18 +212,18 @@ defmodule ChidoriWeb.HomeLiveTest do
 
     render_submit(live, "save_home", %{
       "panels" => %{
-        "topic:tazuna_news" => %{"on" => "true", "order" => "2"},
+        "topic:chidori_news" => %{"on" => "true", "order" => "2"},
         "books" => %{"on" => "true", "order" => "1"},
-        "topic:tazuna_tech" => %{"on" => "false", "order" => "3"}
+        "topic:chidori_tech" => %{"on" => "false", "order" => "3"}
       }
     })
 
-    assert Home.selected_keys() == ["books", "topic:tazuna_news"]
+    assert Home.selected_keys() == ["books", "topic:chidori_news"]
   end
 
   test "並べ替えの一覧は、並べている枠を並べている順に先に出す", %{conn: conn} do
     # つまんで動かす一覧なので、いまの順番がそのまま上から並んでいないと動かしようがない
-    Home.put(["books", "topic:tazuna_news"])
+    Home.put(["books", "topic:chidori_news"])
 
     {:ok, _live, html} = live(conn, ~p"/settings?tab=home")
 

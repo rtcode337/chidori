@@ -12,7 +12,7 @@ defmodule Chidori.CollectDriftTest do
   defp chiezo(overrides \\ %{}) do
     Map.merge(
       %{
-        "name" => "tazuna_x",
+        "name" => "chidori_x",
         "prompt" => "集めてください",
         "kind" => "flow",
         "thumbs" => %{"pages_from" => []},
@@ -30,7 +30,7 @@ defmodule Chidori.CollectDriftTest do
   defp wanted(overrides \\ %{}) do
     Map.merge(
       %{
-        name: "tazuna_x",
+        name: "chidori_x",
         prompt: "集めてください\n",
         kind: "flow",
         thumbs: true,

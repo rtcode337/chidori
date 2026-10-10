@@ -98,7 +98,7 @@ defmodule Chidori.Topics do
       },
       %{
         name: "技術ニュース",
-        collection: "tazuna_tech",
+        collection: "chidori_tech",
         # **話題になっていること自体も拾う。** 判断が変わるかどうかだけで選ぶと、
         # 界隈が丸一日その話をしていても、まとめに出てこない
         # **分野は絞らない。** 技術に関することを幅広く拾い、その中から読む人が
@@ -153,7 +153,7 @@ defmodule Chidori.Topics do
       },
       %{
         name: "技術イベント",
-        collection: "tazuna_events",
+        collection: "chidori_events",
         interest:
           "これから開かれる技術のイベント(カンファレンス・勉強会・ハンズオン)。" <>
             "行くかどうかの判断が変わるもの(開催日、場所とオンラインの別、" <>
@@ -182,7 +182,7 @@ defmodule Chidori.Topics do
         outside: Chidori.News.Events.outside(),
         # **興味トピックは技術ニュースのものを使う**（このタブには興味トピックを選ぶ
         # 図が無い）。先の月を探す回が、その分野のイベントも探しに行く
-        interests_from: "tazuna_tech",
+        interests_from: "chidori_tech",
         # **先の月を探す回を置く**（巡回「情報収集」。1 日に 1 回、1 か月ずつ）。connpass の新着は
         # 募集が出たものしか流れてこないので、そのままではカレンダーが来月で止まる
         look_ahead: true,
@@ -194,7 +194,7 @@ defmodule Chidori.Topics do
       },
       %{
         name: "お笑いイベント",
-        collection: "tazuna_comedy",
+        collection: "chidori_comedy",
         interest:
           "これから開かれるお笑いのイベントと、お笑いのテレビ番組。" <>
             "賞レース(予選・準決勝・決勝とその放送)、大型のお笑い特番、" <>
@@ -219,7 +219,7 @@ defmodule Chidori.Topics do
       },
       %{
         name: "映画",
-        collection: "tazuna_movies",
+        collection: "chidori_movies",
         interest:
           "日本の映画館でこれから公開される映画と、公開中の映画。" <>
             "観るかどうかの判断が変わるもの(公開日と上映形式、注目の度合い、" <>
@@ -267,7 +267,7 @@ defmodule Chidori.Topics do
       },
       %{
         name: "アニメ",
-        collection: "tazuna_anime",
+        collection: "chidori_anime",
         interest:
           "日本で放送・配信される今期と来期のアニメ(テレビアニメと配信アニメの新作)。" <>
             "観るかどうかの判断が変わるもの(放送・配信の開始日と曜日、放送局と配信サービス、" <>
@@ -315,7 +315,7 @@ defmodule Chidori.Topics do
       },
       %{
         name: "市況ニュース",
-        collection: "tazuna_market",
+        collection: "chidori_market",
         # **株価に効くものだけ。** 一般ニュースと重なる出来事も多いが、選ぶ物差しが違う
         # （暮らしへの影響ではなく、相場と個別銘柄への影響）。売買提案のアプリ が売買提案の材料と
         # 注目銘柄に使う

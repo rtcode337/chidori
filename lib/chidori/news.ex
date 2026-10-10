@@ -53,7 +53,7 @@ defmodule Chidori.News do
   @notice_sources 3
 
   # 収集の既定。名前は Chiezo のソース名になるので英小文字・数字・_ だけ
-  @default_collection "tazuna_news"
+  @default_collection "chidori_news"
 
   # 巡回の時計。**引き方で変える** —— 機械で引く回は AI の枠を使わないので短くてよく、
   # 判断の要る回は長い（頻繁に読み直しても、中身はそれほど変わらない）

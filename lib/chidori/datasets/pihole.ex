@@ -18,7 +18,7 @@ defmodule Chidori.Datasets.Pihole do
   alias Chidori.Chiezo
   alias Chidori.SweepNames
 
-  @collection "tazuna_pihole"
+  @collection "chidori_pihole"
 
   # 全文書に付いているタグ（Chiezo の Pi-hole から引く回が付ける）
   @kind_tag "Pi-hole"

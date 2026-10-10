@@ -66,7 +66,7 @@ defmodule Chidori.CollectOverview do
   def ours?(collection),
     do:
       collection["requested_by"] in ["chidori", "tazuna"] or
-        String.starts_with?(collection["name"] || "", "tazuna_")
+        String.starts_with?(collection["name"] || "", ["chidori_", "tazuna_"])
 
   defp collection_row(collection, worker_names) do
     %{

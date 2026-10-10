@@ -8,11 +8,11 @@ defmodule Chidori.NtfyTest do
   test "宛先は全部の通知で 1 つ、知らせるかどうかは話題ごと" do
     # 話題ごとに宛先を持たせていた頃は、同じトピックを画面ごとに書き写していた
     Destination.put(%{"topic" => "shared"})
-    Settings.put("tazuna_tech", %{"notify" => "true"})
+    Settings.put("chidori_tech", %{"notify" => "true"})
 
     assert Ntfy.topic() == "shared"
-    assert {:ok, {_base, "shared"}} = Ntfy.ready("tazuna_tech")
-    assert Ntfy.ready("tazuna_news") == {:error, :notify_off}
+    assert {:ok, {_base, "shared"}} = Ntfy.ready("chidori_tech")
+    assert Ntfy.ready("chidori_news") == {:error, :notify_off}
   end
 
   test "書いていなければ宛先は無い" do
@@ -23,26 +23,26 @@ defmodule Chidori.NtfyTest do
   test "空にすれば、どの話題も知らせなくなる" do
     Destination.put(%{"topic" => "shared"})
     Destination.put(%{"topic" => ""})
-    Settings.put("tazuna_tech", %{"notify" => "true"})
+    Settings.put("chidori_tech", %{"notify" => "true"})
 
     assert Ntfy.topic() == nil
-    assert Ntfy.ready("tazuna_tech") == {:error, :ntfy_topic_missing}
+    assert Ntfy.ready("chidori_tech") == {:error, :ntfy_topic_missing}
   end
 
   test "「ntfy に送る」を外せば、トピック名を残したまま送らない" do
     Destination.put(%{"topic" => "shared"})
-    Settings.put("tazuna_tech", %{"notify" => "true"})
+    Settings.put("chidori_tech", %{"notify" => "true"})
     assert Ntfy.usable?()
 
     Destination.put(%{"enabled" => "false"})
     assert Ntfy.topic() == "shared"
     refute Ntfy.usable?()
-    assert Ntfy.ready("tazuna_tech") == {:error, :ntfy_off}
+    assert Ntfy.ready("chidori_tech") == {:error, :ntfy_off}
     # ntfy しか送り先が無ければ、どこにも送らない
-    assert Chidori.Notify.ready("tazuna_tech") == {:error, :no_destination}
+    assert Chidori.Notify.ready("chidori_tech") == {:error, :no_destination}
 
     Destination.put(%{"enabled" => "true"})
-    assert Chidori.Notify.ready("tazuna_tech") == {:ok, [:ntfy]}
+    assert Chidori.Notify.ready("chidori_tech") == {:ok, [:ntfy]}
   end
 
   test "場所は画面で書いたほうが勝つ" do
@@ -60,15 +60,15 @@ defmodule Chidori.NtfyTest do
   test "押せない理由を、押す前に返す" do
     # **決まっていないのは宛先だけ。** 場所は書かなければ公式の公開サーバーへ倒れる
     System.delete_env("NTFY_BASE_URL")
-    Settings.put("tazuna_tech", %{"notify" => "true"})
-    assert Ntfy.ready("tazuna_tech") == {:error, :ntfy_topic_missing}
+    Settings.put("chidori_tech", %{"notify" => "true"})
+    assert Ntfy.ready("chidori_tech") == {:error, :ntfy_topic_missing}
     assert Ntfy.base_url() == Ntfy.public_base_url()
 
     System.put_env("NTFY_BASE_URL", "http://ntfy.test")
     on_exit(fn -> System.delete_env("NTFY_BASE_URL") end)
 
     Destination.put(%{"topic" => "tech"})
-    assert Ntfy.ready("tazuna_tech") == {:ok, {"http://ntfy.test", "tech"}}
+    assert Ntfy.ready("chidori_tech") == {:ok, {"http://ntfy.test", "tech"}}
   end
 
   test "http で始まらない場所は断る" do

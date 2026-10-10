@@ -144,7 +144,7 @@ defmodule Chidori.Datasets.PiholeTest do
 
       assert Enum.map(domains, & &1.domain) == ["new.example.net", "ads.example.com"]
       assert_received {:asked, url}
-      assert url =~ "/v1/tazuna_pihole/filter?"
+      assert url =~ "/v1/chidori_pihole/filter?"
       assert url =~ "include_removed=true"
     end
   end

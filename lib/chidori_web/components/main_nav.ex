@@ -26,7 +26,7 @@ defmodule ChidoriWeb.MainNav do
 
     ~H"""
     <header>
-      <%!-- 画面に出す名前は Chidori（Chiezo の収集の名前だけは開発コードの tazuna_* のまま） --%>
+      <%!-- 画面に出す名前は Chidori --%>
       <a href={~p"/"} class="brand" aria-label="Chidori トップページ">
         <img src={~p"/images/icon.svg"} alt="" class="brand-mark" /><b class="brand-name">Chidori</b>
       </a>

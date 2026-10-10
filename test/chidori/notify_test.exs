@@ -12,7 +12,7 @@ defmodule Chidori.NotifyTest do
   alias Chidori.Notify.Destination
   alias Chidori.Notify.Settings
 
-  @collection "tazuna_tech"
+  @collection "chidori_tech"
   @digest %{
     title: "まとめ: 基盤の入れ替えが続いた（2026-09-15 01:00）",
     summary: """
@@ -74,7 +74,7 @@ defmodule Chidori.NotifyTest do
     # 通知の 1 行だけでは足りない
     # 開くのは端末の通知と同じ画面（いちばん新しいまとめを全画面で）
     assert Notify.click_url(@collection, "https://chidori.example.com") ==
-             "https://chidori.example.com/news?view=tazuna_tech&digest=latest"
+             "https://chidori.example.com/news?view=chidori_tech&digest=latest"
   end
 
   test "手元しか指せないときは、開く先を添えない" do
@@ -251,7 +251,7 @@ defmodule Chidori.NotifyTest do
     end
 
     test "押すと開くのは、その話題のいちばん新しいまとめ" do
-      assert Notify.open_path(@collection) == "/news?view=tazuna_tech&digest=latest"
+      assert Notify.open_path(@collection) == "/news?view=chidori_tech&digest=latest"
     end
 
     test "端末の通知には要旨だけを短く載せる（出典の URL は載せない）" do
@@ -329,10 +329,10 @@ defmodule Chidori.NotifyTest do
   end
 
   test "通知の見出しに、どの話題のまとめかを付ける" do
-    assert Notify.notice_title("tazuna_tech", "まとめ: 新しい版が出た（2026-10-10 07:00 JST）") ==
+    assert Notify.notice_title("chidori_tech", "まとめ: 新しい版が出た（2026-10-10 07:00 JST）") ==
              "技術ニュースのまとめ: 新しい版が出た（2026-10-10 07:00 JST）"
 
-    assert Notify.notice_title("tazuna_tech", "週の振り返り") == "技術ニュース｜週の振り返り"
+    assert Notify.notice_title("chidori_tech", "週の振り返り") == "技術ニュース｜週の振り返り"
     # 話題の定義に無い収集は、見出しのまま
     assert Notify.notice_title("unknown_x", "まとめ: X") == "まとめ: X"
   end

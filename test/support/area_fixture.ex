@@ -1,7 +1,7 @@
 defmodule Chidori.AreaFixture do
   @moduledoc """
   食事処の範囲を 1 つ作る（番号 1・東京のあたり）。食事処は範囲ごとのタブなので、
-  画面を見るテストはこれを作ってから開く（`dining-1` / `tazuna_dining_1`）。
+  画面を見るテストはこれを作ってから開く（`dining-1` / `chidori_dining_1`）。
   """
 
   alias Chidori.Datasets.DiningAreas

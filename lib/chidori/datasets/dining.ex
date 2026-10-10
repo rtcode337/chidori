@@ -25,7 +25,7 @@ defmodule Chidori.Datasets.Dining do
   ## 収集は範囲ごとに 1 つ
 
   **見たい範囲だけを、細かい区画で回します**（`Chidori.Datasets.DiningAreas`。
-  収集の名前は `tazuna_dining_<範囲の番号>`）。日本全体を 1 つで回していた頃は、
+  収集の名前は `chidori_dining_<範囲の番号>`）。日本全体を 1 つで回していた頃は、
   59.7 万件・4,105 区画で一周のめどが立たず、AI の費用もかさみ、抜け漏れと間違いが
   多すぎて地図として使えませんでした。
 
@@ -61,7 +61,7 @@ defmodule Chidori.Datasets.Dining do
   alias Chidori.Chiezo
 
   # **範囲ごとの収集**（`definition/1`）。収集の名前はこの頭に範囲の番号を付けたもの
-  @area_collection_prefix "tazuna_dining_"
+  @area_collection_prefix "chidori_dining_"
   # 区画の大きさ。**AI が 1 回で 1 件ずつ確かめられる数にする**。
   # 1 区画 150 件で回していた頃は、AI は 1 区画を 90〜135 秒で見ていた（実測の中央値。
   # 1 件 1 秒に満たない）—— 閉店や実在を web で確かめる見方にはなっておらず、
@@ -236,7 +236,7 @@ defmodule Chidori.Datasets.Dining do
   def area_collection_prefix, do: @area_collection_prefix
 
   @doc """
-  範囲ごとの収集の名前（`tazuna_dining_<範囲の番号>` = Chiezo のソース名）。
+  範囲ごとの収集の名前（`chidori_dining_<範囲の番号>` = Chiezo のソース名）。
 
   **後から変えない** —— 変えると、それまで溜めた先を見失います。
   """

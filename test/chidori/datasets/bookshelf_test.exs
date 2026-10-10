@@ -189,7 +189,7 @@ defmodule Chidori.Datasets.BookshelfTest do
       prompt = Bookshelf.tidy_prompt()
       assert prompt =~ "付けるべきだと思う語を\nすべて"
       refute prompt =~ "1〜3"
-      refute prompt =~ "tazuna_tech_topics"
+      refute prompt =~ "chidori_tech_topics"
     end
 
     test "話題のタグを読み、興味トピックに近い本に印を付ける" do

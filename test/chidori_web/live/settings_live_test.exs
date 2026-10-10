@@ -29,12 +29,12 @@ defmodule ChidoriWeb.SettingsLiveTest do
               Jason.encode!(%{
                 "collections" => [
                   %{
-                    "name" => "tazuna_tech",
+                    "name" => "chidori_tech",
                     "sweeps" => [%{"name" => "整理", "interval_minutes" => 720}]
                   },
                   # Chidori の画面に無い収集（Chiezo にだけ残っている）
                   %{
-                    "name" => "tazuna_old",
+                    "name" => "chidori_old",
                     "requested_by" => "chidori",
                     "sweeps" => [%{"name" => "整理", "interval_minutes" => 720}]
                   }
@@ -63,7 +63,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
     html = render_async(live)
 
     # Chiezo の技術ニュースには整理の回しか無い（Chidori の定義には見出しの回もある）
-    [_, tech] = String.split(html, "tazuna_tech</span>", parts: 2)
+    [_, tech] = String.split(html, "chidori_tech</span>", parts: 2)
     [tech, _] = String.split(tech, "</tbody>", parts: 2)
     assert tech =~ "Chidori の定義と違います"
     assert tech =~ "が Chiezo にありません"
@@ -84,7 +84,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
     |> render_submit()
 
     assert CollectPace.minutes(:tidy) == 1440
-    assert_receive {:patched, "http://chiezo.test/v1/collect/tazuna_tech/sweeps/整理", body}
+    assert_receive {:patched, "http://chiezo.test/v1/collect/chidori_tech/sweeps/整理", body}
     assert body["interval_minutes"] == 1440
     assert render_async(live) =~ "本の巡回に送りました"
   end
@@ -105,10 +105,10 @@ defmodule ChidoriWeb.SettingsLiveTest do
     [tech, tech_topics, painters, old] =
       Enum.map(
         [
-          "send-tazuna_tech\"",
-          "send-tazuna_tech_topics\"",
-          "send-tazuna_painters\"",
-          "send-tazuna_old\""
+          "send-chidori_tech\"",
+          "send-chidori_tech_topics\"",
+          "send-chidori_painters\"",
+          "send-chidori_old\""
         ],
         fn id ->
           html |> :binary.match(id) |> elem(0)
@@ -132,9 +132,9 @@ defmodule ChidoriWeb.SettingsLiveTest do
     assert html =~ ~s(<option value="codex")
 
     live
-    |> element("#send-tazuna_tech")
+    |> element("#send-chidori_tech")
     |> render_submit(%{
-      "collection" => "tazuna_tech",
+      "collection" => "chidori_tech",
       "sweep|整理|backend" => "codex",
       "sweep|整理|model" => "gpt-5",
       "tidy" => "true"
@@ -142,12 +142,12 @@ defmodule ChidoriWeb.SettingsLiveTest do
 
     html = render_async(live)
 
-    assert_received {:patched, "http://chiezo.test/v1/collect/tazuna_tech", body}
+    assert_received {:patched, "http://chiezo.test/v1/collect/chidori_tech", body}
     # 依頼文を含む Chidori の今の定義が届く
     assert is_binary(body["prompt"])
     tidy = Enum.find(body["sweeps"], &(&1["name"] == "整理"))
     assert {tidy["backend"], tidy["model"], tidy["by_caller"]} == {"codex", "gpt-5", true}
-    assert CollectPace.tidy_stopped?("tazuna_tech")
+    assert CollectPace.tidy_stopped?("chidori_tech")
     assert html =~ "送りました（"
   end
 
@@ -156,16 +156,16 @@ defmodule ChidoriWeb.SettingsLiveTest do
     render_async(live)
 
     live
-    |> element("#send-tazuna_old")
+    |> element("#send-chidori_old")
     |> render_submit(%{
-      "collection" => "tazuna_old",
+      "collection" => "chidori_old",
       "sweep|整理|backend" => "codex",
       "tidy" => "false"
     })
 
     assert render_async(live) =~ "送りました（整理の相手）"
 
-    assert_received {:patched, "http://chiezo.test/v1/collect/tazuna_old/sweeps/整理",
+    assert_received {:patched, "http://chiezo.test/v1/collect/chidori_old/sweeps/整理",
                      %{"backend" => "codex"}}
   end
 
@@ -182,14 +182,14 @@ defmodule ChidoriWeb.SettingsLiveTest do
 
   test "通知タブで、全部の通知に共通の宛先を書く", %{conn: conn} do
     # 話題ごとに書いていた頃は、同じトピックを画面ごとに書き写していた
-    Chidori.Notify.Settings.put("tazuna_tech", %{"notify" => "true"})
+    Chidori.Notify.Settings.put("chidori_tech", %{"notify" => "true"})
     {:ok, live, html} = live(conn, ~p"/settings?tab=notify")
 
     assert html =~ ~s(name="ntfy[topic]")
     assert html =~ ~s(name="ntfy[base_url]")
 
     # 知らせるかどうかは話題ごと。いまどうなっているかはチェックで並べる
-    assert html =~ ~r|<input type="checkbox" checked[^>]*phx-value-collection="tazuna_tech"|
+    assert html =~ ~r|<input type="checkbox" checked[^>]*phx-value-collection="chidori_tech"|
 
     live
     |> form("#ntfy-form",
@@ -199,7 +199,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
 
     assert Chidori.Ntfy.topic() == "shared-topic"
     assert Chidori.Ntfy.base_url() == "http://ntfy.test"
-    assert Chidori.Ntfy.ready("tazuna_tech") == {:ok, {"http://ntfy.test", "shared-topic"}}
+    assert Chidori.Ntfy.ready("chidori_tech") == {:ok, {"http://ntfy.test", "shared-topic"}}
 
     # 「ntfy に送る」を外すと、トピック名を残して止まる
     live |> form("#ntfy-form", ntfy: %{enabled: "false"}) |> render_submit()
@@ -218,21 +218,21 @@ defmodule ChidoriWeb.SettingsLiveTest do
 
   test "通知タブで、話題ごとに知らせるかをその場で切り替える", %{conn: conn} do
     {:ok, live, _html} = live(conn, ~p"/settings?tab=notify")
-    refute Chidori.Notify.Settings.get("tazuna_tech").notify
+    refute Chidori.Notify.Settings.get("chidori_tech").notify
 
     html =
       live
-      |> element(~s(#notify-topics input[phx-value-collection="tazuna_tech"]))
+      |> element(~s(#notify-topics input[phx-value-collection="chidori_tech"]))
       |> render_click()
 
-    assert Chidori.Notify.Settings.get("tazuna_tech").notify
+    assert Chidori.Notify.Settings.get("chidori_tech").notify
     assert html =~ "知らせるようにしました"
 
     live
-    |> element(~s(#notify-topics input[phx-value-collection="tazuna_tech"]))
+    |> element(~s(#notify-topics input[phx-value-collection="chidori_tech"]))
     |> render_click()
 
-    refute Chidori.Notify.Settings.get("tazuna_tech").notify
+    refute Chidori.Notify.Settings.get("chidori_tech").notify
   end
 
   describe "この端末に通知を送る（Web Push）" do
@@ -336,7 +336,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
 
   test "chidori が起こす回は、表の中で時刻を直せる", %{conn: conn} do
     # 要約の回は Chiezo 側に時計が無く、時刻を持つのは Chidori（各話題の画面と同じ値）
-    Chidori.Notify.Settings.put("tazuna_news", %{"digest_at" => "07:00"})
+    Chidori.Notify.Settings.put("chidori_news", %{"digest_at" => "07:00"})
 
     HttpStub.stub(fn
       %{method: :get, url: url} ->
@@ -346,7 +346,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
               Jason.encode!(%{
                 "collections" => [
                   %{
-                    "name" => "tazuna_news",
+                    "name" => "chidori_news",
                     "sweeps" => [%{"name" => "要約", "on_demand" => true}]
                   }
                 ]
@@ -365,7 +365,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
     |> form(".wake-form", times: "6, 19")
     |> render_submit()
 
-    assert Chidori.Notify.Settings.get("tazuna_news").digest_at == "06:00,19:00"
+    assert Chidori.Notify.Settings.get("chidori_news").digest_at == "06:00,19:00"
     assert render_async(live) =~ "起こす時刻を保存しました。"
   end
 
@@ -376,7 +376,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
     pace = html |> String.split(~s(id="collect-pace")) |> List.last()
     {scan, tidy} = {:binary.match(pace, "ざっと見る"), :binary.match(pace, "整理")}
     assert elem(scan, 0) < elem(tidy, 0)
-    # 整理は tazuna_tech と tazuna_old の 2 本（どちらも時計で回る）
+    # 整理は chidori_tech と chidori_old の 2 本（どちらも時計で回る）
     assert pace =~ "Chidori に 2 本・動いている"
   end
 
@@ -387,11 +387,11 @@ defmodule ChidoriWeb.SettingsLiveTest do
              {:ok,
               %{
                 paces: [{:tidy, 1440}],
-                stopped: ["tazuna_books"],
+                stopped: ["chidori_books"],
                 resumed: [],
                 min_pageviews: nil
               }}
-           ) == "Chiezo の設定から戻しました（整理を1 日ごとに、整理を自動で回さない: tazuna_books）。"
+           ) == "Chiezo の設定から戻しました（整理を1 日ごとに、整理を自動で回さない: chidori_books）。"
 
     assert SettingsLive.restore_text(
              {:ok, %{paces: [], stopped: [], resumed: [], min_pageviews: nil}}

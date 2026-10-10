@@ -85,7 +85,7 @@ defmodule Chidori.Relations.PeopleTest do
     test "名簿は俳優・歌手・タレント・お笑い芸人だけから引き、種別を機械で付ける", %{
       attrs: attrs
     } do
-      assert attrs.name == "tazuna_people"
+      assert attrs.name == "chidori_people"
 
       for category <- ~w(日本の男優 20世紀日本の女優 日本の女性歌手 日本のタレント お笑い芸人),
           do: assert(attrs.extract.tag =~ category)
@@ -158,8 +158,8 @@ defmodule Chidori.Relations.PeopleTest do
   test "関連図の一覧に並び、収集の名前と設定を引ける" do
     assert {"people", "芸能人のつながり"} in Relations.views()
     assert Relations.chiezo_view?("people")
-    assert Relations.collection_of("people") == "tazuna_people"
-    assert Relations.attrs_of("people", %{}).name == "tazuna_people"
+    assert Relations.collection_of("people") == "chidori_people"
+    assert Relations.attrs_of("people", %{}).name == "chidori_people"
     assert Relations.collection_of("painters") == Relations.painters_collection()
   end
 end

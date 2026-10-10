@@ -29,7 +29,7 @@ defmodule Chidori.NewsTest do
         "prompt" => "{cursor} 以降のニュースを10件。next_cursor に続きを。",
         "last_added" => 3,
         "requested_by" => "chidori",
-        "url" => "/search/tazuna_news/"
+        "url" => "/search/chidori_news/"
       },
       overrides
     )
@@ -130,7 +130,7 @@ defmodule Chidori.NewsTest do
       assert c.prompt =~ "{cursor}"
       # 誰に頼んでいるかも Chiezo 側が正
       assert c.backend == nil
-      assert c.url == "http://chiezo.test:7010/search/tazuna_news/"
+      assert c.url == "http://chiezo.test:7010/search/chidori_news/"
 
       # 件数は定義に入っていないので、ここでは 0（読み直しがソース表から埋める）
       assert c.docs == 0
@@ -147,11 +147,11 @@ defmodule Chidori.NewsTest do
           HttpStub.ok(sources_body(42))
 
         # まとめはタグで引き直す（直近の窓から押し出されても出るように）
-        %{method: :get, url: "http://chiezo.test:7010/v1/tazuna_news/filter?" <> _query} ->
+        %{method: :get, url: "http://chiezo.test:7010/v1/chidori_news/filter?" <> _query} ->
           HttpStub.ok(Jason.encode!(%{"results" => []}))
 
         # 記事一覧の窓は新着の口から（公開の新しい順に並べ直す）
-        %{method: :get, url: "http://chiezo.test:7010/v1/tazuna_news/recent?" <> _query} ->
+        %{method: :get, url: "http://chiezo.test:7010/v1/chidori_news/recent?" <> _query} ->
           HttpStub.ok(Jason.encode!(%{"docs" => [recent("地震の続報")]}))
 
         # 反応の実数（はてブ数）
@@ -160,7 +160,7 @@ defmodule Chidori.NewsTest do
           HttpStub.ok(~s({"https://example.com/1": 12}))
 
         %{method: :get, url: url} ->
-          assert url =~ "/v1/collect/tazuna_news"
+          assert url =~ "/v1/collect/chidori_news"
           HttpStub.ok(detail_body([recent("見本の 1 件")]))
       end)
 
@@ -256,7 +256,7 @@ defmodule Chidori.NewsTest do
       News.request_collection(name)
 
       assert_receive {:created, payload}, 2_000
-      assert payload["name"] == "tazuna_news"
+      assert payload["name"] == "chidori_news"
       assert payload["requested_by"] == "chidori"
       # 実行のたびに進む印を使う（前回以降を集めるため）
       assert payload["prompt"] =~ "{cursor}"
@@ -272,7 +272,7 @@ defmodule Chidori.NewsTest do
       # **技術イベントも流れ**（これから開かれるものを次々と集めていく）。
       # ただし期限は外す —— Chiezo の期限は配信日で数えるので、半年先のイベントを
       # 募集が出た日から 30 日で落とすことになる。終わったものは整理が落とす
-      events = News.attrs("tazuna_events", Chidori.Topics.get("tazuna_events"))
+      events = News.attrs("chidori_events", Chidori.Topics.get("chidori_events"))
       assert events[:kind] == "flow"
       assert events[:keep_days] == 0
 
@@ -429,9 +429,9 @@ defmodule Chidori.NewsTest do
           HttpStub.ok(list_body([collection()]))
       end)
 
-      assert News.ask_focus("tazuna_tech", "この記事は宣伝なので落として") == :ok
+      assert News.ask_focus("chidori_tech", "この記事は宣伝なので落として") == :ok
       assert_receive {:asked, url, sent}, 2_000
-      assert url =~ "/v1/collect/tazuna_tech/focus"
+      assert url =~ "/v1/collect/chidori_tech/focus"
       assert sent["sweep"] == "整理"
       assert sent["note"] =~ "宣伝"
     end
@@ -439,7 +439,7 @@ defmodule Chidori.NewsTest do
     test "Chiezo が未設定なら、頼む前に断る" do
       System.delete_env("CHIEZO_BASE_URL")
 
-      assert News.ask_focus("tazuna_tech", "なにか") == {:error, :chiezo_not_configured}
+      assert News.ask_focus("chidori_tech", "なにか") == {:error, :chiezo_not_configured}
     end
   end
 
@@ -472,7 +472,7 @@ defmodule Chidori.NewsTest do
 
   describe "興味トピック" do
     defp with_interests(names),
-      do: Map.put(defined_topic("tazuna_tech"), :interests, names)
+      do: Map.put(defined_topic("chidori_tech"), :interests, names)
 
     test "選んでいれば、整理の回に興味度を付けさせる（付け終えた点は付け直させない）" do
       prompt = News.refine_prompt(with_interests(["LLM", "Rust"]))
@@ -522,7 +522,7 @@ defmodule Chidori.NewsTest do
 
   describe "巡回" do
     test "お笑いイベントは配信元を持たず、月ごとに探す回だけで回す（整理を置かない）" do
-      topic = defined_topic("tazuna_comedy")
+      topic = defined_topic("chidori_comedy")
       sweeps = News.sweeps(topic)
       names = Enum.map(sweeps, & &1.name)
 
@@ -539,15 +539,15 @@ defmodule Chidori.NewsTest do
       assert survey.prompt =~ "上に並んでいるものも片付けてください"
 
       # 割り込みもこの回で走らせる（無い巡回を名指しすると Chiezo が断る）
-      assert News.focus_sweep_of("tazuna_comedy") == survey.name
-      assert News.focus_sweep_of("tazuna_tech") == Chidori.SweepNames.tidy()
+      assert News.focus_sweep_of("chidori_comedy") == survey.name
+      assert News.focus_sweep_of("chidori_tech") == Chidori.SweepNames.tidy()
 
       # テレビ番組も入れ、放送日で並べる。出演者は関連図とつなぐ書き方で
       assert survey.prompt =~ "今回探すのは「{cursor}」"
       assert survey.prompt =~ "開催地:テレビ"
       assert survey.prompt =~ "出演:"
 
-      attrs = News.attrs("tazuna_comedy", topic)
+      attrs = News.attrs("chidori_comedy", topic)
       assert attrs.thumbs == %{pages_from: ["*"]}
       assert attrs.keep_days == 0
       # 名指ししない回に落ちる文も、ニュースではなく先を探す文
@@ -561,7 +561,7 @@ defmodule Chidori.NewsTest do
     end
 
     test "仕事ごとに別の時計で回す" do
-      names = defined_topic("tazuna_news") |> News.sweeps() |> Enum.map(& &1.name)
+      names = defined_topic("chidori_news") |> News.sweeps() |> Enum.map(& &1.name)
 
       # 一般ニュースも技術ニュースと同じく、配信元を機械で引く
       assert names == ["機械収集", "整理", "要約"]
@@ -577,19 +577,19 @@ defmodule Chidori.NewsTest do
       # 機械収集より先に届くと、空の収集を相手に整理が走る
       refine = &Enum.find(News.sweeps(&1), fn sweep -> sweep.name == "整理" end)
 
-      assert refine.(defined_topic("tazuna_tech")).after == "機械収集"
+      assert refine.(defined_topic("chidori_tech")).after == "機械収集"
       assert refine.(%{name: "何か", interest: "何か", feeds: []}).after == "集める"
     end
 
     test "要約を作らない話題には、要約の回を置かない" do
       # 技術イベントは開催日のカレンダーで選ぶもので、要約は読まれない
-      names = defined_topic("tazuna_events") |> News.sweeps() |> Enum.map(& &1.name)
+      names = defined_topic("chidori_events") |> News.sweeps() |> Enum.map(& &1.name)
       assert names == ["機械収集", "整理", "情報収集"]
     end
 
     test "技術イベントは 1 日に 1 回、先の月を 1 か月ずつ探して足す" do
       # connpass の新着は募集が出たものしか流れてこないので、カレンダーが来月で止まる
-      sweep = defined_topic("tazuna_events") |> News.sweeps() |> Enum.find(&(&1.name == "情報収集"))
+      sweep = defined_topic("chidori_events") |> News.sweeps() |> Enum.find(&(&1.name == "情報収集"))
 
       assert sweep.interval_minutes == 24 * 60
       assert sweep.only_new
@@ -606,17 +606,17 @@ defmodule Chidori.NewsTest do
 
       # connpass は配信に絵を載せず、外から足したイベントは主催ごとに公式サイトが違うので、
       # どのホストのページの og:image も Chiezo に拾わせる
-      assert News.attrs("tazuna_events", defined_topic("tazuna_events")).thumbs ==
+      assert News.attrs("chidori_events", defined_topic("chidori_events")).thumbs ==
                %{pages_from: ["*"]}
 
       # 作品（アニメ・映画）とお笑いイベントも、AI が絵を返さなければ公式サイトのページから
-      for collection <- ~w(tazuna_anime tazuna_movies tazuna_comedy) do
+      for collection <- ~w(chidori_anime chidori_movies chidori_comedy) do
         assert News.attrs(collection, defined_topic(collection)).thumbs == %{pages_from: ["*"]}
       end
 
       # ニュースは記事のページの og:image を拾わせる。市況には持たせない
-      assert News.attrs("tazuna_tech", defined_topic("tazuna_tech")).thumbs.pages_from != []
-      refute Map.has_key?(News.attrs("tazuna_market", defined_topic("tazuna_market")), :thumbs)
+      assert News.attrs("chidori_tech", defined_topic("chidori_tech")).thumbs.pages_from != []
+      refute Map.has_key?(News.attrs("chidori_market", defined_topic("chidori_market")), :thumbs)
       # 整理の回はカーソルを動かさない（動かすと次に探す月が飛ぶ）
       assert Chidori.News.Events.refine_note() =~ "next_cursor は返さないでください"
       # タグの決まりは整理と同じ文
@@ -624,12 +624,12 @@ defmodule Chidori.NewsTest do
       assert Chidori.News.Events.refine_note() =~ Chidori.News.Events.tag_rules()
 
       # ほかの話題には置かない
-      refute "情報収集" in (defined_topic("tazuna_tech") |> News.sweeps() |> Enum.map(& &1.name))
+      refute "情報収集" in (defined_topic("chidori_tech") |> News.sweeps() |> Enum.map(& &1.name))
     end
 
     test "技術イベントの整理は、論文ではなく connpass の外のイベントを探させる" do
-      events = News.refine_prompt(defined_topic("tazuna_events"))
-      tech = News.refine_prompt(defined_topic("tazuna_tech"))
+      events = News.refine_prompt(defined_topic("chidori_events"))
+      tech = News.refine_prompt(defined_topic("chidori_tech"))
 
       assert events =~ "上に無いイベントを探して足す"
       assert events =~ "Doorkeeper"
@@ -639,14 +639,14 @@ defmodule Chidori.NewsTest do
 
     test "一般ニュースも技術ニュースと同じくトピックの網を育てる" do
       # 記事が毎日まとまった数で流れてくる話題なので、網にでき、興味トピックも選べる
-      assert Chidori.Topics.themes?(defined_topic("tazuna_news"))
-      assert Chidori.Topics.themes?(defined_topic("tazuna_tech"))
+      assert Chidori.Topics.themes?(defined_topic("chidori_news"))
+      assert Chidori.Topics.themes?(defined_topic("chidori_tech"))
     end
 
     test "一般ニュースの整理は、ニュースの出どころと人気枠で頼む" do
       # 共通の文は技術向け（論文・テックブログ・Qiita）で、ニュースには合わない
-      news = News.refine_prompt(defined_topic("tazuna_news"))
-      tech = News.refine_prompt(defined_topic("tazuna_tech"))
+      news = News.refine_prompt(defined_topic("chidori_news"))
+      tech = News.refine_prompt(defined_topic("chidori_tech"))
 
       assert news =~ "官公庁・自治体"
       assert news =~ "各社のトップや速報"
@@ -657,7 +657,7 @@ defmodule Chidori.NewsTest do
 
     test "市況ニュースは、記事に出てくる上場企業の証券コードを付けさせる" do
       # 売買提案のアプリ が自分の保有と突き合わせて注目銘柄にする
-      market = News.refine_prompt(defined_topic("tazuna_market"))
+      market = News.refine_prompt(defined_topic("chidori_market"))
 
       assert market =~ ~s("銘柄:<証券コード>")
       assert market =~ ~s("区分:マクロ")
@@ -667,7 +667,7 @@ defmodule Chidori.NewsTest do
 
     test "映画の要約は、いま入っている作品から販促記事の調子で書かせる" do
       # 前回から入ったものではなく、公開中とこれからの作品ぜんぶが材料
-      movies = News.digest_prompt(defined_topic("tazuna_movies"))
+      movies = News.digest_prompt(defined_topic("chidori_movies"))
 
       assert movies =~ "{current}"
       refute movies =~ "{recent}"
@@ -677,37 +677,37 @@ defmodule Chidori.NewsTest do
       assert movies =~ "## 要旨"
 
       # ほかの話題は今までどおり
-      assert News.digest_prompt(defined_topic("tazuna_tech")) =~ "{recent}"
-      refute News.digest_prompt(defined_topic("tazuna_tech")) =~ "販促"
+      assert News.digest_prompt(defined_topic("chidori_tech")) =~ "{recent}"
+      refute News.digest_prompt(defined_topic("chidori_tech")) =~ "販促"
     end
 
     test "市況ニュースは要約を作らず、記事の機械収集と整理だけを回す" do
       # 要約は売買提案の AI（売買提案のアプリ）の参加者がそれぞれ書く（`Chidori.Topics` の `digest_from`）
-      names = defined_topic("tazuna_market") |> News.sweeps() |> Enum.map(& &1.name)
+      names = defined_topic("chidori_market") |> News.sweeps() |> Enum.map(& &1.name)
 
       assert Chidori.SweepNames.digest() not in names
       assert Chidori.SweepNames.tidy() in names
-      refute Chidori.Topics.themes?(defined_topic("tazuna_market"))
+      refute Chidori.Topics.themes?(defined_topic("chidori_market"))
     end
 
     test "映画は整理と要約の回を持つ" do
-      names = defined_topic("tazuna_movies") |> News.sweeps() |> Enum.map(& &1.name)
+      names = defined_topic("chidori_movies") |> News.sweeps() |> Enum.map(& &1.name)
       assert "要約" in names
     end
 
     test "トピックの網の例も話題ごと" do
       # 一般ニュースの網に「AI」「インフラ」を例に出すと、分野がそちらへ引っ張られる
-      news = Chidori.Themes.tidy_prompt(defined_topic("tazuna_news"))
+      news = Chidori.Themes.tidy_prompt(defined_topic("chidori_news"))
 
       assert news =~ "分野:政治"
       refute news =~ "分野:インフラ"
-      assert Chidori.Themes.tidy_prompt(defined_topic("tazuna_tech")) =~ "分野:インフラ"
+      assert Chidori.Themes.tidy_prompt(defined_topic("chidori_tech")) =~ "分野:インフラ"
     end
 
     test "割り込みは整理の回に乗せる" do
       # 頼まれるのはたいてい「これは宣伝だから落として」「この印が違う」で、
       # **その力を持つのは整理の回だけ**
-      names = defined_topic("tazuna_tech") |> News.sweeps() |> Enum.map(& &1.name)
+      names = defined_topic("chidori_tech") |> News.sweeps() |> Enum.map(& &1.name)
 
       assert News.focus_sweep() in names
       assert News.focus_sweep() == "整理"
@@ -717,13 +717,13 @@ defmodule Chidori.NewsTest do
       # 置いていた頃は時計を持たないだけの空の巡回で、依頼文を持たないので
       # 収集ぜんたいの文（集める回の文）で走っていた —— 落とす力を持たない回。
       # 時計を持たないのは要約だけ（起こすのは Chidori で、依頼文は自分で持っている）
-      sweeps = defined_topic("tazuna_tech") |> News.sweeps()
+      sweeps = defined_topic("chidori_tech") |> News.sweeps()
 
       assert Enum.filter(sweeps, &Map.get(&1, :on_demand)) |> Enum.map(& &1.name) == ["要約"]
     end
 
     test "配信元を持つ話題は、集めるところを機械にまかせる" do
-      [intake | _rest] = defined_topic("tazuna_tech") |> News.sweeps()
+      [intake | _rest] = defined_topic("chidori_tech") |> News.sweeps()
 
       assert intake.name == "機械収集"
       assert intake.use_feed == true
@@ -734,7 +734,7 @@ defmodule Chidori.NewsTest do
     end
 
     test "配信元は束の名前つきで渡す" do
-      spec = defined_topic("tazuna_tech") |> News.feed_spec()
+      spec = defined_topic("chidori_tech") |> News.feed_spec()
 
       assert Enum.any?(spec.urls, &(&1.tags == ["ニュース"]))
       assert Enum.any?(spec.urls, &(&1.tags == ["記事"]))
@@ -747,7 +747,7 @@ defmodule Chidori.NewsTest do
     test "落とす力を持つのは整理の回だけ" do
       # 溜めるほうを機械にまかせた以上、選り分ける口がどこかに要る。
       # ただし足すだけの回に消す力を持たせない（足すはずの回が消し始める）
-      topic = defined_topic("tazuna_tech")
+      topic = defined_topic("chidori_tech")
       prompts = for s <- News.sweeps(topic), into: %{}, do: {s.name, Map.get(s, :prompt)}
 
       # **名前は Chiezo が決めている**ので、ここでも書き写さずに引く
@@ -759,7 +759,7 @@ defmodule Chidori.NewsTest do
     test "整理は、読み直すのと外を当たるのを 1 本で頼む" do
       # 分けていた頃は、重なった時間ぶんを 2 度読ませていた（画家の収集が
       # 同じ理由で 1 本にまとめてある）
-      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+      prompt = News.refine_prompt(defined_topic("chidori_tech"))
 
       assert prompt =~ "印を付け直し"
       assert prompt =~ "上に並んでいない出どころ"
@@ -770,8 +770,8 @@ defmodule Chidori.NewsTest do
       # 話題のつながりで、どの記事も同じ場所に集まってしまう
       # （実測で、上位のタグに製品名がほとんど無かった）
       for prompt <- [
-            News.prompt(defined_topic("tazuna_tech")),
-            News.refine_prompt(defined_topic("tazuna_tech"))
+            News.prompt(defined_topic("chidori_tech")),
+            News.refine_prompt(defined_topic("chidori_tech"))
           ] do
         assert prompt =~ "固有名"
         assert prompt =~ "人・組織・製品・サービス・技術"
@@ -782,7 +782,7 @@ defmodule Chidori.NewsTest do
       # 外を当たる先の 1 つとして箇条書きに並べていただけの頃は、実測で 269 件の
       # うち論文が 2 件しか入らなかった —— 4 つ並んだうちの最後の 1 行では埋もれる。
       # 配信元は論文を配らないので、この回が見に行かなければ永遠に入らない
-      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+      prompt = News.refine_prompt(defined_topic("chidori_tech"))
 
       assert prompt =~ "この回が見に行かなければ 1 件も入りません"
       assert prompt =~ "毎回かならず当たってください"
@@ -791,7 +791,7 @@ defmodule Chidori.NewsTest do
     test "論文の件数は求めない" do
       # 「必ず N 件」と書くと数合わせで薄いものが入り、重要度の印が意味を失う
       # （読む人は印で絞って読むので、そこに当たりが混ざるほうが害が大きい）
-      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+      prompt = News.refine_prompt(defined_topic("chidori_tech"))
 
       assert prompt =~ "0 件で構いません"
       assert prompt =~ "探さずに 0 件にしないでください"
@@ -801,11 +801,11 @@ defmodule Chidori.NewsTest do
       # 見出しでは確かめられない —— 同じ記事が配信元ごとに違う見出しで流れてくるし
       # （「記事名 - サイト名」と「記事名」）、差し込まれるのは前回から後のぶんだけ。
       # 実測で、生きている記事の 6% が同じ URL の複製だった
-      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+      prompt = News.refine_prompt(defined_topic("chidori_tech"))
 
       assert prompt =~ "URL で確かめてください"
       # 引く相手は、その話題の収集（道具に渡す名前）
-      assert prompt =~ ~s(query(source: "tazuna_tech")
+      assert prompt =~ ~s(query(source: "chidori_tech")
       assert prompt =~ "見出しの付け替えはできません"
     end
 
@@ -813,7 +813,7 @@ defmodule Chidori.NewsTest do
       # 同じ配信元から同じ材料を読んでいても、軸が「判断が変わるか」だけだと、
       # 界隈が丸一日その話をしていてもまとめに出てこない（実際にそうなった）。
       # かといって重要度に混ぜると、**沸いていないが効く 1 件**が沈む
-      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+      prompt = News.refine_prompt(defined_topic("chidori_tech"))
 
       assert prompt =~ "話題度:高"
       assert prompt =~ "重要度 とは別の軸です"
@@ -824,12 +824,12 @@ defmodule Chidori.NewsTest do
 
     test "関心には、話題になっていること自体も入れる" do
       # 判断が変わるかどうかだけで選ぶと、界隈の話題がまるごと落ちる
-      assert News.refine_prompt(defined_topic("tazuna_tech")) =~ "界隈で話題になっているもの"
+      assert News.refine_prompt(defined_topic("chidori_tech")) =~ "界隈で話題になっているもの"
     end
 
     test "外から見つけたものに、既にあるものを上書きさせない" do
       # 見出しが同じものを薄い要約で返すと、付いている印ごと置き換わる
-      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+      prompt = News.refine_prompt(defined_topic("chidori_tech"))
 
       assert prompt =~ "書き換えないでください"
       assert prompt =~ "新しい見出しで"
@@ -839,7 +839,7 @@ defmodule Chidori.NewsTest do
       # 要約を起こすのは Chidori（知らせる時刻はこちらが持つ）。整理はその直前にも
       # 起こすが、定時の時計も残す —— 落とす仕事も外を当たる仕事も、
       # まとめの回数ぶんしか走らないと間が空きすぎる
-      sweeps = defined_topic("tazuna_tech") |> News.sweeps() |> Map.new(&{&1.name, &1})
+      sweeps = defined_topic("chidori_tech") |> News.sweeps() |> Map.new(&{&1.name, &1})
 
       assert Map.get(sweeps["要約"], :on_demand)
       refute Map.get(sweeps["要約"], :interval_minutes)
@@ -860,7 +860,7 @@ defmodule Chidori.NewsTest do
       for sweep <-
             Chidori.Datasets.Books.sweeps() ++
               Chidori.Datasets.Bookshelf.sweeps() ++
-              Chidori.Themes.sweeps(defined_topic("tazuna_tech")),
+              Chidori.Themes.sweeps(defined_topic("chidori_tech")),
           sweep.name == "整理" do
         assert sweep.interval_minutes == 720
       end
@@ -868,22 +868,22 @@ defmodule Chidori.NewsTest do
 
     test "機械収集の間隔は、話題ごとに変えられる" do
       # 配信元によって更新の速さが違う
-      events = defined_topic("tazuna_events") |> News.sweeps() |> Map.new(&{&1.name, &1})
+      events = defined_topic("chidori_events") |> News.sweeps() |> Map.new(&{&1.name, &1})
       assert events["機械収集"].interval_minutes == 60
     end
 
     test "その話題ならではの頼みごとは、整理の回に足す" do
-      prompt = News.refine_prompt(defined_topic("tazuna_events"))
+      prompt = News.refine_prompt(defined_topic("chidori_events"))
 
       assert prompt =~ Chidori.News.Events.refine_note() |> String.split("\n") |> hd()
 
       # 持たない話題には足さない
-      refute News.refine_prompt(defined_topic("tazuna_tech")) =~ "開催日"
+      refute News.refine_prompt(defined_topic("chidori_tech")) =~ "開催日"
     end
 
     test "作品を育てる話題は、先を探す回と整理の回（と要約）で回す" do
       # 記事を集める回を置くと、単位が記事に戻る
-      sweeps = defined_topic("tazuna_movies") |> News.sweeps()
+      sweeps = defined_topic("chidori_movies") |> News.sweeps()
       by_name = Map.new(sweeps, &{&1.name, &1})
 
       assert Enum.map(sweeps, & &1.name) == ["情報収集", "整理", "要約"]
@@ -893,7 +893,7 @@ defmodule Chidori.NewsTest do
       assert by_name["整理"].prompt =~ "{current}"
       assert by_name["情報収集"].prompt =~ "{names}"
 
-      attrs = News.attrs("tazuna_movies", defined_topic("tazuna_movies"))
+      attrs = News.attrs("chidori_movies", defined_topic("chidori_movies"))
       assert attrs.feed == nil
       assert attrs.keep_days == 0
 
@@ -907,7 +907,7 @@ defmodule Chidori.NewsTest do
     test "要旨は、1 行目と箇条書きに分けて書かせる" do
       # 全部を 1 つの段落に詰めると、通知でも画面でも読めない。
       # 通知は畳まれて先頭しか見えないことがあるので、1 行目だけで意味が通るように
-      prompt = News.digest_prompt(defined_topic("tazuna_tech"))
+      prompt = News.digest_prompt(defined_topic("chidori_tech"))
 
       assert prompt =~ "1 行目だけで意味が通るように"
       assert prompt =~ "・"
@@ -917,7 +917,7 @@ defmodule Chidori.NewsTest do
     test "要旨の要点ごとに、根拠にした記事の出典を書かせる" do
       # 通知では要点の下にその URL を並べる。最後にまとめて並べていた頃は、
       # どの URL がどの要点の根拠なのかが読めなかった
-      prompt = News.digest_prompt(defined_topic("tazuna_tech"))
+      prompt = News.digest_prompt(defined_topic("chidori_tech"))
 
       assert prompt =~ "要点ごとに、すぐ下の行へ根拠にした記事を"
       assert prompt =~ "・<要点を 1 行で>\n出典: [記事の見出し](URL)"
@@ -943,7 +943,7 @@ defmodule Chidori.NewsTest do
     test "まとめは、記事の URL を名乗らない" do
       # 同じ URL の 1 件は Chiezo が弾く。まとめが引いた記事の URL を名乗ると、
       # その記事は既に入っているので、**まとめ自体が落ちる**（出典は本文に書く）
-      prompt = News.digest_prompt(defined_topic("tazuna_tech"))
+      prompt = News.digest_prompt(defined_topic("chidori_tech"))
 
       assert prompt =~ "url: **空のままにしてください。**"
       assert prompt =~ "出典は本文の「出典:」行に書きます"
@@ -952,7 +952,7 @@ defmodule Chidori.NewsTest do
     test "まとめの見出しは回ごとに変わる" do
       # 見出しは重複の鍵。日付だけだと、1 日に 2 回まとめたときの 2 回目が
       # 丸ごと捨てられる（要約は足すだけの回なので、既にある見出しは入らない）
-      prompt = News.digest_prompt(defined_topic("tazuna_tech"))
+      prompt = News.digest_prompt(defined_topic("chidori_tech"))
 
       assert prompt =~ "{now}"
       assert prompt =~ "丸ごと捨てられます"
@@ -961,7 +961,7 @@ defmodule Chidori.NewsTest do
     test "整理は、まとめに触らない" do
       # 同じ出来事に触れているので重複に見えるが、落とすと画面と通知から
       # まとめが消える（実際に消えた）
-      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+      prompt = News.refine_prompt(defined_topic("chidori_tech"))
 
       assert prompt =~ "「まとめ」「興味のまとめ」のタグが付いたものには触らないでください"
     end
@@ -969,7 +969,7 @@ defmodule Chidori.NewsTest do
     test "整理は、ニュース以外も探す" do
       # 配信元から機械的に入るのは決まった媒体のぶんだけ。
       # 記事も論文も、探しに行かなければ永遠に入らない
-      prompt = News.refine_prompt(defined_topic("tazuna_tech"))
+      prompt = News.refine_prompt(defined_topic("chidori_tech"))
 
       assert prompt =~ "話題になっている"
       assert prompt =~ "論文"
@@ -978,7 +978,7 @@ defmodule Chidori.NewsTest do
 
     test "整理の回の依頼文には、今あるものの差し込み口が要る" do
       # Chiezo が作る時点で弾く決まり（無いと、AI は今あるものを知らないまま書く）
-      topic = defined_topic("tazuna_tech")
+      topic = defined_topic("chidori_tech")
 
       for sweep <- News.sweeps(topic), text = Map.get(sweep, :prompt), is_binary(text) do
         assert text =~ "{recent}" or text =~ "{current}",
@@ -1113,7 +1113,7 @@ defmodule Chidori.NewsTest do
       %{url: "http://chiezo.test:7010/v1/sources"} ->
         HttpStub.ok(sources_body(42))
 
-      %{url: "http://chiezo.test:7010/v1/tazuna_news/doc?" <> query} ->
+      %{url: "http://chiezo.test:7010/v1/chidori_news/doc?" <> query} ->
         doc.(query |> URI.decode_query() |> Map.get("title"))
 
       %{url: _detail} ->
@@ -1133,7 +1133,7 @@ defmodule Chidori.NewsTest do
       %{url: "http://chiezo.test:7010/v1/sources"} ->
         HttpStub.ok(sources_body(42))
 
-      %{url: "http://chiezo.test:7010/v1/tazuna_news/filter?" <> _query} ->
+      %{url: "http://chiezo.test:7010/v1/chidori_news/filter?" <> _query} ->
         # 点数の順で返る（新しい順ではない）ので、古いほうを先に置く
         HttpStub.ok(
           Jason.encode!(%{
@@ -1144,7 +1144,7 @@ defmodule Chidori.NewsTest do
           })
         )
 
-      %{url: "http://chiezo.test:7010/v1/tazuna_news/doc?" <> _query} ->
+      %{url: "http://chiezo.test:7010/v1/chidori_news/doc?" <> _query} ->
         HttpStub.ok(Jason.encode!(%{"title" => "まとめ", "body" => "## 要旨\n本文。"}))
 
       %{url: _detail} ->

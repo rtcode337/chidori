@@ -155,7 +155,7 @@ defmodule Chidori.RelationsTest do
           HttpStub.ok("{}")
 
         %{method: :get, url: @base <> "/v1/collect"} ->
-          HttpStub.ok(Jason.encode!(%{"collections" => [%{"name" => "tazuna_painters"}]}))
+          HttpStub.ok(Jason.encode!(%{"collections" => [%{"name" => "chidori_painters"}]}))
 
         %{method: :get, url: url} ->
           if String.contains?(url, "/filter?") do
@@ -163,7 +163,7 @@ defmodule Chidori.RelationsTest do
           else
             HttpStub.ok(
               Jason.encode!(%{
-                "name" => "tazuna_painters",
+                "name" => "chidori_painters",
                 "extract" => %{"source" => "jawiki", "tag" => "画家"}
               })
             )
@@ -175,7 +175,7 @@ defmodule Chidori.RelationsTest do
 
       # 指示文・区画・巡回がそのまま向こうへ行く
       assert_received {:patched, url, patch}
-      assert url =~ "/v1/collect/tazuna_painters"
+      assert url =~ "/v1/collect/chidori_painters"
       assert patch["prompt"] =~ "{partition}"
 
       assert patch["partition"] ==
@@ -210,7 +210,7 @@ defmodule Chidori.RelationsTest do
         %{method: :get, url: @base <> "/v1/collect"} ->
           HttpStub.ok(
             Jason.encode!(%{
-              "collections" => [%{"name" => "tazuna_painters", "enabled" => false}]
+              "collections" => [%{"name" => "chidori_painters", "enabled" => false}]
             })
           )
 
@@ -220,7 +220,7 @@ defmodule Chidori.RelationsTest do
           else
             HttpStub.ok(
               Jason.encode!(%{
-                "name" => "tazuna_painters",
+                "name" => "chidori_painters",
                 "enabled" => false,
                 "extract" => %{"source" => "jawiki", "tag" => "画家"}
               })
@@ -250,7 +250,7 @@ defmodule Chidori.RelationsTest do
 
         # 収集はある（作られてはいる）。溜まっていないだけ
         %{method: :get, url: @base <> "/v1/collect"} ->
-          HttpStub.ok(Jason.encode!(%{"collections" => [%{"name" => "tazuna_painters"}]}))
+          HttpStub.ok(Jason.encode!(%{"collections" => [%{"name" => "chidori_painters"}]}))
 
         %{method: :get} ->
           HttpStub.ok(docs_body([]))
@@ -267,7 +267,7 @@ defmodule Chidori.RelationsTest do
           HttpStub.ok("{}")
 
         %{method: :get, url: @base <> "/v1/collect"} ->
-          HttpStub.ok(Jason.encode!(%{"collections" => [%{"name" => "tazuna_painters"}]}))
+          HttpStub.ok(Jason.encode!(%{"collections" => [%{"name" => "chidori_painters"}]}))
 
         %{method: :get} ->
           {:ok, %{status: 404, body: ""}}

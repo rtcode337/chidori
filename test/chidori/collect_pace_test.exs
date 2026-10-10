@@ -60,7 +60,7 @@ defmodule Chidori.CollectPaceTest do
 
     collections = [
       %{
-        "name" => "tazuna_tech",
+        "name" => "chidori_tech",
         "requested_by" => "chidori",
         "sweeps" => [
           %{"name" => "機械収集"},
@@ -71,11 +71,11 @@ defmodule Chidori.CollectPaceTest do
       },
       # 整理を自動で回さないと決めた収集の整理には送らない（時計を外してある）
       %{
-        "name" => "tazuna_books",
+        "name" => "chidori_books",
         "requested_by" => "chidori",
         "sweeps" => [%{"name" => "整理", "by_caller" => true}]
       },
-      %{"name" => "tazuna_dining_1", "sweeps" => [%{"name" => "機械収集"}, %{"name" => "ざっと見る"}]},
+      %{"name" => "chidori_dining_1", "sweeps" => [%{"name" => "機械収集"}, %{"name" => "ざっと見る"}]},
       # 他のアプリの収集には送らない
       %{"name" => "tl_lunch", "requested_by" => "travel-log", "sweeps" => [%{"name" => "整理"}]}
     ]
@@ -92,17 +92,17 @@ defmodule Chidori.CollectPaceTest do
     end)
 
     assert {:ok, %{sent: sent, failed: []}} = CollectPace.apply("http://chiezo.test")
-    assert Enum.sort(sent) == [{"tazuna_dining_1", "ざっと見る"}, {"tazuna_tech", "整理"}]
+    assert Enum.sort(sent) == [{"chidori_dining_1", "ざっと見る"}, {"chidori_tech", "整理"}]
 
-    assert_received {:patched, "http://chiezo.test/v1/collect/tazuna_tech/sweeps/整理", body}
+    assert_received {:patched, "http://chiezo.test/v1/collect/chidori_tech/sweeps/整理", body}
     assert body == %{"interval_minutes" => 720, "keep_per_run" => true}
-    assert_received {:patched, "http://chiezo.test/v1/collect/tazuna_dining_1/sweeps/ざっと見る", _}
+    assert_received {:patched, "http://chiezo.test/v1/collect/chidori_dining_1/sweeps/ざっと見る", _}
     refute_received {:patched, _url, _body}
   end
 
   describe "整理を自動で回さない収集" do
     test "決めていなければ回す" do
-      refute CollectPace.tidy_stopped?("tazuna_tech")
+      refute CollectPace.tidy_stopped?("chidori_tech")
     end
 
     test "止めると覚えて、Chiezo の整理の時計を外す" do
@@ -113,42 +113,42 @@ defmodule Chidori.CollectPaceTest do
         HttpStub.ok("{}")
       end)
 
-      assert :ok = CollectPace.stop_tidy("tazuna_tech", true, "http://chiezo.test")
-      assert CollectPace.tidy_stopped?("tazuna_tech")
+      assert :ok = CollectPace.stop_tidy("chidori_tech", true, "http://chiezo.test")
+      assert CollectPace.tidy_stopped?("chidori_tech")
 
-      assert_received {:patched, "http://chiezo.test/v1/collect/tazuna_tech/sweeps/整理",
+      assert_received {:patched, "http://chiezo.test/v1/collect/chidori_tech/sweeps/整理",
                        %{"by_caller" => true}}
 
       # 起動し直しても覚えている
       :persistent_term.erase({CollectPace, :tidy_stops})
       CollectPace.load_all()
-      assert CollectPace.tidy_stopped?("tazuna_tech")
+      assert CollectPace.tidy_stopped?("chidori_tech")
 
-      assert :ok = CollectPace.stop_tidy("tazuna_tech", false, "http://chiezo.test")
-      refute CollectPace.tidy_stopped?("tazuna_tech")
+      assert :ok = CollectPace.stop_tidy("chidori_tech", false, "http://chiezo.test")
+      refute CollectPace.tidy_stopped?("chidori_tech")
 
-      assert_received {:patched, "http://chiezo.test/v1/collect/tazuna_tech/sweeps/整理",
+      assert_received {:patched, "http://chiezo.test/v1/collect/chidori_tech/sweeps/整理",
                        %{"by_caller" => false}}
     end
 
     test "送れなくても保存は残る（次に設定を送るときに載る）" do
       HttpStub.stub(fn _req -> {:error, :econnrefused} end)
 
-      assert {:ok, :not_sent} = CollectPace.stop_tidy("tazuna_tech", true, "http://chiezo.test")
-      assert CollectPace.tidy_stopped?("tazuna_tech")
+      assert {:ok, :not_sent} = CollectPace.stop_tidy("chidori_tech", true, "http://chiezo.test")
+      assert CollectPace.tidy_stopped?("chidori_tech")
     end
 
     test "収集の設定を送るたびに、整理の時計を外して載せ直す" do
-      CollectPace.stop_tidy("tazuna_tech", true, nil)
+      CollectPace.stop_tidy("chidori_tech", true, nil)
       sweeps = [%{name: "機械収集"}, %{name: "整理", interval_minutes: 720}]
 
-      %{sweeps: sent} = CollectPace.with_stops("tazuna_tech", %{sweeps: sweeps})
+      %{sweeps: sent} = CollectPace.with_stops("chidori_tech", %{sweeps: sweeps})
 
       assert Enum.find(sent, &(&1.name == "整理")).by_caller
       refute Map.has_key?(Enum.find(sent, &(&1.name == "機械収集")), :by_caller)
       # 止めていない収集・巡回を送らない設定はそのまま
-      assert CollectPace.with_stops("tazuna_news", %{sweeps: sweeps}) == %{sweeps: sweeps}
-      assert CollectPace.with_stops("tazuna_tech", %{prompt: "x"}) == %{prompt: "x"}
+      assert CollectPace.with_stops("chidori_news", %{sweeps: sweeps}) == %{sweeps: sweeps}
+      assert CollectPace.with_stops("chidori_tech", %{prompt: "x"}) == %{prompt: "x"}
     end
   end
 end

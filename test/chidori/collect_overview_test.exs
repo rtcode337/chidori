@@ -14,7 +14,7 @@ defmodule Chidori.CollectOverviewTest do
           Jason.encode!(%{
             "collections" => [
               %{
-                "name" => "tazuna_tech",
+                "name" => "chidori_tech",
                 "description" => "Chidori の「技術ニュース」。技術に関する…",
                 "requested_by" => "chidori",
                 "enabled" => true,
@@ -51,7 +51,7 @@ defmodule Chidori.CollectOverviewTest do
                 "per_run" => 2,
                 "next_at" => "2026-09-28T01:00:00+00:00",
                 "flowing" => [],
-                "queued" => [%{"collection" => "tazuna_tech", "sweep" => "整理"}]
+                "queued" => [%{"collection" => "chidori_tech", "sweep" => "整理"}]
               }
             ],
             "ingest_waiting" => []
@@ -63,7 +63,7 @@ defmodule Chidori.CollectOverviewTest do
   end
 
   test "chidori が頼んだ収集だけを、巡回の間隔と相手つきで並べる", %{base: base} do
-    Chidori.Notify.Settings.put("tazuna_tech", %{"digest_at" => "07:00,19:00"})
+    Chidori.Notify.Settings.put("chidori_tech", %{"digest_at" => "07:00,19:00"})
 
     {:ok, overview} = CollectOverview.load(base)
 

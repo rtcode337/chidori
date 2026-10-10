@@ -103,7 +103,7 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
       System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
       on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
       test_pid = self()
-      item = %{"name" => "tazuna_dining_1", "enabled" => true, "sweeps" => [], "partitions" => []}
+      item = %{"name" => "chidori_dining_1", "enabled" => true, "sweeps" => [], "partitions" => []}
 
       Chidori.HttpStub.stub(fn
         %{method: :patch, url: url, body: body} ->
@@ -159,13 +159,13 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
       assert DiningAreas.get(area.id).north == 35.8
 
       assert_receive {:patched, url, sent}, 2_000
-      assert url =~ "/v1/collect/tazuna_dining_1"
+      assert url =~ "/v1/collect/chidori_dining_1"
       # 巡回は送らない（画面で選んだ相手を既定に戻さないため）
       assert Map.keys(sent) |> Enum.sort() == ["description", "extract", "partition"]
       assert sent["partition"]["bbox"] == [35.5, 139.5, 35.8, 139.9]
 
       assert_receive {:posted, run_url}, 2_000
-      assert URI.decode(run_url) =~ "/v1/collect/tazuna_dining_1/run?sweep=機械収集"
+      assert URI.decode(run_url) =~ "/v1/collect/chidori_dining_1/run?sweep=機械収集"
 
       assert render_async(live) =~ "機械収集から走らせ直しました"
     end
@@ -222,8 +222,8 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
       # 範囲の一覧に、控えている依頼の数が出る
       assert html =~ "控えている依頼 1 件"
 
-      assert Chidori.Datasets.Requests.pending_count(%{collection: "tazuna_dining_1"}) == 1
-      assert Chidori.Datasets.Requests.pending_count(%{collection: "tazuna_dining_2"}) == 1
+      assert Chidori.Datasets.Requests.pending_count(%{collection: "chidori_dining_1"}) == 1
+      assert Chidori.Datasets.Requests.pending_count(%{collection: "chidori_dining_2"}) == 1
     end
 
     test "全範囲をまとめて書き出す口がある", %{conn: conn} do

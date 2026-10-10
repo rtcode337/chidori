@@ -806,7 +806,7 @@ defmodule Chidori.Relations do
   """
   def painters_collection do
     case System.get_env("CHIDORI_PAINTERS_COLLECTION", "") |> String.trim() do
-      "" -> "tazuna_painters"
+      "" -> "chidori_painters"
       name -> name
     end
   end

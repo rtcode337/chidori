@@ -32,7 +32,7 @@ defmodule Chidori.TopicsTest do
 
   describe "技術イベント" do
     setup do
-      %{events: Topics.get("tazuna_events")}
+      %{events: Topics.get("chidori_events")}
     end
 
     test "国内を中心に、大きな海外も入れる", %{events: events} do
@@ -56,8 +56,8 @@ defmodule Chidori.TopicsTest do
     test "要約は作らず、開催日のカレンダーを出す", %{events: events} do
       refute Topics.digest?(events)
       assert Topics.calendar?(events)
-      assert Topics.digest?(Topics.get("tazuna_tech"))
-      refute Topics.calendar?(Topics.get("tazuna_tech"))
+      assert Topics.digest?(Topics.get("chidori_tech"))
+      refute Topics.calendar?(Topics.get("chidori_tech"))
     end
 
     test "カレンダーに要るタグを、並んだイベント全部に付けさせる", %{events: events} do
@@ -71,7 +71,7 @@ defmodule Chidori.TopicsTest do
       # 半年先のイベントを 30 日の期限で落とすと、いちばん要るときに消える。
       # 古さは「終わったかどうか」だけ
       refute Topics.ages_out?(events)
-      assert Topics.ages_out?(Topics.get("tazuna_tech"))
+      assert Topics.ages_out?(Topics.get("chidori_tech"))
     end
 
     test "終わったものは整理の回が落とす", %{events: events} do
@@ -103,7 +103,7 @@ defmodule Chidori.TopicsTest do
 
   describe "映画" do
     setup do
-      %{movies: Topics.get("tazuna_movies")}
+      %{movies: Topics.get("chidori_movies")}
     end
 
     test "1 件 = 1 作品として育てる", %{movies: movies} do
@@ -112,7 +112,7 @@ defmodule Chidori.TopicsTest do
       assert Topics.works(movies) == Chidori.News.Movies
       assert movies.feeds == []
       refute Topics.articles?(movies)
-      assert Topics.articles?(Topics.get("tazuna_tech"))
+      assert Topics.articles?(Topics.get("chidori_tech"))
     end
 
     test "要約を作り、公開日のカレンダーも出す", %{movies: movies} do
@@ -121,7 +121,7 @@ defmodule Chidori.TopicsTest do
       assert Topics.date_tag(movies) == "公開日"
       assert Topics.item_word(movies) == "公開作"
       # 技術イベントは今までどおり
-      assert Topics.date_tag(Topics.get("tazuna_events")) == "開催日"
+      assert Topics.date_tag(Topics.get("chidori_events")) == "開催日"
     end
 
     test "日付では古くならない", %{movies: movies} do

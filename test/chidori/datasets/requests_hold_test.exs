@@ -37,7 +37,7 @@ defmodule Chidori.Datasets.RequestsHoldTest do
       parent = self()
 
       HttpStub.stub(fn
-        %{method: :get, url: "http://chiezo.test/v1/tazuna_dining_1/filter?" <> _query} ->
+        %{method: :get, url: "http://chiezo.test/v1/chidori_dining_1/filter?" <> _query} ->
           HttpStub.ok(
             Jason.encode!(%{
               "results" => [
@@ -66,7 +66,7 @@ defmodule Chidori.Datasets.RequestsHoldTest do
     end
 
     test "近くの同じ名前の店を探して、その座標を固定させる" do
-      dataset = %{collection: "tazuna_dining_1"}
+      dataset = %{collection: "chidori_dining_1"}
 
       assert {:ok, result} = Requests.hold(dataset, Requests.confirms(@text))
 
@@ -74,7 +74,7 @@ defmodule Chidori.Datasets.RequestsHoldTest do
       # 見つからなかった店も黙って落とさない
       assert result.missed == ["見つからない店"]
 
-      assert_received {:posted, "http://chiezo.test/v1/collect/tazuna_dining_1/locks", body}
+      assert_received {:posted, "http://chiezo.test/v1/collect/chidori_dining_1/locks", body}
       assert body == %{"title" => "丸の内食堂 (1470001)", "lat" => 35.6812, "lon" => 139.7665}
       refute_received {:posted, _url, _body}
     end
@@ -82,7 +82,7 @@ defmodule Chidori.Datasets.RequestsHoldTest do
     test "位置修正は、いまの座標で店を探して、動かした先の座標で固定させる" do
       # ピンを動かして指した位置。AI に調べさせずにそのまま固定する
       text = "- [位置修正] 丸の内食堂 (35.68120,139.76650) → (35.68150,139.76600)\n"
-      dataset = %{collection: "tazuna_dining_1"}
+      dataset = %{collection: "chidori_dining_1"}
 
       assert [%{name: "丸の内食堂", lat: 35.6812, lon: 139.7665, to: {35.6815, 139.766}}] =
                Requests.confirms(text)
@@ -93,7 +93,7 @@ defmodule Chidori.Datasets.RequestsHoldTest do
       assert {:ok, %{held: ["丸の内食堂（位置を直した）"]}} =
                Requests.hold(dataset, Requests.confirms(text))
 
-      assert_received {:posted, "http://chiezo.test/v1/collect/tazuna_dining_1/locks", body}
+      assert_received {:posted, "http://chiezo.test/v1/collect/chidori_dining_1/locks", body}
       assert body == %{"title" => "丸の内食堂 (1470001)", "lat" => 35.6815, "lon" => 139.766}
     end
 
@@ -107,10 +107,10 @@ defmodule Chidori.Datasets.RequestsHoldTest do
 
       assert Requests.closures(text) == [%{name: "丸の内食堂", lat: 35.6812, lon: 139.7665}]
 
-      assert Requests.release_closed(%{collection: "tazuna_dining_1"}, Requests.closures(text)) ==
+      assert Requests.release_closed(%{collection: "chidori_dining_1"}, Requests.closures(text)) ==
                ["丸の内食堂"]
 
-      assert_received {:posted, "http://chiezo.test/v1/collect/tazuna_dining_1/locks", body}
+      assert_received {:posted, "http://chiezo.test/v1/collect/chidori_dining_1/locks", body}
       # 緯度・経度を書かないと外れる
       assert body == %{"title" => "丸の内食堂 (1470001)"}
     end
@@ -135,7 +135,7 @@ defmodule Chidori.Datasets.RequestsHoldTest do
       end)
 
       closures = [%{name: "丸の内食堂", lat: 35.6812, lon: 139.7665}]
-      assert Requests.release_closed(%{collection: "tazuna_dining_1"}, closures) == []
+      assert Requests.release_closed(%{collection: "chidori_dining_1"}, closures) == []
     end
 
     test "近くの店が 1 ページに収まらなくても、後ろのページまで探す" do
@@ -174,31 +174,31 @@ defmodule Chidori.Datasets.RequestsHoldTest do
       confirms = [%{name: "福々酒場 駅前店", lat: 35.6812, lon: 139.7665}]
 
       assert {:ok, %{held: ["福々酒場 駅前店"], missed: []}} =
-               Requests.hold(%{collection: "tazuna_dining_1"}, confirms)
+               Requests.hold(%{collection: "chidori_dining_1"}, confirms)
 
-      assert_received {:posted, "http://chiezo.test/v1/collect/tazuna_dining_1/locks", body}
+      assert_received {:posted, "http://chiezo.test/v1/collect/chidori_dining_1/locks", body}
       assert body["title"] == "福々酒場 駅前店"
     end
 
     test "AI を使わずにいま反映するのは、名簿を引く回（機械収集）" do
-      dataset = %{collection: "tazuna_dining_1", module: Chidori.Datasets.Dining}
+      dataset = %{collection: "chidori_dining_1", module: Chidori.Datasets.Dining}
 
       assert Requests.apply_now(dataset) == :ok
       assert_received {:posted, url, _body}
-      assert url =~ "/v1/collect/tazuna_dining_1/run?sweep="
+      assert url =~ "/v1/collect/chidori_dining_1/run?sweep="
       assert URI.decode(url) =~ Chidori.SweepNames.machine()
       # 押したのは人なので、止めている収集でも走らせる印を付ける
       assert url =~ "manual=true"
     end
 
     test "人が押した操作の印は、by_hand の中だけに付く（定時の頼みには付けない）" do
-      :ok = Chidori.Chiezo.run("http://chiezo.test", "tazuna_dining_1", sweep: "整理")
+      :ok = Chidori.Chiezo.run("http://chiezo.test", "chidori_dining_1", sweep: "整理")
       assert_received {:posted, url, _body}
       refute url =~ "manual"
 
       :ok =
         Chidori.Chiezo.by_hand(fn ->
-          Chidori.Chiezo.focus("http://chiezo.test", "tazuna_dining_1", "直して", [])
+          Chidori.Chiezo.focus("http://chiezo.test", "chidori_dining_1", "直して", [])
         end)
 
       assert_received {:posted, url, _body}

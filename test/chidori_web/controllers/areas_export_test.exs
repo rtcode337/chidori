@@ -44,8 +44,8 @@ defmodule ChidoriWeb.AreasExportTest do
 
     docs = %{
       # 重なったところの同じ店が、両方の収集に 1 件ずつ居る
-      "tazuna_dining_1" => [shop.(10, "だるま食堂", 35.6812), shop.(11, "広いだけの店", 35.7200)],
-      "tazuna_dining_2" => [shop.(20, "だるま食堂", 35.6813)]
+      "chidori_dining_1" => [shop.(10, "だるま食堂", 35.6812), shop.(11, "広いだけの店", 35.7200)],
+      "chidori_dining_2" => [shop.(20, "だるま食堂", 35.6813)]
     }
 
     Chidori.HttpStub.stub(fn %{method: :get, url: url} ->
@@ -57,7 +57,7 @@ defmodule ChidoriWeb.AreasExportTest do
           Chidori.HttpStub.ok(~s({"results":[],"total":0}))
 
         true ->
-          [_, name] = Regex.run(~r{/v1/(tazuna_dining_\d+)/filter}, url)
+          [_, name] = Regex.run(~r{/v1/(chidori_dining_\d+)/filter}, url)
           results = docs[name]
           Chidori.HttpStub.ok(Jason.encode!(%{"results" => results, "total" => length(results)}))
       end

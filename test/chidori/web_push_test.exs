@@ -54,7 +54,7 @@ defmodule Chidori.WebPushTest do
   describe "暗号（RFC 8291）" do
     test "受け取る側の鍵で開くと、元の中身に戻る" do
       {ua_public, ua_private, auth} = ua_keys()
-      payload = ~s({"title":"まとめ","body":"本文","url":"/news?view=tazuna_tech&digest=latest"})
+      payload = ~s({"title":"まとめ","body":"本文","url":"/news?view=chidori_tech&digest=latest"})
 
       body = WebPush.encrypt(payload, ua_public, auth)
       opened = decrypt(body, ua_public, ua_private, auth)

@@ -405,8 +405,8 @@ defmodule Chidori.Datasets.DiningTest do
 
   describe "範囲ごとの収集" do
     test "収集の名前は範囲ごと" do
-      assert Dining.collection(@area) == "tazuna_dining_3"
-      assert Dining.definition(@area).collection == "tazuna_dining_3"
+      assert Dining.collection(@area) == "chidori_dining_3"
+      assert Dining.definition(@area).collection == "chidori_dining_3"
     end
 
     test "3 つの辞典を範囲の四角で絞る" do
@@ -432,7 +432,7 @@ defmodule Chidori.Datasets.DiningTest do
     test "依頼の中身も範囲のもの" do
       attrs = Dining.attrs(%{}, @area)
 
-      assert attrs.name == "tazuna_dining_3"
+      assert attrs.name == "chidori_dining_3"
       assert attrs.partition.bbox == [35.67, 139.75, 35.69, 139.78]
       assert Enum.all?(attrs.extract, &(&1.bbox == [35.67, 139.75, 35.69, 139.78]))
     end

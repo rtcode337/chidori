@@ -8,7 +8,7 @@ defmodule Chidori.Datasets.RequestsPendingTest do
 
   alias Chidori.Datasets.Requests
 
-  @dataset %{collection: "tazuna_dining_test"}
+  @dataset %{collection: "chidori_dining_test"}
   @tokyo "35.6,139.7/35.7,139.8"
   @osaka "34.6,135.4/34.8,135.6"
 

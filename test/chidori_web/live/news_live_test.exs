@@ -23,13 +23,13 @@ defmodule ChidoriWeb.NewsLiveTest do
   end
 
   test "技術イベントは開催日のカレンダーを出し、要約と通知の設定は出さない", %{conn: conn} do
-    {:ok, _live, html} = live(conn, ~p"/news?view=tazuna_events")
+    {:ok, _live, html} = live(conn, ~p"/news?view=chidori_events")
 
     assert html =~ "開催日のカレンダー"
     refute html =~ "<h3>通知</h3>"
     refute html =~ "<h3>要約</h3>"
 
-    {:ok, _live, html} = live(conn, ~p"/news?view=tazuna_tech")
+    {:ok, _live, html} = live(conn, ~p"/news?view=chidori_tech")
     refute html =~ "開催日のカレンダー"
     assert html =~ "<h3>通知</h3>"
     assert html =~ "<h3>要約</h3>"
@@ -40,7 +40,7 @@ defmodule ChidoriWeb.NewsLiveTest do
     {:ok, _live, html} = live(conn, ~p"/")
 
     assert html =~ ~s(aria-label="一般ニュース")
-    assert html =~ ~s(href="/news?view=tazuna_news")
+    assert html =~ ~s(href="/news?view=chidori_news")
   end
 
   test "最新情報のタブは見出しの上にある", %{conn: conn} do
@@ -159,11 +159,11 @@ defmodule ChidoriWeb.NewsLiveTest do
       }
 
       assert [%{label: "作品A"}, %{label: "作品C"}] = ChidoriWeb.Report.hero_figures(sources, known)
-      assert NewsLive.hero?(Chidori.Topics.get("tazuna_movies"))
+      assert NewsLive.hero?(Chidori.Topics.get("chidori_movies"))
 
       # 記事の絵を持たせている話題（ニュース）も並べ、持たせない話題（市況）は並べない
-      assert NewsLive.hero?(Chidori.Topics.get("tazuna_tech"))
-      refute NewsLive.hero?(Chidori.Topics.get("tazuna_market"))
+      assert NewsLive.hero?(Chidori.Topics.get("chidori_tech"))
+      refute NewsLive.hero?(Chidori.Topics.get("chidori_market"))
     end
 
     test "本文の URL はリンクにする" do
@@ -178,7 +178,7 @@ defmodule ChidoriWeb.NewsLiveTest do
 
   describe "Chiezo の収集の枠" do
     @collection %{
-      "name" => "tazuna_news",
+      "name" => "chidori_news",
       "description" => "Chidori のニュース",
       "enabled" => true,
       "interval_minutes" => 360,
@@ -239,11 +239,11 @@ defmodule ChidoriWeb.NewsLiveTest do
     # 収集の状態は非同期に届く。**届いたことを待ってから見る** ——
     # 待たずに見ると、まだ読めていない画面を見ていることになる
     defp shown(conn) do
-      Chidori.News.subscribe("tazuna_news")
+      Chidori.News.subscribe("chidori_news")
 
       # **話題は名指しで開く。** 既定の話題に寄りかかると、タブの並びを変えただけで
       # 落ちる —— ここで見たいのは収集の枠であって、どれが先頭かではない
-      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news")
+      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_news")
       assert_receive {:news_updated, %{status: :ready}}, 2_000
       render(live)
     end
@@ -284,8 +284,8 @@ defmodule ChidoriWeb.NewsLiveTest do
     end
 
     test "要約は押すと全画面で開き、右に払うと古いほう、左に払うと新しいほうへ動く", %{conn: conn} do
-      Chidori.News.subscribe("tazuna_news")
-      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news")
+      Chidori.News.subscribe("chidori_news")
+      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_news")
       assert_receive {:news_updated, %{status: :ready}}, 2_000
 
       html = render(live)
@@ -320,8 +320,8 @@ defmodule ChidoriWeb.NewsLiveTest do
 
     test "通知から開くと、いちばん新しいまとめを全画面で開く", %{conn: conn} do
       # 通知の本文は要旨だけ。押した人が読みたいのはその続き
-      Chidori.News.subscribe("tazuna_news")
-      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news&digest=latest")
+      Chidori.News.subscribe("chidori_news")
+      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_news&digest=latest")
       assert_receive {:news_updated, %{status: :ready}}, 2_000
 
       html = render(live)
@@ -332,7 +332,7 @@ defmodule ChidoriWeb.NewsLiveTest do
       # 閉じたら、収集の状態が届き直しても開き直さない（1 度だけ）
       html = live |> element(".digest-viewer-close") |> render_click()
       refute html =~ "digest-viewer"
-      Chidori.News.refresh(Chidori.News.server("tazuna_news"))
+      Chidori.News.refresh(Chidori.News.server("chidori_news"))
       assert_receive {:news_updated, %{status: :ready}}, 2_000
       refute render(live) =~ "digest-viewer"
     end
@@ -416,7 +416,7 @@ defmodule ChidoriWeb.NewsLiveTest do
     test "知らせない設定なら、要約を作るだけの口になる", %{conn: conn} do
       # 時刻は「要約を作る時刻」。知らせないのは失敗ではない
       Chidori.Notify.Destination.put(%{"topic" => "chidori-news"})
-      Chidori.Notify.Settings.put("tazuna_news", %{"notify" => "false"})
+      Chidori.Notify.Settings.put("chidori_news", %{"notify" => "false"})
 
       html = shown(conn)
 
@@ -438,12 +438,12 @@ defmodule ChidoriWeb.NewsLiveTest do
       # 止まった回の理由は現在形で残る（「Chiezo 側で止まっています」）。
       # 記録だと断らないと、ずっと前の回の理由がいまの状態として読まれる
       # —— 実際に読まれた（そのときは収集も要約も動いていた）
-      Chidori.Notify.Settings.put("tazuna_news", %{"digest_at" => "07:00"})
+      Chidori.Notify.Settings.put("chidori_news", %{"digest_at" => "07:00"})
 
-      Chidori.Notify.Settings.mark_digest("tazuna_news", ~U[2026-09-16 22:00:00Z])
+      Chidori.Notify.Settings.mark_digest("chidori_news", ~U[2026-09-16 22:00:00Z])
 
       Chidori.Notify.Settings.mark_digest_result(
-        "tazuna_news",
+        "chidori_news",
         "2026-09-17 07:00 JST — 止まりました。そのときの理由: この収集は Chiezo 側で止まっています。"
       )
 
@@ -462,8 +462,8 @@ defmodule ChidoriWeb.NewsLiveTest do
       System.put_env("NTFY_BASE_URL", "http://ntfy.test")
       on_exit(fn -> System.delete_env("NTFY_BASE_URL") end)
 
-      Chidori.News.subscribe("tazuna_news")
-      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news")
+      Chidori.News.subscribe("chidori_news")
+      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_news")
       assert_receive {:news_updated, %{status: :ready}}, 2_000
 
       live
@@ -482,8 +482,8 @@ defmodule ChidoriWeb.NewsLiveTest do
 
     test "書きかけは、収集の状態が届いても消えない", %{conn: conn} do
       # 覚えないと、届いた拍子にフォームが描き直されて書きかけが消える
-      Chidori.News.subscribe("tazuna_news")
-      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news")
+      Chidori.News.subscribe("chidori_news")
+      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_news")
       assert_receive {:news_updated, %{status: :ready}}, 2_000
 
       live
@@ -495,7 +495,7 @@ defmodule ChidoriWeb.NewsLiveTest do
       |> render_change()
 
       # 収集を読み直す（本物の画面では巡回のたびに届く）
-      Chidori.News.refresh(Chidori.News.server("tazuna_news"))
+      Chidori.News.refresh(Chidori.News.server("chidori_news"))
       assert_receive {:news_updated, %{status: :ready}}, 2_000
 
       assert render(live) =~ ~s(value="true" checked)
@@ -505,8 +505,8 @@ defmodule ChidoriWeb.NewsLiveTest do
       # 裸の URL のままだと、押す前にどこへ行くのか読めない。
       # **通知のほうは逆**（URL のまま出す。ntfy が自分でリンクにする）。
       # 章と出典は全画面で読む（ページの上には見出し・要旨・目次だけ）
-      Chidori.News.subscribe("tazuna_news")
-      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_news")
+      Chidori.News.subscribe("chidori_news")
+      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_news")
       assert_receive {:news_updated, %{status: :ready}}, 2_000
       html = live |> element(".digest-preview") |> render_click()
 
@@ -583,13 +583,13 @@ defmodule ChidoriWeb.NewsLiveTest do
 
       assert html =~ "ニュース"
       assert html =~ "技術ニュース"
-      assert html =~ ~s(href="/news?view=tazuna_tech")
+      assert html =~ ~s(href="/news?view=chidori_tech")
     end
 
     test "タブを切り替えると、その話題の画面になる", %{conn: conn} do
       {:ok, live, _html} = live(conn, ~p"/news")
 
-      html = live |> element(~s|a[href="/news?view=tazuna_tech"]|) |> render_click()
+      html = live |> element(~s|a[href="/news?view=chidori_tech"]|) |> render_click()
 
       assert html =~ ~r|<h1[^>]*>\s*技術ニュース\s*</h1>|
       # 依頼の本文も話題の関心から作る（話題ごとに文面を持たせない）
@@ -606,12 +606,12 @@ defmodule ChidoriWeb.NewsLiveTest do
 
   describe "トピックの網" do
     @news_collection %{
-      "name" => "tazuna_tech",
+      "name" => "chidori_tech",
       "enabled" => true,
       "kind" => "flow",
       "recent" => []
     }
-    @topic_collection %{"name" => "tazuna_tech_topics", "enabled" => true, "kind" => "stock"}
+    @topic_collection %{"name" => "chidori_tech_topics", "enabled" => true, "kind" => "stock"}
 
     setup do
       System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
@@ -630,13 +630,13 @@ defmodule ChidoriWeb.NewsLiveTest do
         %{url: "http://chiezo.test:7010/v1/collect"} ->
           Chidori.HttpStub.ok(Jason.encode!(%{"collections" => collections}))
 
-        %{url: "http://chiezo.test:7010/v1/tazuna_tech_topics/filter?" <> _query} ->
+        %{url: "http://chiezo.test:7010/v1/chidori_tech_topics/filter?" <> _query} ->
           Chidori.HttpStub.ok(Jason.encode!(%{"results" => themes}))
 
-        %{url: "http://chiezo.test:7010/v1/collect/tazuna_tech_topics" <> _rest} ->
+        %{url: "http://chiezo.test:7010/v1/collect/chidori_tech_topics" <> _rest} ->
           Chidori.HttpStub.ok(Jason.encode!(@topic_collection))
 
-        %{url: "http://chiezo.test:7010/v1/collect/tazuna_tech" <> _rest} ->
+        %{url: "http://chiezo.test:7010/v1/collect/chidori_tech" <> _rest} ->
           Chidori.HttpStub.ok(Jason.encode!(@news_collection))
 
         %{url: _other} ->
@@ -655,7 +655,7 @@ defmodule ChidoriWeb.NewsLiveTest do
     end
 
     defp opened(conn) do
-      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_tech")
+      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_tech")
       render_async(live, 2_000)
     end
 
@@ -721,7 +721,7 @@ defmodule ChidoriWeb.NewsLiveTest do
       stub_themes([@news_collection], [])
 
       # （一般ニュースも網を持つようになったので、持たない技術イベントで見る）
-      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_events")
+      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_events")
       html = render_async(live, 2_000)
 
       refute html =~ "トピックの収集"
@@ -732,10 +732,10 @@ defmodule ChidoriWeb.NewsLiveTest do
       # 網を持たない話題のページに別の話題の図が出る
       stub_themes([@news_collection], [theme("React", ["分野:Web"])])
 
-      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_tech")
+      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_tech")
       assert render_async(live, 2_000) =~ ~s(aria-label="トピックの網")
 
-      html = live |> render_patch(~p"/news?view=tazuna_events")
+      html = live |> render_patch(~p"/news?view=chidori_events")
       refute html =~ ~s(aria-label="トピックの網")
       refute render_async(live, 2_000) =~ ~s(aria-label="トピックの網")
     end
@@ -762,7 +762,7 @@ defmodule ChidoriWeb.NewsLiveTest do
         %{url: "http://chiezo.test:7010/v1/collect"} ->
           Chidori.HttpStub.ok(Jason.encode!(%{"collections" => [news, @topic_collection]}))
 
-        %{url: "http://chiezo.test:7010/v1/tazuna_tech_topics/filter?" <> _query} ->
+        %{url: "http://chiezo.test:7010/v1/chidori_tech_topics/filter?" <> _query} ->
           Chidori.HttpStub.ok(
             Jason.encode!(%{
               "results" => [
@@ -773,7 +773,7 @@ defmodule ChidoriWeb.NewsLiveTest do
           )
 
         # 記事をタグで引く口。**言い換えのタグでも引く**
-        %{url: "http://chiezo.test:7010/v1/tazuna_tech/filter?" <> query} ->
+        %{url: "http://chiezo.test:7010/v1/chidori_tech/filter?" <> query} ->
           send(test_pid, {:tagged, URI.decode_query(query)["tag"]})
 
           docs =
@@ -785,10 +785,10 @@ defmodule ChidoriWeb.NewsLiveTest do
 
           Chidori.HttpStub.ok(Jason.encode!(%{"results" => docs, "total" => length(docs)}))
 
-        %{url: "http://chiezo.test:7010/v1/collect/tazuna_tech_topics" <> _rest} ->
+        %{url: "http://chiezo.test:7010/v1/collect/chidori_tech_topics" <> _rest} ->
           Chidori.HttpStub.ok(Jason.encode!(@topic_collection))
 
-        %{url: "http://chiezo.test:7010/v1/collect/tazuna_tech" <> _rest} ->
+        %{url: "http://chiezo.test:7010/v1/collect/chidori_tech" <> _rest} ->
           Chidori.HttpStub.ok(Jason.encode!(news))
 
         %{url: _other} ->
@@ -798,7 +798,7 @@ defmodule ChidoriWeb.NewsLiveTest do
 
     test "札を押すと、その語と言い換えで記事を引いて図の下に並べる", %{conn: conn} do
       stub_picking(self())
-      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_tech")
+      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_tech")
       render_async(live, 2_000)
 
       live |> element("#topic-canvas") |> render_hook("pick_theme", %{"name" => "LLM"})
@@ -823,8 +823,8 @@ defmodule ChidoriWeb.NewsLiveTest do
       conn: conn
     } do
       stub_picking(self())
-      Chidori.News.Interests.toggle("tazuna_tech", "LLM")
-      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_tech")
+      Chidori.News.Interests.toggle("chidori_tech", "LLM")
+      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_tech")
       render_async(live, 2_000)
 
       live |> element("#topic-canvas") |> render_hook("pick_theme", %{"name" => "LLM"})
@@ -850,7 +850,7 @@ defmodule ChidoriWeb.NewsLiveTest do
 
     test "図の左上でトピックを名前で探せる（表記ゆれと言い換えでも）", %{conn: conn} do
       stub_picking(self())
-      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_tech")
+      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_tech")
       render_async(live, 2_000)
 
       # 全角で打っても、言い換え（大規模言語モデル）で当たる
@@ -870,8 +870,8 @@ defmodule ChidoriWeb.NewsLiveTest do
 
     test "興味トピックに入れると、依頼文を Chiezo へ送り直す（選んだ相手はそのまま）", %{conn: conn} do
       stub_picking(self())
-      Chidori.News.subscribe("tazuna_tech")
-      {:ok, live, _html} = live(conn, ~p"/news?view=tazuna_tech")
+      Chidori.News.subscribe("chidori_tech")
+      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_tech")
       assert_receive {:news_updated, %{status: :ready}}, 2_000
       render_async(live, 2_000)
 
@@ -880,10 +880,10 @@ defmodule ChidoriWeb.NewsLiveTest do
 
       assert html =~ "★ 興味トピックから外す"
       assert html =~ ~s(class="interest-list")
-      assert Chidori.News.Interests.list("tazuna_tech") == ["LLM"]
+      assert Chidori.News.Interests.list("chidori_tech") == ["LLM"]
 
       assert_receive {:patched, url, sent}, 2_000
-      assert url =~ "/v1/collect/tazuna_tech"
+      assert url =~ "/v1/collect/chidori_tech"
       refine = Enum.find(sent["sweeps"], &(&1["name"] == "整理"))
       assert refine["prompt"] =~ "興味度"
       assert refine["prompt"] =~ "「LLM」"
@@ -913,6 +913,6 @@ defmodule ChidoriWeb.NewsLiveTest do
   # 全部の通知で共通の宛先を決め、ニュースの話題を知らせる設定にする
   defp notify_to(topic) do
     Chidori.Notify.Destination.put(%{"topic" => topic})
-    Chidori.Notify.Settings.put("tazuna_news", %{"notify" => "true"})
+    Chidori.Notify.Settings.put("chidori_news", %{"notify" => "true"})
   end
 end

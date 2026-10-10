@@ -54,7 +54,7 @@ defmodule Chidori.Datasets.DiningAreas do
   範囲を作ります。`{:ok, 範囲}` か `{:error, changeset}`。
 
   **番号は空いているいちばん小さいもの**（範囲の番号は Chiezo の収集の名前
-  `tazuna_dining_<番号>` になる）。通し番号に任せると、消した範囲の番号が欠けた
+  `chidori_dining_<番号>` になる）。通し番号に任せると、消した範囲の番号が欠けた
   まま残る。**Chiezo に同じ名前の収集が残っている番号は使わない** —— 範囲を外しても
   Chiezo の収集は消さないので、使うと前の範囲の店を引き継ぐ。別の場所で動かしている
   Chidori が作った範囲の収集とも、これでぶつからない。
@@ -84,7 +84,7 @@ defmodule Chidori.Datasets.DiningAreas do
 
   @doc """
   空いているいちばん小さい番号。手元の範囲と、Chiezo に残っている範囲の収集
-  （`names` のうち `tazuna_dining_<番号>` の形のもの）の両方が使っていないもの。
+  （`names` のうち `chidori_dining_<番号>` の形のもの）の両方が使っていないもの。
   """
   def free_number(names) do
     prefix = Chidori.Datasets.Dining.area_collection_prefix()
@@ -117,7 +117,7 @@ defmodule Chidori.Datasets.DiningAreas do
   `{:ok, %{restored: 戻した範囲, skipped: 戻せなかった収集の名前}}` か `{:error, 理由}`。
 
   **範囲の正本は手元の表ですが、同じ中身が Chiezo の収集にも載っています** ——
-  番号は収集の名前（`tazuna_dining_<番号>`）、四角は区画の指定（`partition.bbox`）、
+  番号は収集の名前（`chidori_dining_<番号>`）、四角は区画の指定（`partition.bbox`）、
   名前は説明（`shape/1` が書く「（〈名前〉の食事処 / travel-log 向け）」）。
   別の場所で Chidori を動かし直したとき、描き直さずに同じ収集へつなぎ直せる。
 

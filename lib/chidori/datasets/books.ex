@@ -22,7 +22,7 @@ defmodule Chidori.Datasets.Books do
   alias Chidori.Chiezo
   alias Chidori.SweepNames
 
-  @collection "tazuna_book_posts"
+  @collection "chidori_book_posts"
 
   # 記事 1 本ごとに付く印
   @kind_tag "記事"

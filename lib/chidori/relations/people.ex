@@ -79,7 +79,7 @@ defmodule Chidori.Relations.People do
   @doc "収集の名前（`CHIDORI_PEOPLE_COLLECTION` で変えられる）。"
   def collection do
     case System.get_env("CHIDORI_PEOPLE_COLLECTION", "") |> String.trim() do
-      "" -> "tazuna_people"
+      "" -> "chidori_people"
       name -> name
     end
   end

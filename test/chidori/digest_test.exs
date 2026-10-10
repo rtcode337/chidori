@@ -12,7 +12,7 @@ defmodule Chidori.DigestTest do
   alias Chidori.Notify.Settings
   alias Chidori.Topics
 
-  @collection "tazuna_tech"
+  @collection "chidori_tech"
 
   setup do
     System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
@@ -85,7 +85,7 @@ defmodule Chidori.DigestTest do
       %{method: :get, url: "http://chiezo.test:7010/v1/sources"} ->
         HttpStub.ok(Jason.encode!(%{"sources" => []}))
 
-      %{method: :get, url: "http://chiezo.test:7010/v1/tazuna_tech/doc?" <> _query} ->
+      %{method: :get, url: "http://chiezo.test:7010/v1/chidori_tech/doc?" <> _query} ->
         HttpStub.ok(Jason.encode!(%{"title" => "まとめ", "body" => "## 要旨\n読める本文。"}))
 
       %{method: :get, url: _detail} ->
@@ -165,8 +165,8 @@ defmodule Chidori.DigestTest do
   end
 
   test "作品を育てる話題の要約は、前回からの差分ではなく全体から書かせる", %{topic: topic} do
-    movies = Enum.find(Topics.list(), &(&1.collection == "tazuna_movies"))
-    anime = Enum.find(Topics.list(), &(&1.collection == "tazuna_anime"))
+    movies = Enum.find(Topics.list(), &(&1.collection == "chidori_movies"))
+    anime = Enum.find(Topics.list(), &(&1.collection == "chidori_anime"))
 
     for works <- [movies, anime] do
       note = Digest.digest_note(works)

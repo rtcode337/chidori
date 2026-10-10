@@ -151,7 +151,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
 
       Chidori.HttpStub.stub(fn
         %{url: "http://chiezo.test:7010/v1/ingest/status"} ->
-          Chidori.HttpStub.ok(~s({"state":"running","running":true,"source":"tazuna_painters"}))
+          Chidori.HttpStub.ok(~s({"state":"running","running":true,"source":"chidori_painters"}))
 
         %{url: url} ->
           if String.contains?(url, "/filter?") do
@@ -675,7 +675,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
   describe "巡回ごとに相手を選ぶ" do
     defp painters_collection_json do
       item = %{
-        "name" => "tazuna_painters",
+        "name" => "chidori_painters",
         "enabled" => true,
         "prompt" => "x",
         "cursor" => "",
@@ -1085,7 +1085,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
       test_pid = self()
 
       collection = %{
-        "name" => "tazuna_painters",
+        "name" => "chidori_painters",
         "partitions" => [%{"key" => "日本|-", "count" => 3}]
       }
 
@@ -1239,7 +1239,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
 
     test "出どころは Chiezo で育てる図に出す（収集の名前つき）" do
       assert RelationsLive.origin_note("painters") =~ "Chiezo に溜まった内容から作っています"
-      assert RelationsLive.origin_note("people") =~ "tazuna_people"
+      assert RelationsLive.origin_note("people") =~ "chidori_people"
     end
   end
 

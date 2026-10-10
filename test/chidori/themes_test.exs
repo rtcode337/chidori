@@ -8,14 +8,14 @@ defmodule Chidori.ThemesTest do
 
   alias Chidori.Themes
 
-  defp topic, do: Enum.find(Chidori.Topics.list(), &(&1.collection == "tazuna_tech"))
+  defp topic, do: Enum.find(Chidori.Topics.list(), &(&1.collection == "chidori_tech"))
 
   describe "収集の形" do
     test "網羅で、期限では落とさない" do
       # 記事と同じ収集に置くと、流れの期限でトピックまで消える
       attrs = Themes.attrs(topic())
 
-      assert attrs.name == "tazuna_tech_topics"
+      assert attrs.name == "chidori_tech_topics"
       assert attrs.kind == "stock"
     end
 
@@ -24,7 +24,7 @@ defmodule Chidori.ThemesTest do
       # 違う表記で増える —— 語そのものは手元の索引に入っている
       attrs = Themes.attrs(topic())
 
-      assert attrs.extract.source == "tazuna_tech"
+      assert attrs.extract.source == "chidori_tech"
       assert attrs.extract.of == "tags"
       # 図に出す目印は機械が付ける
       assert attrs.extract.tags == [%{const: Themes.theme_tag()}]
@@ -106,7 +106,7 @@ defmodule Chidori.ThemesTest do
       assert prompt =~ "まだ手を入れていないものから始めてください"
       # 未精査の見分け方（機械は目印しか付けない）と、その引き方
       assert prompt =~ "目印は「#{Themes.field_tag()}」"
-      assert prompt =~ "tazuna_tech_topics"
+      assert prompt =~ "chidori_tech_topics"
     end
 
     test "新しい語をここで足させない" do
