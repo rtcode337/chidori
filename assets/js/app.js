@@ -38,13 +38,15 @@ import TopicMap from "./topic_map"
 import SortableList from "./sortable_list"
 import ScrollTabs from "./scroll_tabs"
 import AutoHeight from "./auto_height"
+// 映画の札の「近くの上映館を Gemini に聞く」。押したときに現在地を添える
+import AskNearby from "./ask_nearby"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, PartitionMap, AreaDraw, RelationMap, DownloadLink, DigestSwipe, PanelSwipe, TopicMap, SortableList, ScrollTabs, AutoHeight},
+  hooks: {...colocatedHooks, PartitionMap, AreaDraw, RelationMap, DownloadLink, DigestSwipe, PanelSwipe, TopicMap, SortableList, ScrollTabs, AutoHeight, AskNearby},
 })
 
 // Show progress bar on live navigation and form submits

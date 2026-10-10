@@ -241,7 +241,7 @@
                 <strong :if={!entry.url}>{entry.title}</strong>
               </div>
               <%= if Chidori.Topics.works(@topic) do %>
-                <.work_detail entry={entry} works={Chidori.Topics.works(@topic)} />
+                <.work_detail entry={entry} works={Chidori.Topics.works(@topic)} scope="day" />
               <% else %>
                 <p class="event-item-facts">
                   <span :if={Events.abroad?(entry)} class="event-abroad-mark">海外</span>
@@ -328,6 +328,7 @@
       section={@digest_section}
       label={if @digest_kind == :interest, do: "興味トピック", else: @topic && @topic.name}
       hero={hero?(@topic)}
+      ask_theaters={Chidori.Topics.works(@topic) == Chidori.News.Movies}
     />
 
     <%!-- 記事から育った話題の網。**まとめのすぐ下** —— まとめが「この期間に何が

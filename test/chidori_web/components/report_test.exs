@@ -118,4 +118,31 @@ defmodule ChidoriWeb.ReportTest do
     refute html =~ "**急ぐ"
     refute html =~ "| --- |"
   end
+
+  describe "映画の要約の、近くの上映館のリンク" do
+    test "章で紹介した作品ごとに、上映館を聞くリンクを添える" do
+      html = rendered(ask_theaters: true)
+
+      assert html =~ "近くの上映館を Gemini に聞く"
+      assert html =~ ~s(phx-hook="AskNearby")
+      assert html =~ "udm=50"
+    end
+
+    test "映画の要約でなければ添えない" do
+      refute rendered() =~ "近くの上映館"
+    end
+
+    test "見出しの無い出典（作品として引けなかったもの）は数えない" do
+      known = %{"https://example.com/1" => %{title: "作品A"}, "https://example.com/2" => %{}}
+
+      blocks = [
+        {:source, "https://example.com/1", "A"},
+        {:source, "https://example.com/2", "B"},
+        {:source, "https://example.com/1", "A"},
+        {:paragraph, [{:text, "本文"}]}
+      ]
+
+      assert ChidoriWeb.Report.work_titles(blocks, known) == ["作品A"]
+    end
+  end
 end

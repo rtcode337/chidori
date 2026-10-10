@@ -213,6 +213,7 @@
       section={@digest_section}
       label={if @panel.kind == :interest, do: "興味トピック", else: @panel.name}
       hero={NewsLive.hero?(@panel.topic)}
+      ask_theaters={Chidori.Topics.works(@panel.topic) == Chidori.News.Movies}
     />
   </div>
 </main>

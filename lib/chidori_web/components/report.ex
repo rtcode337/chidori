@@ -46,6 +46,10 @@ defmodule ChidoriWeb.Report do
   # 並べるのは出典の順で、絵を持つものの最初の数枚
   attr :hero, :boolean, default: false
 
+  # 章ごとに「近くの上映館を Gemini に聞く」を添えるか（映画の要約。章の出典が作品の
+  # 1 件なので、その作品の名前で聞く）。リンクを組むのは呼ぶ側（`ChidoriWeb.NewsLive.theaters_url/1`）
+  attr :ask_theaters, :boolean, default: false
+
   @doc """
   まとめ 1 件を、レポートとして描きます。
 
@@ -141,6 +145,23 @@ defmodule ChidoriWeb.Report do
         </figure>
 
         <.blocks blocks={section.blocks} known={@known} />
+
+        <%!-- 映画の要約では、章で紹介した作品ごとに上映館を聞ける（作品の札と同じリンク） --%>
+        <p
+          :for={title <- if(@ask_theaters, do: work_titles(section.blocks, @known), else: [])}
+          class="ask-nearby"
+        >
+          <a
+            id={"ask-nearby-#{@id_prefix}-#{section.index}-#{:erlang.phash2(title)}"}
+            href={ChidoriWeb.NewsLive.theaters_url(title)}
+            data-question={ChidoriWeb.NewsLive.theaters_question(title)}
+            phx-hook="AskNearby"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            「{title}」の近くの上映館を Gemini に聞く
+          </a>
+        </p>
       </section>
 
       <%!-- 出典一覧。章ごとの出典は読んだ流れで押すもので、こちらは後から
@@ -158,6 +179,22 @@ defmodule ChidoriWeb.Report do
       </div>
     </article>
     """
+  end
+
+  @doc false
+  # 章の出典のうち、作品として引き直せたものの名前（出てきた順・重複なし）。
+  # 作品は見出しを持つ（`title`）。記事の出典（見出しを持たない）は数えない
+  def work_titles(blocks, known) do
+    blocks
+    |> Enum.flat_map(fn
+      {:source, url, _label} -> [Map.get(known, url)]
+      _other -> []
+    end)
+    |> Enum.flat_map(fn
+      %{title: title} when is_binary(title) and title != "" -> [title]
+      _other -> []
+    end)
+    |> Enum.uniq()
   end
 
   attr :blocks, :list, required: true

@@ -912,6 +912,8 @@ defmodule ChidoriWeb.NewsLive do
   attr :section, :integer, default: nil
   attr :label, :string, default: nil
   attr :hero, :boolean, default: false
+  # 章ごとに「近くの上映館を Gemini に聞く」を添えるか（映画の要約）
+  attr :ask_theaters, :boolean, default: false
 
   @doc """
   全画面の要約。**左右のスワイプで前後の要約へ**（`DigestSwipe`）。最新情報の画面と
@@ -980,6 +982,7 @@ defmodule ChidoriWeb.NewsLive do
           cited={@viewed.cited}
           id_prefix="digest-viewer"
           hero={@hero}
+          ask_theaters={@ask_theaters}
         />
       </div>
     </div>
@@ -996,9 +999,28 @@ defmodule ChidoriWeb.NewsLive do
   # 作品の作り方のモジュール（映画・アニメ）。事実の並べ方が作品ごとに違う
   attr :works, :atom, default: Movies
 
+  # 同じ作品が 2 か所（日の一覧と注目作の一覧）に同時に出るので、リンクの id を分ける
+  attr :scope, :string, default: "works"
+
   def work_detail(assigns) do
     ~H"""
     <p class="event-item-facts">{work_facts(@entry, @works)}</p>
+    <%!-- **映画だけ**、近くで上映している映画館を Gemini（Google 検索の AI モード）に聞く。
+         現在地は押したときにブラウザから取り、取れなければ現在地を書かずに開く
+         （`AskNearby`。AI モードの側でもおおよその場所は分かる）。**公開中か、1 週間以内に
+         公開されるものだけ**（先の作品はまだどこも上映していない） --%>
+    <p :if={@works == Movies and showing_soon?(@entry)} class="ask-nearby">
+      <a
+        id={"ask-nearby-#{@scope}-#{:erlang.phash2(@entry.title)}"}
+        href={theaters_url(@entry.title)}
+        data-question={theaters_question(@entry.title)}
+        phx-hook="AskNearby"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        近くの上映館を Gemini に聞く
+      </a>
+    </p>
     <div class="event-item-detail">
       <p :for={line <- @works.body_lines(@entry)}>
         <%= for part <- link_parts(line) do %>
@@ -1011,6 +1033,42 @@ defmodule ChidoriWeb.NewsLive do
     </div>
     """
   end
+
+  # 上映館を聞けるのは、公開日がこの日数より前のものまで（前売りが始まっている頃）
+  @showing_within_days 7
+
+  @doc "公開中か、もうすぐ公開される作品か（上映館を聞くリンクを出すか）。"
+  def showing_soon?(%{date: %Date{} = date}, today \\ Jst.today()),
+    do: Date.diff(date, today) <= @showing_within_days
+
+  def showing_soon?(_entry, _today), do: false
+
+  @doc """
+  近くで上映している映画館を聞く質問文。`where` は現在地（「緯度,経度」）で、
+  無ければ「いまいる場所」とだけ書きます（AI モードの側でおおよその場所は分かる）。
+  **答えの順番まで頼みます** —— 観に行けるかを決めるのは、どこで・何時からか。
+  """
+  def theaters_question(title, where \\ nil) do
+    place = if where, do: "現在地（#{where}）", else: "いまいる場所"
+
+    "映画「#{title}」を上映している映画館のうち、#{place}から近いところを教えてください。" <>
+      "今日は #{Jst.today() |> Date.to_iso8601()} です。" <>
+      "まず近い順に 3 館ほど、映画館の名前・最寄り駅からの行き方・今日と明日の上映時間を" <>
+      "箇条書きで手短に。上映形式（IMAX・字幕・吹替など）が分かれば添えてください。" <>
+      "上映時間は変わりやすいので、確かでないところはそう言い添え、" <>
+      "映画館の上映スケジュールの頁の URL も教えてください。"
+  end
+
+  @doc """
+  その質問を入れて Gemini（Google 検索の AI モード。`udm=50`）を開く URL。
+  **gemini.google.com は URL で質問文を渡せない**ので、同じ Gemini が答える AI モードを使う。
+  """
+  def theaters_url(title, where \\ nil),
+    do: ai_mode_url(theaters_question(title, where))
+
+  @doc "質問文を入れて Google 検索の AI モードを開く URL。"
+  def ai_mode_url(question),
+    do: "https://www.google.com/search?" <> URI.encode_query(%{"udm" => "50", "q" => question})
 
   @doc "1 行を、地の文と URL に分けます（URL はリンクにするため）。"
   def link_parts(line) do

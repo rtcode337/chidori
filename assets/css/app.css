@@ -880,6 +880,9 @@ ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column:
 .event-item-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .5rem; overflow-wrap: anywhere; }
 .event-item-head .event-chip { display: inline-block; }
 .event-item-facts { margin: .2rem 0 0; color: #4b5068; font-size: .82rem; }
+/* 映画の札の「近くの上映館を Gemini に聞く」 */
+.ask-nearby { margin: .3rem 0 0; font-size: .82rem; }
+.ask-nearby a { color: #4a3fc0; font-weight: 700; }
 .event-item.is-high .event-item-head a, .event-item.is-high .event-item-head strong { font-weight: 700; }
 /* 説明。**開いたまま出す**(ページを開かずに行くかどうかを決められるように) */
 .event-item-detail { margin: .35rem 0 0; padding: .4rem .7rem; border-left: 3px solid #d9dcea; background: #f8f9fc; color: #3a3f58; font-size: .85rem; overflow-wrap: anywhere; }
