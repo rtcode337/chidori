@@ -81,7 +81,7 @@ defmodule Chidori.Chiezo do
   def thumb_name?(name) when is_binary(name), do: name =~ ~r/\A[0-9a-f]{40}\.webp\z/
   def thumb_name?(_name), do: false
 
-  @doc "Chiezo の画面へのリンク。相対パスをルートURLに繋ぐだけです。"
+  @doc "Chiezo の口の URL（Chidori から引くとき）。相対パスをルートURLに繋ぐだけです。"
   def url(path) when is_binary(path) do
     case base_url() do
       nil -> nil
@@ -90,6 +90,30 @@ defmodule Chidori.Chiezo do
   end
 
   def url(_path), do: nil
+
+  @doc """
+  **見る人のブラウザから開く** Chiezo のルートURL（`CHIEZO_PUBLIC_URL`。無ければ `CHIEZO_BASE_URL`）。
+
+  Chidori から Chiezo へは、コンテナの名前（`http://chiezo-app:7010`）でつなぐことがある。
+  その名前は見る人のブラウザからは引けないので、画面に置く Chiezo へのリンクは
+  ブラウザから開ける宛先で組む。
+  """
+  def public_url do
+    case System.get_env("CHIEZO_PUBLIC_URL") do
+      value when value in [nil, ""] -> base_url()
+      value -> value |> String.trim() |> String.trim_trailing("/")
+    end
+  end
+
+  @doc "Chiezo の画面へのリンク（見る人のブラウザから開くもの。`public_url/0`）。"
+  def link(path) when is_binary(path) do
+    case public_url() do
+      nil -> nil
+      base -> base <> path
+    end
+  end
+
+  def link(_path), do: nil
 
   @doc """
   収集の状態を読みます。**まだ依頼していなければ `nil`**（失敗ではない）。
@@ -704,7 +728,7 @@ defmodule Chidori.Chiezo do
   Chiezo の画面で、1 件の「直す前との違い」を開く URL（収集の 1 件のページ）。
   """
   def doc_page_url(name, title) when is_binary(name) and is_binary(title) do
-    url(
+    link(
       "/admin/collect/" <>
         URI.encode(name, &URI.char_unreserved?/1) <>
         "/doc?" <>
@@ -865,7 +889,7 @@ defmodule Chidori.Chiezo do
       docs: 0,
       recent: [],
       requested_by: item["requested_by"] || "",
-      url: url(item["url"])
+      url: link(item["url"])
     }
   end
 

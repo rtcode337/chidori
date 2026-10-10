@@ -304,7 +304,8 @@ Chiezo 側で `CHIEZO_COLLECT_DIR` と `CHIEZO_NOTES_DIR` の両方が設定さ�
 
 | 変数 | 既定 | 説明 |
 | --- | --- | --- |
-| `CHIEZO_BASE_URL` | なし | Chiezo のルートURL。未設定ならニュースも関連図もデータ収集も使えない |
+| `CHIEZO_BASE_URL` | なし | Chiezo のルートURL（Chidori から引く宛先）。未設定ならニュースも関連図もデータ収集も使えない |
+| `CHIEZO_PUBLIC_URL` | `CHIEZO_BASE_URL` | 画面に置く Chiezo へのリンクの宛先（見る人のブラウザから開けるもの）。Chiezo をコンテナの名前でつないでいるときに書く |
 | `CHIDORI_NEWS_COLLECTION` | `chidori_news` | 「一般ニュース」の話題が使う収集の名前。Chiezo のソース名になる（他の話題の収集名は定義が持つ） |
 | `CHIDORI_NEWS_BACKEND` | なし | 収集を頼む相手（`claude` など）。**これは収集ぜんたいの下敷き**で、巡回ごとの相手は画面の表から選ぶ（巡回に書いてあればそちらが勝つ）。未設定なら Chiezo の既定にまかせる |
 | `CHIDORI_NEWS_MODEL` | なし | その相手のモデル |

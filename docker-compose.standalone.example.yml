@@ -58,6 +58,9 @@ services:
       PHX_HOST: "localhost"
       # Chiezo（LAN 内の知識サーバー）のルート URL。/v1 は付けない
       CHIEZO_BASE_URL: "http://chiezo.example.lan:7010"
+      # 画面に置く Chiezo へのリンクの宛先（見る人のブラウザから開けるもの）。空なら上と同じ。
+      # 上をコンテナの名前（http://chiezo-app:7010）にしたときは、LAN から開ける宛先を書く
+      CHIEZO_PUBLIC_URL: ""
       # ntfy（まとめの通知）の場所の既定。通知先（トピック）は画面から決める
       NTFY_BASE_URL: ""
       # ---- 通常は編集不要 ----
@@ -106,6 +109,8 @@ services:
 # セットで外す（片方だけでは効かない）。そのうえで CHIEZO_BASE_URL を
 # "http://chiezo-app:7010" にする（chiezo-app はコンテナ名なので、相手のプロジェクト名が
 # 何でもこの名前で引ける）。
+# その名前は見る人のブラウザからは引けないので、画面の Chiezo へのリンク用に
+# CHIEZO_PUBLIC_URL へ LAN から開ける宛先（"http://<ホストの LAN IP>:7010" など）を書く。
 #
 # 注意:
 # - `networks:` を書くと既定のネットワークに自動で入らなくなる。`default` を並べ忘れると

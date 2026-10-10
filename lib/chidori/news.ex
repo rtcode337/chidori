@@ -343,16 +343,9 @@ defmodule Chidori.News do
   end
 
   @doc """
-  Chiezo の画面へ渡すリンク。相対パスをルートURLに繋ぐだけです。
+  Chiezo の画面へ渡すリンク（見る人のブラウザから開くもの。`Chidori.Chiezo.link/1`）。
   """
-  def chiezo_url(path) when is_binary(path) do
-    case chiezo_base_url() do
-      nil -> nil
-      base -> base <> path
-    end
-  end
-
-  def chiezo_url(_path), do: nil
+  def chiezo_url(path), do: Chiezo.link(path)
 
   @impl true
   def init(collection) do

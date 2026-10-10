@@ -44,4 +44,20 @@ defmodule ChidoriWeb.ThumbControllerTest do
     assert Chidori.Chiezo.thumb_path("/v1/thumbs/../x.webp") == nil
     assert Chidori.Chiezo.thumb_path("https://example.com/a.webp") == nil
   end
+
+  test "画面に置く Chiezo へのリンクは、ブラウザから開ける宛先で組む" do
+    # Chidori からはコンテナの名前で引き、ブラウザには LAN の宛先を渡す
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo-app:7010")
+    System.put_env("CHIEZO_PUBLIC_URL", "http://chiezo.example.lan:7010/")
+    on_exit(fn -> System.delete_env("CHIEZO_PUBLIC_URL") end)
+
+    assert Chidori.Chiezo.url("/v1/sources") == "http://chiezo-app:7010/v1/sources"
+
+    assert Chidori.Chiezo.doc_page_url("chidori_dining_1", "店") ==
+             "http://chiezo.example.lan:7010/admin/collect/chidori_dining_1/doc?title=%E5%BA%97"
+
+    # 書いていなければ、引く宛先と同じ
+    System.delete_env("CHIEZO_PUBLIC_URL")
+    assert Chidori.Chiezo.link("/x") == "http://chiezo-app:7010/x"
+  end
 end
