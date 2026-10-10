@@ -1530,7 +1530,7 @@ defmodule ChidoriWeb.NewsLive do
   見る人のブラウザが知らない外のサイトへつながないため）。無ければ配信元が
   配っている絵（技術イベントの告知サイトのもの）。どちらも無ければ nil。
   """
-  def entry_thumb(%{thumb: thumb}) when is_binary(thumb), do: News.chiezo_url(thumb)
+  def entry_thumb(%{thumb: thumb}) when is_binary(thumb), do: Chidori.Chiezo.thumb_path(thumb)
   def entry_thumb(%{image: image}) when is_binary(image), do: image
   def entry_thumb(_entry), do: nil
 

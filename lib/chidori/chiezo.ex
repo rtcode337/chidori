@@ -66,6 +66,21 @@ defmodule Chidori.Chiezo do
   """
   def locked_tag, do: "座標確認済み"
 
+  @doc """
+  Chiezo が配るサムネイル（`/v1/thumbs/<sha1>.webp`）を、**Chidori から配る場所**
+  （`/thumbs/<sha1>.webp`。`ChidoriWeb.ThumbController`）に言い換えます。その形でなければ `nil`。
+
+  見る人のブラウザに Chiezo を直に引かせない —— Chidori を https で配ると、http の
+  Chiezo の絵は混在コンテンツとしてブラウザに止められ、Chiezo がコンテナの名前で
+  繋がっているときはそもそもブラウザから名前が引けない。
+  """
+  def thumb_path("/v1/thumbs/" <> name), do: if(thumb_name?(name), do: "/thumbs/" <> name)
+  def thumb_path(_path), do: nil
+
+  @doc "サムネイルのファイル名として正しいか（`<sha1>.webp`）。"
+  def thumb_name?(name) when is_binary(name), do: name =~ ~r/\A[0-9a-f]{40}\.webp\z/
+  def thumb_name?(_name), do: false
+
   @doc "Chiezo の画面へのリンク。相対パスをルートURLに繋ぐだけです。"
   def url(path) when is_binary(path) do
     case base_url() do

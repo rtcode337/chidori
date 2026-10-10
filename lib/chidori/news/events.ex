@@ -569,7 +569,7 @@ defmodule Chidori.News.Events do
   defp safe_url(_url), do: nil
 
   # Chiezo が配るサムネイルの場所（Chiezo の中の相対パス）。**その形のものだけ通す**
-  # （画面が Chiezo の URL に繋いで出すので、外を指すものを混ぜない）
+  # （画面が Chidori から配る場所に言い換えて出すので、外を指すものを混ぜない）
   defp thumb_path("/v1/thumbs/" <> name = path) do
     if name =~ ~r/\A[0-9a-f]{40}\.webp\z/, do: path, else: nil
   end

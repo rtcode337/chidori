@@ -36,5 +36,9 @@ defmodule ChidoriWeb.Router do
     # 関連図の顔写真の写し（`Chidori.Relations.Faces`）。見る人のブラウザに写真の
     # 置き場を直に引かせないため、Chidori が配る
     get "/faces/:id", FaceController, :show
+
+    # Chiezo が作ったサムネイル（`Chidori.Chiezo.thumb_path/1`）。ブラウザに Chiezo を
+    # 直に引かせない（https の画面から http の絵は止められる。コンテナの名前も引けない）
+    get "/thumbs/:name", ThumbController, :show
   end
 end

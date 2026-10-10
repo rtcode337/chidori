@@ -1054,12 +1054,8 @@ defmodule Chidori.News do
     end
   end
 
-  # Chiezo が配るサムネイルの場所（相対パス → Chiezo の URL）。その形のものだけ通す
-  defp chiezo_thumb("/v1/thumbs/" <> name = path) do
-    if name =~ ~r/\A[0-9a-f]{40}\.webp\z/, do: chiezo_url(path), else: nil
-  end
-
-  defp chiezo_thumb(_path), do: nil
+  # Chiezo が配るサムネイル。**Chidori から配る場所で指す**（`Chiezo.thumb_path/1`）
+  defp chiezo_thumb(path), do: Chiezo.thumb_path(path)
 
   # 記事一覧の窓（`@window_hours`）。**新着の口が読めなければ、収集の見本で代える**
   # （古い並びでも、何も出ないよりよい）。はてブ数はここで載せる（`Chidori.News.Hatena`）。
