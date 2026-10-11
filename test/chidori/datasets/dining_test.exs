@@ -509,7 +509,11 @@ defmodule Chidori.Datasets.DiningTest do
       # travel-log からの報告が第一
       assert order.("1. 地図を使っている人からの報告") < order.("2. まだ目を通していない店")
       assert order.("2. まだ目を通していない店") < order.("3. 足りない店を足す")
-      assert order.("3. 足りない店を足す") < order.("4. 時間が残っていたら")
+      assert order.("3. 足りない店を足す") < order.("4. 埋まっていない情報がある店")
+
+      # 空いている欄（とくに営業時間）を埋めるのは、足りない店の次・見直しの前
+      assert order.("4. 埋まっていない情報がある店") < order.("5. 時間が残っていたら")
+      assert prompt =~ "営業日と営業時間（`extra.opening_hours`）が無い店"
       assert prompt =~ Chidori.Chiezo.unreviewed_tag()
       # 閉店の取りこぼしは多いので、見直しもやめない
       assert prompt =~ "とくに閉店です"
