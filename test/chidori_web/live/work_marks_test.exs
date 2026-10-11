@@ -1,6 +1,6 @@
 defmodule ChidoriWeb.WorkMarksTest do
   @moduledoc """
-  映画・アニメの作品に付ける「見た」記録。見ているのは、**作品の札に記録の欄を出すこと**、
+  映画・アニメの作品に付ける「見た」記録。見ているのは、**作品の詳細に記録の欄を出すこと**、
   **見た作品には見出しの横に印が付くこと**、**作品ごとに種類を分けて残すこと**です。
   """
 
@@ -13,11 +13,11 @@ defmodule ChidoriWeb.WorkMarksTest do
 
   @entry %{title: "サンプル映画", date: ~D[2026-10-10], summary: "", tags: [], extra: %{}}
 
-  test "札に見た記録の欄を出し、付いている印を読む" do
+  test "詳細に見た記録の欄を出し、付いている印を読む" do
     {:ok, mark} = Marks.put("movies", "サンプル映画", %{"seen" => true, "seen_on" => "2026-10-11"})
 
     html =
-      render_component(&NewsLive.work_detail/1,
+      render_component(&ChidoriWeb.WorkModal.work_body/1,
         entry: @entry,
         works: Chidori.News.Movies,
         marks: %{"サンプル映画" => mark}
@@ -29,7 +29,12 @@ defmodule ChidoriWeb.WorkMarksTest do
   end
 
   test "印を渡さなければ欄を出さない（映画・アニメ以外）" do
-    html = render_component(&NewsLive.work_detail/1, entry: @entry, works: Chidori.News.Movies)
+    html =
+      render_component(&ChidoriWeb.WorkModal.work_body/1,
+        entry: @entry,
+        works: Chidori.News.Movies
+      )
+
     refute html =~ "見た記録"
   end
 

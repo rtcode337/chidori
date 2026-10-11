@@ -119,17 +119,23 @@ defmodule ChidoriWeb.ReportTest do
     refute html =~ "| --- |"
   end
 
-  describe "映画の要約の、近くの上映館のリンク" do
-    test "章で紹介した作品ごとに、上映館を聞くリンクを添える" do
-      html = rendered(ask_theaters: true)
+  describe "映画・アニメの要約の、紹介した作品を開く口" do
+    test "章で紹介した作品ごとに、押すと作品の詳細を開く口を添える" do
+      html =
+        rendered(
+          open_work_event: "open_work",
+          articles: [%{url: "https://example.com/1", title: "サンプル作品", image: nil}]
+        )
 
-      assert html =~ "近くの上映館を Gemini に聞く"
-      assert html =~ ~s(phx-hook="AskNearby")
-      assert html =~ "udm=50"
+      assert html =~ "「サンプル作品」を開く"
+      assert html =~ ~s(phx-click="open_work")
+      assert html =~ ~s(phx-value-title="サンプル作品")
+      # 上映館は作品の詳細の中で聞く（要約には直接置かない）
+      refute html =~ "近くの上映館"
     end
 
-    test "映画の要約でなければ添えない" do
-      refute rendered() =~ "近くの上映館"
+    test "作品の要約でなければ添えない" do
+      refute rendered() =~ "report-works"
     end
 
     test "見出しの無い出典（作品として引けなかったもの）は数えない" do

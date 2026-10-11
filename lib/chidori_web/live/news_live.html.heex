@@ -220,9 +220,19 @@
         >
           <h3>{day_label(@cal_day)} の{Chidori.Topics.item_word(@topic)}</h3>
           <ul>
+            <%!-- 作品（映画・アニメ）の札は**押すと詳細が開く**（`ChidoriWeb.WorkModal`）。
+                 作品のページへのリンクは詳細の中に置く（記事の札と同じ） --%>
             <li
               :for={entry <- Events.sort(Enum.filter(shown, &(&1.date == @cal_day)))}
-              class={["event-item", "is-#{entry.attention}"]}
+              class={[
+                "event-item",
+                "is-#{entry.attention}",
+                Chidori.Topics.works(@topic) && "is-work"
+              ]}
+              phx-click={Chidori.Topics.works(@topic) && "open_work"}
+              phx-value-title={entry.title}
+              role={Chidori.Topics.works(@topic) && "button"}
+              tabindex={Chidori.Topics.works(@topic) && "0"}
             >
               <img
                 :if={entry_thumb(entry)}
@@ -235,21 +245,20 @@
                 <span :if={entry.attention} class={["event-chip", "is-#{entry.attention}"]}>
                   注目度 {attention_label(entry.attention)}
                 </span>
-                <a :if={entry.url} href={entry.url} target="_blank" rel="noreferrer">
+                <a
+                  :if={entry.url && !Chidori.Topics.works(@topic)}
+                  href={entry.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   {entry.title}
                 </a>
-                <strong :if={!entry.url}>{entry.title}</strong>
-                <%!-- 見た作品は見出しの横に印（記録の欄を開かなくても分かる） --%>
+                <strong :if={!entry.url || Chidori.Topics.works(@topic)}>{entry.title}</strong>
+                <%!-- 見た作品は見出しの横に印（詳細を開かなくても分かる） --%>
                 <span :if={seen_work?(@work_marks, entry.title)} class="seen-badge">見た</span>
               </div>
               <%= if Chidori.Topics.works(@topic) do %>
-                <.work_detail
-                  entry={entry}
-                  works={Chidori.Topics.works(@topic)}
-                  scope="day"
-                  marks={@work_marks}
-                  saved={@work_mark_saved}
-                />
+                <p class="event-item-facts">{work_facts(entry, Chidori.Topics.works(@topic))}</p>
               <% else %>
                 <p class="event-item-facts">
                   <span :if={Events.abroad?(entry)} class="event-abroad-mark">海外</span>
@@ -303,7 +312,16 @@
         >
           <h3>{label}（{length(list)} 本）</h3>
           <ul>
-            <li :for={entry <- list} class={["event-item", "is-#{entry.attention}"]}>
+            <%!-- **押すと詳細が開く**（説明・出典・上映館・見た記録。`ChidoriWeb.WorkModal`）。
+                 札は見渡すためのものなので、見出しと事実の 1 行だけ --%>
+            <li
+              :for={entry <- list}
+              class={["event-item", "is-#{entry.attention}", "is-work"]}
+              phx-click="open_work"
+              phx-value-title={entry.title}
+              role="button"
+              tabindex="0"
+            >
               <img
                 :if={entry_thumb(entry)}
                 class="event-thumb"
@@ -315,19 +333,11 @@
                 <span :if={entry.attention} class={["event-chip", "is-#{entry.attention}"]}>
                   注目度 {attention_label(entry.attention)}
                 </span>
-                <a :if={entry.url} href={entry.url} target="_blank" rel="noreferrer">
-                  {entry.title}
-                </a>
-                <strong :if={!entry.url}>{entry.title}</strong>
-                <%!-- 見た作品は見出しの横に印（記録の欄を開かなくても分かる） --%>
+                <strong>{entry.title}</strong>
+                <%!-- 見た作品は見出しの横に印（詳細を開かなくても分かる） --%>
                 <span :if={seen_work?(@work_marks, entry.title)} class="seen-badge">見た</span>
               </div>
-              <.work_detail
-                entry={entry}
-                works={Chidori.Topics.works(@topic)}
-                marks={@work_marks}
-                saved={@work_mark_saved}
-              />
+              <p class="event-item-facts">{work_facts(entry, Chidori.Topics.works(@topic))}</p>
             </li>
           </ul>
         </section>
@@ -343,7 +353,8 @@
       section={@digest_section}
       label={if @digest_kind == :interest, do: "興味トピック", else: @topic && @topic.name}
       hero={hero?(@topic)}
-      ask_theaters={Chidori.Topics.works(@topic) == Chidori.News.Movies}
+      open_work_event={Chidori.Topics.works(@topic) && "open_work"}
+      keys={@opened_work == nil}
     />
 
     <%!-- 記事から育った話題の網。**まとめのすぐ下** —— まとめが「この期間に何が
@@ -668,6 +679,13 @@
       </p>
     </footer>
   </div>
+
+  <%!-- **作品の詳細**（映画・アニメ）。札からも要約からも開く。全画面の要約より手前に出る --%>
+  <ChidoriWeb.WorkModal.work_modal
+    opened={@opened_work}
+    marks={@work_marks}
+    saved={@work_mark_saved}
+  />
 
   <%!-- **記事の詳細**（画家の図と同じくモーダル）。原文へのリンクと、その記事に
        ついて Chiezo へ頼む口（割り込み）を置く —— 頼みごとは記事を見ながら

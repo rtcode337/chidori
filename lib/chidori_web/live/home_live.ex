@@ -24,6 +24,7 @@ defmodule ChidoriWeb.HomeLive do
   alias Chidori.News.Events
   alias Chidori.Topics
   alias ChidoriWeb.NewsLive
+  alias ChidoriWeb.WorkModal
 
   # 注目イベントを先まで見る月数。**並べる注目度は話題ごとに絞る**ので、数では切らない
   # （技術イベントで中まで入れていた頃は、20 件の上限で 1 か月先あたりまでしか見えなかった）
@@ -48,7 +49,12 @@ defmodule ChidoriWeb.HomeLive do
        # 全画面で開いている要約（`ChidoriWeb.NewsLive.digest_viewer/1`）
        digest_open: nil,
        digest_section: nil,
-       digest_full: %{}
+       digest_full: %{},
+       # 要約から開いた作品（`ChidoriWeb.WorkModal`）と、その話題の「見た」印
+       # （作品を開いたときに読む。枠を移ったら読み直す）
+       opened_work: nil,
+       work_marks: nil,
+       work_mark_saved: nil
      )}
   end
 
@@ -64,7 +70,15 @@ defmodule ChidoriWeb.HomeLive do
 
     {:noreply,
      socket
-     |> assign(panel: panel, digest_open: nil, digest_section: nil, digest_full: %{})
+     |> assign(
+       panel: panel,
+       digest_open: nil,
+       digest_section: nil,
+       digest_full: %{},
+       opened_work: nil,
+       work_marks: nil,
+       work_mark_saved: nil
+     )
      |> load(panel)}
   end
 
@@ -208,6 +222,10 @@ defmodule ChidoriWeb.HomeLive do
 
   def handle_async(:events, {:ok, result}, socket), do: {:noreply, assign(socket, events: result)}
 
+  # 要約から開いた作品（開いている作品の答えだけ受け取る）
+  def handle_async({:work, title}, result, socket),
+    do: {:noreply, WorkModal.loaded(socket, title, result)}
+
   def handle_async({:digest, title}, {:ok, digest}, socket),
     do: {:noreply, update(socket, :digest_full, &Map.put(&1, title, digest))}
 
@@ -244,6 +262,20 @@ defmodule ChidoriWeb.HomeLive do
   def handle_event("open_digest", %{"index" => index} = params, socket) do
     section = if params["section"], do: to_index(params["section"])
     {:noreply, socket |> show_digest(to_index(index)) |> assign(digest_section: section)}
+  end
+
+  # **要約が紹介した作品を押すと詳細を開く**（最新情報の画面と同じもの）。
+  # トップページは作品の一覧を持たないので、Chiezo から 1 件引く
+  def handle_event("open_work", %{"title" => title}, socket) do
+    topic = socket.assigns.panel && socket.assigns.panel[:topic]
+    {:noreply, WorkModal.open(socket, title, topic)}
+  end
+
+  def handle_event("close_work", _params, socket), do: {:noreply, WorkModal.close(socket)}
+
+  def handle_event("save_work_mark", params, socket) do
+    topic = socket.assigns.panel && socket.assigns.panel[:topic]
+    {:noreply, WorkModal.save_mark(socket, topic, params)}
   end
 
   # 左右のスワイプ・矢印。**1 が古いほう**（要約は新しい順に並んでいる）

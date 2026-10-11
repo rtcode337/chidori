@@ -46,9 +46,10 @@ defmodule ChidoriWeb.Report do
   # 並べるのは出典の順で、絵を持つものの最初の数枚
   attr :hero, :boolean, default: false
 
-  # 章ごとに「近くの上映館を Gemini に聞く」を添えるか（映画の要約。章の出典が作品の
-  # 1 件なので、その作品の名前で聞く）。リンクを組むのは呼ぶ側（`ChidoriWeb.NewsLive.theaters_url/1`）
-  attr :ask_theaters, :boolean, default: false
+  # 章ごとに、紹介した作品を開く口を添える（映画・アニメの要約）。押したときに送る
+  # イベント名で、作品の見出しを `title` で渡す（開くのは置いた画面の側。
+  # `ChidoriWeb.WorkModal`）。nil なら添えない
+  attr :open_work_event, :string, default: nil
 
   @doc """
   まとめ 1 件を、レポートとして描きます。
@@ -73,6 +74,10 @@ defmodule ChidoriWeb.Report do
         section
         |> Map.put(:index, index)
         |> Map.put(:figure, figure_of(section.blocks, known))
+        |> Map.put(
+          :works,
+          if(assigns.open_work_event, do: work_titles(section.blocks, known), else: [])
+        )
       end)
 
     sources = Report.sources(document)
@@ -146,21 +151,18 @@ defmodule ChidoriWeb.Report do
 
         <.blocks blocks={section.blocks} known={@known} />
 
-        <%!-- 映画の要約では、章で紹介した作品ごとに上映館を聞ける（作品の札と同じリンク） --%>
-        <p
-          :for={title <- if(@ask_theaters, do: work_titles(section.blocks, @known), else: [])}
-          class="ask-nearby"
-        >
-          <a
-            id={"ask-nearby-#{@id_prefix}-#{section.index}-#{:erlang.phash2(title)}"}
-            href={ChidoriWeb.NewsLive.theaters_url(title)}
-            data-question={ChidoriWeb.NewsLive.theaters_question(title)}
-            phx-hook="AskNearby"
-            target="_blank"
-            rel="noopener noreferrer"
+        <%!-- 映画・アニメの要約では、章で紹介した作品を押すと詳細が開く（説明・出典・
+             上映館・見た記録。作品の札を押したときと同じもの） --%>
+        <p :if={section.works != []} class="report-works">
+          <button
+            :for={title <- section.works}
+            type="button"
+            class="report-work"
+            phx-click={@open_work_event}
+            phx-value-title={title}
           >
-            「{title}」の近くの上映館を Gemini に聞く
-          </a>
+            「{title}」を開く
+          </button>
         </p>
       </section>
 

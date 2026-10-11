@@ -88,7 +88,7 @@
               cited={digest.cited}
               id_prefix="home"
               hero={NewsLive.hero?(@panel.topic)}
-              ask_theaters={Chidori.Topics.works(@panel.topic) == Chidori.News.Movies}
+              open_work_event={Chidori.Topics.works(@panel.topic) && "open_work"}
             />
           </div>
         <% else %>
@@ -214,7 +214,15 @@
       section={@digest_section}
       label={if @panel.kind == :interest, do: "興味トピック", else: @panel.name}
       hero={NewsLive.hero?(@panel.topic)}
-      ask_theaters={Chidori.Topics.works(@panel.topic) == Chidori.News.Movies}
+      open_work_event={Chidori.Topics.works(@panel.topic) && "open_work"}
+      keys={@opened_work == nil}
+    />
+
+    <%!-- 要約が紹介した作品の詳細（映画・アニメ）。全画面の要約より手前に出る --%>
+    <ChidoriWeb.WorkModal.work_modal
+      opened={@opened_work}
+      marks={@work_marks}
+      saved={@work_mark_saved}
     />
   </div>
 </main>

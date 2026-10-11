@@ -36,6 +36,7 @@ defmodule ChidoriWeb.NewsLive do
   alias Chidori.Relations.Marks
   alias Chidori.Themes
   alias Chidori.Topics
+  alias ChidoriWeb.WorkModal
 
   @impl true
   def mount(_params, _session, socket) do
@@ -137,6 +138,8 @@ defmodule ChidoriWeb.NewsLive do
         # 作品に付けた「見た」印とメモ（作品の見出し → 印。`Chidori.Relations.Marks`）
         work_marks: work_marks(topic),
         work_mark_saved: nil,
+        # 詳細を開いている作品（`ChidoriWeb.WorkModal`）
+        opened_work: nil,
         ai_digests: nil,
         # 通知から開いたとき（`digest=latest`）。まとめが届いたら全画面で開く
         digest_wanted: params["digest"] == "latest"
@@ -554,28 +557,23 @@ defmodule ChidoriWeb.NewsLive do
   # **まとめを全画面で読む。** 記事の一覧の上に置いたままだと、長いまとめは
   # 一覧を押し下げ、通しで読むにも画面の端が気になる。開いたら左右で前後のまとめへ
   # 目次の項目から開いたときは、その章から見せる（`section`）
-  # 作品の「見た」印とメモを書く。**空にしたら消える**（関連図の「見た」と同じ）
-  def handle_event("save_work_mark", %{"title" => title} = params, socket) do
-    works = socket.assigns.topic && Topics.works(socket.assigns.topic)
+  # **作品を押すと詳細を開く**（`ChidoriWeb.WorkModal`）。探すのは注目作の一覧と
+  # カレンダーの両方で、どちらにも無ければ（要約から開いた作品）Chiezo から引く
+  def handle_event("open_work", %{"title" => title}, socket) do
+    entries =
+      Enum.flat_map([socket.assigns.works, socket.assigns.cal_events], fn
+        {:ok, list} -> list
+        _other -> []
+      end)
 
-    attrs = %{
-      # チェックが外れているとキーごと来ない（HTML のチェックボックス）
-      "seen" => params["seen"] == "on",
-      "seen_on" => if(params["seen_on"] in [nil, ""], do: nil, else: params["seen_on"]),
-      "note" => params["note"] || ""
-    }
-
-    with true <- works != nil and function_exported?(works, :mark_view, 0),
-         {:ok, mark} <- Marks.put(works.mark_view(), title, attrs) do
-      marks = socket.assigns.work_marks || %{}
-      marks = if mark, do: Map.put(marks, title, mark), else: Map.delete(marks, title)
-      {:noreply, assign(socket, work_marks: marks, work_mark_saved: title)}
-    else
-      _error ->
-        # 書けなかったことは黙って捨てない
-        {:noreply, put_flash(socket, :error, "見た記録を保存できませんでした。")}
-    end
+    {:noreply, WorkModal.open(socket, title, socket.assigns.topic, entries)}
   end
+
+  def handle_event("close_work", _params, socket), do: {:noreply, WorkModal.close(socket)}
+
+  # 作品の「見た」印とメモを書く。**空にしたら消える**（関連図の「見た」と同じ）
+  def handle_event("save_work_mark", params, socket),
+    do: {:noreply, WorkModal.save_mark(socket, socket.assigns.topic, params)}
 
   def handle_event("open_digest", %{"index" => index} = params, socket) do
     section = if params["section"], do: to_index(params["section"])
@@ -845,6 +843,10 @@ defmodule ChidoriWeb.NewsLive do
       else: {:noreply, socket}
   end
 
+  # 作品の詳細で引いた作品（開いている作品の答えだけ受け取る）
+  def handle_async({:work, title}, result, socket),
+    do: {:noreply, WorkModal.loaded(socket, title, result)}
+
   def handle_async({:digest, title}, {:ok, digest}, socket),
     do: {:noreply, update(socket, :digest_full, &Map.put(&1, title, digest))}
 
@@ -964,8 +966,14 @@ defmodule ChidoriWeb.NewsLive do
   attr :section, :integer, default: nil
   attr :label, :string, default: nil
   attr :hero, :boolean, default: false
-  # 章ごとに「近くの上映館を Gemini に聞く」を添えるか（映画の要約）
-  attr :ask_theaters, :boolean, default: false
+
+  # 章ごとに、紹介した作品を開く口を添えるか（映画・アニメの要約。押したときの
+  # イベント名。`ChidoriWeb.Report.report/1` の `open_work_event`）
+  attr :open_work_event, :string, default: nil
+
+  # ←・→・Esc を受けるか。**作品の詳細を上に開いている間は受けない** —— 受けると、
+  # 詳細を閉じるつもりの Esc で要約まで閉じる
+  attr :keys, :boolean, default: true
 
   @doc """
   全画面の要約。**左右のスワイプで前後の要約へ**（`DigestSwipe`）。最新情報の画面と
@@ -991,7 +999,7 @@ defmodule ChidoriWeb.NewsLive do
       aria-modal="true"
       aria-label="要約"
       phx-hook="DigestSwipe"
-      phx-window-keydown="digest_key"
+      phx-window-keydown={@keys && "digest_key"}
       data-index={@open}
       data-section={@section}
     >
@@ -1034,92 +1042,9 @@ defmodule ChidoriWeb.NewsLive do
           cited={@viewed.cited}
           id_prefix="digest-viewer"
           hero={@hero}
-          ask_theaters={@ask_theaters}
+          open_work_event={@open_work_event}
         />
       </div>
-    </div>
-    """
-  end
-
-  @doc """
-  作品 1 本の中身（公開日・上映形式・配信開始の 1 行と、本文の全部）。
-  **本文は切らずに出します** —— 口コミは本文の末尾にあるので、頭だけで切ると
-  いちばん見たいところが落ちる。出どころの URL はリンクにします。
-  """
-  attr :entry, :map, required: true
-
-  # 作品の作り方のモジュール（映画・アニメ）。事実の並べ方が作品ごとに違う
-  attr :works, :atom, default: Movies
-
-  # 同じ作品が 2 か所（日の一覧と注目作の一覧）に同時に出るので、リンクの id を分ける
-  attr :scope, :string, default: "works"
-
-  # 作品に付けた「見た」印（見出し → 印）。nil なら記録の欄を出さない
-  attr :marks, :map, default: nil
-  attr :saved, :string, default: nil
-
-  def work_detail(assigns) do
-    assigns =
-      assign(assigns,
-        mark: if(assigns.marks, do: Map.get(assigns.marks, assigns.entry.title) || %Mark{}),
-        mark_id: "work-mark-#{assigns.scope}-#{:erlang.phash2(assigns.entry.title)}"
-      )
-
-    ~H"""
-    <p class="event-item-facts">{work_facts(@entry, @works)}</p>
-    <%!-- 見た記録（関連図の「見た記録」と同じ形）。置き場は Chiezo の chidori_data --%>
-    <details :if={@mark} class="seen-mark" open={@mark.seen or @mark.note != ""}>
-      <summary>
-        見た記録 <span :if={mark_summary(@mark)} class="seen-badge">{mark_summary(@mark)}</span>
-      </summary>
-      <form id={@mark_id} phx-submit="save_work_mark">
-        <input type="hidden" name="title" value={@entry.title} />
-        <p class="seen-row">
-          <label><input type="checkbox" name="seen" checked={@mark.seen} /> 見た</label>
-          <label>
-            見た日
-            <input
-              type="date"
-              name="seen_on"
-              value={if @mark.seen_on, do: Date.to_iso8601(@mark.seen_on)}
-            />
-          </label>
-        </p>
-        <p>
-          <label>
-            メモ（どこで見たか・感想）<br />
-            <textarea name="note" rows="2">{@mark.note}</textarea>
-          </label>
-        </p>
-        <button type="submit" phx-disable-with="保存しています…">記録を保存</button>
-        <span :if={@saved == @entry.title} class="muted-note">保存しました。</span>
-      </form>
-    </details>
-    <%!-- **映画だけ**、近くで上映している映画館を Gemini（Google 検索の AI モード）に聞く。
-         現在地は押したときにブラウザから取り、取れなければ現在地を書かずに開く
-         （`AskNearby`。AI モードの側でもおおよその場所は分かる）。**公開中か、1 週間以内に
-         公開されるものだけ**（先の作品はまだどこも上映していない） --%>
-    <p :if={@works == Movies and showing_soon?(@entry)} class="ask-nearby">
-      <a
-        id={"ask-nearby-#{@scope}-#{:erlang.phash2(@entry.title)}"}
-        href={theaters_url(@entry.title)}
-        data-question={theaters_question(@entry.title)}
-        phx-hook="AskNearby"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        近くの上映館を Gemini に聞く
-      </a>
-    </p>
-    <div class="event-item-detail">
-      <p :for={line <- @works.body_lines(@entry)}>
-        <%= for part <- link_parts(line) do %>
-          <a :if={match?({:url, _}, part)} href={elem(part, 1)} target="_blank" rel="noreferrer">
-            {elem(part, 1)}
-          </a>
-          <span :if={match?({:text, _}, part)}>{elem(part, 1)}</span>
-        <% end %>
-      </p>
     </div>
     """
   end
@@ -1134,14 +1059,20 @@ defmodule ChidoriWeb.NewsLive do
   def showing_soon?(_entry, _today), do: false
 
   @doc """
-  近くで上映している映画館を聞く質問文。`where` は現在地（「緯度,経度」）で、
-  無ければ「いまいる場所」とだけ書きます（AI モードの側でおおよその場所は分かる）。
+  近くで上映している映画館を聞く質問文。`where` は現在地（「緯度,経度」）か、
+  書いてもらった地域（`{:region, "新宿"}`）。無ければ「いまいる場所」とだけ書きます
+  （AI モードの側でおおよその場所は分かる）。
   **答えの順番まで頼みます** —— 観に行けるかを決めるのは、どこで・何時からか。
   """
   def theaters_question(title, where \\ nil) do
-    place = if where, do: "現在地（#{where}）", else: "いまいる場所"
+    near =
+      case where do
+        {:region, region} -> "#{region}の近くにあるところ"
+        coords when is_binary(coords) -> "現在地（#{coords}）から近いところ"
+        _none -> "いまいる場所から近いところ"
+      end
 
-    "映画「#{title}」を上映している映画館のうち、#{place}から近いところを教えてください。" <>
+    "映画「#{title}」を上映している映画館のうち、#{near}を教えてください。" <>
       "今日は #{Jst.today() |> Date.to_iso8601()} です。" <>
       "まず近い順に 3 館ほど、映画館の名前・最寄り駅からの行き方・今日と明日の上映時間を" <>
       "箇条書きで手短に。上映形式（IMAX・字幕・吹替など）が分かれば添えてください。" <>

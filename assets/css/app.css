@@ -887,9 +887,27 @@ ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column:
 .event-item-facts { margin: .2rem 0 0; color: #4b5068; font-size: .82rem; }
 /* 送り手の名乗りが https でないとき（iPhone への通知が断られる） */
 .push-subject-bad { color: #b91c1c; }
-/* 映画の札の「近くの上映館を Gemini に聞く」 */
-.ask-nearby { margin: .3rem 0 0; font-size: .82rem; }
+/* 映画の詳細の「近くの上映館を Gemini に聞く」。地域の欄と並べる(空なら現在地) */
+.ask-nearby { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .8rem; margin: .6rem 0 0; font-size: .82rem; }
 .ask-nearby a { color: #4a3fc0; font-weight: 700; }
+.ask-nearby-region { display: inline-flex; align-items: center; gap: .4rem; color: #4b5068; }
+.ask-nearby-region input { width: 9rem; padding: .25rem .5rem; font: inherit; }
+/* 作品の札は押すと詳細が開く(`ChidoriWeb.WorkModal`) */
+.event-item.is-work { cursor: pointer; }
+.event-item.is-work:hover .event-item-head strong { color: #4a3fc0; }
+/* 作品の詳細。**全画面の要約(z-index 70)より手前**に出す(要約から開くため) */
+.work-modal-backdrop { z-index: 80; }
+.artwork.work-modal { width: min(40rem, 100%); }
+.work-modal .artwork-head button { flex: none; white-space: nowrap; }
+.artwork img.work-modal-thumb { max-height: 18rem; }
+.work-modal .event-item-facts { margin-top: .6rem; }
+.work-modal-refs { margin-top: 1rem; padding-top: .8rem; }
+.work-modal-refs a { overflow-wrap: anywhere; }
+.seen-mark-title { margin: 0; font-weight: 700; font-size: 0.9rem; }
+/* 要約の章で紹介した作品(押すと作品の詳細が開く) */
+.report-works { display: flex; flex-wrap: wrap; gap: .4rem; margin: .8rem 0 0; }
+.report-work { padding: .25rem .7rem; border: 1px solid #c9c5f0; border-radius: 99px; background: #f4f3ff; color: #4a3fc0; font-size: .8rem; font-weight: 700; cursor: pointer; }
+.report-work:hover { background: #e9e6ff; }
 .event-item.is-high .event-item-head a, .event-item.is-high .event-item-head strong { font-weight: 700; }
 /* 説明。**開いたまま出す**(ページを開かずに行くかどうかを決められるように) */
 .event-item-detail { margin: .35rem 0 0; padding: .4rem .7rem; border-left: 3px solid #d9dcea; background: #f8f9fc; color: #3a3f58; font-size: .85rem; overflow-wrap: anywhere; }
