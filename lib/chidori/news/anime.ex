@@ -51,6 +51,9 @@ defmodule Chidori.News.Anime do
   @doc "カレンダーの日付に添える言葉（「10月3日 放送開始」）。"
   def date_word, do: "放送開始"
 
+  @doc "「見た」記録の種類（`Chidori.Relations.Marks` の view）。収集の名前に依らない名前にする。"
+  def mark_view, do: "anime"
+
   @doc "注目作の一覧の見出し（始まっているもの / これから始まるもの）。"
   def group_labels, do: {"放送中", "これから放送"}
 

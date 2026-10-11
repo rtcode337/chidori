@@ -73,7 +73,7 @@ defmodule ChidoriWeb.DatasetsLive do
        # 詳細を開いているドメインと、開いたものの本文（開いたときに初めて引く）
        opened_domain: nil,
        domain_docs: %{},
-       # ドメインに付けた「見た」印とメモ（関連図の印と同じ置き場。Chidori にだけ残す）
+       # ドメインに付けた「見た」印とメモ（関連図の印と同じ置き場。Chiezo の chidori_data）
        domain_marks: %{},
        domain_mark_saved: nil,
        asking: false,

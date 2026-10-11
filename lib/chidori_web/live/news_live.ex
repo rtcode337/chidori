@@ -32,6 +32,8 @@ defmodule ChidoriWeb.NewsLive do
   alias Chidori.Notify.Setting
   alias Chidori.Notify.Settings
   alias Chidori.Ntfy
+  alias Chidori.Relations.Mark
+  alias Chidori.Relations.Marks
   alias Chidori.Themes
   alias Chidori.Topics
 
@@ -132,6 +134,9 @@ defmodule ChidoriWeb.NewsLive do
         cal_day: nil,
         cal_places: [],
         works: nil,
+        # 作品に付けた「見た」印とメモ（作品の見出し → 印。`Chidori.Relations.Marks`）
+        work_marks: work_marks(topic),
+        work_mark_saved: nil,
         ai_digests: nil,
         # 通知から開いたとき（`digest=latest`）。まとめが届いたら全画面で開く
         digest_wanted: params["digest"] == "latest"
@@ -549,6 +554,29 @@ defmodule ChidoriWeb.NewsLive do
   # **まとめを全画面で読む。** 記事の一覧の上に置いたままだと、長いまとめは
   # 一覧を押し下げ、通しで読むにも画面の端が気になる。開いたら左右で前後のまとめへ
   # 目次の項目から開いたときは、その章から見せる（`section`）
+  # 作品の「見た」印とメモを書く。**空にしたら消える**（関連図の「見た」と同じ）
+  def handle_event("save_work_mark", %{"title" => title} = params, socket) do
+    works = socket.assigns.topic && Topics.works(socket.assigns.topic)
+
+    attrs = %{
+      # チェックが外れているとキーごと来ない（HTML のチェックボックス）
+      "seen" => params["seen"] == "on",
+      "seen_on" => if(params["seen_on"] in [nil, ""], do: nil, else: params["seen_on"]),
+      "note" => params["note"] || ""
+    }
+
+    with true <- works != nil and function_exported?(works, :mark_view, 0),
+         {:ok, mark} <- Marks.put(works.mark_view(), title, attrs) do
+      marks = socket.assigns.work_marks || %{}
+      marks = if mark, do: Map.put(marks, title, mark), else: Map.delete(marks, title)
+      {:noreply, assign(socket, work_marks: marks, work_mark_saved: title)}
+    else
+      _error ->
+        # 書けなかったことは黙って捨てない
+        {:noreply, put_flash(socket, :error, "見た記録を保存できませんでした。")}
+    end
+  end
+
   def handle_event("open_digest", %{"index" => index} = params, socket) do
     section = if params["section"], do: to_index(params["section"])
     kind = if params["kind"] == "interest", do: :interest, else: :main
@@ -1026,9 +1054,47 @@ defmodule ChidoriWeb.NewsLive do
   # 同じ作品が 2 か所（日の一覧と注目作の一覧）に同時に出るので、リンクの id を分ける
   attr :scope, :string, default: "works"
 
+  # 作品に付けた「見た」印（見出し → 印）。nil なら記録の欄を出さない
+  attr :marks, :map, default: nil
+  attr :saved, :string, default: nil
+
   def work_detail(assigns) do
+    assigns =
+      assign(assigns,
+        mark: if(assigns.marks, do: Map.get(assigns.marks, assigns.entry.title) || %Mark{}),
+        mark_id: "work-mark-#{assigns.scope}-#{:erlang.phash2(assigns.entry.title)}"
+      )
+
     ~H"""
     <p class="event-item-facts">{work_facts(@entry, @works)}</p>
+    <%!-- 見た記録（関連図の「見た記録」と同じ形）。置き場は Chiezo の chidori_data --%>
+    <details :if={@mark} class="seen-mark" open={@mark.seen or @mark.note != ""}>
+      <summary>
+        見た記録 <span :if={mark_summary(@mark)} class="seen-badge">{mark_summary(@mark)}</span>
+      </summary>
+      <form id={@mark_id} phx-submit="save_work_mark">
+        <input type="hidden" name="title" value={@entry.title} />
+        <p class="seen-row">
+          <label><input type="checkbox" name="seen" checked={@mark.seen} /> 見た</label>
+          <label>
+            見た日
+            <input
+              type="date"
+              name="seen_on"
+              value={if @mark.seen_on, do: Date.to_iso8601(@mark.seen_on)}
+            />
+          </label>
+        </p>
+        <p>
+          <label>
+            メモ（どこで見たか・感想）<br />
+            <textarea name="note" rows="2">{@mark.note}</textarea>
+          </label>
+        </p>
+        <button type="submit" phx-disable-with="保存しています…">記録を保存</button>
+        <span :if={@saved == @entry.title} class="muted-note">保存しました。</span>
+      </form>
+    </details>
     <%!-- **映画だけ**、近くで上映している映画館を Gemini（Google 検索の AI モード）に聞く。
          現在地は押したときにブラウザから取り、取れなければ現在地を書かずに開く
          （`AskNearby`。AI モードの側でもおおよその場所は分かる）。**公開中か、1 週間以内に
@@ -1093,6 +1159,29 @@ defmodule ChidoriWeb.NewsLive do
   @doc "質問文を入れて Google 検索の AI モードを開く URL。"
   def ai_mode_url(question),
     do: "https://www.google.com/search?" <> URI.encode_query(%{"udm" => "50", "q" => question})
+
+  # 作品に付けた「見た」印（映画・アニメの話題だけ。ほかの話題では nil）
+  defp work_marks(topic) do
+    case topic && Topics.works(topic) do
+      works when is_atom(works) and works != nil ->
+        if function_exported?(works, :mark_view, 0),
+          do: Marks.for_view(works.mark_view()),
+          else: nil
+
+      _none ->
+        nil
+    end
+  end
+
+  @doc "その作品を見たか（見出しの横の印）。"
+  def seen_work?(marks, title) when is_map(marks), do: match?(%Mark{seen: true}, marks[title])
+  def seen_work?(_marks, _title), do: false
+
+  @doc "見た記録の札の一言（「見た（2026-10-11）」「見た」「メモあり」）。"
+  def mark_summary(%Mark{seen: true, seen_on: %Date{} = date}), do: "見た（#{Date.to_iso8601(date)}）"
+  def mark_summary(%Mark{seen: true}), do: "見た"
+  def mark_summary(%Mark{note: note}) when is_binary(note) and note != "", do: "メモあり"
+  def mark_summary(_mark), do: nil
 
   @doc "1 行を、地の文と URL に分けます（URL はリンクにするため）。"
   def link_parts(line) do

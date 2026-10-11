@@ -239,9 +239,17 @@
                   {entry.title}
                 </a>
                 <strong :if={!entry.url}>{entry.title}</strong>
+                <%!-- 見た作品は見出しの横に印（記録の欄を開かなくても分かる） --%>
+                <span :if={seen_work?(@work_marks, entry.title)} class="seen-badge">見た</span>
               </div>
               <%= if Chidori.Topics.works(@topic) do %>
-                <.work_detail entry={entry} works={Chidori.Topics.works(@topic)} scope="day" />
+                <.work_detail
+                  entry={entry}
+                  works={Chidori.Topics.works(@topic)}
+                  scope="day"
+                  marks={@work_marks}
+                  saved={@work_mark_saved}
+                />
               <% else %>
                 <p class="event-item-facts">
                   <span :if={Events.abroad?(entry)} class="event-abroad-mark">海外</span>
@@ -311,8 +319,15 @@
                   {entry.title}
                 </a>
                 <strong :if={!entry.url}>{entry.title}</strong>
+                <%!-- 見た作品は見出しの横に印（記録の欄を開かなくても分かる） --%>
+                <span :if={seen_work?(@work_marks, entry.title)} class="seen-badge">見た</span>
               </div>
-              <.work_detail entry={entry} works={Chidori.Topics.works(@topic)} />
+              <.work_detail
+                entry={entry}
+                works={Chidori.Topics.works(@topic)}
+                marks={@work_marks}
+                saved={@work_mark_saved}
+              />
             </li>
           </ul>
         </section>

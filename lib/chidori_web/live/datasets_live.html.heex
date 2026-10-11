@@ -970,7 +970,7 @@
           </strong>
           <button type="button" phx-click="close_domain">閉じる</button>
         </div>
-        <%!-- 見た記録（関連図の「見た記録」と同じ形）。**Chidori にだけ残す** --%>
+        <%!-- 見た記録（関連図の「見た記録」と同じ形）。置き場は Chiezo の chidori_data --%>
         <% mark = domain_mark_of(@domain_marks, domain.domain) %>
         <details class="seen-mark" open={Map.has_key?(@domain_marks, domain.domain)}>
           <summary>
@@ -996,7 +996,7 @@
               </label>
             </p>
             <p class="muted-note">
-              ここに書いたことは Chidori にだけ残ります（Chiezo へは送りません）。「まだ見ていない」で絞ると、見たものは一覧から外れます。
+              ここに書いたことは Chidori の置き場（Chiezo の chidori_data）に残ります（収集には書きません）。「まだ見ていない」で絞ると、見たものは一覧から外れます。
               <strong>印もメモも空にして保存すると、記録ごと消えます。</strong>
             </p>
             <button type="submit" phx-disable-with="保存しています…">記録を保存</button>
@@ -1083,7 +1083,7 @@
           </div>
         </div>
 
-        <%!-- 読んだ記録（関連図の「見た記録」と同じ形）。**Chidori にだけ残す** --%>
+        <%!-- 読んだ記録（関連図の「見た記録」と同じ形）。置き場は Chiezo の chidori_data --%>
         <% mark = book_mark_of(@book_marks, book.title) %>
         <details class="seen-mark" open={Map.has_key?(@book_marks, book.title)}>
           <summary>
@@ -1107,7 +1107,7 @@
               </label>
             </p>
             <p class="muted-note">
-              ここに書いたことは Chidori にだけ残ります（Chiezo へは送りません）。読んだ本は「いま勧められている未読の上位」から外れます。
+              ここに書いたことは Chidori の置き場（Chiezo の chidori_data）に残ります（収集には書きません）。読んだ本は「いま勧められている未読の上位」から外れます。
               <strong>印もメモも空にして保存すると、記録ごと消えます。</strong>
             </p>
             <button type="submit" phx-disable-with="保存しています…">記録を保存</button>
