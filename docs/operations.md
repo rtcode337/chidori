@@ -46,8 +46,10 @@ Chiezo 側では `CHIEZO_NOTES_DIR` が設定されている必要がありま�
 
 本番用イメージは `Dockerfile` でビルドする。イメージの中でスタイルと JavaScript も作る。
 `main` へ push すると GitHub Actions（`.github/workflows/build-and-push-image.yml`）が
-`ghcr.io/rtcode337/chidori:latest` と `:sha-<短縮SHA>` を公開する（amd64 のみ。GHCR には直近の
-2 版だけ残す）。パッケージは公開なので、`docker login` なしで pull できる。
+`ghcr.io/rtcode337/chidori:latest` と `:sha-<短縮SHA>` を公開する（amd64 のみ）。`v1.2.3` のような
+タグを push すると、同じ名前のイメージのタグも付く。GHCR にはタグ付きの直近 20 版と `v*` のタグを残し、
+それより古い版は消す。パッケージは公開なので、`docker login` なしで pull できる。
+テスト（`.github/workflows/ci.yml`）の結果は待たずに公開する。
 
 ## `.env` を置けない環境で起動する（単体定義）
 
@@ -66,7 +68,7 @@ docker compose pull && docker compose up -d
 
 移行（DB のスキーマの変更）は起動のたびに当たる（`Chidori.Release.migrate/0`。当て終わっているものは飛ばされる）。
 動かすイメージを固定したいときは、`docker-compose.yml` の `image:` を `:latest` から `:sha-<短縮SHA>` に替える。
-新しい版で起動できなかったときの戻し先にもなる（GHCR に残るのは直近の版だけ）。
+新しい版で起動できなかったときの戻し先にもなる（GHCR に残るのは直近 20 版と `v*` のタグ）。
 
 ## 通知を使う
 

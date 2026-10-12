@@ -18,7 +18,12 @@ paths:
 
 - 本番はイメージ `ghcr.io/rtcode337/chidori` を pull して動かす。`main` への push で GitHub Actions
   （`.github/workflows/build-and-push-image.yml`）が `latest` と `sha-<短縮SHA>` を公開する（amd64 のみ）。
-  ドキュメントだけの変更では走らない（`paths-ignore`）
+  ドキュメントだけの変更では走らない（`paths-ignore`）。`v*` のタグの push では同じ名前のタグも付ける。
+  GHCR にはタグ付きの直近 20 版と `v*` のタグを残す（`dataaxiom/ghcr-cleanup-action`）
+- テストは `.github/workflows/ci.yml`（hex.audit・警告なしのコンパイル・変えたファイルの整形・テスト）。
+  イメージの公開はその結果を待たない。CI のイメージは `Dockerfile` の builder と同じタグを書く（食い違うと落ちる）
+- 依存・ベースイメージ・Actions の更新は Dependabot（`.github/dependabot.yml`、週 1）
+- builder と実行段は同じ Debian の版（trixie）に揃える
 - `Dockerfile` はマルチステージ。実行は非 root（`chidori`）。起動のたびに `Chidori.Release.migrate/0` を当ててから立てる（リリースに Mix は入らない）
 - compose の分け方: `docker-compose.yml`（本番。GHCR のイメージ + PostgreSQL）、`docker-compose.build.yml`（重ねると手元のソースから作る）、
   `docker-compose.dev.yml`（開発用の DB だけ。プロジェクト名 `chidori-dev` で本番の構成と混ざらない）、

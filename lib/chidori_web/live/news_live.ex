@@ -1071,7 +1071,9 @@ defmodule ChidoriWeb.NewsLive do
   @showing_within_days 7
 
   @doc "公開中か、もうすぐ公開される作品か（上映館を聞くリンクを出すか）。"
-  def showing_soon?(%{date: %Date{} = date}, today \\ Jst.today()),
+  def showing_soon?(entry, today \\ Jst.today())
+
+  def showing_soon?(%{date: %Date{} = date}, today),
     do: Date.diff(date, today) <= @showing_within_days
 
   def showing_soon?(_entry, _today), do: false

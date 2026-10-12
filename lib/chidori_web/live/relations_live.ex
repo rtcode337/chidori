@@ -623,10 +623,6 @@ defmodule ChidoriWeb.RelationsLive do
   def settings_ready?(settings), do: is_map(settings)
 
   @doc """
-  いつ読んだか。**開くたびに取り直さない**ので、いま見ているものの古さが読めないと困ります。
-  """
-
-  @doc """
   図を取り直している最中か（読んでいる・収集の途中経過が届いている、のどちらか）。
   「最新の情報を取得」を押せなくし、取得中だと分かるようにするのに使います。
   """

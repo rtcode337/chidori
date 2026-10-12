@@ -3,6 +3,10 @@
 # デプロイ先は `docker compose pull` でこのイメージを取得して動かす
 # （docker-compose.yml / docker-compose.standalone.example.yml）。
 # 実行環境は amd64 のみ（複数アーキのビルドは作らない。要るようになったら platforms に足す）。
+#
+# テスト（ci.yml）の結果は待たずに並んで走る。main へ直に push する運用なので、
+# 待たせても落ちた変更は main に入っている —— 落ちたら直して push し直すか、
+# 前の sha- タグへ戻す。
 name: build-and-push-image
 
 on:
@@ -75,20 +79,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 古いイメージを消して最新の 2 つだけ残す。
+      # 古いイメージを消して、タグ付きの直近 20 版と `v*` のタグを残す。
       #
-      # `latest` を付け替えても前の版は `sha-` タグ付きで残り続けるため、放っておくと
-      # push のたびに積み上がる。
-      # 1 世代前は、新しい版で起動できなかったときに戻す先として残す。
+      # 公開パッケージなので GHCR の容量・転送は無料枠を消費しないが、`latest` を
+      # 付け替えても前の版は `sha-` タグ付きで残るため、放っておくと際限なく積み上がる。
+      # 20 版は、新しい版で起動できなかったときに戻す先を選べるだけの幅。
+      # リリースのタグ（v1.2.3）は数に関わらず消さない。
+      #
+      # actions/delete-package-versions はタグでは除外できない（コンテナの版の名前は
+      # ダイジェストで、タグを見ない）ので、タグで選べるこちらを使う。
+      # push を途中で打ち切った実行が残すタグ無しの版も一緒に消す。
       #
       # 失敗しても握りつぶさない（continue-on-error を付けない）。消せていないのに
-      # 成功に見えると、枠が埋まって push が止まる日まで気づけないため。
+      # 成功に見えると、積み上がっていることに気づけないため。
       # GITHUB_TOKEN で権限が足りない場合は、delete:packages + read:packages を持つ PAT を
       # シークレット GHCR_CLEANUP_TOKEN に入れれば、そちらが使われる。
-      - name: 古いイメージを削除して直近 2 版だけ残す
-        uses: actions/delete-package-versions@v5
+      - name: 古いイメージを削除して直近 20 版と v* のタグだけ残す
+        uses: dataaxiom/ghcr-cleanup-action@v1
         with:
-          package-name: ${{ github.event.repository.name }}
-          package-type: container
-          min-versions-to-keep: 2
+          package: ${{ github.event.repository.name }}
+          keep-n-tagged: 20
+          exclude-tags: "v*"
+          delete-untagged: true
           token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}

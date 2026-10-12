@@ -1,0 +1,34 @@
+# 依存の更新 PR を週 1 でまとめて受け取る（月曜 JST）。
+# PR ごとに ci（コンパイル・hex.audit・テスト）が通るかが自動で検証される。
+# 自動マージはしない。中身を見てから main に入れる。
+version: 2
+updates:
+  # Hex の依存（mix.exs / mix.lock）
+  - package-ecosystem: mix
+    directory: /
+    schedule:
+      interval: weekly
+      timezone: Asia/Tokyo
+
+  # Dockerfile のベースイメージ（hexpm/elixir と debian）。
+  # builder の版を上げる PR では、.github/workflows/ci.yml のイメージも同じタグに
+  # 直す（揃っていないと ci が落ちる）
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      timezone: Asia/Tokyo
+
+  # compose が pull するイメージ（postgres）。自前の chidori は :latest なので対象にならない
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      timezone: Asia/Tokyo
+
+  # GitHub Actions（actions/checkout 等）
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      timezone: Asia/Tokyo

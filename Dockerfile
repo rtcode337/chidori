@@ -1,4 +1,6 @@
-FROM hexpm/elixir:1.20.4-erlang-28.5.0.6-debian-bookworm-20260824-slim AS builder
+# builder と実行段は同じ Debian の版(いまは trixie)に揃える。リリースは builder の
+# OpenSSL などに結び付いて焼かれるので、版が違うと実行段で起動できない
+FROM hexpm/elixir:1.20.4-erlang-29.1.1-debian-trixie-20261005-slim AS builder
 
 ENV MIX_ENV=prod
 WORKDIR /app
@@ -22,10 +24,11 @@ RUN mix compile \
   && mix assets.deploy \
   && mix release
 
-FROM debian@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS app
+FROM debian:trixie-20261005-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f AS app
 
+# libsctp1 は使わないが、無いと OTP 29 の VM が起動のたびに読み込み失敗の警告を出す
 RUN apt-get update \
-  && apt-get install --yes --no-install-recommends ca-certificates libstdc++6 libncurses6 openssl \
+  && apt-get install --yes --no-install-recommends ca-certificates libstdc++6 libncurses6 openssl libsctp1 \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --system --gid 10001 chidori \
   && useradd --system --uid 10001 --gid chidori --create-home chidori

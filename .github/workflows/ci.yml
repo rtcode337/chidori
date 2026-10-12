@@ -1,0 +1,129 @@
+# push / PR で検査とテストを回す。
+#
+# イメージの公開は別のワークフロー（build-and-push-image.yml）で、こちらの結果を待たない。
+# main へ直に push する運用なので、テストが落ちたときは公開されたイメージにも
+# 同じ変更が入っている —— 落ちたら直すか、前の sha- タグへ戻す。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同じ参照への連続した push では古い実行を打ち切る（検査だけで、途中で止めて困るものは無い）
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# 公開リポジトリは fork からの PR が来る前提なので、読み取りだけにする
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    # 本番のイメージと同じ Elixir / OTP で回す。Dockerfile の builder と同じタグを書く
+    # （下の「Dockerfile と同じ版か」で食い違いを落とす。Dependabot が Dockerfile だけを
+    # 上げてきたときは、ここも合わせて直す）。
+    # container.image には env を渡せないので、1 つだけの matrix で値を共有している
+    strategy:
+      matrix:
+        image: ["hexpm/elixir:1.20.4-erlang-29.1.1-debian-trixie-20261005-slim"]
+    container:
+      image: ${{ matrix.image }}
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: chidori
+          POSTGRES_PASSWORD: chidori
+        options: >-
+          --health-cmd "pg_isready -U chidori"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MIX_ENV: test
+      # ジョブはコンテナの中なので、サービスにはサービス名で届く
+      DATABASE_URL: ecto://chidori:chidori@postgres/chidori_test
+      LANG: C.UTF-8
+    steps:
+      # slim のイメージには git が無い。無いと checkout が履歴を持たずに展開し、
+      # 変更したファイルを数えられない
+      - name: git を入れる
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends git ca-certificates
+
+      - uses: actions/checkout@v7
+        with:
+          # push で複数のコミットが届いたとき、その前の状態と比べるのに履歴が要る
+          fetch-depth: 0
+
+      # コンテナは root で動き、チェックアウト先はランナーの利用者のものなので、
+      # そのままだと git が「所有者の違うリポジトリ」として扱いを拒む
+      - name: git にチェックアウト先を信用させる
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Dockerfile と同じ版か
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          if ! grep -qx "FROM ${IMAGE} AS builder" Dockerfile; then
+            echo "::error::ci.yml のイメージ (${IMAGE}) が Dockerfile の builder と違う"
+            exit 1
+          fi
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ matrix.image }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ matrix.image }}-
+
+      - name: 依存を取る
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      # 退役した版を使っていないか、既知の脆弱性が無いか
+      - name: mix hex.audit
+        run: mix hex.audit
+
+      - name: 警告なしでコンパイルできるか
+        run: mix compile --warnings-as-errors
+
+      # 整形は変えたファイルだけを見る。リポジトリ全体はまだ mix format に揃っておらず、
+      # 全体を見ると触っていないファイルで落ちる（揃えるためだけの差分は入れない方針）。
+      # 比べる相手:
+      #   PR       … マージコミットの 1 つ目の親（= PR の取り込み先）
+      #   push     … push 前の main（新しいブランチなどで無いときは 1 つ前のコミット）
+      #   手動実行 … 1 つ前のコミット
+      # 対象は .formatter.exs の inputs と同じ範囲（直下と config / lib / test の .ex/.exs/.heex）
+      - name: 変えたファイルが整形済みか
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          base=HEAD^1
+          # 新しいブランチの push では BEFORE が 0 だけの値になり、コミットとして引けない
+          if [ "$EVENT" = push ] && [ -n "$BEFORE" ] \
+            && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            base="$BEFORE"
+          fi
+          files=$(git diff --name-only --diff-filter=ACMR "$base" HEAD \
+            | grep -E '^([^/]+|(config|lib|test)/.+)\.(ex|exs|heex)$' || true)
+          if [ -z "$files" ]; then
+            echo "整形の対象になるファイルの変更は無い"
+            exit 0
+          fi
+          echo "$files"
+          echo "$files" | xargs mix format --check-formatted
+
+      - name: mix test
+        run: mix test

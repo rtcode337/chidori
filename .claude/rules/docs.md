@@ -16,7 +16,7 @@ paths:
 | `docs/relations.md` | 関連図（画家・芸能人）の育て方・図の操作・見た記録 |
 | `docs/datasets.md` | データ収集（技術書・Pi-hole・食事処）と travel-log への書き出しの対応表 |
 | `docs/operations.md` | 起動・環境変数・イメージ・単体定義・更新・通知の設定・バックアップ |
-| `docs/development.md` | mix をコンテナで回す・テスト・スタイルと JS・アイコン・ローカルビルド |
+| `docs/development.md` | mix をコンテナで回す・テスト・CI・スタイルと JS・アイコン・ローカルビルド |
 | `docs/basic-design.md`・`docs/technology-selection.md` | 作り始める前の構想。今の実装とは違う（冒頭にその断りがある）。更新しない |
 
 - README には詳細を書き戻さない。節を足したくなったら、先に docs/ へ置けないかを考える

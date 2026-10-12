@@ -1,10 +1,12 @@
 # 開発
 
-テスト・開発サーバー・スタイルと JavaScript の作り直し・アイコン・ローカルビルド。
+テスト・CI・開発サーバー・スタイルと JavaScript の作り直し・アイコン・ローカルビルド。
 
 ## mix をコンテナで回す
 
-手元に Elixir を入れずに、公式イメージで mix を回せる（版は `Dockerfile` の builder と揃える）。
+手元に Elixir を入れずに、公式イメージで mix を回せる。Elixir の版は `Dockerfile` の builder と揃える。
+OTP は builder が 29、手元のコマンドは 28 にしている。開発サーバーと `_build` を共有するので、
+別の OTP で焼くと開発サーバーが読めなくなるため。コードはどちらでもコンパイルできる書き方にとどめる。
 テストは `docker-compose.dev.yml` の PostgreSQL（`localhost:7071`）を使うので、先に立てておく。
 
 ```bash
@@ -19,6 +21,19 @@ docker run --rm --network host -u "$(id -u):$(id -g)" -v "$PWD:/app" -w /app \
 - 移行は開発サーバーが自動では当てない。足したら `mix ecto.migrate` を流す
 - 開発サーバーは作業ツリーをそのまま読み直す。構文の壊れたファイルを残さない（読み直しに失敗したまま、開いている画面が動かなくなる）
 - 開発サーバーが動いている間に、別のコンテナから `MIX_ENV=dev mix assets.build` を回さない。`_build/dev` をコンパイルし直すので、開発サーバーが読み直さなくなる。スタイルだけなら `mix tailwind chidori`、JavaScript だけなら `mix esbuild chidori`
+
+## CI
+
+push と PR で `.github/workflows/ci.yml` が回る。`Dockerfile` の builder と同じイメージの中で、
+次を順に見る。
+
+- `mix hex.audit` —— 退役した版・既知の脆弱性のある版を使っていないか
+- `mix compile --warnings-as-errors` —— 警告を残すと落ちる
+- `mix format --check-formatted` —— 変えたファイルだけ（PR は取り込み先と、push は push 前と比べる）
+- `mix test` —— PostgreSQL はサービスのコンテナで立てる（`DATABASE_URL` で向ける）
+
+builder のタグを上げたら、`ci.yml` のイメージも同じタグに直す（食い違うと CI が落ちる）。
+依存・ベースイメージ・Actions の更新は Dependabot（`.github/dependabot.yml`）が週 1 で PR にする。
 
 ## 手元のソースからイメージを作る
 

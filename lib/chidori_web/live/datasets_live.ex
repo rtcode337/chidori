@@ -549,6 +549,13 @@ defmodule ChidoriWeb.DatasetsLive do
      |> start_async(:apply_locks, fn -> Requests.apply_now(dataset) end)}
   end
 
+  # 依頼の結果を読み直す（Chiezo の変更履歴は回が終わってから 1 行になる）
+  def handle_event("reload_request_results", _params, socket),
+    do: {:noreply, load_request_results(socket)}
+
+  def handle_event("reload_recent_runs", _params, socket),
+    do: {:noreply, load_recent_runs(socket)}
+
   defp hold_locations(socket, _dataset, []), do: assign(socket, held: nil)
 
   defp hold_locations(socket, dataset, confirms) do
@@ -556,13 +563,6 @@ defmodule ChidoriWeb.DatasetsLive do
     |> assign(held: :holding)
     |> start_async(:hold, fn -> Requests.hold(dataset, confirms) end)
   end
-
-  # 依頼の結果を読み直す（Chiezo の変更履歴は回が終わってから 1 行になる）
-  def handle_event("reload_request_results", _params, socket),
-    do: {:noreply, load_request_results(socket)}
-
-  def handle_event("reload_recent_runs", _params, socket),
-    do: {:noreply, load_recent_runs(socket)}
 
   # 定時の巡回とは別に、1 回だけ頼む
   @impl true
@@ -802,9 +802,6 @@ defmodule ChidoriWeb.DatasetsLive do
 
   defp crashed(state), do: %{state | status: :ready, reason: :collection_crashed}
 
-  @doc """
-  いつ読んだか。**開くたびに取り直さない**ので、いま見ているものの古さが読めないと困ります。
-  """
   @doc """
   いつ Chiezo から読んだか（本棚と設定の、新しいほう）。まだ読んでいなければ nil。
   """
