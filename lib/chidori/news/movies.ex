@@ -97,9 +97,6 @@ defmodule Chidori.News.Movies do
   @doc "先を探す回の間隔（分）。"
   def survey_minutes, do: @survey_minutes
 
-  @doc "整理の回の間隔（分）。"
-  def refine_minutes, do: Chidori.SweepNames.tidy_minutes()
-
   @doc """
   作品に付けるタグの決まり。**先を探す回と整理の回で同じ文を使う** ——
   書き分けると、回によって付く印の揃い方が変わり、カレンダーの目立たせ方がぶれる。
@@ -384,18 +381,6 @@ defmodule Chidori.News.Movies do
   end
 
   def streaming(_entry), do: nil
-
-  @doc "口コミを書いた日（タグから。まだなら nil）。"
-  def reviewed_on(%{tags: tags}) do
-    Enum.find_value(values(tags, @review_tag), fn value ->
-      case Date.from_iso8601(value) do
-        {:ok, date} -> date
-        _ -> nil
-      end
-    end)
-  end
-
-  def reviewed_on(_entry), do: nil
 
   defp values(tags, head) do
     for tag <- tags,

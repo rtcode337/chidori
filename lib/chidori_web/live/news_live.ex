@@ -328,7 +328,7 @@ defmodule ChidoriWeb.NewsLive do
     news = socket.assigns.news
 
     {:noreply,
-     case Notify.deliver_latest(topic.collection, news, force: true) do
+     case Notify.deliver_latest(topic.collection, news) do
        {:ok, :sent} -> put_flash(socket, :info, "まとめを知らせました。")
        {:ok, :nothing_to_send} -> put_flash(socket, :error, "知らせるまとめがまだありません。")
        {:error, reason} -> put_flash(socket, :error, notify_error(reason))
@@ -1295,10 +1295,6 @@ defmodule ChidoriWeb.NewsLive do
 
   def theme_prompt_note(_themes),
     do: "この節の「収集を依頼する」を押すと、この内容で Chiezo に頼みます。"
-
-  @doc "いまの通知の設定。フォームに載せます。"
-  def notify_setting(nil), do: Settings.changeset("")
-  def notify_setting(%{collection: collection}), do: Settings.changeset(collection)
 
   @doc "知らせられる状態か。**押せない口は出さない**。"
   def can_notify?(nil), do: false

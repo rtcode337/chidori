@@ -241,6 +241,9 @@ defmodule Chidori.NewsTest do
           send(test_pid, {:created, Jason.decode!(body)})
           HttpStub.ok(Jason.encode!(collection(%{"enabled" => false})))
 
+        %{method: :patch} ->
+          HttpStub.ok("{}")
+
         %{method: :get, url: "http://chiezo.test:7010/v1/collect"} ->
           HttpStub.ok(list_body([collection(%{"enabled" => false})]))
 
@@ -253,7 +256,7 @@ defmodule Chidori.NewsTest do
 
       name = start_news()
       News.subscribe()
-      News.request_collection(name)
+      News.setup(name, nil)
 
       assert_receive {:created, payload}, 2_000
       assert payload["name"] == "chidori_news"
@@ -295,86 +298,12 @@ defmodule Chidori.NewsTest do
       assert_receive {:news_updated, %{status: :ready, collection: %{enabled: false}}}, 2_000
     end
 
-    test "相手を名指しして依頼できる" do
-      System.put_env("CHIDORI_NEWS_BACKEND", "antigravity")
-      System.put_env("CHIDORI_NEWS_MODEL", "haiku")
-
-      on_exit(fn ->
-        System.delete_env("CHIDORI_NEWS_BACKEND")
-        System.delete_env("CHIDORI_NEWS_MODEL")
-      end)
-
-      test_pid = self()
-
-      HttpStub.stub(fn
-        %{method: :post, body: body} ->
-          send(test_pid, {:created, Jason.decode!(body)})
-          HttpStub.ok(Jason.encode!(collection()))
-
-        %{method: :get, url: "http://chiezo.test:7010/v1/collect"} ->
-          HttpStub.ok(list_body([collection()]))
-
-        %{method: :get, url: "http://chiezo.test:7010/v1/sources"} ->
-          HttpStub.ok(sources_body(0))
-
-        %{method: :get} ->
-          HttpStub.ok(detail_body([]))
-      end)
-
-      name = start_news()
-      News.subscribe()
-      News.request_collection(name)
-
-      assert_receive {:created, payload}, 2_000
-      assert payload["backend"] == "antigravity"
-      assert payload["model"] == "haiku"
-      # 指定していない項目は送らない
-      refute Map.has_key?(payload, "effort")
-    end
-
     test "すでにある収集を頼み直しても失敗にしない" do
       HttpStub.stub(fn
         %{method: :post} ->
           {:ok, %{status: 409, body: ""}}
 
-        %{method: :get, url: "http://chiezo.test:7010/v1/collect"} ->
-          HttpStub.ok(list_body([collection()]))
-
-        %{method: :get, url: "http://chiezo.test:7010/v1/sources"} ->
-          HttpStub.ok(sources_body(1))
-
-        %{method: :get} ->
-          HttpStub.ok(detail_body([]))
-      end)
-
-      name = start_news()
-      News.subscribe()
-      News.request_collection(name)
-
-      assert_receive {:news_updated, %{status: :ready}}, 2_000
-    end
-  end
-
-  describe "いま集めさせる" do
-    test "止まっている収集は Chiezo が断る。その理由をそのまま出す" do
-      HttpStub.stub(fn
-        %{method: :post} -> {:ok, %{status: 403, body: ""}}
-        %{method: :get} -> HttpStub.ok(list_body([collection()]))
-      end)
-
-      name = start_news()
-      News.subscribe()
-      News.run_now(name)
-
-      assert_receive {:news_updated, %{reason: :collection_disabled}}, 2_000
-    end
-
-    test "続けて押しても投げ直さない" do
-      test_pid = self()
-
-      HttpStub.stub(fn
-        %{method: :post} ->
-          send(test_pid, :ran)
+        %{method: :patch} ->
           HttpStub.ok("{}")
 
         %{method: :get, url: "http://chiezo.test:7010/v1/collect"} ->
@@ -384,21 +313,18 @@ defmodule Chidori.NewsTest do
           HttpStub.ok(sources_body(1))
 
         %{method: :get} ->
-          HttpStub.ok(detail_body([recent("記事")]))
+          HttpStub.ok(detail_body([]))
       end)
 
       name = start_news()
       News.subscribe()
-      News.run_now(name)
+      News.setup(name, nil)
 
-      assert_receive :ran, 2_000
       assert_receive {:news_updated, %{status: :ready}}, 2_000
-
-      News.run_now(name)
-      assert_receive {:news_updated, %{reason: :too_soon}}, 1_000
-      refute_receive :ran, 300
     end
+  end
 
+  describe "落ちたとき" do
     @tag :capture_log
     test "問い合わせが落ちても :loading のままにしない" do
       HttpStub.stub(fn _request -> raise "壊れた" end)

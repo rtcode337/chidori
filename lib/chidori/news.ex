@@ -34,11 +34,7 @@ defmodule Chidori.News do
 
   # Chiezo は LAN 内なので短くてよい。ただし「いま集めさせる」は AI が動くので長い
   @request_timeout 15_000
-  @run_timeout 600_000
   @connect_timeout 5_000
-
-  # AI を動かす操作だけ間隔を空ける。読み直しは相手が手元にいるので絞らない
-  @min_run_interval_ms 30_000
 
   # 画面に出す件数。Chiezo 側の上限は 50（超えて頼むと 0 件で返る）
   @samples 20
@@ -125,8 +121,7 @@ defmodule Chidori.News do
             # 押して送っている最中か。**開いたときの読み直しと区別する** ——
             # どちらも読み込み中（`:loading`）なので、一緒にすると読むだけのときに
             # 「送っています」と出る
-            pushing: false,
-            last_run_at: nil
+            pushing: false
 
   @doc """
   話題 1 つぶんの入れ物を立てます。
@@ -175,18 +170,6 @@ defmodule Chidori.News do
   """
   def refresh(server) do
     GenServer.cast(server, {:command, :refresh})
-  end
-
-  @doc """
-  収集そのものを Chiezo へ依頼します。作られるのは止まった状態です。
-
-  **話題は呼ぶ側が渡します。** 依頼の本文も相手も話題の設定から作りますが、
-  それを取りに行くのはここではありません —— DB を読むのは画面のある側の仕事で、
-  ここから読むと、問い合わせを動かしている Task から読むことになります
-  （テストの sandbox では持ち主のいないプロセスになり、読めません）。
-  """
-  def request_collection(server, topic \\ nil) do
-    GenServer.cast(server, {:command, {:request, topic}})
   end
 
   @doc """
@@ -255,13 +238,6 @@ defmodule Chidori.News do
   end
 
   @doc """
-  予定を待たずに1回集めさせます。止まっている収集は Chiezo が断ります。
-  """
-  def run_now(server) do
-    GenServer.cast(server, {:command, :run})
-  end
-
-  @doc """
   収集状態の変化を受け取ります。LiveView が接続時に呼びます。
 
   **話題ごとに分けて配ります** —— 1 本にまとめると、見ていない話題が集め終わった
@@ -296,40 +272,9 @@ defmodule Chidori.News do
   defp topic(collection), do: "news:" <> collection
 
   @doc """
-  Chiezo に置く収集の名前。`CHIDORI_NEWS_COLLECTION` で変えられます。
+  「一般ニュース」の話題が使う、Chiezo に置く収集の名前。
   """
-  def collection_name do
-    case System.get_env("CHIDORI_NEWS_COLLECTION", "") |> String.trim() do
-      "" -> @default_collection
-      name -> name
-    end
-  end
-
-  @doc """
-  誰に頼むか。`CHIDORI_NEWS_BACKEND` / `_MODEL` / `_EFFORT` で指定します。
-
-  **これは収集ぜんたいの下敷き**で、巡回ごとの相手は画面の表から選びます
-  （巡回に書いてあればそちらが勝ちます）。
-
-  **未指定なら Chiezo の既定にまかせます**（有効にしてある相手の先頭）。
-  どの相手に頼むかは本来 Chiezo 側の判断なので、Chidori から名指しするのは
-  「この収集だけは別の相手に」と決めたときだけです。依頼した後は Chiezo の
-  管理画面からも変えられます。
-  """
-  def backend_settings do
-    %{
-      backend: env("CHIDORI_NEWS_BACKEND"),
-      model: env("CHIDORI_NEWS_MODEL"),
-      effort: env("CHIDORI_NEWS_EFFORT")
-    }
-  end
-
-  defp env(name) do
-    case System.get_env(name, "") |> String.trim() do
-      "" -> nil
-      value -> value
-    end
-  end
+  def collection_name, do: @default_collection
 
   @doc """
   Chiezo のルートURL。未設定ならこの機能は使えません。
@@ -367,9 +312,6 @@ defmodule Chidori.News do
       chiezo_base_url() == nil ->
         {:noreply, broadcast(%{state | status: :unavailable, reason: :chiezo_not_configured})}
 
-      command == :run and throttled?(state) ->
-        {:noreply, broadcast(%{state | reason: :too_soon})}
-
       true ->
         name = state.collection_name
         base = chiezo_base_url()
@@ -386,8 +328,6 @@ defmodule Chidori.News do
             task: task,
             pushing: command != :refresh
         }
-
-        state = if command == :run, do: %{state | last_run_at: now_ms()}, else: state
 
         {:noreply, broadcast(state)}
     end
@@ -432,11 +372,6 @@ defmodule Chidori.News do
     %{state | status: status, reason: reason, task: nil, pushing: false}
   end
 
-  defp throttled?(%__MODULE__{last_run_at: nil}), do: false
-  defp throttled?(%__MODULE__{last_run_at: at}), do: now_ms() - at < @min_run_interval_ms
-
-  defp now_ms, do: System.monotonic_time(:millisecond)
-
   @doc false
   # まとめを作らせている最中の一言。**収集の状態とは別の知らせ**にする ——
   # 状態に混ぜると、届くたびに画面ぜんたいが書き換わる
@@ -480,12 +415,6 @@ defmodule Chidori.News do
 
   defp perform(:refresh, base, name), do: read(base, name)
 
-  defp perform({:request, topic}, base, name) do
-    with :ok <- create_collection(base, name, Interests.attach(topic)) do
-      read(base, name)
-    end
-  end
-
   defp perform({:setup, topic, choices}, base, name) do
     case create_collection(base, name, Interests.attach(topic)) do
       :ok -> perform({:push, topic, choices}, base, name)
@@ -502,13 +431,6 @@ defmodule Chidori.News do
     case {Chidori.Chiezo.patch(base, name, attrs), read(base, name)} do
       {:ok, read} -> read
       {{:error, reason}, _read} -> {:error, reason}
-    end
-  end
-
-  # 「いま集める」は画面から押したときだけ来る（止めている収集でも走らせる）
-  defp perform(:run, base, name) do
-    with :ok <- Chidori.Chiezo.by_hand(fn -> run_collection(base, name) end) do
-      read(base, name)
     end
   end
 
@@ -611,34 +533,28 @@ defmodule Chidori.News do
   `choices` は画面で選んだ巡回ごとの相手。
   """
   def attrs(name, topic, choices \\ %{}) do
-    Map.merge(
-      %{
-        name: name,
-        description: description(topic),
-        prompt: collection_prompt(topic),
-        interval_minutes: @collect_minutes,
-        # **育てる側で置く。** 溜めるだけなら足すほうでよいが、この収集は
-        # 重要度やタグを後から付け直す（それができるのは育てる側だけ）
-        # **流れ。** 時とともに増えるものを追っていて、直近だけが対象 ——
-        # 古いものは順に要らなくなるので、Chiezo に期限で落としてもらう
-        # （落とさないと、この収集は永久に増え続ける）。
-        # **終わったら要らなくなる話題も流れ**（技術イベントは、これから開かれるものを
-        # 次々と集めていく）。ただし**期限は外す**（`keep_days: 0`）—— Chiezo の期限は
-        # 配信日で数えるので、半年先のイベントを募集が出た日から 30 日で落とすことになる。
-        # 終わったものは整理の回に落とさせる（`ages_out?`）
-        kind: "flow",
-        feed: feed_spec(topic),
-        sweeps: with_choices(sweeps(topic), choices),
-        requested_by: "chidori"
-      }
-      |> Map.merge(if(Topics.ages_out?(topic), do: %{}, else: %{keep_days: 0}))
-      # **絵は Chiezo に縮めて持たせる**（書いた話題だけ。`Chidori.Topics` の `thumbs`）
-      |> Map.merge(if(thumbs = Map.get(topic || %{}, :thumbs), do: %{thumbs: thumbs}, else: %{})),
-      # 収集ぜんたいの相手。**巡回に書いてなければここへ落ちる**（Chiezo 側の決まり）。
-      # 名指ししないものは送らない —— null を送ると「指定しない」と同じだが、
-      # 依頼の本文に空の項目が並ぶと、何を決めて何を任せたのかが読めない
-      backend_settings() |> Enum.reject(&(elem(&1, 1) == nil)) |> Map.new()
-    )
+    %{
+      name: name,
+      description: description(topic),
+      prompt: collection_prompt(topic),
+      interval_minutes: @collect_minutes,
+      # **育てる側で置く。** 溜めるだけなら足すほうでよいが、この収集は
+      # 重要度やタグを後から付け直す（それができるのは育てる側だけ）
+      # **流れ。** 時とともに増えるものを追っていて、直近だけが対象 ——
+      # 古いものは順に要らなくなるので、Chiezo に期限で落としてもらう
+      # （落とさないと、この収集は永久に増え続ける）。
+      # **終わったら要らなくなる話題も流れ**（技術イベントは、これから開かれるものを
+      # 次々と集めていく）。ただし**期限は外す**（`keep_days: 0`）—— Chiezo の期限は
+      # 配信日で数えるので、半年先のイベントを募集が出た日から 30 日で落とすことになる。
+      # 終わったものは整理の回に落とさせる（`ages_out?`）
+      kind: "flow",
+      feed: feed_spec(topic),
+      sweeps: with_choices(sweeps(topic), choices),
+      requested_by: "chidori"
+    }
+    |> Map.merge(if(Topics.ages_out?(topic), do: %{}, else: %{keep_days: 0}))
+    # **絵は Chiezo に縮めて持たせる**（書いた話題だけ。`Chidori.Topics` の `thumbs`）
+    |> Map.merge(if(thumbs = Map.get(topic || %{}, :thumbs), do: %{thumbs: thumbs}, else: %{}))
   end
 
   # 収集ぜんたいの依頼文（巡回に書いていなければここへ落ちる）。作品を育てる話題では
@@ -862,20 +778,6 @@ defmodule Chidori.News do
   """
   def feed_spec(%{feeds: [_ | _] = feeds}), do: %{urls: feeds}
   def feed_spec(_topic), do: nil
-
-  defp run_collection(base, name) do
-    manual = if Chidori.Chiezo.by_hand?(), do: "?manual=true", else: ""
-
-    case post(base <> "/v1/collect/" <> name <> "/run" <> manual, "", @run_timeout) do
-      {:ok, %{status: status}} when status in 200..299 -> :ok
-      # 止まっている収集は Chiezo が断る。有効にできるのは Chiezo の画面だけ
-      {:ok, %{status: 403}} -> {:error, :collection_disabled}
-      {:ok, %{status: 404}} -> {:error, :not_requested}
-      {:ok, %{status: 503}} -> {:error, :collect_disabled}
-      {:ok, %{status: status}} -> {:error, {:chiezo_status, status}}
-      {:error, _reason} -> {:error, :chiezo_unavailable}
-    end
-  end
 
   defp get(url) do
     Http.get(url,

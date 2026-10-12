@@ -78,9 +78,9 @@ defmodule Chidori.ThemesTest do
       refute prompt =~ "{material}"
       # 図の語彙をそのまま頼む（読む側と書かせる側が離れるとズレる）
       assert prompt =~ Themes.theme_tag()
-      assert prompt =~ Themes.parent_tag()
-      assert prompt =~ Themes.field_tag()
-      assert prompt =~ Themes.synonym_tag()
+      assert prompt =~ "親:"
+      assert prompt =~ "分野:"
+      assert prompt =~ "同義:"
       # 畳むにも外すにも消す力が要る（墓標）
       assert prompt =~ Chidori.Chiezo.tombstone_tag()
     end
@@ -105,7 +105,7 @@ defmodule Chidori.ThemesTest do
 
       assert prompt =~ "まだ手を入れていないものから始めてください"
       # 未精査の見分け方（機械は目印しか付けない）と、その引き方
-      assert prompt =~ "目印は「#{Themes.field_tag()}」"
+      assert prompt =~ "目印は「分野:」"
       assert prompt =~ "chidori_tech_topics"
     end
 

@@ -498,7 +498,7 @@
       </h2>
 
       <div :if={@settings_open} id="chiezo-settings">
-        <p :if={origin_note(@view)} class="muted-note origin-note">{origin_note(@view)}</p>
+        <p class="muted-note origin-note">{origin_note(@view)}</p>
         <p :if={trouble_message(@relation)} class="warn-note" aria-live="polite">
           {trouble_message(@relation)}
         </p>

@@ -134,7 +134,7 @@ defmodule Chidori.NotifyTest do
     assert Notify.deliver(@collection, @digest) == {:ok, :sent}
     assert_receive {:notified, _url, _sent}, 2_000
 
-    assert Notify.deliver(@collection, @digest, force: true) == {:ok, :sent}
+    assert Notify.deliver(@collection, @digest) == {:ok, :sent}
     assert_receive {:notified, _url, _sent}, 2_000
   end
 
@@ -148,7 +148,7 @@ defmodule Chidori.NotifyTest do
     assert first = Notify.last_sent_at(@collection)
 
     # 二度目も時刻が進む（押した結果が画面に出る）
-    Notify.deliver(@collection, @digest, force: true)
+    Notify.deliver(@collection, @digest)
     assert_receive {:notified, _url, _sent}, 2_000
     assert DateTime.compare(Notify.last_sent_at(@collection), first) != :lt
   end

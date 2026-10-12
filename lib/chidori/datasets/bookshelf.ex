@@ -174,12 +174,7 @@ defmodule Chidori.Datasets.Bookshelf do
   end
 
   @doc "溜め先の収集の名前。**後から変えない**。"
-  def collection do
-    case System.get_env("CHIDORI_BOOKS_COLLECTION", "") |> String.trim() do
-      "" -> @collection
-      name -> name
-    end
-  end
+  def collection, do: @collection
 
   @doc "画面に出す名前（親の収集の下に並べます）。"
   def name, do: "本棚（定番の技術書）"

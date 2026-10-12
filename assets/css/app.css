@@ -67,7 +67,6 @@ article p:last-child { color: #475569; line-height: 1.7; }
 
 /* 最新情報。**枠と色は関連図・データ収集と同じ**（`.relations-page` に乗る）。
    ここに置くのは、記事の一覧のように この画面にしか無いものだけ */
-.news-link { color: #554bc0; font-weight: 700; text-decoration: none; }
 /* 並びの幅は器に合わせる。**切れ目の無い長い語（英数字の続く名前や URL）は折り返す** ——
    折り返さないと、その 1 件に合わせて並び全体が広がり、スマホで画面の外へはみ出す */
 .news-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
@@ -87,7 +86,6 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .priority { background: #e8e5ff; color: #4338a8; }
 .standard { background: #e2e8f0; color: #334155; }
 .later { background: #f1f5f9; color: #94a3b8; }
-.news-message { border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; padding: 1rem 1.2rem; color: #4338a8; line-height: 1.7; }
 .news-page footer { margin-top: 2rem; border-top: 1px solid #e2e8f0; padding: 1.5rem 0; color: #64748b; font-size: .85rem; line-height: 1.7; }
 .news-page footer a { color: #554bc0; }
 
@@ -202,7 +200,6 @@ article p:last-child { color: #475569; line-height: 1.7; }
    押す口がどこにあるか目で探すことになる */
 .button-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; margin-top: .6rem; }
 .partition-actions { display: flex; flex-wrap: nowrap; gap: .3rem; align-items: center; }
-.relation-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; }
 /* Chiezo の状態・巡回の設定・押すボタンを 1 つの枠に。**離れていると、何がどこへ
    効くのか読めない**（状態を見て、直して、押す、が 1 か所で終わる） */
 /* 設定の枠。**集めたものの表示から離す** —— 続けて置くと、記事の続きに見える。
@@ -213,11 +210,10 @@ article p:last-child { color: #475569; line-height: 1.7; }
    ページ全体が横に広がり、ほかの欄まで画面の外へ押し出される） */
 @media (max-width: 640px) {
   .settings-panel { padding: 1rem .9rem; }
-  .settings-panel table, .collect-panel table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .settings-panel table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .settings-panel select { max-width: 11rem; }
   /* 表は横にずらせるので、中の字は折り返さない（「ざっ/と見/る」と割れると読めない） */
-  .settings-panel table th, .settings-panel table td,
-  .collect-panel table th, .collect-panel table td { white-space: nowrap; }
+  .settings-panel table th, .settings-panel table td { white-space: nowrap; }
   .settings-panel .collect-facts dt { white-space: nowrap; }
   /* 区画の名前の列は、ふつうの長さ（「フランス|1817-1821」）が 1 行に収まる幅を
      持たせ、それより長い名前だけ折り返す。**全部を 1 行にはしない** —— 小さい国を
@@ -244,20 +240,11 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .settings-block form p { margin: .7rem 0; }
 .settings-block .collect-facts { margin-bottom: .8rem; }
 
-.collect-panel { margin-bottom: 1.25rem; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f4f3ff; }
-.collect-panel h2 { margin-bottom: .4rem; font-size: .95rem; color: #332c75; }
-.collect-panel > p { margin: .25rem 0; color: #616a82; font-size: .85rem; }
-.collect-panel button { border: 0; background: #554bc0; color: #fff; }
-.collect-panel button:disabled { cursor: wait; opacity: .65; }
 .sweep-table { width: 100%; margin: .8rem 0; border-collapse: collapse; font-size: .82rem; }
 .sweep-table th { text-align: left; padding: .2rem .5rem; color: #7e879f; font-weight: 700; white-space: nowrap; }
 .sweep-table td { padding: .35rem .5rem; border-top: 1px solid #e3e1f4; vertical-align: top; }
 .sweep-table td.pick { display: flex; flex-wrap: wrap; gap: .3rem; }
 .sweep-table select { max-width: 12rem; padding: .2rem .35rem; border: 1px solid #dcdff0; border-radius: .4rem; background: #fff; font: inherit; font-size: .8rem; }
-.relation-actions strong { color: #332c75; font-size: .9rem; }
-.relation-actions p { margin: .25rem 0 0; color: #616a82; font-size: .82rem; }
-.relation-actions button { border: 0; background: #554bc0; color: #fff; white-space: nowrap; }
-.relation-actions button:disabled { cursor: wait; opacity: .65; }
 /* 図の器。**中身を切り抜く**（拡大したぶんが外へ流れ出ないように）。
    高さは画面に合わせる —— 縦に伸ばすとページのスクロールと図の移動が混ざる */
 /* **縦に長く取る。** 年表を縦に振っているので、縦が広いほど一度に読める時代が増える。
@@ -382,7 +369,6 @@ article p:last-child { color: #475569; line-height: 1.7; }
 /* 様式は札の中の 2 行目。名前より控えめにして、名前の読みを邪魔しない */
 .node-note { fill: #5a6280; font-weight: 600; }
 .year-label { fill: #6d7890; }
-.year-bar { fill: #d29b58; }
 /* 凡例の真下に置く説明。**1 段で幅いっぱいに使う** —— 右半分に出典を並べていた
    名残で 2 段組にしていたが、出典を消したので右が空いたままになっていた */
 .relation-guide { margin: 0.4rem 0 1.6rem; padding: 1.1rem 1.4rem; border-radius: 1rem; background: white; }
@@ -393,11 +379,6 @@ article p:last-child { color: #475569; line-height: 1.7; }
 /* 段落のあいだだけ空ける。**幅は抑えない** —— ページ側が 72rem で抑えてあるので、
    ここで折り返すと右半分が空くだけになる */
 .relation-guide p + p { margin-top: .6rem; }
-@media (max-width: 560px) { .relation-actions { align-items: flex-start; flex-direction: column; } }
-
-/* 収集の操作（依頼・いま集めさせる・読み直す）。狭い画面では折り返す */
-.news-actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
-.news-secondary { background: transparent; border-color: #cbd5e1; color: #475569; }
 
 /* Chiezo の収集の状態。動いているかの判断に要るものを1行ずつ並べる */
 .collect-facts { display: grid; gap: .5rem; margin: 0; padding: 1rem 1.2rem; border: 1px solid #e2e8f0; border-radius: 1rem; background: white; }
@@ -594,12 +575,6 @@ article p:last-child { color: #475569; line-height: 1.7; }
 /* 名前のすぐ横に置く（閉じるボタンは右端のまま） */
 .artwork-head .review-badge { margin-right: auto; margin-left: -.5rem; }
 .edge-links { margin: 0.6rem 0 0; padding-left: 1.1rem; font-size: 0.9rem; }
-
-/* データ収集の画面。**関連図と同じ枠を使う**（`.relations-page` を重ねてある）——
-   状態を見て、直して、押す、という作りが同じなので、体裁を分ける理由が無い。
-   ここに置くのは、この画面にしか無いものだけ */
-.collect-page .collect-panel + .collect-panel { margin-top: 1.25rem; }
-.collect-page .collect-panel table { margin-bottom: 0; }
 
 /* 区画の一覧。**400 行あるので畳んで置く** —— 開いたときだけ場所を取る */
 /* 区画の地図。**地図の絵は敷かない** —— 区画そのものが日本の形になる
@@ -1119,7 +1094,6 @@ a.top-book-cover { display: block; }
 .top-book.is-openable { cursor: pointer; }
 .top-book.is-openable:hover { border-color: #b9b3ee; }
 .top-book.is-opened { border-color: #6254d6; box-shadow: 0 0 0 1px #6254d6 inset; }
-.top-book-more { margin-left: .4rem; color: #4f46b9; font-weight: 700; white-space: nowrap; }
 /* 開いた札は横いっぱいに広げ、勧めている記事を札の中に並べる */
 .top-book.is-opened { grid-column: 1 / -1; }
 .top-book-posts { margin-top: .7rem; padding-top: .6rem; border-top: 1px dashed #d9dcea; cursor: auto; }

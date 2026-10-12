@@ -85,15 +85,6 @@ defmodule Chidori.Themes do
     |> Enum.reject(&(&1 == ""))
   end
 
-  @doc "上位のトピックを載せるタグの頭。"
-  def parent_tag, do: @parent_prefix
-
-  @doc "分野を載せるタグの頭。色はこれで決まります。"
-  def field_tag, do: @field_prefix
-
-  @doc "畳んだ言い換えを載せるタグの頭。**図には出しません**（探すときに効きます）。"
-  def synonym_tag, do: @synonym_prefix
-
   @doc """
   収集の依頼の中身。**網羅**で、期限では落としません。
 

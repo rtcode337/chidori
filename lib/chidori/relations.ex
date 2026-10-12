@@ -2,8 +2,10 @@ defmodule Chidori.Relations do
   @moduledoc """
   関連図ページで使う、表示用のネットワークデータです。
 
-  初期表示のサンプルは関係の見せ方を示すためのものです。「関連図を収集」を押すと
-  Chiezo 経由の AI が公開情報を調べ、同じ形式へ差し替えます。収集に失敗しても
+  図は Chiezo に溜まった収集（画家・芸能人）を読み直したものです。集めて整理するのは
+  Chiezo の役目で、Chidori は図の形にして見せるだけです。「収集の設定を更新」は
+  Chidori の依頼文と回り方を Chiezo へ送り直し（まだ無ければ作り）、読み直すだけで、
+  その場で集めさせはしません。読めるまでは手書きの表示例を持ち、読めなくても
   直前の図は残します。
 
   取得は `Task.Supervisor` の下で動かし、この GenServer では待ちません。
@@ -24,13 +26,6 @@ defmodule Chidori.Relations do
   @canvas_width 980
   @canvas_height 560
 
-  # 図の上下に空ける余白。**重なる UI のぶん** —— 探す欄と道具は図の上に、
-  # 操作の案内は下に重ねてある（`.relation-find` / `.relation-tools` /
-  # `.relation-hint`）。余白が無いと、いちばん上と下のノードがその下に隠れ、
-  # **引きずっても拡大しても出てこない**（重なっているものは一緒に動かない）
-  @canvas_margin 90
-
-  @request_timeout 120_000
   # 溜まったものを読むだけなら Chiezo は手元にいるので短くてよい
   @read_timeout 15_000
   @connect_timeout 5_000
@@ -162,13 +157,6 @@ defmodule Chidori.Relations do
   @min_interval_ms 15_000
   # 取り込み中かを確かめ直す間隔。走っているあいだだけ動く
   @busy_recheck_ms 15_000
-
-  # 図に置ける上限。増やすと札が重なって読めなくなる
-  @max_nodes %{"people" => 10, "painters" => 8}
-  @max_edges 14
-  @max_sources 6
-  # 線の上に出す文字。長いと隣の線の札と重なる
-  @max_label_chars 24
 
   @views %{
     "people" => %{
@@ -463,8 +451,7 @@ defmodule Chidori.Relations do
   @doc """
   設定に関係なく確かめられるよう、鍵の丸めは公開しておく。
 
-  **知らない鍵は画家に倒します**（最初に開く図でもあります）—— Chiezo に溜めて
-  育てているのはこちらで、人物の図はまだその場で AI に聞く形のためです。
+  **知らない鍵は画家に倒します**（最初に開く図でもあり、関連図のタブの先頭です）。
   """
   def valid_key(key) when key in ["people", "painters"], do: key
   def valid_key(_key), do: "painters"
@@ -806,39 +793,25 @@ defmodule Chidori.Relations do
   end
 
   @doc """
-  画家の図を溜めておく Chiezo の収集の名前。`CHIDORI_PAINTERS_COLLECTION` で変えられます。
+  画家の図を溜めておく Chiezo の収集の名前。
 
   **網羅の収集**として置きます。図は流れではなく一枚もので、
   作り直すたびに全体が入れ替わるのが正しい振る舞いだからです。
   """
-  def painters_collection do
-    case System.get_env("CHIDORI_PAINTERS_COLLECTION", "") |> String.trim() do
-      "" -> "chidori_painters"
-      name -> name
-    end
-  end
+  def painters_collection, do: "chidori_painters"
 
-  # 画家は **Chiezo に溜まったものを読む**。集めて整理するのは Chiezo の役目で、
-  # Chidori は図の形に読み直して見せるだけ。1 画家 1 文書の普通のソースなので、
+  # 図は Chiezo に溜まったものを読む。集めて整理するのは Chiezo の役目で、
+  # Chidori は図の形に読み直して見せるだけ。1 人 1 文書の普通のソースなので、
   # ノードとエッジという読み方を与えるのはこちら側（`Relations.Graph`）。
   #
   # 引き方は `filter`（タグでの一括抽出）。図は流れではなく**一枚もの**なので、
   # 新しい順に何件かではなく全部が要る。
-  # 「収集」を押したとき。**まだ無ければ依頼し、その場で 1 回集めさせて**読み直す
-  defp fetch_relation(key, fallback, choices) when key in @chiezo_views do
+  # 「収集の設定を更新」を押したとき。まだ無ければ作り、あれば設定を送り直して
+  # 読み直す（走らせはしない）
+  defp fetch_relation(key, fallback, choices) do
     case chiezo_base_url() do
       nil -> {:error, :chiezo_not_configured}
       base_url -> push_view(key, base_url, fallback, choices)
-    end
-  end
-
-  defp fetch_relation(key, fallback, _choices) do
-    with base_url when is_binary(base_url) <- chiezo_base_url(),
-         {:ok, content} <- ask_chiezo(base_url, key) do
-      decode_relation(content, key, fallback)
-    else
-      nil -> {:error, :chiezo_not_configured}
-      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -847,14 +820,11 @@ defmodule Chidori.Relations do
 
   画面を開くたびに呼ぶので、ここから依頼を出さないのが要点です —— 開いただけで
   向こうに何かが作られるのは驚きが大きく、相手が古い版なら開くたびに失敗します。
-  依頼は「収集」を押したときだけ（`request_painters/2`）。
+  依頼は「収集の設定を更新」を押したときだけ（`push_view/4`）。
 
   **GenServer を通さずに呼べる形にしてあります** —— 引き方と図への読み直しは
   ここで完結するので、状態を持つ入れ物を跨がずに確かめられます。
   """
-  def fetch_painters(base_url, fallback), do: fetch_view("painters", base_url, fallback)
-
-  @doc "Chiezo に溜まっている図（画家・芸能人）を読みます。**読むだけ**（`fetch_painters/2`）。"
   def fetch_view(key, base_url, fallback) do
     # **収集の設定は読まない。** 図に要るのは溜まった文書だけで、設定（巡回・区画・
     # 依頼文）は画面の設定欄を開いたときに読む（`settings/1`）。一緒に読んでいた頃は、
@@ -963,30 +933,15 @@ defmodule Chidori.Relations do
   def unreviewed_by_partition(_collection, _nodes, _key), do: %{}
 
   @doc """
-  Chiezo に収集を依頼して、そのまま読み直します。
+  収集の設定を Chiezo へ送ったうえで、読み直します（画家・芸能人）。
 
-  作られるのは**止まった状態**なので、押しただけで AI が動くことはありません。
-  動かすかは Chiezo 側で決めます。
+  「収集の設定を更新」を押したときの動きです。まだ収集が無ければ作り
+  （**止まった状態**で作られるので、動かすかは Chiezo 側で決めます）、
+  あれば Chidori の今の設定を送り直します。**その場で集めさせはしません**。
+
+  送るのを断られても、溜まっているものは読み直したうえで、断られたことを
+  理由として返します。
   """
-  def request_painters(base_url, fallback) do
-    with :ok <- ensure_collection(base_url, "painters") do
-      fetch_painters(base_url, fallback)
-    end
-  end
-
-  @doc """
-  依頼したうえで、**その場で 1 回集めさせて**読み直します。
-
-  「関連図を収集」を押したときの動きです。依頼するだけでは何も集まらないので、
-  押しても画面が変わらず、効いたのかどうかが分かりませんでした。
-
-  止まっている収集は Chiezo が断ります（有効にできるのは Chiezo の画面だけ）。
-  そのときも溜まっているものは読み直したうえで、断られたことを理由として返します。
-  """
-  def push_painters(base_url, fallback, choices \\ %{}),
-    do: push_view("painters", base_url, fallback, choices)
-
-  @doc "依頼したうえで読み直します（画家・芸能人。`push_painters/3`）。"
   def push_view(key, base_url, fallback, choices \\ %{}) do
     name = collection_of(key)
 
@@ -1530,285 +1485,4 @@ defmodule Chidori.Relations do
   end
 
   defp chiezo_base_url, do: Chiezo.base_url()
-
-  defp ask_chiezo(base_url, key) do
-    payload =
-      Jason.encode!(%{
-        backend: System.get_env("CHIEZO_RELATIONS_BACKEND", "claude"),
-        model: System.get_env("CHIEZO_RELATIONS_MODEL"),
-        messages: [
-          %{role: "system", content: system_prompt()},
-          %{role: "user", content: user_prompt(key)}
-        ],
-        web: true
-      })
-
-    options = [
-      headers: [{"user-agent", @user_agent}],
-      content_type: "application/json",
-      timeout: @request_timeout,
-      connect_timeout: @connect_timeout
-    ]
-
-    case Http.post(base_url <> "/v1/ai/complete", payload, options) do
-      {:ok, %{status: 200, body: body}} -> decode_completion(body)
-      {:ok, %{status: status}} -> {:error, {:chiezo_status, status}}
-      {:error, _reason} -> {:error, :chiezo_unavailable}
-    end
-  end
-
-  defp decode_completion(body) do
-    case Jason.decode(body) do
-      {:ok, %{"content" => content}} when is_binary(content) and content != "" ->
-        {:ok, content}
-
-      _ ->
-        {:error, :chiezo_unexpected_body}
-    end
-  end
-
-  defp system_prompt do
-    """
-    あなたは公開情報を検証して関連図データを作る編集者です。推測、未確認の親族関係、未成年者、私生活の住所・連絡先は含めません。
-    web検索で確認できた公開情報だけを使い、各関係には出典URLを対応させます。
-    応答はJSONオブジェクトだけにしてください。前置き、説明、コードブロックの囲みは付けません。
-    画面は日本語なので、名前・肩書き・関係の説明・出典名はすべて日本語で書きます。
-    出典は日本語の資料を優先し、無ければ原語のもので構いません。
-    """
-  end
-
-  defp user_prompt("people") do
-    """
-    松田優作、松田美由紀、松田龍平、松田翔太の家族関係と、ツービート、ビートたけし、ビートきよしのコンビ関係について、公開されている情報だけで小さな関連図にしてください。
-    JSON: {"nodes":[{"id":"英数字","name":"名前","note":"短い肩書き"}],"edges":[{"from":"id","to":"id","label":"親子|配偶者|メンバー","kind":"family|duo"}],"sources":[{"label":"出典名","url":"https://..."}]}。
-    ノードは4〜10件、エッジは出典で確認できるものだけ、sourcesは2〜6件。本文や口コミは転載しません。
-    labelは図の線の上に置くので、#{@max_label_chars}文字以内の短い語にしてください。
-    """
-  end
-
-  defp user_prompt("painters") do
-    """
-    ウジェーヌ・ドラクロワ、エドゥアール・マネ、クロード・モネ、フィンセント・ファン・ゴッホ、アンリ・マティスについて、公開資料で説明できる影響関係を時代順に小さな関連図にしてください。
-    JSON: {"nodes":[{"id":"英数字","name":"名前","note":"様式や地域","years":"活躍年代の目安"}],"edges":[{"from":"id","to":"id","label":"影響の要約","kind":"influence"}],"sources":[{"label":"出典名","url":"https://..."}]}。
-    ノードは4〜8件、矢印は影響を与えた側から受けた側へ、各関係は出典で確認できるものだけ、sourcesは2〜6件。
-    labelは図の線の上に置くので、#{@max_label_chars}文字以内の短い語にしてください。
-    """
-  end
-
-  @doc false
-  # AI の応答を図のデータへ直す。ここだけを取り出してテストできるようにしてある
-  def decode_relation(content, key, fallback) do
-    key = valid_key(key)
-
-    case Enum.find_value(json_candidates(content), &decode_payload(&1, key, fallback)) do
-      nil -> {:error, :invalid_ai_response}
-      relation -> {:ok, relation}
-    end
-  end
-
-  defp decode_payload(candidate, key, fallback) do
-    with {:ok, %{"nodes" => nodes, "edges" => edges, "sources" => sources}} <-
-           Jason.decode(candidate),
-         parsed_nodes when length(parsed_nodes) >= 2 <- parse_nodes(nodes, key),
-         parsed_edges when parsed_edges != [] <- parse_edges(edges, parsed_nodes, key),
-         parsed_sources when parsed_sources != [] <- parse_sources(sources) do
-      laid_out = layout_nodes(parsed_nodes, key)
-
-      %{
-        fallback
-        | sample?: false,
-          nodes: laid_out,
-          edges: parsed_edges,
-          sources: parsed_sources,
-          width: canvas_width(length(laid_out), key),
-          height: canvas_height(length(laid_out), key)
-      }
-    else
-      _ -> nil
-    end
-  end
-
-  # 応答は素の JSON とは限らない。コードブロックで囲む相手が多いので、
-  # 囲みを外したものと、最初の { から最後の } までを切り出したものも試す
-  @doc false
-  def json_candidates(content) when is_binary(content) do
-    trimmed = String.trim(content)
-
-    [trimmed, strip_code_fence(trimmed), between_braces(trimmed)]
-    |> Enum.reject(&(&1 in [nil, ""]))
-    |> Enum.uniq()
-  end
-
-  def json_candidates(_content), do: []
-
-  defp strip_code_fence("```" <> rest) do
-    rest
-    |> String.replace(~r/\A[a-zA-Z0-9_+-]*[ \t]*\r?\n/, "")
-    |> String.replace(~r/\r?\n?[ \t]*```[\s]*\z/, "")
-    |> String.trim()
-  end
-
-  defp strip_code_fence(_text), do: nil
-
-  defp between_braces(text) do
-    case Regex.run(~r/\{.*\}/s, text) do
-      [json] -> json
-      _ -> nil
-    end
-  end
-
-  defp parse_nodes(nodes, key) when is_list(nodes) do
-    nodes
-    |> Enum.take(Map.fetch!(@max_nodes, key))
-    |> Enum.flat_map(fn
-      node when is_map(node) ->
-        id = node["id"]
-        name = node["name"]
-
-        if is_binary(id) and id =~ ~r/^[a-zA-Z0-9_-]{1,40}$/ and is_binary(name) and
-             String.trim(name) != "" do
-          [
-            %{
-              id: id,
-              name: short_text(name, 60),
-              note: short_text(node["note"], 30),
-              years: short_text(node["years"], 20),
-              kind: node_kind(key)
-            }
-          ]
-        else
-          []
-        end
-
-      _node ->
-        []
-    end)
-    |> Enum.uniq_by(& &1.id)
-  end
-
-  defp parse_nodes(_nodes, _key), do: []
-
-  defp parse_edges(edges, nodes, key) when is_list(edges) do
-    ids = MapSet.new(nodes, & &1.id)
-    allowed = if key == "people", do: ["family", "duo"], else: ["influence"]
-
-    edges
-    |> Enum.take(@max_edges)
-    |> Enum.flat_map(fn
-      edge when is_map(edge) ->
-        from = edge["from"]
-        to = edge["to"]
-        kind = edge["kind"]
-
-        if is_binary(from) and is_binary(to) and from != to and MapSet.member?(ids, from) and
-             MapSet.member?(ids, to) and kind in allowed do
-          [
-            %{
-              from: from,
-              to: to,
-              label: short_text(edge["label"], @max_label_chars),
-              kind: edge_kind(kind)
-            }
-          ]
-        else
-          []
-        end
-
-      _edge ->
-        []
-    end)
-    |> Enum.uniq_by(&{&1.from, &1.to})
-  end
-
-  defp parse_edges(_edges, _nodes, _key), do: []
-
-  defp edge_kind("family"), do: :family
-  defp edge_kind("duo"), do: :duo
-  defp edge_kind("influence"), do: :influence
-
-  defp parse_sources(sources) when is_list(sources) do
-    sources
-    |> Enum.take(@max_sources)
-    |> Enum.flat_map(fn
-      source when is_map(source) ->
-        with label when is_binary(label) <- source["label"],
-             url when is_binary(url) <- Chidori.SafeUrl.href(source["url"]) do
-          [%{label: short_text(label, 100), url: url}]
-        else
-          _ -> []
-        end
-
-      _source ->
-        []
-    end)
-    |> Enum.uniq_by(& &1.url)
-  end
-
-  defp parse_sources(_sources), do: []
-
-  # 面の大きさはノード数から決める。固定の面へ詰め込むと、多いときに
-  # 枠の外へ出て見えなくなる（人物側は最大10件で3段になる）
-  @doc false
-  def canvas_width(count, "painters"), do: max(@canvas_width, 200 * count)
-  def canvas_width(_count, _key), do: @canvas_width
-
-  @doc false
-  def canvas_height(_count, "painters"), do: @canvas_height + 2 * @canvas_margin
-  def canvas_height(count, _key), do: max(@canvas_height, 200 * rows(count)) + 2 * @canvas_margin
-
-  @doc "図の上下に空ける余白。**重なる UI のぶん**。"
-  def canvas_margin, do: @canvas_margin
-
-  defp columns(count), do: min(4, max(count, 1))
-  defp rows(count), do: ceil(count / columns(count))
-
-  # 左から右へ流す。年代の帯を出すぶん、上下2段に振って重なりを避ける
-  @doc false
-  def layout_nodes(nodes, "painters") do
-    count = length(nodes)
-    width = canvas_width(count, "painters")
-    cell = width / count
-
-    Enum.with_index(nodes, fn node, index ->
-      Map.merge(node, %{
-        x: cell * (index + 0.5),
-        # 上下 2 段に振って重なりを避ける。**どちらの段も余白の内側**に置く
-        y: @canvas_margin + if(rem(index, 2) == 0, do: 190, else: 350)
-      })
-    end)
-  end
-
-  def layout_nodes(nodes, _key) do
-    count = length(nodes)
-    columns = columns(count)
-    cell_width = @canvas_width / columns
-
-    # **余白の内側に段を割る。** 面ぜんたいで割ると、いちばん上と下の段が
-    # 重なっている UI の下へ入る
-    cell_height = (canvas_height(count, "people") - 2 * @canvas_margin) / rows(count)
-
-    Enum.with_index(nodes, fn node, index ->
-      Map.merge(node, %{
-        x: cell_width * (rem(index, columns) + 0.5),
-        y: @canvas_margin + cell_height * (div(index, columns) + 0.5)
-      })
-    end)
-  end
-
-  defp node_kind("painters"), do: :artist
-  defp node_kind(_key), do: :person
-
-  defp short_text(value, max) when is_binary(value) do
-    trimmed = value |> String.trim() |> String.replace(~r/\s+/, " ")
-
-    cond do
-      trimmed == "" -> nil
-      String.length(trimmed) <= max -> trimmed
-      # 切ったことが分かるようにする。切れた文がそのまま出ると、
-      # 相手がそう書いたのか途中で切れたのかが読めない
-      true -> String.slice(trimmed, 0, max - 1) <> "…"
-    end
-  end
-
-  defp short_text(_value, _max), do: nil
 end

@@ -502,28 +502,6 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       refute html =~ "AI を使わずにいま反映する"
     end
 
-    test "未反映の数を返さない古い Chiezo でも、固定があれば出す", %{conn: conn} do
-      # 0 として扱うとボタンが出ず、固定を反映する手段が画面から消える
-      collection =
-        Map.put(@collection, "locks", %{"駅前うどん" => %{"lat" => 35.65, "lon" => 139.75}})
-
-      Chidori.HttpStub.stub(fn %{url: url} ->
-        cond do
-          String.ends_with?(url, "/v1/collect") ->
-            Chidori.HttpStub.ok(Jason.encode!(%{"collections" => [collection]}))
-
-          String.contains?(url, "/v1/collect/") ->
-            Chidori.HttpStub.ok(Jason.encode!(collection))
-
-          true ->
-            Chidori.HttpStub.ok(~s({"backends":[],"sources":[],"changes":[]}))
-        end
-      end)
-
-      {_live, html} = shown(conn)
-      assert html =~ "AI を使わずにいま反映する"
-    end
-
     test "依頼を頼む相手は、選んだ相手とモデルをその 1 回だけ渡す" do
       backends = [
         %{id: "claude", label: "Claude", kind: "plain", models: ["opus", "sonnet"]},

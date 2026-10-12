@@ -81,13 +81,12 @@ defmodule Chidori.Datasets.DiningTest do
       refute Map.has_key?(by_source["jawiki"], :identity)
     end
 
-    test "ラーメン屋は新しい版の語彙でも麺類になる", %{by_source: by_source} do
-      # 2026-09 の版で noodles_restaurant が無くなり、ramen_restaurant に入った
-      assert by_source["overture_japan"].tag =~ "ramen_restaurant"
+    test "ラーメン屋（noodles_restaurant）は麺類になる", %{by_source: by_source} do
+      assert by_source["overture_japan"].tag =~ "noodles_restaurant"
 
       assert Enum.any?(
                by_source["overture_japan"].tags,
-               &(&1[:pattern] == "^ramen_restaurant$" and &1[:format] =~ "麺類")
+               &(&1[:pattern] == "^noodles_restaurant$" and &1[:format] =~ "麺類")
              )
     end
 

@@ -6,27 +6,17 @@ defmodule Chidori.ArtworkTest do
   # 覚え書きはアプリ全体で 1 つなので、テストのあいだで持ち越さない
   setup do
     :ets.delete_all_objects(:chidori_artwork)
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
     :ok
   end
 
-  defp summary(body), do: fn _request -> Chidori.HttpStub.ok(Jason.encode!(body)) end
+  # Chiezo の jawiki の 1 件（`doc`）
+  defp jawiki(doc), do: fn _request -> Chidori.HttpStub.ok(Jason.encode!(doc)) end
 
-  # 絵は Wikipedia、説明は Chiezo。**行き先で分ける**
-  defp both(image, opening) do
-    fn %{url: url} ->
-      if String.contains?(url, "wikipedia.org") do
-        Chidori.HttpStub.ok(Jason.encode!(%{"thumbnail" => %{"source" => image}}))
-      else
-        Chidori.HttpStub.ok(Jason.encode!(%{"title" => "印象・日の出", "opening" => opening}))
-      end
-    end
-  end
-
-  test "説明も絵も、まず Chiezo から引く" do
+  test "説明も絵も Chiezo から引く" do
     # 取り込みが `page_props` から代表画像を拾って `extra.image` に入れている。
     # **外へ聞きに行く理由が無い**
-    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
-    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
     test_pid = self()
 
     Chidori.HttpStub.stub(fn %{url: url} ->
@@ -56,16 +46,17 @@ defmodule Chidori.ArtworkTest do
     refute_received :went_outside
   end
 
-  test "Chiezo が画像を持っていなければ Wikipedia に聞く" do
-    # 取り込み直す前の長期記憶には画像が入っていない（入れば通らなくなる）
-    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
-    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
-    Chidori.HttpStub.stub(both("https://example.org/sunrise.jpg", "モネの作品。"))
+  test "出典は記事のページを指す" do
+    Chidori.HttpStub.stub(
+      jawiki(%{
+        "title" => "印象・日の出",
+        "extra" => %{"image" => "https://example.org/sunrise.jpg"}
+      })
+    )
 
     art = Artwork.lookup("印象・日の出")
 
     assert art.image == "https://example.org/sunrise.jpg"
-    assert art.extract == "モネの作品。"
     assert art.page =~ "ja.wikipedia.org"
   end
 
@@ -97,20 +88,16 @@ defmodule Chidori.ArtworkTest do
              "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/A.jpg/250px-A.jpg"
   end
 
-  test "Chiezo が無くても絵は出す" do
-    # 説明が引けないだけ。図が出ないより、説明が無いほうがまし
+  test "Chiezo が無ければ出さない" do
     System.delete_env("CHIEZO_BASE_URL")
-    Chidori.HttpStub.stub(summary(%{"thumbnail" => %{"source" => "https://e.test/a.jpg"}}))
+    Chidori.HttpStub.stub(fn _request -> flunk("Chiezo が無いのに外へ出ている") end)
 
-    art = Artwork.lookup("何かの絵")
-
-    assert art.image == "https://e.test/a.jpg"
-    assert art.extract == nil
+    assert Artwork.lookup("何かの絵") == nil
   end
 
   test "画像の無い記事は出さない" do
     # 見たいのは絵のほう。記事はあっても、載せられる画像が無いことは普通にある
-    Chidori.HttpStub.stub(summary(%{"title" => "ある作品", "extract" => "説明。"}))
+    Chidori.HttpStub.stub(jawiki(%{"title" => "ある作品", "opening" => "説明。"}))
 
     assert Artwork.lookup("ある作品") == nil
   end
@@ -123,13 +110,13 @@ defmodule Chidori.ArtworkTest do
   end
 
   test "一度引いたら覚える" do
-    # **同じ画家を何度押しても外へは出ない。** 押されたときにだけ引く作りなので、
-    # 覚えないと押した回数だけ Wikipedia を叩く
+    # 同じ画家を何度押しても聞き直さない。押されたときにだけ引く作りなので、
+    # 覚えないと押した回数だけ Chiezo を叩く
     test_pid = self()
 
     Chidori.HttpStub.stub(fn _request ->
       send(test_pid, :asked)
-      Chidori.HttpStub.ok(Jason.encode!(%{"thumbnail" => %{"source" => "https://e.test/a.jpg"}}))
+      Chidori.HttpStub.ok(Jason.encode!(%{"extra" => %{"image" => "https://e.test/a.jpg"}}))
     end)
 
     assert Artwork.lookup("何かの絵").image == "https://e.test/a.jpg"

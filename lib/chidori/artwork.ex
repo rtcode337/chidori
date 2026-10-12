@@ -1,13 +1,11 @@
 defmodule Chidori.Artwork do
   @moduledoc """
-  代表作の中身を引きます。**まず Chiezo に聞きます**。
+  代表作の中身を引きます。**Chiezo にだけ聞きます**。
 
   説明（その作品が何か）も、絵の URL も、Chiezo の jawiki に入っています
   （取り込みが `page_props` ダンプから代表画像を拾って `extra.image` に入れます）——
-  外へ聞きに行く理由がありません。
-
-  **入っていないときだけ Wikipedia に聞きます。** 取り込み直す前の長期記憶には
-  画像が入っていないので、それまでのつなぎです（入れば自然に使われなくなります）。
+  外へ聞きに行く理由がありません。jawiki に画像が無い記事は、Wikipedia の要約にも
+  画像が無いので、外へ聞き直しても絵は増えません。
 
   **画像そのものは持ちません**（URL を指すだけ）。取り込んで配ると、絵ごとに違う
   ライセンスをこちらで抱えることになります。
@@ -23,8 +21,7 @@ defmodule Chidori.Artwork do
   alias Chidori.Chiezo
   alias Chidori.Http
 
-  @endpoint "https://ja.wikipedia.org/api/rest_v1/page/summary/"
-  @user_agent "chidori/0.1 (+https://github.com/rtcode337/chidori)"
+  @user_agent "chidori"
   @timeout 10_000
   @connect_timeout 5_000
 
@@ -73,7 +70,7 @@ defmodule Chidori.Artwork do
   defp fetch(title) do
     %{"opening" => opening, "image" => image} = from_chiezo(title)
 
-    case image || from_wikipedia(title) do
+    case image do
       nil -> nil
       found -> %{title: title, image: thumb(found), extract: opening, page: page_of(title)}
     end
@@ -83,7 +80,8 @@ defmodule Chidori.Artwork do
   defp from_chiezo(title) do
     with base when is_binary(base) <- Chiezo.base_url(),
          url =
-           base <> "/v1/jawiki/doc?fields=title,opening,extra&title=" <>
+           base <>
+             "/v1/jawiki/doc?fields=title,opening,extra&title=" <>
              URI.encode_www_form(title),
          {:ok, %{status: 200, body: body}} <- get(url),
          {:ok, %{} = doc} <- Jason.decode(body) do
@@ -95,17 +93,6 @@ defmodule Chidori.Artwork do
 
   defp image_of(%{"image" => image}) when is_binary(image) and image != "", do: image
   defp image_of(_extra), do: nil
-
-  # **取り込み直す前のつなぎ。** 長期記憶に画像が入れば、ここは通らなくなる
-  defp from_wikipedia(title) do
-    with {:ok, %{status: 200, body: body}} <- get(@endpoint <> encoded(title)),
-         {:ok, %{} = summary} <- Jason.decode(body),
-         image when is_binary(image) <- get_in(summary, ["thumbnail", "source"]) do
-      image
-    else
-      _other -> nil
-    end
-  end
 
   @doc """
   原寸ではなく縮小したものを指します。**札に出すだけなので原寸は要りません**
@@ -123,9 +110,14 @@ defmodule Chidori.Artwork do
   def thumb(url, width) when is_binary(url) do
     case String.split(url, "/wikipedia/commons/") do
       # すでに縮小版（`thumb/` 配下）なら触らない
-      [_head, "thumb/" <> _rest] -> url
-      [head, rest] when width in @thumb_widths -> thumb_path(head, rest, Path.basename(rest), width)
-      _other -> url
+      [_head, "thumb/" <> _rest] ->
+        url
+
+      [head, rest] when width in @thumb_widths ->
+        thumb_path(head, rest, Path.basename(rest), width)
+
+      _other ->
+        url
     end
   end
 
@@ -146,9 +138,8 @@ defmodule Chidori.Artwork do
 
   defp trimmed(_value), do: nil
 
-  defp page_of(title), do: "https://ja.wikipedia.org/wiki/" <> encoded(title)
-
-  defp encoded(title), do: URI.encode(String.replace(title, " ", "_"))
+  defp page_of(title),
+    do: "https://ja.wikipedia.org/wiki/" <> URI.encode(String.replace(title, " ", "_"))
 
   defp get(url) do
     Http.get(url,

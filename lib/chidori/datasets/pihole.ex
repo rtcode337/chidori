@@ -67,12 +67,7 @@ defmodule Chidori.Datasets.Pihole do
   def verdicts, do: @verdicts
 
   @doc "溜め先の収集の名前（= Chiezo のソース名）。**後から変えない**。"
-  def collection do
-    case System.get_env("CHIDORI_PIHOLE_COLLECTION", "") |> String.trim() do
-      "" -> @collection
-      name -> name
-    end
-  end
+  def collection, do: @collection
 
   @doc "データ収集の画面に出す 1 タブぶん。"
   def definition do

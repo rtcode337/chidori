@@ -68,13 +68,13 @@ services:
       # 端末への通知（Web Push）は、PHX_HOST とこれで組んだ https の URL を送り手の名乗りに
       # 使う（http のままだと iPhone への通知が断られる）
       PHX_SCHEME: "http"
+      # https の逆プロキシが 443 以外のポートで待つときだけ、そのポートを書く（空なら 443）。
+      # ntfy の通知を押したときの URL と、Web Push の送り手の名乗りがこのポートを指す
+      PHX_URL_PORT: ""
       # LiveView の接続元の見比べ方。空なら「開いた宛先と同じ名前なら通す」（別のサイトの
       # ページからの接続は断る）。通す宛先を固定するならカンマ区切りで並べる
       PHX_CHECK_ORIGIN: ""
       PORT: "7000"
-      # 関連図を調べさせる相手（空なら Chiezo の既定）
-      CHIEZO_RELATIONS_BACKEND: ""
-      CHIEZO_RELATIONS_MODEL: ""
       TZ: "Asia/Tokyo"
     ports:
       - "7000:7000"

@@ -14,13 +14,12 @@ services:
       # リンクの組み立てが localhost を指す）
       PHX_HOST: ${PHX_HOST:-localhost}
       PHX_SCHEME: ${PHX_SCHEME:-http}
+      PHX_URL_PORT: ${PHX_URL_PORT:-}
       PHX_CHECK_ORIGIN: ${PHX_CHECK_ORIGIN:-}
       PORT: ${PORT:-7000}
       # Chiezo（LAN内の知識サーバー）。入れるとニュースと関連図が使える
       CHIEZO_BASE_URL: ${CHIEZO_BASE_URL:-}
       CHIEZO_PUBLIC_URL: ${CHIEZO_PUBLIC_URL:-}
-      CHIEZO_RELATIONS_BACKEND: ${CHIEZO_RELATIONS_BACKEND:-}
-      CHIEZO_RELATIONS_MODEL: ${CHIEZO_RELATIONS_MODEL:-}
       # ntfy（まとめの通知）の場所の既定。通知先（トピック）は画面から決める
       NTFY_BASE_URL: ${NTFY_BASE_URL:-}
       TZ: ${TZ:-Asia/Tokyo}

@@ -11,7 +11,8 @@ defmodule Chidori.Application do
     children =
       [
         ChidoriWeb.Telemetry,
-        # DB は他の何より先に立てる。設定も選別結果もここから読む
+        # DB は使う側より先に立てる。画面で決めた設定・通知の記録・顔写真の写しなどを
+        # ここから読む（利用者が書いたことは `Chidori.DataStore` 側）
         Chidori.Repo,
         # 画面で決めた巡回の間隔（`Chidori.CollectPace`）。**読めなければ既定の間隔**
         # のまま動く（テストでは DB を持たないプロセスから読むので、ここは空振りする）
@@ -19,7 +20,6 @@ defmodule Chidori.Application do
         # 利用者が書いたこと（興味トピック・読んだ・見た記録）。Chiezo の置き場から読んで
         # 手元に持つ。**読めなくても起動は止めない**（読めるまで読み直す）
         Chidori.DataStore,
-        {DNSCluster, query: Application.get_env(:chidori, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Chidori.PubSub},
         # 外部への取得はこの下で動かす。収集を持つ GenServer では待たない ——
         # 待つと、収集中に画面を開いた人まで巻き添えで待たされる

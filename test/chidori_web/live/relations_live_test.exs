@@ -6,8 +6,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
   alias ChidoriWeb.RelationsLive
 
   test "最初に開くのは画家の図", %{conn: conn} do
-    # Chiezo に溜めて育てているのはこちら。人物の図はまだその場で AI に聞く形なので、
-    # 先に見せるものではない
+    # 関連図のタブの先頭（`Relations.views/0` の並び）
     {:ok, _live, html} = live(conn, ~p"/relations")
 
     assert html =~ "画家の影響と時代"

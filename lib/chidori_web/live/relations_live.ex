@@ -1176,14 +1176,6 @@ defmodule ChidoriWeb.RelationsLive do
   def sub_size_of(node), do: node[:sub_size] || 10
 
   @doc """
-  名前を丸の中心からどれだけ上へ置くか。
-
-  **字の大きさに合わせてずらす。** 固定にすると、大きい丸では名前が中心に寄りすぎ、
-  小さい丸では様式の札と重なる。
-  """
-  def name_offset(node), do: Float.round(sub_size_of(node) * 0.3, 1)
-
-  @doc """
   ボタンを押させない場面。**押して送っている最中だけ**。
 
   かつては「開いたときの読み直し中」と「Chiezo で取り込みが走っている間」も止めて
@@ -1262,28 +1254,21 @@ defmodule ChidoriWeb.RelationsLive do
   end
 
   @doc """
-  この図がどこから来るか。**画家は Chiezo に溜まったものを読みます**。
+  ボタンの説明。**図は Chiezo に溜まったものを読みます**。
 
   集めて整理するのは Chiezo の役目で、Chidori は図の形に読み直して見せるだけです。
-  人物のほうは、まだその場で AI に聞く形のままです。
   """
-  def source_note(view) do
-    if Chidori.Relations.chiezo_view?(view),
-      do: "このボタンは、Chidori が持っている依頼文と回り方を Chiezo へ送り直すだけで、集めさせはしません。",
-      else: "「関連図を収集」を押すと、その場で AI に調べさせて図を作り直します。"
-  end
+  def source_note(_view),
+    do: "このボタンは、Chidori が持っている依頼文と回り方を Chiezo へ送り直すだけで、集めさせはしません。"
 
   @doc """
   設定欄の頭に置く、この図の出どころ。**ボタンの説明とは分ける** ——
   出どころは図そのものの話で、ボタンを押すかどうかに関わらず読むもの。
-  人物の図は溜め先を持たないので出さない。
   """
-  def origin_note(view) do
-    if Chidori.Relations.chiezo_view?(view),
-      do:
-        "この図は Chiezo に溜まった内容から作っています（収集「#{Chidori.Relations.collection_of(view)}」）。" <>
-          "集めるのは Chiezo で、決まった間隔で回します。"
-  end
+  def origin_note(view),
+    do:
+      "この図は Chiezo に溜まった内容から作っています（収集「#{Chidori.Relations.collection_of(view)}」）。" <>
+        "集めるのは Chiezo で、決まった間隔で回します。"
 
   @doc """
   図を読めなかったときの一文。**読めているときは何も出しません**
@@ -1300,7 +1285,7 @@ defmodule ChidoriWeb.RelationsLive do
   defp relation_reason(:collection_missing),
     do:
       "この図の収集は、まだ Chiezo に作られていません。" <>
-        "「関連図を収集」を押すと、Chiezo に依頼して作ります。"
+        "「収集の設定を更新」を押すと、Chiezo に依頼して作ります。"
 
   defp relation_reason(:nothing_collected),
     do:
@@ -1314,9 +1299,6 @@ defmodule ChidoriWeb.RelationsLive do
     do:
       "Wikipedia から機械的に引く条件を AI に書かせられませんでした。" <>
         "収集は作っていません。もう一度押すか、相手を変えて試してください。"
-
-  defp relation_reason(:invalid_ai_response),
-    do: "AIの応答から関連図を作れませんでした。もう一度収集してください。"
 
   defp relation_reason(:no_partitions),
     do: "Chiezo の収集がまだ区画を持っていないので、区画を名指しできませんでした。"

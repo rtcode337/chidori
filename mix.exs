@@ -54,7 +54,6 @@ defmodule Chidori.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
-      {:dns_cluster, "~> 0.2.0"},
       {:ecto_sql, "~> 3.14"},
       {:postgrex, "~> 0.22"},
       {:bandit, "~> 1.5"}
@@ -72,8 +71,8 @@ defmodule Chidori.MixProject do
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      # テストは毎回まっさらな DB で始める。前のテストが残した行を引きずると、
-      # 単体では通るのに並べると落ちる、という追いにくい壊れ方をする
+      # テストの前に DB を作って移行を当てる（あれば何もしない）。テストどうしは
+      # sandbox で分ける（`config/test.exs`）ので、前のテストが書いた行は残らない
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind chidori", "esbuild chidori"],

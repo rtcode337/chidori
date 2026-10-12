@@ -18,7 +18,8 @@ defmodule Chidori.CollectOverview do
 
   @doc """
   Chiezo から読んで、画面に出す形にします。`{:ok, map}` か `{:error, 理由}`。
-  **待ち行列が読めなくても収集の一覧は出します**（古い Chiezo は口を持たない）。
+  **待ち行列が読めなくても収集の一覧は出します**（別の問い合わせなので、片方の失敗で
+  もう片方を隠さない）。
   """
   def load(base) do
     with {:ok, collections} <- Chiezo.collections(base) do
@@ -30,8 +31,8 @@ defmodule Chidori.CollectOverview do
 
       workers = Map.get(queue, "workers", [])
 
-      # ワーカーの名前。**待ち行列の口と、相手の一覧の両方から引く** —— 待ち行列の口を
-      # 持たない Chiezo では前者が空で、巡回には id で書いてあるので名前が引けない
+      # ワーカーの名前。待ち行列の口と、相手の一覧の両方から引く —— 待ち行列が
+      # 読めなかったときは前者が空で、巡回には id で書いてあるので名前が引けない
       # （画面に「w-58a4f85c」のような鍵がそのまま出ていた）
       backends = Chiezo.backends(base)
 

@@ -590,10 +590,7 @@ defmodule ChidoriWeb.SettingsLive do
   def error_text({:error, :collect_disabled}), do: "Chiezo の収集が無効です。"
   def error_text(_error), do: "Chiezo から読めませんでした（繋がらないかもしれません）。"
 
-  @doc "キューの口が無い古い Chiezo のときの一言。"
-  def queue_error_text(:queue_unsupported),
-    do: "この Chiezo は待ち行列を配る口（/v1/collect/queue）をまだ持っていません。Chiezo を新しくすると出ます。"
-
+  @doc "待ち行列を読めなかったときの一言。"
   def queue_error_text(_reason), do: "待ち行列を読めませんでした。"
 
   @doc """

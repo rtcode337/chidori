@@ -22,22 +22,22 @@ defmodule Chidori.Notify do
   **知らせないときも理由を返します** —— 無言で何もしないと、設定を間違えているのか
   まとめがまだ無いのかを、後から見ている人が区別できません。
   """
-  def deliver_latest(collection, %{digests: digests}, opts \\ []) do
+  def deliver_latest(collection, %{digests: digests}) do
     case List.first(digests) do
       nil -> {:ok, :nothing_to_send}
-      digest -> deliver(collection, digest, opts)
+      digest -> deliver(collection, digest)
     end
   end
 
   @doc """
-  まとめ 1 件を知らせます。`opts` は呼び出し側との互換のために受け取るだけです
-  （知らせ済みかどうかを見ないので、`force` の有無で動きは変わりません）。
+  まとめ 1 件を知らせます。**知らせ済みかどうかは見ません**（押されれば同じまとめでも
+  もう一度送る。送ったことは画面の「最後に知らせた」に出ます）。
 
   **送り先は 2 つあり、両方へ送ります** —— ntfy（宛先が決まっていれば）と、
   登録した端末（Web Push。`Chidori.WebPush.Subscriptions`）。**どちらか 1 つでも
   届けば知らせた扱い**にします（画面の「最後に知らせた」を進める）。
   """
-  def deliver(collection, digest, _opts \\ []) do
+  def deliver(collection, digest) do
     with {:ok, channels} <- ready(collection) do
       send_and_record(collection, digest, channels)
     end

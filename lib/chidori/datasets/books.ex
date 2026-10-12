@@ -72,12 +72,7 @@ defmodule Chidori.Datasets.Books do
   @doc """
   溜め先の収集の名前（= Chiezo のソース名）。**後から変えない**。
   """
-  def collection do
-    case System.get_env("CHIDORI_BOOK_POSTS_COLLECTION", "") |> String.trim() do
-      "" -> @collection
-      name -> name
-    end
-  end
+  def collection, do: @collection
 
   @doc """
   その本を勧めている記事（**新しい順**）。本の見出し（「本:<書名>」）が、

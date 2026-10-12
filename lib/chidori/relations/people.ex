@@ -76,13 +76,8 @@ defmodule Chidori.Relations.People do
   @rough_days_at_default 3
   @survey_days_at_default 21
 
-  @doc "収集の名前（`CHIDORI_PEOPLE_COLLECTION` で変えられる）。"
-  def collection do
-    case System.get_env("CHIDORI_PEOPLE_COLLECTION", "") |> String.trim() do
-      "" -> "chidori_people"
-      name -> name
-    end
-  end
+  @doc "収集の名前。"
+  def collection, do: "chidori_people"
 
   @doc "図に載せる文書の印。"
   def kind_tag, do: @kind_tag

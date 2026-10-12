@@ -79,11 +79,17 @@ if config_env() == :prod do
   host = System.get_env("PHX_HOST") || "localhost"
   scheme = System.get_env("PHX_SCHEME") || "http"
 
+  # リンクに書くポート。https の逆プロキシが 443 以外で待つときだけ `PHX_URL_PORT` で
+  # 渡す（ntfy の通知を押したときの URL と、Web Push の送り手の名乗りに効く）。
+  # 空なら https は 443、http は待ち受けのポート
   url_port =
-    String.to_integer(
-      System.get_env("PHX_URL_PORT") ||
-        if(scheme == "https", do: "443", else: System.get_env("PORT", "7000"))
-    )
+    case System.get_env("PHX_URL_PORT", "") |> String.trim() do
+      "" ->
+        if(scheme == "https", do: 443, else: String.to_integer(System.get_env("PORT", "7000")))
+
+      port ->
+        String.to_integer(port)
+    end
 
   # LiveView の接続元（Origin）の見比べ方。既定は「届いた宛先と同じ名前なら通す」
   # （`ChidoriWeb.SocketOrigin`）—— どの名前・IP で開いても繋がり、別のサイトに置かれた
@@ -96,8 +102,6 @@ if config_env() == :prod do
       off when off in ["false", "off"] -> {false, :off}
       list -> {list |> String.split(",", trim: true) |> Enum.map(&String.trim/1), :off}
     end
-
-  config :chidori, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
   config :chidori, ChidoriWeb.Endpoint,
     url: [host: host, port: url_port, scheme: scheme],

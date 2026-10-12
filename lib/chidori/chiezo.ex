@@ -777,7 +777,6 @@ defmodule Chidori.Chiezo do
 
   @doc """
   ワーカーと取り込みの待ち行列（`GET /v1/collect/queue`）。**読むだけ**。
-  口を持たない古い Chiezo では `{:error, :queue_unsupported}`。
   """
   def queue(base) do
     case get(base <> "/v1/collect/queue") do
@@ -786,10 +785,6 @@ defmodule Chidori.Chiezo do
           {:ok, %{"workers" => workers} = decoded} when is_list(workers) -> {:ok, decoded}
           _ -> {:error, :chiezo_unexpected_body}
         end
-
-      # 口が無い（足す前の版）。**収集の名前として読まれて 404 になる**
-      {:ok, %{status: 404}} ->
-        {:error, :queue_unsupported}
 
       {:ok, %{status: status}} ->
         {:error, {:chiezo_status, status}}
@@ -883,8 +878,7 @@ defmodule Chidori.Chiezo do
       partitions: partitions_of(item),
       # **固定したのに、まだ焼いていない店の数**（Chiezo の `locks_pending`）。これがあれば
       # 「AI を使わずにいま反映する」を出す。固定の記録そのものは反映したあとも残るので、
-      # 記録の数で出すと、反映が済んでも消えない。返さない古い Chiezo では固定の記録の数
-      # （0 にするとボタンが出ず、固定を反映する手段が画面から消える）
+      # 記録の数で出すと、反映が済んでも消えない
       locks_pending: locks_pending(item),
       docs: 0,
       recent: [],
@@ -896,7 +890,6 @@ defmodule Chidori.Chiezo do
   def to_map(_item), do: nil
 
   defp locks_pending(%{"locks_pending" => pending}) when is_integer(pending), do: pending
-  defp locks_pending(%{"locks" => locks}) when is_map(locks), do: map_size(locks)
   defp locks_pending(_item), do: 0
 
   @doc """

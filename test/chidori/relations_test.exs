@@ -19,6 +19,9 @@ defmodule Chidori.RelationsTest do
     Jason.encode!(%{"extract" => %{"source" => "jawiki", "tag" => "画家"}, "total" => 10})
   end
 
+  # 収集がまだ無い、という一覧（作るところから通す）
+  defp no_collections, do: Jason.encode!(%{"collections" => []})
+
   # 表示例をそのまま下敷きにする（本番と同じく、失敗したらこれが残る）
   defp fallback, do: Relations.current("painters")
 
@@ -30,7 +33,7 @@ defmodule Chidori.RelationsTest do
         %{method: :get} -> HttpStub.ok(docs_body([painter_doc("A", ["年代:1900"])]))
       end)
 
-      assert {:ok, %{nodes: [%{name: "A"}]}} = Relations.fetch_painters(@base, fallback())
+      assert {:ok, %{nodes: [%{name: "A"}]}} = Relations.fetch_view("painters", @base, fallback())
     end
 
     @tag :capture_log
@@ -59,7 +62,7 @@ defmodule Chidori.RelationsTest do
           )
       end)
 
-      assert {:ok, relation} = Relations.request_painters(@base, fallback())
+      assert {:ok, relation} = Relations.push_view("painters", @base, fallback())
 
       assert_received {:requested, payload}
       assert payload["prompt"] =~ "{current}"
@@ -171,7 +174,7 @@ defmodule Chidori.RelationsTest do
       end)
 
       assert {:ok, %{nodes: [%{name: "クロード・モネ"}]}} =
-               Relations.push_painters(@base, fallback())
+               Relations.push_view("painters", @base, fallback())
 
       # 指示文・区画・巡回がそのまま向こうへ行く
       assert_received {:patched, url, patch}
@@ -228,7 +231,7 @@ defmodule Chidori.RelationsTest do
           end
       end)
 
-      assert {:ok, %{nodes: [_]}} = Relations.push_painters(@base, fallback())
+      assert {:ok, %{nodes: [_]}} = Relations.push_view("painters", @base, fallback())
       assert_received :patched
     end
 
@@ -237,10 +240,11 @@ defmodule Chidori.RelationsTest do
       HttpStub.stub(fn
         %{method: :post, url: @base <> "/v1/collect/draft-extract"} -> HttpStub.ok(drafted_body())
         %{method: :post} -> {:ok, %{status: 409, body: ""}}
+        %{method: :get, url: @base <> "/v1/collect"} -> HttpStub.ok(no_collections())
         %{method: :get} -> HttpStub.ok(docs_body([painter_doc("A", ["年代:1900"])]))
       end)
 
-      assert {:ok, %{nodes: [%{name: "A"}]}} = Relations.request_painters(@base, fallback())
+      assert {:ok, %{nodes: [%{name: "A"}]}} = Relations.push_view("painters", @base, fallback())
     end
 
     test "まだ何も溜まっていなければ、そう分かる理由を返す" do
@@ -258,7 +262,8 @@ defmodule Chidori.RelationsTest do
 
       # 収集の状態も一緒に返す（有効にしていないのか、まだ走っていないのかで
       # 次にすることが違う）
-      assert {:error, {:nothing_collected, _c}} = Relations.fetch_painters(@base, fallback())
+      assert {:error, {:nothing_collected, _c}} =
+               Relations.fetch_view("painters", @base, fallback())
     end
 
     test "焼かれる前はソースごと無い。繋がらないのとは区別する" do
@@ -275,12 +280,13 @@ defmodule Chidori.RelationsTest do
 
       # 収集の状態も一緒に返す（有効にしていないのか、まだ走っていないのかで
       # 次にすることが違う）
-      assert {:error, {:nothing_collected, _c}} = Relations.fetch_painters(@base, fallback())
+      assert {:error, {:nothing_collected, _c}} =
+               Relations.fetch_view("painters", @base, fallback())
     end
 
     test "収集そのものが無ければ、溜まっていないのとは分けて言う" do
       # どちらも図は出ないが、次にすることが違う —— 溜まっていないなら Chiezo の
-      # 画面で有効にする、作られていないなら Chidori で「関連図を収集」を押す
+      # 画面で有効にする、作られていないなら Chidori で「収集の設定を更新」を押す
       HttpStub.stub(fn
         %{method: :get, url: @base <> "/v1/collect"} ->
           HttpStub.ok(Jason.encode!(%{"collections" => []}))
@@ -289,38 +295,52 @@ defmodule Chidori.RelationsTest do
           {:ok, %{status: 404, body: ""}}
       end)
 
-      assert {:error, {:collection_missing, nil}} = Relations.fetch_painters(@base, fallback())
+      assert {:error, {:collection_missing, nil}} =
+               Relations.fetch_view("painters", @base, fallback())
     end
 
     @tag :capture_log
     test "断られた理由をそのまま出す" do
       # 数字だけ出しても、押した人には次に何をすればよいか分からない
       # （実際に「400」とだけ出て、Chiezo の版が古いという理由に辿り着けなかった）
-      HttpStub.stub(fn %{method: :post} ->
-        {:ok, %{status: 400, body: ~s({"error":"kind は flow / stock のどれかにしてください"})}}
+      HttpStub.stub(fn
+        %{method: :get} ->
+          HttpStub.ok(no_collections())
+
+        %{method: :post} ->
+          {:ok, %{status: 400, body: ~s({"error":"kind は flow / stock のどれかにしてください"})}}
       end)
 
       assert {:error, {:chiezo_refused, 400, message}} =
-               Relations.request_painters(@base, fallback())
+               Relations.push_view("painters", @base, fallback())
 
       assert message =~ "kind"
     end
 
     @tag :capture_log
     test "理由が読めなければ、状態だけ返す" do
-      HttpStub.stub(fn %{method: :post} -> {:ok, %{status: 400, body: "<html>"}} end)
-      assert {:error, {:chiezo_refused, 400, nil}} = Relations.request_painters(@base, fallback())
+      HttpStub.stub(fn
+        %{method: :get} -> HttpStub.ok(no_collections())
+        %{method: :post} -> {:ok, %{status: 400, body: "<html>"}}
+      end)
+
+      assert {:error, {:chiezo_refused, 400, nil}} =
+               Relations.push_view("painters", @base, fallback())
     end
 
     @tag :capture_log
     test "集める層が無い Chiezo はそれと分かる" do
-      HttpStub.stub(fn %{method: :post} -> {:ok, %{status: 404, body: ""}} end)
-      assert {:error, :collect_unsupported} = Relations.request_painters(@base, fallback())
+      HttpStub.stub(fn
+        %{method: :get} -> HttpStub.ok(no_collections())
+        %{method: :post} -> {:ok, %{status: 404, body: ""}}
+      end)
+
+      assert {:error, :collect_unsupported} = Relations.push_view("painters", @base, fallback())
     end
 
     test "繋がらなければ、そう返す（前の図を消すのは呼ぶ側の判断）" do
       HttpStub.stub(fn _request -> {:error, :boom} end)
-      assert {:error, :chiezo_unavailable} = Relations.fetch_painters(@base, fallback())
+      assert {:error, :chiezo_unavailable} = Relations.fetch_view("painters", @base, fallback())
     end
   end
 
@@ -508,7 +528,7 @@ defmodule Chidori.RelationsTest do
         end
       end)
 
-      assert {:ok, relation} = Relations.fetch_painters(@base, fallback())
+      assert {:ok, relation} = Relations.fetch_view("painters", @base, fallback())
       assert length(relation.nodes) == 503
     end
 
@@ -516,7 +536,7 @@ defmodule Chidori.RelationsTest do
       # total を信じて回数を決めると、途中で件数が変わったときに空振りする
       stub_pages(fn _url -> HttpStub.ok(docs_body([painter_doc("A", ["年代:1900"])])) end)
 
-      assert {:ok, _relation} = Relations.fetch_painters(@base, fallback())
+      assert {:ok, _relation} = Relations.fetch_view("painters", @base, fallback())
 
       assert_received {:page, _first}
       refute_received {:page, _second}
@@ -532,43 +552,16 @@ defmodule Chidori.RelationsTest do
         end
       end)
 
-      assert {:ok, relation} = Relations.fetch_painters(@base, fallback())
+      assert {:ok, relation} = Relations.fetch_view("painters", @base, fallback())
       assert length(relation.nodes) == 500
     end
 
     test "1 頁目から無ければ、まだ何も溜まっていない" do
       # stub_pages は収集を空で返すので、ここは「収集が作られていない」ほうになる
       stub_pages(fn _url -> {:ok, %{status: 404, body: ""}} end)
-      assert {:error, {:collection_missing, nil}} = Relations.fetch_painters(@base, fallback())
-    end
-  end
 
-  describe "図の置き方" do
-    alias Chidori.Relations
-
-    test "いちばん上と下のノードが、重なっている UI の下に入らない" do
-      # 探す欄と道具は図の上に、操作の案内は下に重ねてある。余白が無いと、
-      # **引きずっても拡大しても出てこない**（重なっているものは一緒に動かない）
-      margin = Relations.canvas_margin()
-
-      for {key, count} <- [{"painters", 8}, {"people", 10}] do
-        nodes = for n <- 1..count, do: %{id: "n#{n}", name: "n#{n}"}
-        laid_out = Relations.layout_nodes(nodes, key)
-        height = Relations.canvas_height(count, key)
-
-        for node <- laid_out do
-          assert node.y >= margin, "#{key}: 上の余白に食い込んでいます"
-          assert node.y <= height - margin, "#{key}: 下の余白に食い込んでいます"
-        end
-      end
-    end
-
-    test "余白のぶんだけ面を広げる" do
-      # 中身を縮めて余白を作ると、ノードどうしが近づいて札が重なる
-      margin = Relations.canvas_margin()
-
-      assert Relations.canvas_height(8, "painters") == 560 + 2 * margin
-      assert Relations.canvas_height(1, "people") == 560 + 2 * margin
+      assert {:error, {:collection_missing, nil}} =
+               Relations.fetch_view("painters", @base, fallback())
     end
   end
 end

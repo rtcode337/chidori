@@ -114,11 +114,10 @@ defmodule Chidori.Datasets.Dining do
   # カテゴリ名は Overture のもので、推測で書くと**エラーにならず 0 件**になる
   # （`/v1/overture_japan/tags?contains=` で実在を確かめてある）
   #
-  # **Overture は版で語彙が動く。** 2026-09 の版で `noodles_restaurant` が無くなり、
-  # ラーメン屋は `ramen_restaurant` に入った。古い版のぶんも読めるよう両方書く
-  # （無いカテゴリは 0 件になるだけで、落ちはしない）
+  # ラーメン屋は `noodles_restaurant` に入る（`ramen_restaurant` は今の取り込みに無い）。
+  # Overture は版で語彙が動くので、取り込み直したら実在を確かめ直す
   @categories ~w(
-    restaurant japanese_restaurant sushi_restaurant noodles_restaurant ramen_restaurant
+    restaurant japanese_restaurant sushi_restaurant noodles_restaurant
     barbecue_restaurant seafood_restaurant chinese_restaurant korean_restaurant
     italian_restaurant french_restaurant
   )
@@ -141,7 +140,6 @@ defmodule Chidori.Datasets.Dining do
   @genres [
     {"sushi_restaurant", "寿司"},
     {"noodles_restaurant", "麺類"},
-    {"ramen_restaurant", "麺類"},
     {"barbecue_restaurant", "焼肉"},
     {"seafood_restaurant", "海鮮"},
     {"chicken_restaurant", "鶏料理"},
