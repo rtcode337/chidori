@@ -656,7 +656,7 @@ defmodule Chidori.NewsTest do
     end
 
     test "市況ニュースは、記事に出てくる上場企業の証券コードを付けさせる" do
-      # 売買提案のアプリ が自分の保有と突き合わせて注目銘柄にする
+      # 売買提案のアプリが自分の保有と突き合わせて注目銘柄にする
       market = News.refine_prompt(defined_topic("chidori_market"))
 
       assert market =~ ~s("銘柄:<証券コード>")
@@ -682,7 +682,7 @@ defmodule Chidori.NewsTest do
     end
 
     test "市況ニュースは要約を作らず、記事の機械収集と整理だけを回す" do
-      # 要約は売買提案の AI（売買提案のアプリ）の参加者がそれぞれ書く（`Chidori.Topics` の `digest_from`）
+      # 要約は売買提案のアプリの AI の参加者がそれぞれ書く（`Chidori.Topics` の `digest_from`）
       names = defined_topic("chidori_market") |> News.sweeps() |> Enum.map(& &1.name)
 
       assert Chidori.SweepNames.digest() not in names

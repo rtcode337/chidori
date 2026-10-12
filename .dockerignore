@@ -10,3 +10,10 @@ README.md
 # 手元でビルドした資産は持ち込まない。イメージの中で作る
 priv/static/assets
 priv/static/cache_manifest.json
+# 手元の実設定・データ・mix の作業場所は持ち込まない
+.env
+.docker-home
+.mix
+data
+data-dev
+docker-compose.standalone.yml

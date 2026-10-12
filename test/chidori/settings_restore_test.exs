@@ -36,7 +36,7 @@ defmodule Chidori.SettingsRestoreTest do
         "extract" => %{"source" => "jawiki", "min_extra" => %{"pageviews_month" => 3000}}
       }),
       # 他のアプリの収集は見ない
-      %{"name" => "other", "requested_by" => "売買提案のアプリ", "sweeps" => [sweep("整理", 2880)]}
+      %{"name" => "other", "requested_by" => "sample-app", "sweeps" => [sweep("整理", 2880)]}
     ]
 
     assert {:ok, result} = SettingsRestore.run(fn -> {:ok, collections} end)

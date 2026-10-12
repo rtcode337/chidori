@@ -25,7 +25,7 @@ defmodule Chidori.CollectOverviewTest do
                   %{"name" => "情報収集", "interval_minutes" => 1440, "worker" => "w-2"}
                 ]
               },
-              %{"name" => "other_app", "requested_by" => "売買提案のアプリ", "sweeps" => []}
+              %{"name" => "other_app", "requested_by" => "sample-app", "sweeps" => []}
             ]
           })
         )

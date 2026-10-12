@@ -44,7 +44,7 @@ defmodule Chidori.Datasets.Pihole do
   # （Chiezo のソースが付ける重み）
   @tidy_order "priority"
 
-  # いま止めている通信を 1 回に読む数と、画面に残す行数（Pi-hole の監視アプリ と同じ 500）
+  # いま止めている通信を 1 回に読む数と、画面に残す行数（500）
   @live_rows 500
   @live_keep 500
 
@@ -148,7 +148,7 @@ defmodule Chidori.Datasets.Pihole do
   @doc """
   整理の回の依頼文。**まだ調べていないドメインだけ**を渡し（`{unreviewed}`）、
   1 件ずつ web で調べて本文に書かせます。見出しはもとにした単体のアプリ
-  （Pi-hole の監視アプリ）の「詳しく調べる」と同じで、利用者が「放置してよいか、
+  の「詳しく調べる」と同じで、利用者が「放置してよいか、
   止めるべきか」を判断できる形にしています。
   """
   def research_prompt do

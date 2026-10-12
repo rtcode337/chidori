@@ -362,7 +362,7 @@ defmodule ChidoriWeb.DatasetsLive do
     end
   end
 
-  # **いま止めている通信を流す**（Pi-hole の監視アプリ の「1件ずつ流す」）。押した時点から先を、
+  # **いま止めている通信を流す**（Pi-hole の画面の「1件ずつ流す」に当たるもの）。押した時点から先を、
   # 5 秒ごとに Chiezo 越しに読んで 1 件 1 行で足す。止めたら読みに行かない
   def handle_event("live_start", _params, socket) do
     socket =
