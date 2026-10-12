@@ -2,8 +2,7 @@
 #
 # デプロイ先は `docker compose pull` でこのイメージを取得して動かす
 # （docker-compose.yml / docker-compose.standalone.example.yml）。
-# 実行環境は amd64 のみ —— 非公開リポジトリなので Actions の実行時間と GHCR の
-# ストレージがプランの無料枠を消費する。複数アーキのビルドは枠の消費が増えるので作らない。
+# 実行環境は amd64 のみ（複数アーキのビルドは作らない。要るようになったら platforms に足す）。
 name: build-and-push-image
 
 on:
@@ -21,7 +20,7 @@ on:
   # 手動実行（Actions タブの "Run workflow"）。ドキュメントだけ変えたあとに作り直したいときなど
   workflow_dispatch:
 
-# 同じ ref への連続した push では古い実行を打ち切る（無料枠の節約）
+# 同じ ref への連続した push では古い実行を打ち切る（途中の版のイメージは使わないため）
 concurrency:
   group: build-and-push-image-${{ github.ref }}
   cancel-in-progress: true
@@ -79,7 +78,7 @@ jobs:
       # 古いイメージを消して最新の 2 つだけ残す。
       #
       # `latest` を付け替えても前の版は `sha-` タグ付きで残り続けるため、放っておくと
-      # push のたびに積み上がり、非公開パッケージのストレージ枠を食う。
+      # push のたびに積み上がる。
       # 1 世代前は、新しい版で起動できなかったときに戻す先として残す。
       #
       # 失敗しても握りつぶさない（continue-on-error を付けない）。消せていないのに

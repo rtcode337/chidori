@@ -15,9 +15,7 @@
 #   3. その内容を管理画面に貼り付けて起動する
 #   4. http://<ホスト>:7000/ を開く。移行は起動のたびに当たるので手で流す必要はない
 #
-# 非公開リポジトリのため GHCR のパッケージも非公開。pull する前に、そのホストで
-# `read:packages` スコープの Personal Access Token を使って
-# `docker login ghcr.io -u <GitHub ユーザー名>` を済ませておくこと。
+# イメージ（GHCR のパッケージ）は公開なので、`docker login` なしで pull できる。
 #
 # :latest ではなく :sha-xxxxxxx を指定すれば特定のイメージを指せる。
 # ※ GHCR には直近の 2 版しか残らない（.github/workflows/build-and-push-image.yml）。
