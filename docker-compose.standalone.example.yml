@@ -68,7 +68,8 @@ services:
       # 端末への通知（Web Push）は、PHX_HOST とこれで組んだ https の URL を送り手の名乗りに
       # 使う（http のままだと iPhone への通知が断られる）
       PHX_SCHEME: "http"
-      # LiveView が繋ぎ直すときに接続元を見比べるか。空なら見比べない（LAN の中に閉じている前提）
+      # LiveView の接続元の見比べ方。空なら「開いた宛先と同じ名前なら通す」（別のサイトの
+      # ページからの接続は断る）。通す宛先を固定するならカンマ区切りで並べる
       PHX_CHECK_ORIGIN: ""
       PORT: "7000"
       # 関連図を調べさせる相手（空なら Chiezo の既定）

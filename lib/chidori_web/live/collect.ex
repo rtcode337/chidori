@@ -338,6 +338,10 @@ defmodule ChidoriWeb.Collect do
   def reason_text({:chiezo_refused, status, nil}), do: "Chiezo が依頼を断りました（#{status}）。"
   def reason_text({:chiezo_refused, _status, message}), do: "Chiezo が依頼を断りました: #{message}"
 
+  # 同じ依頼がこの Chidori の中でまだ走っている（`Chidori.SingleFlight`）
+  def reason_text(:busy),
+    do: "同じ依頼がまだ走っています。終わってからもう一度押してください。"
+
   def reason_text(:chiezo_busy),
     do:
       "いま Chiezo が取り込み中なので、割り込みを受け付けてもらえませんでした。" <>

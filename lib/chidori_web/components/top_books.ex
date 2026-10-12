@@ -10,6 +10,8 @@ defmodule ChidoriWeb.TopBooks do
 
   use Phoenix.Component
 
+  alias Chidori.SafeUrl
+
   # 並べる数。**切りのいい数にする**（8 冊だと、何の区切りなのかが読めない）
   @count 10
 
@@ -157,7 +159,7 @@ defmodule ChidoriWeb.TopBooks do
                 <li :for={post <- posts}>
                   <a
                     :if={post.url}
-                    href={post.url}
+                    href={SafeUrl.href(post.url)}
                     target="_blank"
                     rel="noreferrer"
                     onclick="event.stopPropagation()"

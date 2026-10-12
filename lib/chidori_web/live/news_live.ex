@@ -308,11 +308,18 @@ defmodule ChidoriWeb.NewsLive do
   # **まとめを作らせて知らせる。** 整理を 1 回起こしてから要約を起こす ——
   # 整理されていないものでまとめさせると、宣伝も重複も読み物に入る。
   # **数分かかる**ので、待つのは押した人ではなく Task の側
+  # 同じ話題のまとめが走っている間は断る（`Chidori.SingleFlight`）
   def handle_event("digest_now", _params, socket) do
     topic = socket.assigns.topic
-    Digest.start(topic)
 
-    {:noreply, assign(socket, digest_message: "整理から始めています…（数分かかります）")}
+    message =
+      case Digest.start(topic) do
+        {:ok, _pid} -> "整理から始めています…（数分かかります）"
+        {:error, :busy} -> reason_text(:busy)
+        {:error, _reason} -> "まとめを始められませんでした。もう一度押してください。"
+      end
+
+    {:noreply, assign(socket, digest_message: message)}
   end
 
   # **いまあるまとめをもう一度知らせる。** 作り直さずに送るだけ
@@ -359,10 +366,21 @@ defmodule ChidoriWeb.NewsLive do
       {written, article} ->
         text = "「#{article.title}」について。#{written}"
 
-        {:noreply,
-         socket
-         |> assign(asking: true, article_asked: :asking)
-         |> start_async(:ask, fn -> News.ask_focus(topic.collection, text, [article.title]) end)}
+        # 同じ記事への頼みは 1 本だけ（続けて押しても AI の回を重ねない）
+        key = {:ask_article, topic.collection, article.title}
+
+        if Chidori.SingleFlight.busy?(key) do
+          {:noreply, assign(socket, article_asked: {:error, :busy})}
+        else
+          {:noreply,
+           socket
+           |> assign(asking: true, article_asked: :asking)
+           |> start_async(:ask, fn ->
+             Chidori.SingleFlight.run(key, fn ->
+               News.ask_focus(topic.collection, text, [article.title])
+             end)
+           end)}
+        end
     end
   end
 
@@ -1140,7 +1158,13 @@ defmodule ChidoriWeb.NewsLive do
       tabindex="0"
     >
       <%!-- 配信元が配っている絵。**無いほうが多い**ので、あるときだけ出す --%>
-      <img :if={@article.image} class="news-thumb" src={@article.image} alt="" loading="lazy" />
+      <img
+        :if={@article.image}
+        class="news-thumb"
+        src={SafeUrl.src(@article.image)}
+        alt=""
+        loading="lazy"
+      />
       <div>
         <%!-- 反応の大きさ・興味の近さは重要度と別の軸なので、印の隣ではなく日付の並びに置く --%>
         <p class="news-source">
@@ -1551,7 +1575,7 @@ defmodule ChidoriWeb.NewsLive do
   配っている絵（技術イベントの告知サイトのもの）。どちらも無ければ nil。
   """
   def entry_thumb(%{thumb: thumb}) when is_binary(thumb), do: Chidori.Chiezo.thumb_path(thumb)
-  def entry_thumb(%{image: image}) when is_binary(image), do: image
+  def entry_thumb(%{image: image}) when is_binary(image), do: Chidori.SafeUrl.src(image)
   def entry_thumb(_entry), do: nil
 
   @doc "絵の無い注目作の数（`fill_images` のボタンに添える）。"
@@ -1590,6 +1614,7 @@ defmodule ChidoriWeb.NewsLive do
   # 断られた理由。**数字だけ出しても、押した人には次に何をすればよいか分からない**
   def ask_error(:collection_disabled), do: "この収集は Chiezo 側で止まっています。"
   def ask_error(:not_requested), do: "まだ収集を依頼していません。"
+  def ask_error(:busy), do: reason_text(:busy)
   def ask_error(:chiezo_busy), do: "Chiezo がいま別の依頼を抱えています。少し待ってください。"
   def ask_error(:chiezo_not_configured), do: "Chiezo の場所が設定されていません。"
   def ask_error({:chiezo_refused, _status, reason}) when is_binary(reason), do: reason

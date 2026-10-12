@@ -298,6 +298,7 @@ ntfy と並べて、**ホーム画面に入れた Chidori（iPhone を含む）�
 
 - **iPhone**: Safari の共有メニューから「ホーム画面に追加」→ ホーム画面の Chidori から開く → 設定の「通知」タブで「この端末で受け取る」（iOS 16.4 以降。https で開いているときだけ）
 - **登録した端末は「通知」タブに並び**、外す・テスト通知を送るができます。受け取れなくなった端末（配信先が 404・410 を返したもの）は送ったときに外します
+- **宛先はブラウザの配信元だけ受け取ります**（Apple `*.push.apple.com`・Google `fcm.googleapis.com`・Mozilla `*.push.services.mozilla.com`・Microsoft `*.notify.windows.com`）。それ以外の宛先へは送りません。届かなかったときに画面へ出すのは状態番号と理由の見当だけで、配信元が返した本文はログに残します
 - **送り手の鍵（VAPID）は最初に要ったときに作って DB に置きます**（表 `web_push_keys`）。手で用意するものはありません。DB を作り直すと鍵が替わるので、端末は登録し直してください
 
 記事本文は Chidori に保存せず、見出しを押すと Chiezo の中身（要約と出典）が開きます。
@@ -490,13 +491,19 @@ docker compose up -d
 （通すと起動には成功して全リクエストが 500 になり、原因を追いにくい）。
 移行は起動のたびに当たるので、手で流す必要はない。
 
+**画面（LiveView）の接続は、開いた宛先と同じ名前からのものだけ通します。** どの名前・IP で
+開いても繋がり、別のサイトに置かれたページからの接続は断ります（scheme とポートは見ないので、
+前段で TLS をほどく逆プロキシでもそのまま動く。プロキシが `Host` を書き換えるなら
+`X-Forwarded-Host` を付けるか `PHX_HOST` を公開名にする）。通す名前を固定したいときは
+`PHX_CHECK_ORIGIN` に `https://chidori.example.com` のようにカンマ区切りで並べる。
+
 手元のソースから作り直すときは重ねる。
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
-ホストで直接動かすなら、DB だけ立てて繋ぐ。
+ホストで直接動かすなら、DB だけ立てて繋ぐ（開発用の DB は `127.0.0.1:7071` にだけ開く）。
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d

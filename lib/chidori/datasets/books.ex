@@ -113,7 +113,8 @@ defmodule Chidori.Datasets.Books do
 
     %{
       title: to_string(result["title"] || ""),
-      url: if(is_binary(extra["url"]), do: extra["url"]),
+      # 配信元が入れた URL。http・https 以外はリンクにしない
+      url: Chidori.SafeUrl.href(extra["url"]),
       # 日付の無い記事は後ろへ（空文字は降順で最後に来る）
       published_at: to_string(extra["published_at"] || "")
     }

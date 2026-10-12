@@ -1197,17 +1197,7 @@ defmodule Chidori.News do
   defp tags_of(_item), do: []
 
   # 出典は AI が入れたものなので、そのまま信じてリンクにしない
-  defp source_url(url) when is_binary(url) do
-    case URI.parse(url) do
-      %URI{scheme: scheme, host: host} when is_binary(host) and host != "" ->
-        if scheme in ["http", "https"], do: url, else: nil
-
-      _ ->
-        nil
-    end
-  end
-
-  defp source_url(_url), do: nil
+  defp source_url(url), do: Chidori.SafeUrl.href(url)
 
   defp trimmed(value) when is_binary(value) do
     case String.trim(value) do

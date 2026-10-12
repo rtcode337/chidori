@@ -11,6 +11,16 @@ defmodule ChidoriWeb.Endpoint do
     same_site: "Lax"
   ]
 
+  # LiveView の口へ来た要求は、接続元（Origin）が届いた宛先と同じ名前かを先に見る
+  # （`ChidoriWeb.SocketOrigin`）。Phoenix は socket への振り分けを plug の並びの
+  # 先頭で済ませるので、`plug` で足しても間に合わない。ここで `call/2` を包む
+  def call(conn, opts) do
+    case ChidoriWeb.SocketOrigin.call(conn, []) do
+      %Plug.Conn{halted: true} = halted -> halted
+      conn -> super(conn, opts)
+    end
+  end
+
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]

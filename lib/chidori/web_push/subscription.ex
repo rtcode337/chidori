@@ -24,9 +24,14 @@ defmodule Chidori.WebPush.Subscription do
     subscription
     |> cast(attrs, [:endpoint, :p256dh, :auth, :label])
     |> validate_required([:endpoint, :p256dh, :auth])
-    # **配信先は https だけ**（ブラウザが渡す宛先はどれも https。それ以外は受け取らない）
-    |> validate_format(:endpoint, ~r{\Ahttps://}, message: "https の宛先ではありません")
     |> validate_length(:endpoint, max: 2000)
+    # 配信先はブラウザの配信元だけ（Apple・Google・Mozilla・Microsoft の https）。
+    # それ以外を受け取ると、任意の URL へ Chidori が POST を投げる口になる
+    |> validate_change(:endpoint, fn :endpoint, endpoint ->
+      if Chidori.WebPush.allowed_endpoint?(endpoint),
+        do: [],
+        else: [endpoint: "ブラウザの配信元の宛先ではありません"]
+    end)
     |> validate_key(:p256dh, 65)
     |> validate_key(:auth, 16)
     |> validate_length(:label, max: 100)

@@ -158,7 +158,7 @@
                 <span class={["event-chip", "is-#{entry.attention}"]}>
                   {ChidoriWeb.NewsLive.day_label(entry.date)}
                 </span>
-                <a :if={entry.url} href={entry.url} target="_blank" rel="noreferrer">{entry.title}</a>
+                <a :if={entry.url} href={SafeUrl.href(entry.url)} target="_blank" rel="noreferrer">{entry.title}</a>
                 <strong :if={!entry.url}>{entry.title}</strong>
               </div>
               <p class="event-item-facts">

@@ -102,8 +102,8 @@ defmodule ChidoriWeb.Report do
       <%!-- おすすめの絵（`hero`）。**要旨より先に**、出典の順で数枚 --%>
       <ul :if={@hero_figures != []} class="report-hero" aria-label="おすすめ">
         <li :for={figure <- @hero_figures}>
-          <a href={figure.url} target="_blank" rel="noreferrer" title={figure.label}>
-            <img src={figure.image} alt="" loading="lazy" />
+          <a href={SafeUrl.href(figure.url)} target="_blank" rel="noreferrer" title={figure.label}>
+            <img src={SafeUrl.src(figure.image)} alt="" loading="lazy" />
             <span>{figure.label}</span>
           </a>
         </li>
@@ -144,8 +144,8 @@ defmodule ChidoriWeb.Report do
 
         <%!-- 絵は本文の脇に置く。上に置くと、読む前に大きな絵が挟まって章が切れる --%>
         <figure :if={section.figure} class="report-figure">
-          <a href={section.figure.url} target="_blank" rel="noreferrer">
-            <img src={section.figure.image} alt="" loading="lazy" />
+          <a href={SafeUrl.href(section.figure.url)} target="_blank" rel="noreferrer">
+            <img src={SafeUrl.src(section.figure.image)} alt="" loading="lazy" />
           </a>
         </figure>
 
@@ -172,7 +172,7 @@ defmodule ChidoriWeb.Report do
         <p class="report-refs-label">出典</p>
         <ol>
           <li :for={source <- @sources}>
-            <a href={source.url} target="_blank" rel="noreferrer">
+            <a href={SafeUrl.href(source.url)} target="_blank" rel="noreferrer">
               {label_of(source, @known)}
             </a>
             <span class="report-ref-host">{host(source.url)}</span>
@@ -235,7 +235,7 @@ defmodule ChidoriWeb.Report do
         <% {:source, url, label} -> %>
           <p class="digest-source">
             出典:
-            <a href={url} target="_blank" rel="noreferrer">
+            <a href={SafeUrl.href(url)} target="_blank" rel="noreferrer">
               {label_of(%{url: url, label: label}, @known)}
             </a>
           </p>
@@ -258,7 +258,7 @@ defmodule ChidoriWeb.Report do
         <% {:strong, text} -> %>
           <strong>{text}</strong>
         <% {:link, url, label} -> %>
-          <a href={url} target="_blank" rel="noreferrer">{label}</a>
+          <a href={SafeUrl.href(url)} target="_blank" rel="noreferrer">{label}</a>
       <% end %>
     <% end %>
     """

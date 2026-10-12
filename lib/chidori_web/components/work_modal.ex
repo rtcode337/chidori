@@ -261,7 +261,12 @@ defmodule ChidoriWeb.WorkModal do
     <div class="event-item-detail">
       <p :for={line <- @works.body_lines(@entry)}>
         <%= for part <- NewsLive.link_parts(line) do %>
-          <a :if={match?({:url, _}, part)} href={elem(part, 1)} target="_blank" rel="noreferrer">
+          <a
+            :if={match?({:url, _}, part)}
+            href={SafeUrl.href(elem(part, 1))}
+            target="_blank"
+            rel="noreferrer"
+          >
             {elem(part, 1)}
           </a>
           <span :if={match?({:text, _}, part)}>{elem(part, 1)}</span>
@@ -273,7 +278,7 @@ defmodule ChidoriWeb.WorkModal do
       <p class="report-refs-label">出典</p>
       <ol>
         <li :for={url <- @sources}>
-          <a href={url} target="_blank" rel="noreferrer">{url}</a>
+          <a href={SafeUrl.href(url)} target="_blank" rel="noreferrer">{url}</a>
           <span :if={url == @entry[:url]} class="report-ref-host">作品のページ</span>
         </li>
       </ol>

@@ -89,7 +89,10 @@ defmodule Chidori.Digest.Scheduler do
     free_by = free_by(topic)
 
     task =
-      Task.Supervisor.async_nolink(Chidori.TaskSupervisor, fn -> Digest.run(topic, free_by) end)
+      Task.Supervisor.async_nolink(Chidori.TaskSupervisor, fn ->
+        # 画面から押した回が走っていれば、この回は見送る（同じまとめを 2 本作らせない）
+        Chidori.SingleFlight.run(Digest.flight_key(topic), fn -> Digest.run(topic, free_by) end)
+      end)
 
     Map.merge(state, %{task: task, task_collection: topic.collection, queue: rest})
   end

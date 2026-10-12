@@ -883,7 +883,7 @@
           </figcaption>
         </figure>
         <figure :if={is_map(@portrait) and is_binary(@portrait[:image])} class="portrait">
-          <img src={@portrait.image} alt={"#{@detail.name}の肖像"} />
+          <img src={SafeUrl.src(@portrait.image)} alt={"#{@detail.name}の肖像"} />
           <figcaption>Wikipedia より</figcaption>
         </figure>
 
@@ -916,11 +916,16 @@
                  どれを選んでも「その人らしさ」を外す --%>
             <%= for work <- @artwork do %>
               <figure :if={work.image} class="artwork-figure">
-                <img src={work.image} alt={work.title} />
+                <img src={SafeUrl.src(work.image)} alt={work.title} />
                 <figcaption>
                   <span class="artwork-title">{work.title}</span>
                   <span :if={work[:extract]} class="artwork-extract">{work.extract}</span>
-                  <a :if={work[:page]} href={work.page} target="_blank" rel="noreferrer">
+                  <a
+                    :if={work[:page]}
+                    href={SafeUrl.href(work.page)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     この絵を Wikipedia で見る
                   </a>
                 </figcaption>
@@ -975,7 +980,8 @@
               </label>
             </p>
             <p class="muted-note">
-              ここに書いたことは Chidori の置き場（Chiezo の chidori_data）に残ります（収集には書きません）。 <strong>印もメモも空にして保存すると、記録ごと消えます。</strong>
+              ここに書いたことは Chidori の置き場（Chiezo の chidori_data）に残ります（収集には書きません）。
+              <strong>印もメモも空にして保存すると、記録ごと消えます。</strong>
             </p>
             <button type="submit" phx-disable-with="保存しています…">記録を保存</button>
             <span :if={@mark_saved == @detail.name} class="muted-note">保存しました。</span>

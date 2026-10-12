@@ -260,7 +260,7 @@ defmodule Chidori.News.Events do
         # 本文を引いたときは本文（冒頭は 240 字で切れている）
         summary: doc["body"] || doc["opening"],
         thumb: thumb_path(extra["thumb"]),
-        image: safe_url(extra["image"])
+        image: Chidori.SafeUrl.href(extra["image"])
       },
       date_tag
     )
@@ -276,7 +276,7 @@ defmodule Chidori.News.Events do
       tags: tags,
       thumb: Map.get(article, :thumb),
       image: Map.get(article, :image),
-      url: safe_url(Map.get(article, :url)),
+      url: Chidori.SafeUrl.href(Map.get(article, :url)),
       summary: summary,
       date: date,
       end_date: tag_date(tags, @end_tag),
@@ -558,15 +558,6 @@ defmodule Chidori.News.Events do
       _ -> nil
     end)
   end
-
-  defp safe_url(url) when is_binary(url) do
-    case URI.parse(url) do
-      %URI{scheme: scheme, host: host} when scheme in ["http", "https"] and is_binary(host) -> url
-      _ -> nil
-    end
-  end
-
-  defp safe_url(_url), do: nil
 
   # Chiezo が配るサムネイルの場所（Chiezo の中の相対パス）。**その形のものだけ通す**
   # （画面が Chidori から配る場所に言い換えて出すので、外を指すものを混ぜない）

@@ -260,7 +260,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
         live
         |> element("#web-push")
         |> render_hook("push_subscribe", %{
-          "subscription" => device_subscription("https://push.example.com/send/a"),
+          "subscription" => device_subscription("https://fcm.googleapis.com/send/a"),
           "user_agent" =>
             "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
         })
@@ -273,7 +273,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
 
       live
       |> element("#web-push")
-      |> render_hook("push_unsubscribe", %{"endpoint" => "https://push.example.com/send/a"})
+      |> render_hook("push_unsubscribe", %{"endpoint" => "https://fcm.googleapis.com/send/a"})
 
       assert Chidori.WebPush.Subscriptions.list() == []
     end
@@ -285,7 +285,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
         live
         |> element("#web-push")
         |> render_hook("push_subscribe", %{
-          "subscription" => %{"endpoint" => "https://push.example.com/x", "keys" => %{}},
+          "subscription" => %{"endpoint" => "https://fcm.googleapis.com/x", "keys" => %{}},
           "user_agent" => ""
         })
 
@@ -296,19 +296,19 @@ defmodule ChidoriWeb.SettingsLiveTest do
     test "一覧から外せて、テスト通知の結果を出す", %{conn: conn} do
       {:ok, alive} =
         Chidori.WebPush.Subscriptions.subscribe(
-          device_subscription("https://push.example.com/send/alive"),
+          device_subscription("https://fcm.googleapis.com/send/alive"),
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/140.0 Safari/537.36"
         )
 
       {:ok, _gone} =
         Chidori.WebPush.Subscriptions.subscribe(
-          device_subscription("https://push.example.com/send/gone"),
+          device_subscription("https://fcm.googleapis.com/send/gone"),
           ""
         )
 
       {:ok, removed} =
         Chidori.WebPush.Subscriptions.subscribe(
-          device_subscription("https://push.example.com/send/removed"),
+          device_subscription("https://fcm.googleapis.com/send/removed"),
           ""
         )
 

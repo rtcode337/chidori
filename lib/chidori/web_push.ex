@@ -13,6 +13,10 @@ defmodule Chidori.WebPush do
   - 宛先の端末は `Chidori.WebPush.Subscriptions` が持ちます
   - 送るのは `Chidori.Http` 越し（テストはスタブへ差し替わる）
 
+  **送り先はブラウザの配信元だけです**（`allowed_endpoint?/1`）。宛先はブラウザが
+  渡してくるものをそのまま受け取るので、ここで絞らないと、画面から登録させた任意の
+  URL（LAN の中の機器を含む）へ Chidori が POST を投げる口になります。
+
   **届けられなくなった端末（404・410）は消します。** アプリを消した・通知を切った
   端末で、配信先がもう受け取らないと答えたものです。残すと送るたびに失敗が並び、
   本当に届いていない端末と見分けが付きません。
@@ -28,6 +32,13 @@ defmodule Chidori.WebPush do
   # 署名の有効期限（RFC 8292 は 24 時間以内を求める）
   @jwt_lifetime 12 * 60 * 60
 
+  # 送ってよい配信元。名前の一致か、`.` を挟んだ後ろの一致だけを見る
+  # （`evilpush.apple.com.example` や `xpush.apple.com` を通さない）。
+  # Safari は web.push.apple.com、Chrome・Edge（Android 含む）は fcm.googleapis.com、
+  # Firefox は updates.push.services.mozilla.com、旧 Edge・Windows は *.notify.windows.com
+  @push_hosts ["fcm.googleapis.com", "updates.push.services.mozilla.com"]
+  @push_host_suffixes [".push.apple.com", ".push.services.mozilla.com", ".notify.windows.com"]
+
   @timeout 10_000
   @connect_timeout 5_000
 
@@ -40,11 +51,14 @@ defmodule Chidori.WebPush do
   1 台の端末へ送ります。`subscription` は `endpoint`・`p256dh`・`auth`（base64url）を持つもの。
 
   返すのは `:ok`、届けられなくなった端末なら `:expired`、それ以外は `{:error, 理由}`。
+  **配信元でない宛先には送りません**（`{:error, :endpoint_not_allowed}`。前に登録された
+  ものが残っていても、送る手前で止める）。
   """
   def send_notification(subscription, payload, opts \\ []) when is_binary(payload) do
     key = Keyword.get_lazy(opts, :key, &Key.get/0)
 
-    with {:ok, ua_public} <- decode_key(subscription.p256dh, 65),
+    with true <- allowed_endpoint?(subscription.endpoint) || :not_allowed,
+         {:ok, ua_public} <- decode_key(subscription.p256dh, 65),
          {:ok, auth} <- decode_key(subscription.auth, 16) do
       body = encrypt(payload, ua_public, auth)
       jwt = vapid_jwt(subscription.endpoint, key)
@@ -63,9 +77,28 @@ defmodule Chidori.WebPush do
         {:error, reason} -> {:error, {:push_unavailable, reason}}
       end
     else
+      :not_allowed -> {:error, :endpoint_not_allowed}
       :error -> {:error, :bad_subscription}
     end
   end
+
+  @doc """
+  ブラウザの配信元の宛先か。https・既定のポート・利用者名なしで、名前が配信元の
+  ものに当たるときだけ `true`。
+  """
+  def allowed_endpoint?(endpoint) when is_binary(endpoint) do
+    case URI.new(endpoint) do
+      {:ok, %URI{scheme: "https", host: host, port: 443, userinfo: nil}}
+      when is_binary(host) and host != "" ->
+        host = String.downcase(host)
+        host in @push_hosts or Enum.any?(@push_host_suffixes, &String.ends_with?(host, &1))
+
+      _other ->
+        false
+    end
+  end
+
+  def allowed_endpoint?(_endpoint), do: false
 
   @doc """
   RFC 8291 の形で中身を暗号にします（1 記録だけの aes128gcm）。

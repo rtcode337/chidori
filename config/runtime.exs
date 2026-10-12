@@ -78,21 +78,23 @@ if config_env() == :prod do
   # スマホから IP で開いたときに `localhost` を指すリンクが返る
   host = System.get_env("PHX_HOST") || "localhost"
   scheme = System.get_env("PHX_SCHEME") || "http"
+
   url_port =
     String.to_integer(
       System.get_env("PHX_URL_PORT") ||
         if(scheme == "https", do: "443", else: System.get_env("PORT", "7000"))
     )
 
-  # **どこから開いても繋がるようにする。** LiveView は繋ぎ直すときに接続元を
-  # 見比べるので、`PHX_HOST` と違う宛先（IP やホスト名）で開くと画面が
-  # 「繋がりません」のまま止まる。LAN の中に閉じていて認証も無い層なので、
-  # 既定では見比べない（外へ出すなら `PHX_CHECK_ORIGIN` に宛先を並べる）
-  check_origin =
-    case System.get_env("PHX_CHECK_ORIGIN") do
-      nil -> false
-      "" -> false
-      list -> list |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+  # LiveView の接続元（Origin）の見比べ方。既定は「届いた宛先と同じ名前なら通す」
+  # （`ChidoriWeb.SocketOrigin`）—— どの名前・IP で開いても繋がり、別のサイトに置かれた
+  # ページからの接続だけを断る。`PHX_HOST` と違う宛先（IP・VPN の名前）で開いても締め出さない。
+  # 宛先をカンマ区切りで並べたときは、その並びだけを通す（Phoenix の `check_origin`）。
+  # `false` で見比べをやめる（勧めない。繋がらないときの切り分け用）
+  {check_origin, socket_origin} =
+    case System.get_env("PHX_CHECK_ORIGIN", "") |> String.trim() do
+      "" -> {false, :same_host}
+      off when off in ["false", "off"] -> {false, :off}
+      list -> {list |> String.split(",", trim: true) |> Enum.map(&String.trim/1), :off}
     end
 
   config :chidori, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
@@ -100,6 +102,7 @@ if config_env() == :prod do
   config :chidori, ChidoriWeb.Endpoint,
     url: [host: host, port: url_port, scheme: scheme],
     check_origin: check_origin,
+    socket_origin: socket_origin,
     http: [
       # Enable IPv6 and bind on all interfaces.
       # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.

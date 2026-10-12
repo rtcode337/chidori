@@ -911,6 +911,18 @@ defmodule ChidoriWeb.NewsLiveTest do
   end
 
   # 全部の通知で共通の宛先を決め、ニュースの話題を知らせる設定にする
+  test "同じ話題のまとめが走っている間は、もう一度押しても始めずに断る", %{conn: conn} do
+    # 走っている最中のまとめの代わりに、このテストのプロセスが札を持つ
+    topic = Chidori.Topics.get("chidori_tech")
+    {:ok, _owner} = Registry.register(Chidori.SingleFlight, Chidori.Digest.flight_key(topic), nil)
+
+    {:ok, live, _html} = live(conn, ~p"/news?view=chidori_tech")
+    html = live |> element(~s(button[phx-click="digest_now"])) |> render_click()
+
+    assert html =~ "同じ依頼がまだ走っています"
+    refute html =~ "整理から始めています"
+  end
+
   defp notify_to(topic) do
     Chidori.Notify.Destination.put(%{"topic" => topic})
     Chidori.Notify.Settings.put("chidori_news", %{"notify" => "true"})

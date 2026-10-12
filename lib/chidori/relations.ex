@@ -320,24 +320,31 @@ defmodule Chidori.Relations do
   消えません（広げる向きのつまみ）。結果は `{:reroster, key, result}` で知らせます。
   """
   def reroster(key, min_pageviews) when key == "people" and is_integer(min_pageviews) do
-    with {:ok, _setting} <- Chidori.Relations.Settings.put_min_pageviews(key, min_pageviews),
-         base when is_binary(base) <- chiezo_base_url() do
-      Task.Supervisor.start_child(Chidori.TaskSupervisor, fn ->
-        name = collection_of(key)
+    # 引き直しが走っている間は断る（`{:error, :busy}`）。続けて押すと同じ回が重なる
+    flight = {:reroster, key}
 
-        result =
-          with :ok <- Chiezo.patch(base, name, %{extract: People.extract(min_pageviews)}) do
-            Chiezo.by_hand(fn -> Chiezo.run(base, name, sweep: Chidori.SweepNames.machine()) end)
-          end
-
-        Phoenix.PubSub.broadcast(Chidori.PubSub, topic(key), {:reroster, key, result})
-      end)
-
+    with false <- Chidori.SingleFlight.busy?(flight),
+         {:ok, _setting} <- Chidori.Relations.Settings.put_min_pageviews(key, min_pageviews),
+         base when is_binary(base) <- chiezo_base_url(),
+         {:ok, _pid} <-
+           Chidori.SingleFlight.start(flight, fn -> reroster_now(key, base, min_pageviews) end) do
       :ok
     else
+      true -> {:error, :busy}
       nil -> {:error, :chiezo_not_configured}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp reroster_now(key, base, min_pageviews) do
+    name = collection_of(key)
+
+    result =
+      with :ok <- Chiezo.patch(base, name, %{extract: People.extract(min_pageviews)}) do
+        Chiezo.by_hand(fn -> Chiezo.run(base, name, sweep: Chidori.SweepNames.machine()) end)
+      end
+
+    Phoenix.PubSub.broadcast(Chidori.PubSub, topic(key), {:reroster, key, result})
   end
 
   @doc """
@@ -1725,10 +1732,7 @@ defmodule Chidori.Relations do
     |> Enum.flat_map(fn
       source when is_map(source) ->
         with label when is_binary(label) <- source["label"],
-             url when is_binary(url) <- source["url"],
-             %URI{scheme: scheme, host: host} when is_binary(host) and host != "" <-
-               URI.parse(url),
-             true <- scheme in ["http", "https"] do
+             url when is_binary(url) <- Chidori.SafeUrl.href(source["url"]) do
           [%{label: short_text(label, 100), url: url}]
         else
           _ -> []

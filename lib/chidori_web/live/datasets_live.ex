@@ -27,6 +27,7 @@ defmodule ChidoriWeb.DatasetsLive do
   alias Chidori.Datasets.BookMarks
   alias Chidori.Datasets.Requests
   alias Chidori.Datasets.ShelfCache
+  alias Chidori.SingleFlight
   alias Chidori.Jst
 
   # 区画の一覧に出す数。**数百あるので全部は並べない**（並びは次に回ってくる順なので、
@@ -188,10 +189,20 @@ defmodule ChidoriWeb.DatasetsLive do
     dataset = socket.assigns.dataset
     choices = merged_picks(socket.assigns.picks, params)
 
-    {:noreply,
-     socket
-     |> assign(state: %{socket.assigns.state | pushing: true, reason: nil})
-     |> start_async(:push, fn -> {Datasets.push(dataset, choices), Datasets.read(dataset)} end)}
+    # 同じ収集への送り直しは 1 本だけ（別のタブから押しても重ねない）。読み直しは重なってよい
+    key = {:dataset_push, dataset.key}
+
+    if SingleFlight.busy?(key) do
+      {:noreply, assign(socket, state: %{socket.assigns.state | reason: :busy})}
+    else
+      {:noreply,
+       socket
+       |> assign(state: %{socket.assigns.state | pushing: true, reason: nil})
+       |> start_async(:push, fn ->
+         {SingleFlight.run(key, fn -> Datasets.push(dataset, choices) end),
+          Datasets.read(dataset)}
+       end)}
+    end
   end
 
   # 選び直したら、その場で覚える。**送るのは押したときだけ**。
@@ -269,12 +280,19 @@ defmodule ChidoriWeb.DatasetsLive do
     dataset = socket.assigns.dataset
     choices = merged_picks(socket.assigns.derived_picks, params)
 
-    {:noreply,
-     socket
-     |> assign(derived_state: %{socket.assigns.derived_state | pushing: true, reason: nil})
-     |> start_async(:push_derived, fn ->
-       {Datasets.push_derived(dataset, choices), Datasets.read_derived(dataset)}
-     end)}
+    key = {:dataset_push_derived, dataset.key}
+
+    if SingleFlight.busy?(key) do
+      {:noreply, assign(socket, derived_state: %{socket.assigns.derived_state | reason: :busy})}
+    else
+      {:noreply,
+       socket
+       |> assign(derived_state: %{socket.assigns.derived_state | pushing: true, reason: nil})
+       |> start_async(:push_derived, fn ->
+         {SingleFlight.run(key, fn -> Datasets.push_derived(dataset, choices) end),
+          Datasets.read_derived(dataset)}
+       end)}
+    end
   end
 
   def handle_event("toggle_shelf_near", _params, socket),
@@ -391,14 +409,23 @@ defmodule ChidoriWeb.DatasetsLive do
     do: {:noreply, assign(socket, opened_book: nil, book_asked: nil)}
 
   # **この本を詳しく調べて**、を本棚の整理の回へ割り込ませる（1 回だけ）
+  # 同じ本への頼みは 1 本だけ（続けて押しても AI の回を重ねない）
   def handle_event("ask_book", %{"title" => title} = params, socket) do
-    {:noreply,
-     socket
-     |> assign(book_asking: true, book_asked: nil)
-     |> start_async(:ask_book, fn ->
-       with {:ok, base} <- Datasets.base_url(),
-            do: Chidori.Datasets.Bookshelf.focus_book(base, title, params["note"])
-     end)}
+    key = {:ask_book, title}
+
+    if SingleFlight.busy?(key) do
+      {:noreply, assign(socket, book_asked: {:error, :busy})}
+    else
+      {:noreply,
+       socket
+       |> assign(book_asking: true, book_asked: nil)
+       |> start_async(:ask_book, fn ->
+         SingleFlight.run(key, fn ->
+           with {:ok, base} <- Datasets.base_url(),
+                do: Chidori.Datasets.Bookshelf.focus_book(base, title, params["note"])
+         end)
+       end)}
+    end
   end
 
   # 選び直したら、その場で覚える（親の収集の `pick_sweep` と同じ理由）
@@ -412,11 +439,19 @@ defmodule ChidoriWeb.DatasetsLive do
   def handle_event("run_partition", %{"key" => key} = params, socket) do
     dataset = socket.assigns.dataset
     opts = run_options(params, socket.assigns.backends)
+    # 同じ区画の実行は 1 本だけ（続けて押しても AI の回を重ねない）
+    flight = {:run_partition, dataset.key, key}
 
-    {:noreply,
-     socket
-     |> assign(asking: true, asked: nil)
-     |> start_async(:ask, fn -> Datasets.run_partition(dataset, key, opts) end)}
+    if SingleFlight.busy?(flight) do
+      {:noreply, assign(socket, asked: {:error, :busy})}
+    else
+      {:noreply,
+       socket
+       |> assign(asking: true, asked: nil)
+       |> start_async(:ask, fn ->
+         SingleFlight.run(flight, fn -> Datasets.run_partition(dataset, key, opts) end)
+       end)}
+    end
   end
 
   # 相手を選び直したら、そのぶんだけ覚える（モデルの候補は相手ごとに別物なので、
@@ -471,12 +506,21 @@ defmodule ChidoriWeb.DatasetsLive do
         plan = %{keys: [key], points: items, missed: []}
         opts = request_options(socket.assigns)
 
-        Task.Supervisor.start_child(Chidori.TaskSupervisor, fn ->
-          {_log, result} = Requests.send_partition(dataset, key, items, deadline, opts)
-          send(live, {:travel_log_request, result})
-        end)
+        # 同じ区画への依頼は 1 本だけ（別のタブから押しても重ねない）
+        started =
+          SingleFlight.start({:send_pending, dataset.key, key}, fn ->
+            {_log, result} = Requests.send_partition(dataset, key, items, deadline, opts)
+            send(live, {:travel_log_request, result})
+          end)
 
-        {:noreply, socket |> assign(requesting: plan, requested: nil, stashed: nil)}
+        case started do
+          {:ok, _pid} ->
+            {:noreply, socket |> assign(requesting: plan, requested: nil, stashed: nil)}
+
+          {:error, reason} ->
+            reason = if reason == :busy, do: :busy, else: :collection_crashed
+            {:noreply, assign(socket, requested: {{:error, reason}, plan}, stashed: nil)}
+        end
 
       _none ->
         {:noreply, assign_pending(socket)}
@@ -1222,8 +1266,9 @@ defmodule ChidoriWeb.DatasetsLive do
 
   def domain_mark_summary(%Chidori.Relations.Mark{seen: true}), do: "見た"
 
-  def domain_mark_summary(%Chidori.Relations.Mark{note: note}) when is_binary(note) and note != "",
-    do: "メモあり"
+  def domain_mark_summary(%Chidori.Relations.Mark{note: note})
+      when is_binary(note) and note != "",
+      do: "メモあり"
 
   def domain_mark_summary(_mark), do: nil
 

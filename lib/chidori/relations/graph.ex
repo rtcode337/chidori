@@ -738,9 +738,10 @@ defmodule Chidori.Relations.Graph do
 
   defp summary_of(_doc), do: nil
 
-  # 壊れた Wikipedia の URL は出さない（画面が記事名から組み立て直す）
+  # 壊れた Wikipedia の URL は出さない（画面が記事名から組み立て直す）。
+  # http・https 以外もリンクにしない（`Chidori.SafeUrl`）
   defp article_url(%{"extra" => %{"url" => url}} = doc) when is_binary(url) do
-    if broken_url?(doc) or not String.valid?(url), do: nil, else: url
+    if broken_url?(doc), do: nil, else: Chidori.SafeUrl.href(url)
   end
 
   defp article_url(_doc), do: nil

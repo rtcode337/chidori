@@ -1120,7 +1120,7 @@
           <% {:ok, [_ | _] = posts} -> %>
             <ul class="book-posts">
               <li :for={post <- posts}>
-                <a :if={post.url} href={post.url} target="_blank" rel="noreferrer">{post.title}</a>
+                <a :if={post.url} href={SafeUrl.href(post.url)} target="_blank" rel="noreferrer">{post.title}</a>
                 <span :if={!post.url}>{post.title}</span>
                 <span :if={post.published_at != ""} class="muted-note">
                   {String.slice(post.published_at, 0, 10)}

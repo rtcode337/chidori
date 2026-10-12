@@ -935,9 +935,12 @@ defmodule ChidoriWeb.RelationsLive do
     )
   end
 
-  @doc "その画家の Wikipedia の記事。**代表作ではなく画家を指す**。"
+  @doc """
+  その画家の Wikipedia の記事。**代表作ではなく画家を指す**。
+  Chiezo が持っている URL は http・https のときだけ使う（`Chidori.SafeUrl`）。
+  """
   def article_url(node) do
-    node[:url] ||
+    Chidori.SafeUrl.href(node[:url]) ||
       if title = node[:article] do
         "https://ja.wikipedia.org/wiki/" <> URI.encode(String.replace(title, " ", "_"))
       end

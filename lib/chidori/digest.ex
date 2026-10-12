@@ -87,14 +87,19 @@ defmodule Chidori.Digest do
   その話題のまとめを作らせて、知らせます。**数分かかります**。
 
   呼ぶ側を待たせないので、走らせるのは `Chidori.TaskSupervisor` の下です。
+  **同じ話題のまとめが走っている間は断ります**（`{:error, :busy}`。定時の回も含む）——
+  続けて押すと、同じまとめを AI に 2 回作らせることになる。
   """
   def start(topic) do
     # **画面から押した 1 回**なので、止めている収集でも走らせる（`Chiezo.by_hand/1`）。
     # 定時の回（`Chidori.Digest.Scheduler`）は囲まない —— 止めた収集が時計で動かないように
-    Task.Supervisor.start_child(Chidori.TaskSupervisor, fn ->
+    Chidori.SingleFlight.start(flight_key(topic), fn ->
       Chidori.Chiezo.by_hand(fn -> run(topic) end)
     end)
   end
+
+  @doc "まとめを 1 本だけ走らせるための鍵（画面から押した回と定時の回で共有する）。"
+  def flight_key(%{collection: collection}), do: {:digest, collection}
 
   @doc """
   取り込みが空くのを待つ上限（`System.monotonic_time(:millisecond)` の値）。

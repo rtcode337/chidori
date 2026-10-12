@@ -24,6 +24,8 @@ defmodule Chidori.Application do
         # 外部への取得はこの下で動かす。収集を持つ GenServer では待たない ——
         # 待つと、収集中に画面を開いた人まで巻き添えで待たされる
         {Task.Supervisor, name: Chidori.TaskSupervisor},
+        # AI を動かす依頼を、同じものは 1 本だけ走らせる札（`Chidori.SingleFlight`）
+        Chidori.SingleFlight,
         # 話題ごとに 1 つずつ収集を持つ。開かれた話題のぶんだけ立てる ——
         # 話題は増えていく前提なので、全部を起動時に立てると、
         # 誰も開いていない話題まで常駐する

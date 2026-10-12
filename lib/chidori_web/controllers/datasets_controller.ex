@@ -15,17 +15,19 @@ defmodule ChidoriWeb.DatasetsController do
   alias Chidori.Datasets.Dining
   alias Chidori.Datasets.TravelLog
 
+  require Logger
+
   def export(conn, %{"key" => key}) do
     dataset = Datasets.get(key)
 
     cond do
       is_nil(dataset) ->
-        send_resp(conn, 404, "そのデータ収集はありません")
+        text(conn, 404, "そのデータ収集はありません")
 
       not TravelLog.exportable?(dataset) ->
         # 技術ニュースのように地図に載らない収集。画面には出していないが、
         # URL を直に叩かれることはある
-        send_resp(conn, 404, "この収集はスポットとして書き出せません")
+        text(conn, 404, "この収集はスポットとして書き出せません")
 
       true ->
         case TravelLog.bundle(dataset) do
@@ -33,12 +35,12 @@ defmodule ChidoriWeb.DatasetsController do
             send_download(conn, {:binary, binary}, filename: filename)
 
           {:error, :chiezo_not_configured} ->
-            send_resp(conn, 503, "Chiezo の場所(CHIEZO_BASE_URL)が設定されていません")
+            text(conn, 503, "Chiezo の場所(CHIEZO_BASE_URL)が設定されていません")
 
           {:error, reason} ->
-            # **理由をそのまま出す。** 押した人がここで詰まると、次に何を直せばよいのか
-            # 分からなくなる(Chiezo が落ちている・まだ 1 件も焼けていない、など)
-            send_resp(conn, 502, "書き出せませんでした: #{inspect(reason)}")
+            # 押した人には見当だけを返し、細かい理由はログに残す（Chiezo から来た
+            # 文言を、そのまま応答に流さない）
+            failed(conn, key, reason)
         end
     end
   end
@@ -55,13 +57,33 @@ defmodule ChidoriWeb.DatasetsController do
         send_download(conn, {:binary, binary}, filename: filename)
 
       {:error, :nothing_to_export} ->
-        send_resp(conn, 404, "食事処の範囲がまだありません")
+        text(conn, 404, "食事処の範囲がまだありません")
 
       {:error, :chiezo_not_configured} ->
-        send_resp(conn, 503, "Chiezo の場所(CHIEZO_BASE_URL)が設定されていません")
+        text(conn, 503, "Chiezo の場所(CHIEZO_BASE_URL)が設定されていません")
 
       {:error, reason} ->
-        send_resp(conn, 502, "書き出せませんでした: #{inspect(reason)}")
+        failed(conn, "dining-all", reason)
     end
+  end
+
+  defp failed(conn, key, reason) do
+    Logger.warning("travel-log 用の ZIP を書き出せなかった（#{key}）: #{inspect(reason)}")
+    text(conn, 502, "書き出せませんでした（#{hint(reason)}）。詳しい理由はサーバーのログにあります。")
+  end
+
+  # 押した人が次に何を確かめればよいかの見当
+  # 全範囲をまとめたときは、どの収集で止まったかが付いてくる
+  defp hint({collection, reason}) when is_binary(collection), do: hint(reason)
+  defp hint(:chiezo_unavailable), do: "Chiezo に繋がりませんでした"
+  defp hint({:chiezo_status, status}) when is_integer(status), do: "Chiezo が #{status} を返しました"
+  defp hint(:nothing_to_export), do: "書き出せるものがまだありません"
+  defp hint(_reason), do: "Chiezo とのやり取りに失敗しました"
+
+  # 本文は文字だけで返す（ブラウザに HTML として読ませない）
+  defp text(conn, status, body) do
+    conn
+    |> put_resp_content_type("text/plain")
+    |> send_resp(status, body)
   end
 end

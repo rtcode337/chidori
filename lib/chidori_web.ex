@@ -91,6 +91,9 @@ defmodule ChidoriWeb do
       alias Phoenix.LiveView.JS
       alias ChidoriWeb.Layouts
 
+      # 外から来た URL を href・src に置くときは必ずこれを通す（http・https だけ通す）
+      alias Chidori.SafeUrl
+
       # Routes generation with the ~p sigil
       unquote(verified_routes())
     end

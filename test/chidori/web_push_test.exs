@@ -36,7 +36,7 @@ defmodule Chidori.WebPushTest do
     {ua_public, ua_private, :crypto.strong_rand_bytes(16)}
   end
 
-  defp subscribe(endpoint \\ "https://push.example.com/send/abc") do
+  defp subscribe(endpoint \\ "https://fcm.googleapis.com/send/abc") do
     {ua_public, ua_private, auth} = ua_keys()
 
     {:ok, subscription} =
@@ -148,8 +148,8 @@ defmodule Chidori.WebPushTest do
       assert WebPush.audience("https://fcm.googleapis.com/fcm/send/abc") ==
                "https://fcm.googleapis.com"
 
-      assert WebPush.audience("https://push.example.com:8443/x") ==
-               "https://push.example.com:8443"
+      assert WebPush.audience("https://fcm.googleapis.com:8443/x") ==
+               "https://fcm.googleapis.com:8443"
     end
 
     test "送り手の鍵は 1 つだけ作り、作り直さない" do
@@ -176,7 +176,7 @@ defmodule Chidori.WebPushTest do
       assert id == subscription.id
 
       assert_receive {:pushed, url, body, opts}
-      assert url == "https://push.example.com/send/abc"
+      assert url == "https://fcm.googleapis.com/send/abc"
       assert opts[:content_type] == "application/octet-stream"
 
       headers = Map.new(opts[:headers])
@@ -194,9 +194,9 @@ defmodule Chidori.WebPushTest do
 
     test "受け取れなくなった端末（410・404）は消す" do
       # 残すと送るたびに失敗が並び、本当に届いていない端末と見分けが付かない
-      subscribe("https://push.example.com/send/gone")
-      subscribe("https://push.example.com/send/missing")
-      subscribe("https://push.example.com/send/alive")
+      subscribe("https://fcm.googleapis.com/send/gone")
+      subscribe("https://fcm.googleapis.com/send/missing")
+      subscribe("https://fcm.googleapis.com/send/alive")
 
       HttpStub.stub(fn %{url: url} ->
         cond do
@@ -209,13 +209,13 @@ defmodule Chidori.WebPushTest do
       results = Subscriptions.deliver_all("見出し", "本文", "/")
       assert Enum.count(results, &(elem(&1, 1) == :expired)) == 2
 
-      assert [%{endpoint: "https://push.example.com/send/alive"}] = Subscriptions.list()
+      assert [%{endpoint: "https://fcm.googleapis.com/send/alive"}] = Subscriptions.list()
       assert Subscriptions.result_text(results) =~ "1 台に送りました"
       assert Subscriptions.result_text(results) =~ "2 台の登録を外しました"
     end
 
-    test "届かなかった端末は、配信元が返した理由まで出す" do
-      subscribe("https://push.example.com/send/refused")
+    test "届かなかった端末は理由の見当まで出し、配信元の本文は画面に出さない" do
+      subscribe("https://fcm.googleapis.com/send/refused")
 
       HttpStub.stub(fn _request ->
         {:ok, %{status: 403, body: ~s({"reason":"BadJwtToken"})}}
@@ -225,7 +225,29 @@ defmodule Chidori.WebPushTest do
 
       assert text =~ "1 台は送れませんでした"
       assert text =~ "403"
-      assert text =~ "BadJwtToken"
+      assert text =~ "VAPID"
+      refute text =~ "BadJwtToken"
+    end
+
+    test "配信元でない宛先に残った登録には送らず、理由を出す（消さない）" do
+      # 宛先を絞る前に登録されたもの。DB に直に入れる（いまの登録の口は通さない）
+      {ua_public, _ua_private, auth} = ua_keys()
+
+      Chidori.Repo.insert!(%Chidori.WebPush.Subscription{
+        endpoint: "https://192.0.2.10/hook",
+        p256dh: WebPush.b64(ua_public),
+        auth: WebPush.b64(auth),
+        label: "古い登録"
+      })
+
+      HttpStub.stub(fn request ->
+        flunk("配信元でない宛先へ送った: #{inspect(request.url)}")
+      end)
+
+      results = Subscriptions.deliver_all("見出し", "本文", "/")
+      assert [{_s, {:error, :endpoint_not_allowed}}] = results
+      assert Subscriptions.result_text(results) =~ "ブラウザの配信元ではない宛先"
+      assert [_still_there] = Subscriptions.list()
     end
 
     test "ほかの失敗では消さない" do
@@ -252,7 +274,7 @@ defmodule Chidori.WebPushTest do
     test "鍵の形が違う登録・https でない宛先は受け取らない" do
       assert {:error, _changeset} =
                Subscriptions.subscribe(%{
-                 "endpoint" => "https://push.example.com/x",
+                 "endpoint" => "https://fcm.googleapis.com/x",
                  "keys" => %{"p256dh" => "short", "auth" => "short"}
                })
 
@@ -260,9 +282,41 @@ defmodule Chidori.WebPushTest do
 
       assert {:error, _changeset} =
                Subscriptions.subscribe(%{
-                 "endpoint" => "http://push.example.com/x",
+                 "endpoint" => "http://fcm.googleapis.com/x",
                  "keys" => %{"p256dh" => WebPush.b64(ua_public), "auth" => WebPush.b64(auth)}
                })
+    end
+
+    test "宛先はブラウザの配信元だけを受け取る" do
+      {ua_public, _ua_private, auth} = ua_keys()
+      keys = %{"p256dh" => WebPush.b64(ua_public), "auth" => WebPush.b64(auth)}
+
+      for endpoint <- [
+            "https://push.example.com/send/abc",
+            "https://192.0.2.10/hook",
+            "https://localhost/hook",
+            # 後ろの一致は `.` を挟んだときだけ
+            "https://evilpush.apple.com/x",
+            "https://web.push.apple.com.example.com/x",
+            "https://fcm.googleapis.com.example.com/x",
+            "https://fcm.googleapis.com:8443/x",
+            "https://user@fcm.googleapis.com/x"
+          ] do
+        assert {:error, _changeset} =
+                 Subscriptions.subscribe(%{"endpoint" => endpoint, "keys" => keys}),
+               endpoint
+      end
+
+      for endpoint <- [
+            "https://web.push.apple.com/QGx",
+            "https://fcm.googleapis.com/fcm/send/abc",
+            "https://updates.push.services.mozilla.com/wpush/v2/abc",
+            "https://wns2-par02p.notify.windows.com/w/?token=abc"
+          ] do
+        assert {:ok, _subscription} =
+                 Subscriptions.subscribe(%{"endpoint" => endpoint, "keys" => keys}),
+               endpoint
+      end
     end
 
     test "端末の名前はブラウザの名乗りから作る" do
@@ -286,7 +340,7 @@ defmodule Chidori.WebPushTest do
 
   describe "配信元に繋がらないとき" do
     test "1 度だけ送り直す（閉じられた接続を使い回して落ちることがある）" do
-      subscribe("https://push.example.com/send/retry")
+      subscribe("https://fcm.googleapis.com/send/retry")
       me = self()
 
       HttpStub.stub(fn _request ->
@@ -307,7 +361,7 @@ defmodule Chidori.WebPushTest do
     end
 
     test "送り直しても繋がらなければ、理由を添えて返す" do
-      subscribe("https://push.example.com/send/down")
+      subscribe("https://fcm.googleapis.com/send/down")
       HttpStub.stub(fn _request -> {:error, :timeout} end)
 
       results = Subscriptions.deliver_all("見出し", "本文", "/")

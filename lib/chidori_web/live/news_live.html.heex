@@ -247,7 +247,7 @@
                 </span>
                 <a
                   :if={entry.url && !Chidori.Topics.works(@topic)}
-                  href={entry.url}
+                  href={SafeUrl.href(entry.url)}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -718,7 +718,7 @@
       <img
         :if={@opened_article.image}
         class="article-detail-image"
-        src={@opened_article.image}
+        src={SafeUrl.src(@opened_article.image)}
         alt=""
         loading="lazy"
       />
@@ -728,7 +728,7 @@
         article_tags(@opened_article, @interests, near_tags(@themes.themes, @interests))
       } />
       <p :if={@opened_article.url}>
-        <a href={@opened_article.url} target="_blank" rel="noreferrer">原文を開く ↗</a>
+        <a href={SafeUrl.href(@opened_article.url)} target="_blank" rel="noreferrer">原文を開く ↗</a>
       </p>
 
       <form id="article-ask" phx-submit="ask_article" class="article-ask">

@@ -96,8 +96,10 @@ defmodule Chidori.WebPush.Subscriptions do
 
   @doc """
   送った結果の言い方（「2 台に送りました」）。**届かなかった台数と、消した台数も出します**。
-  **届かなかった端末は、配信元が返した理由まで出します** —— 台数だけでは、送り手の
+  **届かなかった端末は、理由の見当まで出します** —— 台数だけでは、送り手の
   名乗りが断られたのか（403）、配信元に繋がらなかったのかが画面から分からない。
+  配信元が返した本文そのものは画面に出さず、ログにだけ残します（外から来た文言を
+  そのまま画面に流さない）。
   """
   def result_text([]), do: "登録してある端末がありません。"
 
@@ -122,13 +124,28 @@ defmodule Chidori.WebPush.Subscriptions do
   end
 
   @doc "届かなかった理由の言い方。"
-  def reason_text({:push_status, status, body}) when body in [nil, ""],
-    do: "配信元が #{status} を返しました"
+  def reason_text({:push_status, status, _body}) do
+    case status_hint(status) do
+      nil -> "配信元が #{status} を返しました"
+      hint -> "配信元が #{status} を返しました（#{hint}）"
+    end
+  end
 
-  def reason_text({:push_status, status, body}), do: "配信元が #{status} を返しました（#{body}）"
   def reason_text({:push_unavailable, reason}), do: "配信元に繋がりませんでした（#{inspect(reason)}）"
   def reason_text(:bad_subscription), do: "登録の中身が読めません（登録し直してください）"
+
+  def reason_text(:endpoint_not_allowed),
+    do: "ブラウザの配信元ではない宛先なので送りません（外して登録し直してください）"
+
   def reason_text(other), do: inspect(other)
+
+  # 状態番号から読める見当（RFC 8030・8292 と、配信元が文書にしている意味）
+  defp status_hint(status) when status in [401, 403], do: "送り手の名乗り（VAPID）が断られました"
+  defp status_hint(400), do: "送った中身の形が受け付けられませんでした"
+  defp status_hint(413), do: "中身が大きすぎます"
+  defp status_hint(429), do: "送りすぎで断られました。時間を置いてください"
+  defp status_hint(status) when status in 500..599, do: "配信元の不調です"
+  defp status_hint(_status), do: nil
 
   @doc """
   画面で見分けるための端末の名前（「iPhone」「Mac Chrome」）。ブラウザの名乗りから作ります。

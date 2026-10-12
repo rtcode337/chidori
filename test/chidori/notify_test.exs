@@ -158,7 +158,7 @@ defmodule Chidori.NotifyTest do
   end
 
   describe "登録した端末へ（Web Push）" do
-    @endpoint "https://push.example.com/send/device-1"
+    @endpoint "https://fcm.googleapis.com/send/device-1"
 
     defp register_device do
       {ua_public, _ua_private} = :crypto.generate_key(:ecdh, :prime256v1)

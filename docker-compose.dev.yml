@@ -17,8 +17,10 @@ services:
       PGDATA: /data/postgres/18/docker
     ports:
       # 既定の 5432 ではなく、このアプリに割り当てた 70 番台に寄せる
-      # （手元に別の PostgreSQL が居ても踏まない）
-      - "7071:5432"
+      # （手元に別の PostgreSQL が居ても踏まない）。
+      # 開くのはこの機械の中（127.0.0.1）だけ。開発用の決まった名前とパスワードなので、
+      # LAN の他の機器から繋げる形にしない（立て直したときに効く: up -d --force-recreate）
+      - "127.0.0.1:7071:5432"
     volumes:
       - ./data-dev:/data
     tmpfs:

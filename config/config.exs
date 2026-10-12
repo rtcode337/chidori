@@ -20,7 +20,12 @@ config :chidori, ChidoriWeb.Endpoint,
     layout: false
   ],
   pubsub_server: Chidori.PubSub,
-  live_view: [signing_salt: "WR5N6hZj"]
+  live_view: [signing_salt: "WR5N6hZj"],
+  # LiveView の接続元は「届いた宛先と同じ名前なら通す」で見比べる（`ChidoriWeb.SocketOrigin`）。
+  # Phoenix の check_origin は url の host（PHX_HOST）だけを通すので、IP や VPN の名前で
+  # 開くと繋がらなくなる。宛先を並べたいときは PHX_CHECK_ORIGIN（config/runtime.exs）
+  check_origin: false,
+  socket_origin: :same_host
 
 # Configure LiveView
 config :phoenix_live_view,
