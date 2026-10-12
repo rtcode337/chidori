@@ -3,19 +3,23 @@
   <div>
     <ChidoriWeb.MainNav.main_nav active={:datasets} />
 
-    <%!-- データ収集の画面と同じタブ。**この画面は「＋ 食事処の範囲」のタブ**として出す
-         （別の画面へ飛んだように見えると、戻る口を探すことになる） --%>
+    <%!-- データ収集の画面と同じタブ。**この画面は「食事処」のタブ**として出す
+         （別の画面へ飛んだように見えると、戻る口を探すことになる）。範囲ごとのタブは
+         並べず、下の「作った範囲」の名前から開く --%>
     <nav
       id="dataset-tabs"
       class="relation-tabs"
       phx-hook="ScrollTabs"
       aria-label="集めるもの"
     >
-      <.link :for={dataset <- @datasets} navigate={~p"/datasets?view=#{dataset.key}"}>
+      <.link
+        :for={dataset <- Enum.reject(@datasets, & &1[:area])}
+        navigate={~p"/datasets?view=#{dataset.key}"}
+      >
         {dataset.name}
       </.link>
-      <.link patch={~p"/datasets/areas"} class="add-tab selected" aria-current="page">
-        ＋ 食事処の範囲
+      <.link patch={~p"/datasets/areas"} class="selected" aria-current="page">
+        食事処
       </.link>
     </nav>
 
@@ -23,7 +27,7 @@
       <p>EATERIES IN AN AREA</p>
       <h1>食事処の範囲</h1>
       <p>
-        食事処は、範囲を決めてその中だけを集めます。範囲 1 つにつき Chiezo の収集が 1 つで、データ収集の画面にタブが増えます。離れた場所は、別の範囲にしてください（1 つの四角で囲むと、あいだの見たくない土地まで AI が回ります）。
+        食事処は、範囲を決めてその中だけを集めます。範囲 1 つにつき Chiezo の収集が 1 つで、下の「作った範囲」の名前を押すと、その範囲の収集を開きます。離れた場所は、別の範囲にしてください（1 つの四角で囲むと、あいだの見たくない土地まで AI が回ります）。
       </p>
     </section>
 
@@ -36,7 +40,7 @@
             {area.name}
           </.link>
           <span class="muted-note">{bbox_text(area)}</span>
-          <%!-- 控えている依頼の数（travel-log からの依頼を配った先）。頼むのは範囲のタブから --%>
+          <%!-- 控えている依頼の数（travel-log からの依頼を配った先）。頼むのは範囲の画面から --%>
           <.link
             :if={Map.get(@pending_counts, area.id, 0) > 0}
             navigate={~p"/datasets?view=#{Chidori.Datasets.Dining.definition(area).key}"}
@@ -68,7 +72,7 @@
     </section>
 
     <%!-- **全範囲を 1 つの ZIP に**（travel-log では範囲によらず 1 つの種別に読み込む）。
-         範囲ごとの ZIP は範囲のタブにある --%>
+         範囲ごとの ZIP は範囲の画面にある --%>
     <section :if={@areas != []} class="settings-block" aria-label="全範囲の書き出し">
       <h3>travel-log 用の ZIP</h3>
       <a
@@ -93,7 +97,7 @@
     </section>
 
     <%!-- **travel-log からの依頼を、範囲ごとに配る**。依頼のテキストにはどの範囲の店かが
-         書いていないので、1 件ずつ座標の入る範囲へ控える。頼むのは範囲のタブから --%>
+         書いていないので、1 件ずつ座標の入る範囲へ控える。頼むのは範囲の画面から --%>
     <section :if={@areas != []} class="settings-block" aria-label="travel-log からの依頼">
       <h3>travel-log からの依頼</h3>
       <form phx-submit="route_requests">
@@ -108,7 +112,7 @@
           </label>
         </p>
         <p class="muted-note">
-          travel-log の管理画面の「渡すテキスト」をそのまま貼ってください。1 件ずつ、座標の入る範囲に控えます（範囲が重なっていれば狭いほう）。頼むのは範囲のタブの「控えている依頼」から、区画ごとにどうぞ。「[位置確認]」「[位置修正]」の行は AI を使わないので、貼った時点でその範囲の収集に座標を固定させます。
+          travel-log の管理画面の「渡すテキスト」をそのまま貼ってください。1 件ずつ、座標の入る範囲に控えます（範囲が重なっていれば狭いほう）。頼むのは範囲の画面（上の範囲の名前から開く）の「控えている依頼」から、区画ごとにどうぞ。「[位置確認]」「[位置修正]」の行は AI を使わないので、貼った時点でその範囲の収集に座標を固定させます。
         </p>
         <div class="button-row">
           <button type="submit" phx-disable-with="配っています…">範囲ごとに控える</button>
@@ -127,7 +131,7 @@
         </div>
       <% end %>
       <p :for={line <- held_lines(@held)} class="muted-note" aria-live="polite">{line}</p>
-      <%!-- 固定できた範囲ごとに、AI を使わずにいま反映する口（範囲のタブと同じもの） --%>
+      <%!-- 固定できた範囲ごとに、AI を使わずにいま反映する口（範囲の画面と同じもの） --%>
       <div :for={area <- held_areas(@held)} class="button-row">
         <button
           type="button"

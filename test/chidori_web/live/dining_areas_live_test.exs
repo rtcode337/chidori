@@ -1,7 +1,7 @@
 defmodule ChidoriWeb.DiningAreasLiveTest do
   @moduledoc """
   食事処の範囲を決める画面。見ているのは、**地図に描いた四角が範囲の欄に入ること**、
-  **名前を付けて作るとその範囲のタブへ移ること**、**広すぎる範囲は断ること**です。
+  **名前を付けて作るとその範囲の画面へ移ること**、**広すぎる範囲は断ること**です。
   """
 
   use ChidoriWeb.ConnCase, async: false
@@ -32,7 +32,7 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
     assert html =~ ~s(name="area[west]" value="139.75000")
   end
 
-  test "名前を付けて作ると、その範囲のタブへ移る", %{conn: conn} do
+  test "名前を付けて作ると、その範囲の画面へ移る", %{conn: conn} do
     {:ok, live, _html} = live(conn, ~p"/datasets/areas")
 
     render_hook(live, "drawn", %{
@@ -69,23 +69,33 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
     assert DiningAreas.list() == []
   end
 
-  test "作った範囲はデータ収集の画面のタブになる", %{conn: conn} do
+  test "作った範囲はタブに並べず、食事処のタブ 1 つにまとめる", %{conn: conn} do
     Chidori.AreaFixture.area!()
 
     {:ok, _live, html} = live(conn, ~p"/datasets")
 
-    assert html =~ ~s(href="/datasets?view=dining-1")
-    assert html =~ "＋ 食事処の範囲"
+    refute html =~ ~s(href="/datasets?view=dining-1")
+    assert html =~ ~r|href="/datasets/areas"[^>]*>\s*食事処\s*<|
   end
 
-  test "データ収集の画面と同じタブを出し、この画面のタブを選んだ状態にする", %{conn: conn} do
+  test "範囲を開いているときは、食事処のタブを選んだ状態にして一覧へ戻る口を出す", %{conn: conn} do
+    Chidori.AreaFixture.area!()
+
+    {:ok, _live, html} = live(conn, ~p"/datasets?view=dining-1")
+
+    assert html =~ ~r|href="/datasets/areas"[^>]*class="selected"[^>]*>\s*食事処|
+    assert html =~ "← 食事処の範囲の一覧"
+  end
+
+  test "データ収集の画面と同じタブを出し、食事処のタブを選んだ状態にする。範囲は名前から開く", %{conn: conn} do
     Chidori.AreaFixture.area!()
 
     {:ok, _live, html} = live(conn, ~p"/datasets/areas")
 
     assert html =~ ~s(id="dataset-tabs")
-    assert html =~ ~s(href="/datasets?view=dining-1")
-    assert html =~ ~r|class="add-tab selected"[^>]*>\s*＋ 食事処の範囲|
+    assert html =~ ~r|class="selected"[^>]*>\s*食事処|
+    # 範囲はタブではなく「作った範囲」の名前の欄から開く
+    assert html =~ ~r|href="/datasets\?view=dining-1"[^>]*>\s*テスト範囲|
   end
 
   test "作った範囲は、地図に名前の札つきで出る", %{conn: conn} do
@@ -103,7 +113,13 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
       System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
       on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
       test_pid = self()
-      item = %{"name" => "chidori_dining_1", "enabled" => true, "sweeps" => [], "partitions" => []}
+
+      item = %{
+        "name" => "chidori_dining_1",
+        "enabled" => true,
+        "sweeps" => [],
+        "partitions" => []
+      }
 
       Chidori.HttpStub.stub(fn
         %{method: :patch, url: url, body: body} ->

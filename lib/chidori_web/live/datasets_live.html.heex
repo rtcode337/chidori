@@ -16,16 +16,29 @@
       aria-label="集めるもの"
     >
       <.link
-        :for={dataset <- @datasets}
+        :for={dataset <- Enum.reject(@datasets, & &1[:area])}
         patch={~p"/datasets?view=#{dataset.key}"}
         class={if @view == dataset.key, do: "selected"}
         aria-current={if @view == dataset.key, do: "page"}
       >
         {dataset.name}
       </.link>
-      <%!-- 食事処は範囲ごとのタブ。**範囲を足す口はタブの並びの端に置く** --%>
-      <.link navigate={~p"/datasets/areas"} class="add-tab">＋ 食事処の範囲</.link>
+      <%!-- 食事処はタブ 1 つ（範囲の一覧の画面）。**範囲ごとにタブを並べない** ——
+           範囲を足すたびにタブが伸びて、技術書や Pi-hole のタブが押し出される。
+           範囲を開いているときも、このタブを選んだ状態で出す --%>
+      <.link
+        navigate={~p"/datasets/areas"}
+        class={if @dataset[:area], do: "selected"}
+        aria-current={if @dataset[:area], do: "page"}
+      >
+        食事処
+      </.link>
     </nav>
+
+    <%!-- 範囲を開いているときは、範囲の一覧へ戻る口を見出しの上に置く --%>
+    <p :if={@dataset[:area]} class="area-back">
+      <.link navigate={~p"/datasets/areas"}>← 食事処の範囲の一覧</.link>
+    </p>
 
     <section class="relations-intro">
       <p>{@dataset.eyebrow}</p>

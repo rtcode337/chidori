@@ -26,7 +26,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     {:ok, live, render_async(live)}
   end
 
-  test "食事処の範囲のタブは、設定を開いた状態で出す（技術書は本棚が主役なので畳む）", %{conn: conn} do
+  test "食事処の範囲の画面は、設定を開いた状態で出す（技術書は本棚が主役なので畳む）", %{conn: conn} do
     Chidori.AreaFixture.area!()
 
     {:ok, _live, html} = live(conn, ~p"/datasets?view=dining-1")

@@ -1,7 +1,7 @@
 defmodule ChidoriWeb.DiningAreasLive do
   @moduledoc """
   食事処を集める範囲を決める画面（`/datasets/areas`）。**地図に四角を描いて範囲を
-  足します**。範囲 1 つにつき Chiezo の収集が 1 つで、データ収集の画面にタブが増えます。
+  足します**。範囲 1 つにつき Chiezo の収集が 1 つで、範囲の名前から、その範囲の収集の画面を開きます。
 
   日本全体を 1 つの収集で回していた頃は、費用がかさみ、抜け漏れと間違いが多すぎて
   地図として使えなかった。見たい範囲だけを細かい区画で回す。
@@ -21,9 +21,9 @@ defmodule ChidoriWeb.DiningAreasLive do
 
   **travel-log からの依頼もここで受けて、範囲ごとに配ります**（`Requests.route/2`）。
   travel-log はいくつもの範囲を 1 つの画面で扱うので、依頼のテキストにはどの範囲の店かが
-  書いていない —— 範囲のタブごとに貼り分けさせると、自分で座標を見て仕分けることになる。
+  書いていない —— 範囲の画面ごとに貼り分けさせると、自分で座標を見て仕分けることになる。
   1 件ずつ座標の入る範囲へ控え、位置OK・位置修正はその範囲の収集で固定させる。
-  頼むのはこれまでどおり範囲のタブの「この区画を頼む」から。
+  頼むのはこれまでどおり範囲の画面の「この区画を頼む」から。
 
   **全範囲を 1 つの ZIP に書き出せます**（`ChidoriWeb.DatasetsController.export_areas/2`）。
   """
@@ -48,7 +48,7 @@ defmodule ChidoriWeb.DiningAreasLive do
     {:ok,
      assign(socket,
        page_title: "食事処の範囲",
-       # データ収集の画面と同じタブ（この画面は「＋ 食事処の範囲」のタブにあたる）
+       # データ収集の画面と同じタブ（この画面は「食事処」のタブにあたる）
        datasets: Datasets.list(),
        areas: DiningAreas.list(),
        # 直している範囲（nil なら足している）
@@ -122,7 +122,7 @@ defmodule ChidoriWeb.DiningAreasLive do
   end
 
   # **AI を使わずに、固定した座標をいま反映する**（その範囲の機械収集を 1 回走らせる）。
-  # 範囲のタブにある同じボタンと同じもの —— 配ったあとにタブへ移らずに済むように
+  # 範囲の画面にある同じボタンと同じもの —— 配ったあとに範囲の画面へ移らずに済むように
   def handle_event("apply_locks", %{"id" => id}, socket) do
     with {n, ""} <- Integer.parse(id), %DiningAreas{} = area <- DiningAreas.get(n) do
       applied = Map.put(socket.assigns.applied, area.id, :applying)
