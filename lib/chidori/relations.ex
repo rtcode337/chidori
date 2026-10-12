@@ -659,13 +659,21 @@ defmodule Chidori.Relations do
     end
   end
 
-  # 走っている途中から届く「いま何をしているか」。そのまま画面へ流す
   # 割り込みの結果が返ってきた（待っていたのはタスクの側）
   def handle_info({:focus_done, key, painter, result}, state),
     do: {:noreply, broadcast(focused(state, key, painter, result), key)}
 
+  # 走っている途中から届く「いま何をしているか」。そのまま画面へ流す。
+  # 受け取るのは、このプロセスが走らせているタスクがあるときだけ。途中経過は
+  # 名前で送られてくるので、落ちて立ち直る前のプロセスが走らせたタスクの分も
+  # ここへ届く。それを受けると、終わりの合図（畳む役）は来ないまま「いまどこ」
+  # だけが残り、画面が取り直し中のまま操作を受け付けなくなる
   def handle_info({:progress, key, step}, state) do
-    {:noreply, broadcast(put_in(state.step[key], step), key)}
+    if key in Map.values(state.tasks) do
+      {:noreply, broadcast(put_in(state.step[key], step), key)}
+    else
+      {:noreply, state}
+    end
   end
 
   # Chiezo の取り込みの様子。**走っている間は押させない**ので、終わったことに

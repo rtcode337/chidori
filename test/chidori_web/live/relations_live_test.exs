@@ -1523,5 +1523,14 @@ defmodule ChidoriWeb.RelationsLiveTest do
       refute html =~ "is-busy"
       refute html =~ "inert"
     end
+
+    test "立ち直る前のプロセスが走らせたタスクの途中経過は受け取らない" do
+      # 途中経過は名前で送られるので、入れ替わったあとのプロセスにも届く。
+      # 受けてしまうと、畳む合図は来ないので取り直し中のまま固まる
+      restart_relations()
+      send(Process.whereis(Chidori.Relations), {:progress, "painters", :reading})
+
+      assert Chidori.Relations.current("painters").step == nil
+    end
   end
 end
