@@ -47,3 +47,8 @@ npm-debug.log
 
 # mix と hex の作業場所（コンテナで mix を回すと HOME の下にできる）。ビルドの残骸なので持たない
 /.mix/
+
+# Claude Code の手元の設定は持たない
+# ただし領域ごとの詳しい記述(.claude/rules/)はリポジトリで管理する
+.claude/*
+!.claude/rules/
