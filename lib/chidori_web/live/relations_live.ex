@@ -220,9 +220,10 @@ defmodule ChidoriWeb.RelationsLive do
   # 相手を選んだ拍子に「考える量: 空」まで覚えてしまい、そのあと考える量を選んでも
   # 空のまま送られていた（画面では選べているように見えるので、押すまで気づけない）。
   # フォームは変更のたびに丸ごと届くので、この控えだけで全部の欄が揃う
-  # 名簿の知名度の下限を変えて、名簿を引き直す（芸能人の図）。**選べる値だけ受ける**
+  # 名簿の知名度の下限を変えて、名簿を引き直す（芸能人・名作映画の図）。**選べる値だけ受ける**
   def handle_event("reroster", %{"min" => min}, socket) do
-    with {value, ""} <- Integer.parse(to_string(min)),
+    with true <- socket.assigns.view in ["people", "films"],
+         {value, ""} <- Integer.parse(to_string(min)),
          true <- value in Chidori.Relations.Settings.choices(),
          :ok <- Relations.reroster(socket.assigns.view, value) do
       {:noreply,
@@ -289,7 +290,13 @@ defmodule ChidoriWeb.RelationsLive do
     # **知っている種類だけ読む**（画面から来る値なので、そのまま atom にしない）
     kind =
       Map.get(
-        %{"influence" => :influence, "family" => :family, "spouse" => :spouse, "duo" => :duo},
+        %{
+          "influence" => :influence,
+          "family" => :family,
+          "spouse" => :spouse,
+          "duo" => :duo,
+          "costar" => :costar
+        },
         params["kind"],
         :related
       )
@@ -842,7 +849,18 @@ defmodule ChidoriWeb.RelationsLive do
   数える単位。図ごとに並んでいるものが違うので、口の名前もそれに合わせます。
   """
   def unit_of("painters"), do: "画家"
+  def unit_of("films"), do: "作品"
   def unit_of(_view), do: "人"
+
+  @doc "札の色の元になるもの（線の詳細の表の見出し）。"
+  def style_heading("painters"), do: "様式"
+  def style_heading("films"), do: "国"
+  def style_heading(_view), do: "種別"
+
+  @doc "相互リンクの線が「何ではないか」（線の詳細の説明）。"
+  def related_not("painters"), do: "影響関係"
+  def related_not("films"), do: "同じ監督・同じ主演のつながり"
+  def related_not(_view), do: "家族やコンビの関係"
 
   @doc """
   そのノードに付いている「見た」印。まだ無ければ空の印を返します。

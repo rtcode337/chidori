@@ -30,6 +30,10 @@ paths:
 - 芸能人: 夫婦が最優先。公表されている関係だけ、未成年の家族と記事の無い家族は書かせない。グループは名簿に入れず枠で描く。
   顔写真は Commons のものだけを 1 人 1 回、横 120px の縮小版で取りに行き DB（`face_thumbs`）に写して `/faces/:id` から配る。
   押すと Commons のファイルのページ（出典とライセンス）へのリンクを出す
+- 名作映画（`Chidori.Relations.Films`・収集 `chidori_films`）: 札は作品だけ。名簿・監督・公開年・国は分類から機械で
+  （「〜の監督映画」の `tag_suffix` と主な賞の受賞作の `tag`、知名度で下を切る）、主演だけ AI（`verify_tags` で実在の記事に限る）。
+  同じ監督は枠（`clusters`）、同じ主演は公開年順に隣どうしを結ぶ線（`edge_rules` の `shared`）。
+  受賞作は知名度の下限を免除する（Chiezo の `min_extra_unless_tag`）
 - 代表作の説明と絵は Chiezo の jawiki から引く（`Chidori.Artwork`。絵は持たず縮小版の URL を指す。結果は 1 日覚える）
 - 見た記録は `chidori_data` に 1 ノード 1 件（`Chidori.Relations.Marks`）。収集には書かない
 - 図の操作は `assets/js/pan_zoom.js` を関連図・トピックの網・区画の地図で共有する。拡大は `viewBox` を動かす（CSS の transform で引き伸ばさない）。

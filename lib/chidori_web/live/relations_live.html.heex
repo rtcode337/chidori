@@ -460,17 +460,32 @@
           8,000 人を一度に並べると読めないので、拡大すると出てきます。
         </p>
       <% else %>
-        <p>
-          <strong>縦は年代</strong>です（上から下へ。人は生年。グループはメンバーの生年の中ほど）。 <strong>同じグループ（コンビ・アイドルグループ・バンド）の人は枠で囲み</strong>、名前は枠の左上にあります。 <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、 <strong>色は種別</strong>（俳優・歌手・タレント・お笑いなど）です。写真のある人は札に顔写真が出ます（Wikimedia Commons。押すと出典とライセンス）。
-        </p>
-        <p>
-          <strong>太い赤の線は夫婦</strong>（元夫婦も）、 <strong>実線は家族</strong>（親子・きょうだい）です。どれも AI が公表されている情報から書いたもので、
-          未成年の家族と、芸能人でない家族は載せていません。
-          薄い線は記事どうしが互いにリンクしているというだけの関係で、Wikipedia から機械的に引いたものです。
-        </p>
-        <p>
-          <strong>どの名前も、どの線も押せます。</strong> もとになった記事・Chiezo に入っているタグと、線の根拠が出ます。
-        </p>
+        <%= if @view == "films" do %>
+          <p>
+            <strong>縦は公開年</strong>です（上から下へ）。 <strong>同じ監督の作品は枠で囲み</strong>、ひとかたまりに並べます（枠の高さは作品の公開年の中ほど。監督の名前は枠の左上）。 <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、 <strong>色は国</strong>です。
+          </p>
+          <p>
+            <strong>線は同じ俳優が主演した作品どうし</strong>で、公開年の順に隣どうしを結んでいます（線の字が俳優の名前）。監督をまたいで、俳優で作品をたどれます。
+            名簿・監督・公開年・国は Wikipedia の分類から機械的に引き、 <strong>主演だけは AI が書いています</strong>（主演の分類は Wikipedia に無いため）。
+            薄い線は記事どうしが互いにリンクしている（続編など）というだけの関係です。
+          </p>
+          <p>
+            <strong>名簿は知名度で下を切っています</strong>（主な映画賞の受賞作は知名度に関わらず入れます）。設定の「名簿の広さ」で下げると広がります。
+            <strong>どの作品も、どの線も押せます。</strong>
+          </p>
+        <% else %>
+          <p>
+            <strong>縦は年代</strong>です（上から下へ。人は生年。グループはメンバーの生年の中ほど）。 <strong>同じグループ（コンビ・アイドルグループ・バンド）の人は枠で囲み</strong>、名前は枠の左上にあります。 <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、 <strong>色は種別</strong>（俳優・歌手・タレント・お笑いなど）です。写真のある人は札に顔写真が出ます（Wikimedia Commons。押すと出典とライセンス）。
+          </p>
+          <p>
+            <strong>太い赤の線は夫婦</strong>（元夫婦も）、 <strong>実線は家族</strong>（親子・きょうだい）です。どれも AI が公表されている情報から書いたもので、
+            未成年の家族と、芸能人でない家族は載せていません。
+            薄い線は記事どうしが互いにリンクしているというだけの関係で、Wikipedia から機械的に引いたものです。
+          </p>
+          <p>
+            <strong>どの名前も、どの線も押せます。</strong> もとになった記事・Chiezo に入っているタグと、線の根拠が出ます。
+          </p>
+        <% end %>
       <% end %>
     </section>
 
@@ -546,7 +561,7 @@
 
             <%!-- 名簿の広さ（芸能人の図）。**知名度で下を切って始め、落ち着いたら広げる**。
                  引き直す回は足すだけなので、下限を上げても名簿からは消えない --%>
-            <form :if={@view == "people"} id="roster-form" phx-submit="reroster">
+            <form :if={@view in ["people", "films"]} id="roster-form" phx-submit="reroster">
               <% now = Chidori.Relations.Settings.min_pageviews(@view) %>
               <label>
                 名簿の広さ（Wikipedia の月の閲覧数の下限）
@@ -769,7 +784,7 @@
               <td>{regions_of(@edge.to) |> Enum.join("、") |> blank_dash()}</td>
             </tr>
             <tr>
-              <th>{if @view == "painters", do: "様式", else: "種別"}</th>
+              <th>{style_heading(@view)}</th>
               <td>{Enum.join(@edge.from[:styles] || [], "、") |> blank_dash()}</td>
               <td>{Enum.join(@edge.to[:styles] || [], "、") |> blank_dash()}</td>
             </tr>
@@ -785,7 +800,10 @@
           {@edge.to.name}の影響元はほかに: {Enum.join(@edge.others, "、")}
         </p>
 
-        <%= if @edge.kind in [:spouse, :family, :duo] do %>
+        <p :if={@edge.kind == :costar} class="muted-note">
+          どちらも<strong>{@edge.label}</strong>が主演した作品です。
+        </p>
+        <%= if @edge.kind in [:spouse, :family, :duo, :costar] do %>
           <p class="muted-note">
             <strong>AI が書いたものです。</strong> 確かめるには、それぞれの記事を読んでください。
           </p>
@@ -799,7 +817,7 @@
         <% end %>
         <%= if @edge.kind == :related do %>
           <p class="muted-note">
-            これは Wikipedia から機械的に引いた線で、<strong>{if @view == "painters", do: "影響関係", else: "家族やコンビの関係"}ではありません</strong>。
+            これは Wikipedia から機械的に引いた線で、<strong>{related_not(@view)}ではありません</strong>。
             <strong>片側だけのリンクは採りません</strong>
             —— 有名な人は多くの記事から
             名前を出されるので、片側で繋ぐと有名どうしが軒並み繋がって図が読めなくなります。

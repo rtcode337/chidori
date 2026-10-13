@@ -202,7 +202,10 @@ defmodule Chidori.Relations.Graph do
   - `works?` —— 代表作を持つか
   - `edge_rules` —— 線にするタグ。`from: :named` は名指しされた側から文書の主へ
     （影響元）、`:owner` は文書の主から名指しされた側へ。`undirected` は向きを持たない
-    線で、同じ組は 1 本に畳む。`label` は 3 つ目の区切りが無いときの線の字
+    線で、同じ組は 1 本に畳む。`label` は 3 つ目の区切りが無いときの線の字。
+    `shared: true` は**同じ値を持つ文書どうし**を結ぶ（値は札ではなく共通項。映画の主演）
+  - `clusters` —— 枠にする決まり。`%{tag_prefix: …}` は同じ値を持つ文書を囲む（芸能人の
+    グループ・映画の監督）
   """
   def painters_spec,
     do: %{
@@ -927,6 +930,39 @@ defmodule Chidori.Relations.Graph do
   defp edges(docs, by_name, spec) do
     labelled = Enum.flat_map(spec.edge_rules, &rule_edges(docs, by_name, &1))
     labelled ++ related(docs, by_name, labelled)
+  end
+
+  # **同じ値を持つ文書どうしの線**（`shared: true`。映画の図の「同じ主演」）。タグの値は
+  # 札ではなく、札どうしをつなぐ共通項なので、名指しされた札を探しても見つからない。
+  # **年代の順に隣どうしだけを結ぶ** —— 全部の組を結ぶと、作品の多い俳優で線が網になる
+  defp rule_edges(docs, by_name, %{shared: true} = rule) do
+    docs
+    |> Enum.flat_map(fn doc ->
+      case by_name[String.trim(to_string(doc["title"] || ""))] do
+        nil -> []
+        node -> for value <- tag_values(tags_of(doc), rule.prefix), do: {value, node}
+      end
+    end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Enum.sort()
+    |> Enum.flat_map(fn {value, nodes} ->
+      nodes
+      |> Enum.uniq_by(& &1.id)
+      |> Enum.sort_by(&sort_key/1)
+      |> Enum.chunk_every(2, 1, :discard)
+      |> Enum.map(fn [from, to] ->
+        %{
+          from: from.id,
+          to: to.id,
+          label: display_name(value),
+          kind: rule.kind,
+          via: rule.prefix,
+          excerpt: []
+        }
+      end)
+    end)
+    # 同じ 2 本を 2 人の主演が共にしていても 1 本（字は先に来た人）
+    |> Enum.uniq_by(&Enum.sort([&1.from, &1.to]))
   end
 
   # 1 つの決まりぶんの線。**名指しされた側か、文書の主か**から向きを決める

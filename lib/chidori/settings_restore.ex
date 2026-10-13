@@ -87,13 +87,17 @@ defmodule Chidori.SettingsRestore do
         do: name
   end
 
+  # 名簿の広さを持つ図は芸能人と名作映画。**返すのは芸能人の値**（画面の知らせはそちらだけ）
   defp restore_min_pageviews(collections) do
-    name = Relations.People.collection()
+    restore_min_pageviews(collections, "films", Relations.Films.collection())
+    restore_min_pageviews(collections, "people", Relations.People.collection())
+  end
 
+  defp restore_min_pageviews(collections, view, name) do
     with %{} = collection <- Enum.find(collections, &(&1["name"] == name)),
          value when is_integer(value) and value > 0 <- min_pageviews_of(collection["extract"]),
-         true <- value != Relations.Settings.min_pageviews("people"),
-         {:ok, _saved} <- Relations.Settings.put_min_pageviews("people", value) do
+         true <- value != Relations.Settings.min_pageviews(view),
+         {:ok, _saved} <- Relations.Settings.put_min_pageviews(view, value) do
       value
     else
       _unchanged -> nil

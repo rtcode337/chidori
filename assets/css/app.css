@@ -355,6 +355,8 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .relation-edge.influence { stroke: #6f69c8; stroke-width: 2.5; }
 /* 相互リンクだけの線。何の関係かは分からないので、影響の線より薄く細く */
 .relation-edge.related { stroke: #cfd4e6; stroke-width: 1.5; }
+/* 同じ主演の作品どうし（名作映画の図）。監督の枠をまたいでたどる線なので、枠の線と見分けられる色に */
+.relation-edge.costar { stroke: #d38a2c; stroke-width: 2; }
 /* 線に添える一言（芸能人の図の「親子」「メンバー」）。**小さく置く** —— 線そのものより目立つと、図が字で埋まる。押す的の線が間に挟まるので、隣の線からは当てない */
 .edge-label { fill: #68718a; font-size: 6.5px; font-weight: 700; paint-order: stroke; stroke: #f9faff; stroke-width: 3px; }
 /* 名前を入れる札。**丸ではなく四角** —— 円は角へ行くほど内側が痩せるので、

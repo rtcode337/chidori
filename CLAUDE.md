@@ -46,7 +46,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
 | `chiezo-client.md` | Chiezo とのやり取りの共通部・収集の一覧と送り直し・巡回名 | `chiezo.ex`・`collect_*.ex`・`sweep_names.ex`・`settings_restore.ex`・`data_store*`・`live/collect.ex` |
 | `news-topics.md` | 最新情報・話題・トピックの網・興味トピック・トップページ | `news*`・`topics.ex`・`themes*`・`home*`・`news_live*`・`home_live*` |
 | `notify-webpush.md` | 要約の段取りと時計・ntfy・Web Push・設定ページ | `digest*`・`notify*`・`ntfy.ex`・`web_push*`・`settings_live*`・`sw.js` |
-| `relations.md` | 関連図（画家・芸能人）・代表作・顔写真・図の操作 | `relations*`・`artwork.ex`・`relations_live*`・`face_controller.ex`・`pan_zoom.js` |
+| `relations.md` | 関連図（画家・芸能人・名作映画）・代表作・顔写真・図の操作 | `relations*`・`artwork.ex`・`relations_live*`・`face_controller.ex`・`pan_zoom.js` |
 | `datasets-dining.md` | データ収集（技術書・Pi-hole・食事処）・区画の地図・travel-log への書き出し | `datasets*`・`geo/**`・`dining_areas_live*`・`partition_map*`・`gsi_tiles.js` |
 | `dev-tooling.md` | mix の回し方・テスト・資産の作り直し・移行 | `mix.exs`・`config/**`・`test/support/**`・`assets/css/**`・`priv/repo/**` |
 | `deploy.md` | Dockerfile・compose・CI・単体定義 | `Dockerfile`・`docker-compose*.yml`・`.github/**`・`.env.example`・`release.ex` |
@@ -61,7 +61,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
   - 最新情報 —— `topics.ex`（話題の定義）・`news.ex`・`news/`（映画・アニメ・イベント・市況の要約・はてブ数・レポート）・
     `themes.ex` / `themes/`（トピックの網）・`home.ex` / `home/`（トップの枠） → `news-topics.md`
   - 要約と通知 —— `digest.ex` / `digest/scheduler.ex`・`notify.ex` / `notify/`・`ntfy.ex`・`web_push.ex` / `web_push/` → `notify-webpush.md`
-  - 関連図 —— `relations.ex`・`relations/`（図・区画・芸能人・見た記録・顔写真）・`artwork.ex` → `relations.md`
+  - 関連図 —— `relations.ex`・`relations/`（図・区画・芸能人・名作映画・見た記録・顔写真）・`artwork.ex` → `relations.md`
   - データ収集 —— `datasets.ex`・`datasets/`（技術書・Pi-hole・食事処・範囲・依頼・travel-log 書き出し）・`geo/` → `datasets-dining.md`
   - 共通の道具 —— `jst.ex`（人に見せる日時）・`safe_url.ex`（外から来た URL）・`repo.ex`・`release.ex`（移行）
 - `lib/chidori_web/` — 画面

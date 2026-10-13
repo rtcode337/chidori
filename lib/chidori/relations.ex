@@ -2,7 +2,7 @@ defmodule Chidori.Relations do
   @moduledoc """
   関連図ページで使う、表示用のネットワークデータです。
 
-  図は Chiezo に溜まった収集（画家・芸能人）を読み直したものです。集めて整理するのは
+  図は Chiezo に溜まった収集（画家・芸能人・名作映画）を読み直したものです。集めて整理するのは
   Chiezo の役目で、Chidori は図の形にして見せるだけです。「収集の設定を更新」は
   Chidori の依頼文と回り方を Chiezo へ送り直し（まだ無ければ作り）、読み直すだけで、
   その場で集めさせはしません。読めるまでは手書きの表示例を持ち、読めなくても
@@ -20,6 +20,7 @@ defmodule Chidori.Relations do
   alias Chidori.Http
   alias Chidori.Relations.Graph
   alias Chidori.Relations.Partitions
+  alias Chidori.Relations.Films
   alias Chidori.Relations.People
 
   # 図を描く面の大きさ。サンプルの座標もこの中に収めてある
@@ -151,7 +152,7 @@ defmodule Chidori.Relations do
   @partition_sweeps [@survey_sweep, @rough_sweep]
 
   # Chiezo に名簿を持たせて育てる図。**並びが関連図のタブとトップの枠の並び**
-  @chiezo_views ["painters", "people"]
+  @chiezo_views ["painters", "people", "films"]
 
   # 押すたびに AI へ投げると枠を使い切る。こちら側で間隔を空ける
   @min_interval_ms 15_000
@@ -159,6 +160,32 @@ defmodule Chidori.Relations do
   @busy_recheck_ms 15_000
 
   @views %{
+    "films" => %{
+      title: "名作映画のつながり",
+      eyebrow: "DIRECTORS & STARS",
+      # **これは手書きの表示例**（芸能人の図と同じ扱い。読めたものに差し替わるまで図は描かない）
+      sample?: true,
+      description: "同じ監督の作品を枠で囲み、同じ主演の作品を線で結びます。上から下へ公開年の順です。",
+      width: @canvas_width,
+      height: @canvas_height,
+      collection: nil,
+      nodes: [
+        %{id: "seven", name: "七人の侍", note: "日本", x: 160, y: 120, kind: :film, years: "1954"},
+        %{id: "yojimbo", name: "用心棒", note: "日本", x: 330, y: 200, kind: :film, years: "1961"},
+        %{id: "akahige", name: "赤ひげ", note: "日本", x: 500, y: 280, kind: :film, years: "1965"},
+        %{id: "tokyo", name: "東京物語", note: "日本", x: 700, y: 120, kind: :film, years: "1953"}
+      ],
+      edges: [
+        %{from: "seven", to: "yojimbo", label: "三船敏郎", kind: :costar},
+        %{from: "yojimbo", to: "akahige", label: "三船敏郎", kind: :costar}
+      ],
+      sources: [
+        %{
+          label: "黒澤明（Wikipedia）",
+          url: "https://ja.wikipedia.org/wiki/%E9%BB%92%E6%BE%A4%E6%98%8E"
+        }
+      ]
+    },
     "people" => %{
       title: "芸能人のつながり",
       eyebrow: "COUPLES & FAMILY",
@@ -307,7 +334,8 @@ defmodule Chidori.Relations do
   （機械収集）を 1 回走らせます。**足すだけ**の回なので、下限を上げても名簿からは
   消えません（広げる向きのつまみ）。結果は `{:reroster, key, result}` で知らせます。
   """
-  def reroster(key, min_pageviews) when key == "people" and is_integer(min_pageviews) do
+  def reroster(key, min_pageviews)
+      when key in ["people", "films"] and is_integer(min_pageviews) do
     # 引き直しが走っている間は断る（`{:error, :busy}`）。続けて押すと同じ回が重なる
     flight = {:reroster, key}
 
@@ -328,12 +356,15 @@ defmodule Chidori.Relations do
     name = collection_of(key)
 
     result =
-      with :ok <- Chiezo.patch(base, name, %{extract: People.extract(min_pageviews)}) do
+      with :ok <- Chiezo.patch(base, name, %{extract: roster_extract(key, min_pageviews)}) do
         Chiezo.by_hand(fn -> Chiezo.run(base, name, sweep: Chidori.SweepNames.machine()) end)
       end
 
     Phoenix.PubSub.broadcast(Chidori.PubSub, topic(key), {:reroster, key, result})
   end
+
+  defp roster_extract("films", min_pageviews), do: Films.extract(min_pageviews)
+  defp roster_extract(_key, min_pageviews), do: People.extract(min_pageviews)
 
   @doc """
   **この画家を詳しく調べて**、を Chiezo へ割り込ませます。
@@ -395,27 +426,32 @@ defmodule Chidori.Relations do
   """
   def views, do: Enum.map(@chiezo_views, &{&1, @views[&1].title})
 
-  @doc "Chiezo に名簿を持たせて育てる図か（画家・芸能人）。"
+  @doc "Chiezo に名簿を持たせて育てる図か（画家・芸能人・名作映画）。"
   def chiezo_view?(key), do: key in @chiezo_views
 
   @doc "その図の収集の名前。"
   def collection_of("people"), do: People.collection()
+  def collection_of("films"), do: Films.collection()
   def collection_of(_key), do: painters_collection()
 
   @doc "その図の、Chiezo に送る設定（関連図の画面の「収集の設定を更新」と同じもの）。"
   def attrs_of("people", choices), do: People.attrs(choices)
+  def attrs_of("films", choices), do: Films.attrs(choices)
   def attrs_of(_key, choices), do: painters_attrs(choices)
 
   @doc "その図の、依頼文（ざっと見る回の文。画面の設定欄に出す）。"
   def prompt_of("people"), do: People.prompt()
+  def prompt_of("films"), do: Films.prompt()
   def prompt_of(_key), do: painters_prompt()
 
   # 図の読み方（`Graph.from_docs/2`）
   defp graph_spec("people"), do: People.graph_spec()
+  defp graph_spec("films"), do: Films.graph_spec()
   defp graph_spec(_key), do: Graph.painters_spec()
 
   # 区画を割り出すタグの頭（`Partitions.locator/3`）
   defp partition_tags("people"), do: {People.category_tag(), Graph.years_tag()}
+  defp partition_tags("films"), do: {Films.category_tag(), Graph.years_tag()}
   defp partition_tags(_key), do: {Graph.region_tag(), Graph.years_tag()}
 
   @doc """
@@ -453,7 +489,7 @@ defmodule Chidori.Relations do
 
   **知らない鍵は画家に倒します**（最初に開く図でもあり、関連図のタブの先頭です）。
   """
-  def valid_key(key) when key in ["people", "painters"], do: key
+  def valid_key(key) when key in ["people", "painters", "films"], do: key
   def valid_key(_key), do: "painters"
 
   @impl true
@@ -1016,8 +1052,11 @@ defmodule Chidori.Relations do
 
   @doc "ざっと見るの割り込みの指示文。**必ず区画の名前で始めます**。"
   def rough_note(partition, key \\ "painters"),
-    do:
-      "#{partition} の区画を先にざっと見てください。まだ目を通していない#{if key == "people", do: "人", else: "画家"}が残っています。"
+    do: "#{partition} の区画を先にざっと見てください。まだ目を通していない#{unit_word(key)}が残っています。"
+
+  defp unit_word("people"), do: "人"
+  defp unit_word("films"), do: "作品"
+  defp unit_word(_key), do: "画家"
 
   def ask_focus(base_url, name, note, key \\ "painters") do
     # **調査の回に頼む。** 割り込み専用の巡回は置いていない —— 同じ仕事
