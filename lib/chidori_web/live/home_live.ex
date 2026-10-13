@@ -322,6 +322,28 @@ defmodule ChidoriWeb.HomeLive do
     end
   end
 
+  # 本の札の「読んだ」。**付けた日は今日（JST）**、メモは今のまま残す。
+  # 読んだ本は枠から外れるので、何を読んだにしたかを知らせに出す（取り消しは本棚の画面で）
+  def handle_event("mark_book_read", %{"title" => title}, socket) do
+    case Chidori.Datasets.BookMarks.put(title, %{"read" => true, "read_on" => Chidori.Jst.today()}) do
+      {:ok, _mark} ->
+        name = book_name(socket.assigns.books, title)
+
+        {:noreply,
+         socket
+         |> assign(read_books: MapSet.put(socket.assigns.read_books, title))
+         |> then(fn s ->
+           if s.assigns.opened_book == title,
+             do: assign(s, opened_book: nil, book_posts: nil),
+             else: s
+         end)
+         |> put_flash(:info, "「#{name}」を読んだにしました。取り消しは本棚の画面からできます。")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "読んだ記録を保存できませんでした。")}
+    end
+  end
+
   # 本を押すと、その本を勧めている記事を開く。**同じ本をもう一度押すと閉じる**
   def handle_event("open_book", %{"title" => title}, socket) do
     cond do
@@ -356,4 +378,9 @@ defmodule ChidoriWeb.HomeLive do
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp book_name({:ok, books}, title),
+    do: Enum.find_value(books, title, &(&1.title == title && &1.name))
+
+  defp book_name(_books, title), do: title
 end

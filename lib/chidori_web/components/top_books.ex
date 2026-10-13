@@ -37,14 +37,20 @@ defmodule ChidoriWeb.TopBooks do
   attr :opened, :string, default: nil
   attr :posts, :any, default: nil
 
+  # **その場で「読んだ」にする口**（画面が受ける event の名前。`title` を渡す）。
+  # 読み終えた本を外すのに、本棚の画面へ移って詳細を開く遠回りをさせないため。
+  # 押すと読んだ本になり、この枠から消える
+  attr :read_event, :string, default: nil
+
   def top_books(assigns) do
     all_unread = Enum.reject(assigns.books, &MapSet.member?(assigns.read, &1.title))
     unread = Enum.filter(all_unread, &(Map.get(&1, :oreilly, false) == assigns.oreilly))
 
-    # **総合の順位も添える**（オライリーも混ぜた未読の中での順位）。枠を分けると、
-    # もう一方の枠の何位と並ぶのかが読めなくなる
+    # **総合の順位も添える**（オライリーも混ぜ、**読んだ本も数えた**本棚ぜんたいでの順位）。
+    # 枠を分けると、もう一方の枠の何位と並ぶのかが読めなくなる。読んだ本を数えないと、
+    # 1 冊読むたびに下の本の順位が繰り上がり、本そのものの評価が変わったように見える
     overall =
-      all_unread
+      assigns.books
       |> Enum.with_index(1)
       |> Map.new(fn {book, rank} -> {book.title, rank} end)
 
@@ -133,6 +139,17 @@ defmodule ChidoriWeb.TopBooks do
             >
               {store_text(book)}
             </a>
+          </p>
+          <p :if={@read_event} class="top-book-read">
+            <button
+              type="button"
+              phx-click={@read_event}
+              phx-value-title={book.title}
+              onclick="event.stopPropagation()"
+              aria-label={"#{book.name}を読んだにする"}
+            >
+              ✓ 読んだ
+            </button>
           </p>
           <p :if={book.near != []} class="book-near">★ 興味: {Enum.join(book.near, "・")}</p>
           <p :if={book.fields != []} class="top-book-fields">

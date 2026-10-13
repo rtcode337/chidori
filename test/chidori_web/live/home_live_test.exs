@@ -146,9 +146,46 @@ defmodule ChidoriWeb.HomeLiveTest do
     html = render_async(live, 2_000)
 
     # 押した札の中に開く
-    [_before, card | _rest] = String.split(html, ~s(phx-value-title="本:リーダブルコード"))
+    # 札の中には「読んだ」の口も同じ値を持つので、札の頭から先をまとめて見る
+    [_before, card] = String.split(html, ~s(phx-value-title="本:リーダブルコード"), parts: 2)
     assert card =~ "top-book-posts"
     assert card =~ ~s(href="https://example.com/post")
+  end
+
+  test "技術書の札から、その場で読んだにできる", %{conn: conn} do
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+
+    Chidori.HttpStub.stub(fn
+      %{url: "http://chiezo.test:7010/v1/chidori_books/filter?" <> _} ->
+        Chidori.HttpStub.ok(
+          Jason.encode!(%{
+            "results" => [
+              %{"title" => "本:リーダブルコード", "tags" => ["技術書"], "extra" => %{"docs" => 5}},
+              %{"title" => "本:達人プログラマー", "tags" => ["技術書"], "extra" => %{"docs" => 3}}
+            ]
+          })
+        )
+
+      %{url: _other} ->
+        Chidori.HttpStub.ok(~s({"results":[]}))
+    end)
+
+    Home.put(["books"])
+    {:ok, live, _html} = live(conn, ~p"/")
+    render_async(live, 2_000)
+
+    html =
+      live
+      |> element(~s(button[phx-click="mark_book_read"][phx-value-title="本:リーダブルコード"]))
+      |> render_click()
+
+    assert Chidori.Datasets.BookMarks.get("本:リーダブルコード").read
+    assert Chidori.Datasets.BookMarks.get("本:リーダブルコード").read_on == Chidori.Jst.today()
+    assert html =~ "を読んだにしました"
+    refute has_element?(live, ~s(li[phx-value-title="本:リーダブルコード"]))
+    # 残った本の総合の順位は繰り上がらない
+    assert html =~ ~r|達人プログラマー</span>\s*<span class="top-book-overall">（総合 2位）</span>|
   end
 
   test "埋め込んだ関連図は、取得の行と図だけ", %{conn: conn} do

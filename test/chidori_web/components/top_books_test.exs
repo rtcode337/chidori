@@ -91,16 +91,26 @@ defmodule ChidoriWeb.TopBooksTest do
              ~r|<a href="https://example.com/kindle"[^>]*onclick="event.stopPropagation\(\)"[^>]*>\s*Kindle で探す|
   end
 
-  test "どちらの枠にも、オライリーも混ぜた未読の中での総合の順位を添える" do
+  test "どちらの枠にも、オライリーも読んだ本も混ぜた本棚ぜんたいでの総合の順位を添える" do
     books = [book(1, %{oreilly: true}), book(2), book(3), book(4, %{oreilly: true})]
     read = MapSet.new(["本2"])
 
     general = render_component(&TopBooks.top_books/1, books: books, read: read)
-    # 本2 は読んだので数えない（本1・本3・本4 の順）
-    assert general =~ ~r|本3\s*</a>\s*<span class="top-book-overall">（総合 2位）</span>|
+
+    # 本2 は読んだので枠には出さないが、総合の順位には数える（読むたびに繰り上がらない）
+    refute general =~ "本2"
+    assert general =~ ~r|本3\s*</a>\s*<span class="top-book-overall">（総合 3位）</span>|
+    assert general =~ ~r|<span class="top-book-rank">1位</span>\s*<a[^>]*>\s*本3|
 
     oreilly = render_component(&TopBooks.top_books/1, books: books, read: read, oreilly: true)
     assert oreilly =~ ~r|本1\s*</a>\s*<span class="top-book-overall">（総合 1位）</span>|
-    assert oreilly =~ ~r|本4\s*</a>\s*<span class="top-book-overall">（総合 3位）</span>|
+    assert oreilly =~ ~r|本4\s*</a>\s*<span class="top-book-overall">（総合 4位）</span>|
+  end
+
+  test "読んだにする口は、渡したときだけ出す" do
+    refute render_component(&TopBooks.top_books/1, books: [book(1)]) =~ "読んだ"
+
+    html = render_component(&TopBooks.top_books/1, books: [book(1)], read_event: "mark_book_read")
+    assert html =~ ~r|phx-click="mark_book_read"[^>]*phx-value-title="本1"|
   end
 end
