@@ -183,26 +183,29 @@
           </h2>
           <ChidoriWeb.TopBooks.top_books
             books={elem(@books, 1)}
-            read={@read_books}
+            read={ChidoriWeb.BookModal.read_titles(@book_marks)}
             open_event="open_book"
-            read_event="mark_book_read"
-            opened={@opened_book}
-            posts={@book_posts}
           />
           <%!-- **オライリーの本は別の枠に**（Kindle で読めないので、上の順位とは分けて数える） --%>
           <h2 class="news-section-title">オライリーの未読の上位 {ChidoriWeb.TopBooks.count()} 冊</h2>
           <ChidoriWeb.TopBooks.top_books
             books={elem(@books, 1)}
-            read={@read_books}
+            read={ChidoriWeb.BookModal.read_titles(@book_marks)}
             oreilly
             open_event="open_book"
-            read_event="mark_book_read"
-            opened={@opened_book}
-            posts={@book_posts}
           />
         <% end %>
 
         <p :if={match?({:ok, _}, @books)}><a href={~p"/datasets?view=books"}>本棚をぜんぶ見る</a></p>
+        <%!-- 本の詳細（技術書の画面と同じもの）。読んだ記録はここで付ける --%>
+        <% book = opened_book(assigns) %>
+        <ChidoriWeb.BookModal.book_modal
+          :if={book}
+          book={book}
+          mark={ChidoriWeb.BookModal.mark_of(@book_marks, book.title)}
+          saved={@book_mark_saved == book.title}
+          posts={@book_posts}
+        />
       </section>
     </div>
 

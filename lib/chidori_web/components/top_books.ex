@@ -10,8 +10,6 @@ defmodule ChidoriWeb.TopBooks do
 
   use Phoenix.Component
 
-  alias Chidori.SafeUrl
-
   # 並べる数。**切りのいい数にする**（8 冊だと、何の区切りなのかが読めない）
   @count 10
 
@@ -29,18 +27,9 @@ defmodule ChidoriWeb.TopBooks do
   # （`Chidori.Datasets.Bookshelf.oreilly_isbn?/1`）。順位はそれぞれの枠の中で数える
   attr :oreilly, :boolean, default: false
 
-  # **押すとその本を勧めている記事をたどれる**（画面が受ける event の名前。`title` を渡す）。
-  # 書名のリンクは本の頁へ行くので、たどる口は札そのものに置く
+  # **押すとその本の詳細を開く**（画面が受ける event の名前。`title` を渡す。詳細は
+  # `ChidoriWeb.BookModal`）。書名のリンクは本の頁へ行くので、開く口は札そのものに置く
   attr :open_event, :string, default: nil
-  # いま開いている本（札に印を付ける）と、その本を勧めている記事
-  # （nil / :loading / {:ok, 記事} / {:error, 理由}）。**開いた札の中に出す**
-  attr :opened, :string, default: nil
-  attr :posts, :any, default: nil
-
-  # **その場で「読んだ」にする口**（画面が受ける event の名前。`title` を渡す）。
-  # 読み終えた本を外すのに、本棚の画面へ移って詳細を開く遠回りをさせないため。
-  # 押すと読んだ本になり、この枠から消える
-  attr :read_event, :string, default: nil
 
   def top_books(assigns) do
     all_unread = Enum.reject(assigns.books, &MapSet.member?(assigns.read, &1.title))
@@ -67,14 +56,13 @@ defmodule ChidoriWeb.TopBooks do
         class={[
           "top-book",
           book.near != [] && "is-near",
-          @open_event && "is-openable",
-          @opened == book.title && "is-opened"
+          @open_event && "is-openable"
         ]}
         phx-click={@open_event}
         phx-value-title={book.title}
         role={@open_event && "button"}
         tabindex={@open_event && "0"}
-        aria-label={@open_event && "#{book.name}を勧めている記事を見る"}
+        aria-label={@open_event && "#{book.name}の詳細を開く"}
       >
         <%!-- 表紙の無い本は 404 が返る。**壊れた画像の印を出さず、枠だけ残す**。
              **表紙を押したときは書名と同じく本の頁へ**（札を開くのは札のほうの口。
@@ -140,58 +128,12 @@ defmodule ChidoriWeb.TopBooks do
               {store_text(book)}
             </a>
           </p>
-          <p :if={@read_event} class="top-book-read">
-            <button
-              type="button"
-              phx-click={@read_event}
-              phx-value-title={book.title}
-              onclick="event.stopPropagation()"
-              aria-label={"#{book.name}を読んだにする"}
-            >
-              ✓ 読んだ
-            </button>
-          </p>
           <p :if={book.near != []} class="book-near">★ 興味: {Enum.join(book.near, "・")}</p>
           <p :if={book.fields != []} class="top-book-fields">
             <span :for={field <- book.fields} class="book-topic">{field}</span>
           </p>
           <%!-- **説明は 3 行まで**（上位の枠は一目で見比べるためのもの。全文は本棚で） --%>
           <p :if={book.note != ""} class="top-book-note">{book.note}</p>
-
-          <%!-- 勧めている記事。**押した札の中に開く**（札の下に離して出すと、どの本の
-               記事なのかを目で行き来して確かめることになる）。記事のリンクは札を
-               閉じないよう、押しても札まで伝えない --%>
-          <div
-            :if={@opened == book.title}
-            class="top-book-posts"
-            aria-label="勧めている記事"
-            onclick="event.stopPropagation()"
-          >
-            <p :if={@posts in [nil, :loading]} class="muted-note">読み込んでいます…</p>
-            <p :if={match?({:error, _}, @posts)} class="muted-note">記事を読めませんでした。</p>
-            <%= if match?({:ok, _}, @posts) do %>
-              <% {:ok, posts} = @posts %>
-              <p :if={posts == []} class="muted-note">勧めている記事が見つかりませんでした。</p>
-              <ol :if={posts != []} class="book-posts">
-                <li :for={post <- posts}>
-                  <a
-                    :if={post.url}
-                    href={SafeUrl.href(post.url)}
-                    target="_blank"
-                    rel="noreferrer"
-                    onclick="event.stopPropagation()"
-                  >
-                    {post.title}
-                  </a>
-                  <span :if={!post.url}>{post.title}</span>
-                  <span :if={post.published_at != ""} class="muted-note">
-                    {String.slice(post.published_at, 0, 10)}
-                  </span>
-                </li>
-              </ol>
-            <% end %>
-            <p class="muted-note">札の上のほうをもう一度押すと閉じます。</p>
-          </div>
         </div>
       </li>
     </ol>

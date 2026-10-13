@@ -99,7 +99,7 @@ defmodule ChidoriWeb.HomeLiveTest do
              ["高"]
   end
 
-  test "技術書は、押すとその本を勧めている記事をたどれる", %{conn: conn} do
+  test "技術書は、押すと詳細が開き、その本を勧めている記事をたどれる", %{conn: conn} do
     System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
     on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
 
@@ -140,19 +140,21 @@ defmodule ChidoriWeb.HomeLiveTest do
 
     # 見出しは出さない（札そのものが入口）
     refute html =~ "いま勧められている技術書"
-    assert html =~ "記事を見る"
+    assert html =~ "の詳細を開く"
 
     live |> element(~s(li[phx-value-title="本:リーダブルコード"])) |> render_click()
     html = render_async(live, 2_000)
 
-    # 押した札の中に開く
-    # 札の中には「読んだ」の口も同じ値を持つので、札の頭から先をまとめて見る
-    [_before, card] = String.split(html, ~s(phx-value-title="本:リーダブルコード"), parts: 2)
-    assert card =~ "top-book-posts"
-    assert card =~ ~s(href="https://example.com/post")
+    # 技術書の画面と同じ詳細（モーダル）に開く。読んだ記録は最初から開いておく
+    assert has_element?(live, ~s([role="dialog"] #book-detail-title), "リーダブルコード")
+    assert has_element?(live, ~s(details.seen-mark[open] form#book-mark))
+    assert html =~ ~s(href="https://example.com/post")
+
+    live |> element(~s([role="dialog"] button[phx-click="close_book"])) |> render_click()
+    refute has_element?(live, ~s([role="dialog"]))
   end
 
-  test "技術書の札から、その場で読んだにできる", %{conn: conn} do
+  test "技術書の詳細で読んだ記録を付けると、枠から外れ、総合の順位は繰り上がらない", %{conn: conn} do
     System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
     on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
 
@@ -175,14 +177,18 @@ defmodule ChidoriWeb.HomeLiveTest do
     {:ok, live, _html} = live(conn, ~p"/")
     render_async(live, 2_000)
 
+    live |> element(~s(li[phx-value-title="本:リーダブルコード"])) |> render_click()
+
     html =
       live
-      |> element(~s(button[phx-click="mark_book_read"][phx-value-title="本:リーダブルコード"]))
-      |> render_click()
+      |> form("#book-mark", %{"read" => "on", "read_on" => "2026-10-01", "note" => "命名の章が効いた"})
+      |> render_submit()
 
-    assert Chidori.Datasets.BookMarks.get("本:リーダブルコード").read
-    assert Chidori.Datasets.BookMarks.get("本:リーダブルコード").read_on == Chidori.Jst.today()
-    assert html =~ "を読んだにしました"
+    mark = Chidori.Datasets.BookMarks.get("本:リーダブルコード")
+    assert mark.read
+    assert mark.read_on == ~D[2026-10-01]
+    assert mark.note == "命名の章が効いた"
+    assert html =~ "保存しました。"
     refute has_element?(live, ~s(li[phx-value-title="本:リーダブルコード"]))
     # 残った本の総合の順位は繰り上がらない
     assert html =~ ~r|達人プログラマー</span>\s*<span class="top-book-overall">（総合 2位）</span>|

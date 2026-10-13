@@ -38,12 +38,14 @@ defmodule ChidoriWeb.HomeLive do
        panels: Home.selected(),
        news: nil,
        books: nil,
-       # 読んだ本（上位の枠から外す。`Chidori.Datasets.BookMarks`）
-       read_books: MapSet.new(),
+       # 本に付けた「読んだ」印とメモ（`Chidori.Datasets.BookMarks`。読んだ本は上位の枠から外す）
+       book_marks: %{},
+       book_mark_saved: nil,
        events: nil,
        # 書き手ごとの要約（市況ニュース。`Chidori.News.AiDigests`）
        ai_digests: nil,
-       # 押した本（書名の見出し。`本:<書名>`）と、それを勧めている記事
+       # 詳細を開いている本（書名の見出し。`本:<書名>`。`ChidoriWeb.BookModal`）と、
+       # それを勧めている記事
        opened_book: nil,
        book_posts: nil,
        # 全画面で開いている要約（`ChidoriWeb.NewsLive.digest_viewer/1`）
@@ -98,7 +100,7 @@ defmodule ChidoriWeb.HomeLive do
     do: assign(socket, news: News.current(News.server(topic.collection)))
 
   defp load(socket, %{kind: :books}) do
-    socket = assign(socket, read_books: Chidori.Datasets.BookMarks.read_titles())
+    socket = assign(socket, book_marks: Chidori.Datasets.BookMarks.all())
 
     case News.chiezo_base_url() do
       nil ->
@@ -322,45 +324,41 @@ defmodule ChidoriWeb.HomeLive do
     end
   end
 
-  # 本の札の「読んだ」。**付けた日は今日（JST）**、メモは今のまま残す。
-  # 読んだ本は枠から外れるので、何を読んだにしたかを知らせに出す（取り消しは本棚の画面で）
-  def handle_event("mark_book_read", %{"title" => title}, socket) do
-    case Chidori.Datasets.BookMarks.put(title, %{"read" => true, "read_on" => Chidori.Jst.today()}) do
-      {:ok, _mark} ->
-        name = book_name(socket.assigns.books, title)
-
-        {:noreply,
-         socket
-         |> assign(read_books: MapSet.put(socket.assigns.read_books, title))
-         |> then(fn s ->
-           if s.assigns.opened_book == title,
-             do: assign(s, opened_book: nil, book_posts: nil),
-             else: s
-         end)
-         |> put_flash(:info, "「#{name}」を読んだにしました。取り消しは本棚の画面からできます。")}
-
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "読んだ記録を保存できませんでした。")}
-    end
-  end
-
-  # 本を押すと、その本を勧めている記事を開く。**同じ本をもう一度押すと閉じる**
+  # 本を押すと詳細（`ChidoriWeb.BookModal`）を開く。勧めている記事は開いたときに引く
   def handle_event("open_book", %{"title" => title}, socket) do
-    cond do
-      socket.assigns.opened_book == title ->
-        {:noreply, assign(socket, opened_book: nil, book_posts: nil)}
+    socket = assign(socket, opened_book: title, book_mark_saved: nil)
 
-      base = News.chiezo_base_url() ->
+    case News.chiezo_base_url() do
+      nil ->
+        {:noreply, assign(socket, book_posts: {:error, :chiezo_not_configured})}
+
+      base ->
         {:noreply,
          socket
-         |> assign(opened_book: title, book_posts: :loading)
+         |> assign(book_posts: :loading)
          |> start_async({:book_posts, title}, fn ->
            Chidori.Datasets.Books.recommending(base, title)
          end)}
+    end
+  end
 
-      true ->
-        {:noreply,
-         assign(socket, opened_book: title, book_posts: {:error, :chiezo_not_configured})}
+  def handle_event("close_book", _params, socket),
+    do: {:noreply, assign(socket, opened_book: nil, book_posts: nil, book_mark_saved: nil)}
+
+  # 「読んだ」印とメモを書く（技術書の画面と同じ）。**空にしたら消える**。
+  # 読んだ本は上位の枠から外れるが、詳細は開いたままにする（保存したことを見せる）
+  def handle_event("save_book_mark", %{"title" => title} = params, socket) do
+    case Chidori.Datasets.BookMarks.put(title, ChidoriWeb.BookModal.mark_attrs(params)) do
+      {:ok, mark} ->
+        marks =
+          if mark,
+            do: Map.put(socket.assigns.book_marks, title, mark),
+            else: Map.delete(socket.assigns.book_marks, title)
+
+        {:noreply, assign(socket, book_marks: marks, book_mark_saved: title)}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "読んだ記録を保存できませんでした。")}
     end
   end
 
@@ -379,8 +377,9 @@ defmodule ChidoriWeb.HomeLive do
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
-  defp book_name({:ok, books}, title),
-    do: Enum.find_value(books, title, &(&1.title == title && &1.name))
+  @doc "詳細を開いている本（本棚に無くなっていれば nil）。"
+  def opened_book(%{opened_book: title, books: {:ok, books}}) when is_binary(title),
+    do: Enum.find(books, &(&1.title == title))
 
-  defp book_name(_books, title), do: title
+  def opened_book(_assigns), do: nil
 end

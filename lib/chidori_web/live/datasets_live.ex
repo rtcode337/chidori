@@ -23,7 +23,6 @@ defmodule ChidoriWeb.DatasetsLive do
 
   alias Chidori.Chiezo
   alias Chidori.Datasets
-  alias Chidori.Datasets.BookMark
   alias Chidori.Datasets.BookMarks
   alias Chidori.Datasets.Requests
   alias Chidori.Datasets.ShelfCache
@@ -318,14 +317,7 @@ defmodule ChidoriWeb.DatasetsLive do
 
   # 「読んだ」印とメモを書く。**空にしたら消える**（関連図の「見た」と同じ）
   def handle_event("save_book_mark", %{"title" => title} = params, socket) do
-    attrs = %{
-      # チェックが外れているとキーごと来ない（HTML のチェックボックス）
-      "read" => params["read"] == "on",
-      "read_on" => blank_to_nil(params["read_on"]),
-      "note" => params["note"] || ""
-    }
-
-    case BookMarks.put(title, attrs) do
+    case BookMarks.put(title, ChidoriWeb.BookModal.mark_attrs(params)) do
       {:ok, mark} ->
         marks =
           if mark,
@@ -1208,24 +1200,10 @@ defmodule ChidoriWeb.DatasetsLive do
   # 対象ごとに違うので、ここで決め打つと対象を足すたびに画面が食い違う
   defp default_prompts(%{dataset: dataset}), do: Datasets.call(dataset, :prompts)
 
-  @doc "読んだ本の見出し（上位の枠から外す）。"
-  def read_titles(marks),
-    do: for({title, %BookMark{read: true}} <- marks, into: MapSet.new(), do: title)
-
-  @doc "その本の「読んだ」印。まだ無ければ空の印（フォームを 2 通り書かずに済ませる）。"
-  def book_mark_of(marks, title), do: Map.get(marks, title) || %BookMark{}
-
-  @doc "「読んだ日」の欄に最初から入れておく日付（書いてあればそれ、無ければ JST の今日）。"
-  def read_on_value(%BookMark{read_on: %Date{} = date}), do: Date.to_iso8601(date)
-  def read_on_value(_mark), do: Jst.today() |> Date.to_iso8601()
-
-  @doc "印を 1 行で言う（本棚の一覧と詳細の見出しに出す）。"
-  def book_mark_summary(%BookMark{read: true, read_on: %Date{} = date}),
-    do: "読んだ（#{Date.to_iso8601(date)}）"
-
-  def book_mark_summary(%BookMark{read: true}), do: "読んだ"
-  def book_mark_summary(%BookMark{note: note}) when is_binary(note) and note != "", do: "メモあり"
-  def book_mark_summary(_mark), do: nil
+  # 本の印の読み方は詳細（`ChidoriWeb.BookModal`）と同じものを使う（本棚の一覧にも出す）
+  defdelegate read_titles(marks), to: ChidoriWeb.BookModal
+  defdelegate book_mark_of(marks, title), to: ChidoriWeb.BookModal, as: :mark_of
+  defdelegate book_mark_summary(mark), to: ChidoriWeb.BookModal, as: :summary
 
   @doc "詳細を開いているドメイン（一覧に無くなっていれば nil）。"
   def opened_domain(%{opened_domain: domain, shelf: {:ok, domains}}) when is_binary(domain),

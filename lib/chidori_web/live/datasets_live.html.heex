@@ -1059,120 +1059,37 @@
        Chiezo へ頼む口（本棚の整理の回への割り込み）を置く —— 頼みごとは本を見ながら
        思いつくので、設定の欄に離して置くと、どの本の話か書き直すことになる --%>
     <% book = opened_book(assigns) %>
-    <div :if={book} class="artwork-backdrop" phx-window-keydown="close_book" phx-key="Escape">
-      <section
-        class="artwork book-detail"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="book-detail-title"
-        phx-click-away="close_book"
-      >
-        <div class="artwork-head">
-          <strong id="book-detail-title">
-            {book.name} <span :if={book.classic} class="book-badge">定番</span>
-          </strong>
-          <button type="button" phx-click="close_book">閉じる</button>
+    <ChidoriWeb.BookModal.book_modal
+      :if={book}
+      book={book}
+      mark={book_mark_of(@book_marks, book.title)}
+      saved={@book_mark_saved == book.title}
+      posts={@book_posts[book.title]}
+    >
+      <form id="book-ask" phx-submit="ask_book" class="article-ask">
+        <input type="hidden" name="title" value={book.title} />
+        <label>
+          この本を Chiezo に調べ直してもらう<br />
+          <textarea
+            name="note"
+            rows="3"
+            placeholder="例: 表紙が別の本になっている / 分野が違う / 第 2 版が出ている"
+          ></textarea>
+        </label>
+        <p class="muted-note">
+          本棚の収集（{@dataset.derived && @dataset.derived.collection()}）の「整理」の回として、
+          この本だけを 1 回調べ直します（分野・タグ・説明・ISBN を確かめ、違っていれば直す）。
+          定時の巡回の進み具合にも次の予定にも触りません。書き添えたことは補足として渡します。
+        </p>
+        <div class="button-row">
+          <button type="submit" disabled={@book_asking} phx-disable-with="頼んでいます…">
+            Chiezo に頼む
+          </button>
         </div>
-        <div class="book-detail-body">
-          <span :if={book.cover_url} class="book-detail-cover">
-            <img src={book.cover_url} alt="" onerror="this.classList.add('is-missing')" />
-          </span>
-          <div>
-            <p class="book-score">
-              記事 {book.docs} 本が勧めている<span :if={book.recent > 0}>（直近 {book.recent} 本）</span>
-            </p>
-            <p :if={book.near != []} class="book-near">★ 興味: {Enum.join(book.near, "・")}</p>
-            <p :if={book.fields != []} class="book-fields">{Enum.join(book.fields, "・")}</p>
-            <p :if={book.topics != []} class="book-topics">
-              <span :for={topic <- book.topics} class="book-topic">{topic}</span>
-            </p>
-            <p :if={book.note != ""} class="book-note">{book.note}</p>
-            <p :if={book.page_url} class="muted-note">
-              ISBN {book.isbn}・<a href={book.page_url} target="_blank" rel="noreferrer">版元ドットコムで見る ↗</a>
-            </p>
-            <p :if={!book.page_url} class="muted-note">
-              ISBN はまだ分かっていません（本棚の整理の回が調べると、表紙も出ます）。
-            </p>
-          </div>
-        </div>
-
-        <%!-- 読んだ記録（関連図の「見た記録」と同じ形）。置き場は Chiezo の chidori_data --%>
-        <% mark = book_mark_of(@book_marks, book.title) %>
-        <details class="seen-mark" open={Map.has_key?(@book_marks, book.title)}>
-          <summary>
-            読んだ記録
-            <span :if={book_mark_summary(mark)} class="seen-badge">{book_mark_summary(mark)}</span>
-          </summary>
-          <form id="book-mark" phx-submit="save_book_mark">
-            <input type="hidden" name="title" value={book.title} />
-            <p class="seen-row">
-              <label><input type="checkbox" name="read" checked={mark.read} /> 読んだ</label>
-              <label>読んだ日 <input type="date" name="read_on" value={read_on_value(mark)} /></label>
-            </p>
-            <p>
-              <label>
-                メモ（感想・どこが役に立ったか）<br />
-                <textarea
-                  name="note"
-                  rows="3"
-                  placeholder="例: 3 章の命名の話はすぐ使えた。後半は飛ばし読み"
-                >{mark.note}</textarea>
-              </label>
-            </p>
-            <p class="muted-note">
-              ここに書いたことは Chidori の置き場（Chiezo の chidori_data）に残ります（収集には書きません）。読んだ本は「いま勧められている未読の上位」から外れます。
-              <strong>印もメモも空にして保存すると、記録ごと消えます。</strong>
-            </p>
-            <button type="submit" phx-disable-with="保存しています…">記録を保存</button>
-            <span :if={@book_mark_saved == book.title} class="muted-note">保存しました。</span>
-          </form>
-        </details>
-
-        <h3>勧めている記事</h3>
-        <%= case @book_posts[book.title] do %>
-          <% {:ok, [_ | _] = posts} -> %>
-            <ul class="book-posts">
-              <li :for={post <- posts}>
-                <a :if={post.url} href={SafeUrl.href(post.url)} target="_blank" rel="noreferrer">{post.title}</a>
-                <span :if={!post.url}>{post.title}</span>
-                <span :if={post.published_at != ""} class="muted-note">
-                  {String.slice(post.published_at, 0, 10)}
-                </span>
-              </li>
-            </ul>
-          <% {:ok, []} -> %>
-            <p class="muted-note">記事が見つかりませんでした。</p>
-          <% {:error, reason} -> %>
-            <p class="muted-note">{reason_text(reason)}</p>
-          <% _loading -> %>
-            <p class="muted-note">記事を読んでいます…</p>
-        <% end %>
-
-        <form id="book-ask" phx-submit="ask_book" class="article-ask">
-          <input type="hidden" name="title" value={book.title} />
-          <label>
-            この本を Chiezo に調べ直してもらう<br />
-            <textarea
-              name="note"
-              rows="3"
-              placeholder="例: 表紙が別の本になっている / 分野が違う / 第 2 版が出ている"
-            ></textarea>
-          </label>
-          <p class="muted-note">
-            本棚の収集（{@dataset.derived && @dataset.derived.collection()}）の「整理」の回として、
-            この本だけを 1 回調べ直します（分野・タグ・説明・ISBN を確かめ、違っていれば直す）。
-            定時の巡回の進み具合にも次の予定にも触りません。書き添えたことは補足として渡します。
-          </p>
-          <div class="button-row">
-            <button type="submit" disabled={@book_asking} phx-disable-with="頼んでいます…">
-              Chiezo に頼む
-            </button>
-          </div>
-          <p :if={ask_message(@book_asked)} class="muted-note" aria-live="polite">
-            {ask_message(@book_asked)}
-          </p>
-        </form>
-      </section>
-    </div>
+        <p :if={ask_message(@book_asked)} class="muted-note" aria-live="polite">
+          {ask_message(@book_asked)}
+        </p>
+      </form>
+    </ChidoriWeb.BookModal.book_modal>
   </div>
 </main>

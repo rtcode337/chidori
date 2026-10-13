@@ -106,11 +106,4 @@ defmodule ChidoriWeb.TopBooksTest do
     assert oreilly =~ ~r|本1\s*</a>\s*<span class="top-book-overall">（総合 1位）</span>|
     assert oreilly =~ ~r|本4\s*</a>\s*<span class="top-book-overall">（総合 4位）</span>|
   end
-
-  test "読んだにする口は、渡したときだけ出す" do
-    refute render_component(&TopBooks.top_books/1, books: [book(1)]) =~ "読んだ"
-
-    html = render_component(&TopBooks.top_books/1, books: [book(1)], read_event: "mark_book_read")
-    assert html =~ ~r|phx-click="mark_book_read"[^>]*phx-value-title="本1"|
-  end
 end
