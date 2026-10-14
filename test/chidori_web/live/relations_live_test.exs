@@ -1374,6 +1374,17 @@ defmodule ChidoriWeb.RelationsLiveTest do
       assert html =~ "ゴッホ"
     end
 
+    test "選んだ人へ寄るときは、札の大きさも渡す（倍率は札が読める大きさで決める）", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      node = hd(Chidori.Relations.current("painters").nodes)
+
+      render_hook(live, "focus", %{"name" => node.name})
+
+      assert_push_event(live, "focus", %{x: x, y: y, r: r})
+      assert {x, y} == {node.x, node.y}
+      assert r == RelationsLive.radius_of(node)
+    end
+
     test "空の検索では候補を出さない", %{conn: conn} do
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
 

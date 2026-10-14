@@ -548,7 +548,9 @@ defmodule ChidoriWeb.RelationsLive do
       node ->
         socket
         |> assign(focus: node.id, query: name, matches: [])
-        |> push_event("focus", %{x: node.x, y: node.y})
+        # 札の大きさ（`r`）も渡す。**寄る倍率は札の大きさで決まる** —— 知られていない人ほど
+        # 札が小さく、決め打ちの倍率では描かれる大きさに届かず、探しても何も出なかった
+        |> push_event("focus", %{x: node.x, y: node.y, r: radius_of(node)})
     end
   end
 

@@ -24,6 +24,14 @@ const REPORT_DELAY = 140
 // （周りの関連図を読むために探しているので、線の相手まで見える近さが要る）
 const FOCUS_SCALE = 4
 
+// 探した人の札を、画面の上でこの直径（px）以上にして見せる。**倍率を決め打ちにしない**
+// —— 札は知られている度合いで大きさが違い、小さい札の人は 4 倍でも名前が読めず、
+// 描く下限（サーバーの `@min_drawn_px`）にも届かずに何も出なかった
+const FOCUS_PX = 32
+
+// 拡大の上限。探した人の札を読める大きさにするのに、小さい札では 8 倍では足りない
+const MAX_SCALE = 40
+
 // 指で触る画面か。**画面の幅ではなく入力の種類で見る** —— 幅で分けると、
 // 窓を狭くしただけの PC が「スマホ扱い」になって、押すたびに全画面へ飛ぶ
 const touchLike = () =>
@@ -35,7 +43,7 @@ export default panZoom({
   // 下のほうが器からはみ出して全体が見えなかった
   minScale: 0.02,
   fitFloor: true,
-  maxScale: 8,
+  maxScale: MAX_SCALE,
 
   // 探す欄と道具の上では図を動かさない（字を打つ口・選ぶ口なので）
   skip: "[data-zoom], .relation-tools, .relation-find",
@@ -43,7 +51,16 @@ export default panZoom({
   started() {
     // 探して選んだ人を真ん中へ。**倍率はサーバーが決めない** —— 器が何 px かは
     // こちらしか知らないので、図の座標だけ受け取って寄せ方はここで決める
-    this.handleEvent("focus", ({x, y}) => this.centerOn(x, y, FOCUS_SCALE))
+    this.handleEvent("focus", ({x, y, r}) => this.centerOn(x, y, this.focusScale(r)))
+  },
+
+  // 札（半径 r、図の座標）が画面の上で FOCUS_PX になる倍率。器の幅で変わるので、ここで測る
+  focusScale(r) {
+    const box = this.el.getBoundingClientRect()
+    const width = this.base && this.base[2]
+    if (!(r > 0) || !(width > 0) || !(box.width > 0)) { return FOCUS_SCALE }
+    const needed = FOCUS_PX / (2 * r * (box.width / width))
+    return Math.max(FOCUS_SCALE, needed)
   },
 
   painted() {
