@@ -152,7 +152,7 @@ defmodule Chidori.Relations do
   @partition_sweeps [@survey_sweep, @rough_sweep]
 
   # Chiezo に名簿を持たせて育てる図。**並びが関連図のタブとトップの枠の並び**
-  @chiezo_views ["painters", "people", "films"]
+  @chiezo_views ["painters", "films", "people"]
 
   # 押すたびに AI へ投げると枠を使い切る。こちら側で間隔を空ける
   @min_interval_ms 15_000
