@@ -63,6 +63,10 @@ defmodule ChidoriWeb.RelationsLive do
        # **ほかの絞り込みとは排他**（重ねると、出ていない理由が読めない）
        review_filter: nil,
        focus_sent: nil,
+       # 開いている作品の主演のうち、芸能人の図に載っている人（名作映画の図。押すとその人へ飛ぶ）
+       star_people: MapSet.new(),
+       # URL の `focus` で名指しされた人。**図がまだ読めていなければ、読めたときに寄る**
+       pending_focus: nil,
        # 名簿を引き直した結果の一言（芸能人の図）
        reroster_message: nil,
        # 設定欄。**開いたときだけ Chiezo から読む**（図を開くたびには読まない）。
@@ -154,11 +158,31 @@ defmodule ChidoriWeb.RelationsLive do
         mark_saved: nil,
         # 図を切り替えたら設定は読み直す（別の収集のもの）
         settings_open: false,
-        settings: nil
+        settings: nil,
+        pending_focus: params["focus"],
+        detail: nil,
+        edge: nil
       )
 
-    {:noreply, socket}
+    {:noreply, apply_pending_focus(socket)}
   end
+
+  # URL の `focus` で名指しされた人へ寄り、詳細を開く（名作映画の図の主演から飛んできたとき）。
+  # **図がまだ読めていなければ待つ**（読めたら `:relation_updated` でもう一度試す）
+  defp apply_pending_focus(%{assigns: %{pending_focus: name}} = socket) when is_binary(name) do
+    case Enum.find(socket.assigns.relation[:nodes] || [], &(&1.name == name)) do
+      nil ->
+        socket
+
+      node ->
+        socket
+        |> assign(pending_focus: nil)
+        |> focus_node(name)
+        |> open_detail(node)
+    end
+  end
+
+  defp apply_pending_focus(socket), do: socket
 
   # 設定欄を開く・閉じる。**開いたときに Chiezo から読む** —— 設定は見たいときだけ
   # 見るもので、図を開くたびに 400 区画ぶんの台帳を運ぶ理由が無い。
@@ -271,11 +295,7 @@ defmodule ChidoriWeb.RelationsLive do
         {:noreply, assign(socket, detail: nil, artwork: nil, portrait: nil, mark_saved: nil)}
 
       true ->
-        {:noreply,
-         socket
-         |> assign(detail: node, edge: nil, focus_sent: nil, mark_saved: nil)
-         |> with_portrait(node)
-         |> with_works(works_of(node))}
+        {:noreply, open_detail(socket, node)}
     end
   end
 
@@ -479,6 +499,42 @@ defmodule ChidoriWeb.RelationsLive do
     end
   end
 
+  defp open_detail(socket, node) do
+    socket
+    |> assign(detail: node, edge: nil, focus_sent: nil, mark_saved: nil)
+    |> assign(star_people: star_people(socket.assigns.view, node))
+    |> with_portrait(node)
+    |> with_works(works_of(node))
+  end
+
+  # 作品の主演のうち、芸能人の図に載っている人。**押したときに 1 度だけ引く**
+  # （芸能人の図は数千人ぶんあるので、描き直しのたびには引かない）
+  defp star_people("films", node) do
+    case stars_of(node) do
+      [] ->
+        MapSet.new()
+
+      stars ->
+        known = MapSet.new(Relations.current("people")[:nodes] || [], & &1.name)
+        stars |> Enum.filter(&MapSet.member?(known, &1)) |> MapSet.new()
+    end
+  end
+
+  defp star_people(_view, _node), do: MapSet.new()
+
+  @doc "作品の主演（名作映画の図。タグ「主演:<名前>」）。"
+  def stars_of(node), do: for(t <- node[:tags] || [], v = strip(t, "主演:"), do: v)
+
+  @doc """
+  主演の名前の行き先。**芸能人の図に載っていればその人へ**（図の中で寄って詳細を開く）、
+  載っていなければ Wikipedia の記事へ。
+  """
+  def star_href(name, star_people) do
+    if MapSet.member?(star_people, name),
+      do: {:inside, "/relations?" <> URI.encode_query(%{"view" => "people", "focus" => name})},
+      else: {:outside, "https://ja.wikipedia.org/wiki/" <> URI.encode(name)}
+  end
+
   # ノードを押したら、その人のことを出す。**代表作を持っていなくても押せる** ——
   # 押せる丸と押せない丸が混じっていると、押しても何も起きない丸を何度も押すことになる。
   # 出すのは、もとになった記事・Chiezo に入っているタグ・（あれば）代表作の絵。
@@ -601,7 +657,7 @@ defmodule ChidoriWeb.RelationsLive do
     # **設定を送り終えたら、開いている設定欄を読み直す。** 送った中身は Chiezo の
     # 側で書き換わっているので、前に読んだものを出し続けると、送れていないように見える
     sent? = socket.assigns.relation[:pushing] == true and relation[:pushing] != true
-    socket = assign(socket, relation: relation)
+    socket = socket |> assign(relation: relation) |> apply_pending_focus()
 
     {:noreply,
      if(sent? and socket.assigns.settings_open, do: load_settings(socket), else: socket)}
@@ -920,6 +976,10 @@ defmodule ChidoriWeb.RelationsLive do
       {"種別", for(t <- tags, v = strip(t, "種別:"), do: v)},
       {"家族", for(t <- tags, v = strip(t, "家族:"), do: family_text(v))},
       {"グループ", for(t <- tags, v = strip(t, "グループ:"), do: v)},
+      # 名作映画の図のタグ
+      {"監督", for(t <- tags, v = strip(t, "監督:"), do: v)},
+      {"国", for(t <- tags, v = strip(t, "国:"), do: v)},
+      {"主演", stars_of(node)},
       {"その他", for(t <- tags, plain_tag?(t), do: t)}
     ]
     |> Enum.reject(fn {_label, values} -> values == [] end)
@@ -944,7 +1004,7 @@ defmodule ChidoriWeb.RelationsLive do
   defp plain_tag?(tag) do
     # **機械の印（`_chiezo_…`）も出さない** —— 未レビューかどうかは見出しの横に出す
     not Enum.any?(
-      ~w(年代: 地域: 様式: 代表作: 影響元: 関連: 種別: メンバー: 元メンバー: 家族: グループ: 区分: _chiezo_),
+      ~w(年代: 地域: 様式: 代表作: 影響元: 関連: 種別: メンバー: 元メンバー: 家族: グループ: 区分: 監督: 国: 主演: _chiezo_),
       &String.starts_with?(tag, &1)
     )
   end

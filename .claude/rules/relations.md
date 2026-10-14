@@ -33,7 +33,8 @@ paths:
 - 名作映画（`Chidori.Relations.Films`・収集 `chidori_films`）: 札は作品だけ。名簿・監督・公開年・国は分類から機械で
   （「〜の監督映画」の `tag_suffix` と主な賞の受賞作の `tag`、知名度で下を切る）、主演だけ AI（`verify_tags` で実在の記事に限る）。
   同じ監督は枠（`clusters`）、同じ主演は公開年順に隣どうしを結ぶ線（`edge_rules` の `shared`）。
-  受賞作は知名度の下限を免除する（Chiezo の `min_extra_unless_tag`）
+  受賞作は知名度の下限を免除する（Chiezo の `min_extra_unless_tag`）。主演の名前は芸能人の図へ飛ぶ（`?view=people&focus=<名前>`）。
+  芸能人の名簿は海外の俳優も（「〜の男優」「〜の女優」の `tag_suffix`）
 - 代表作の説明と絵は Chiezo の jawiki から引く（`Chidori.Artwork`。絵は持たず縮小版の URL を指す。結果は 1 日覚える）
 - 見た記録は `chidori_data` に 1 ノード 1 件（`Chidori.Relations.Marks`）。収集には書かない
 - 図の操作は `assets/js/pan_zoom.js` を関連図・トピックの網・区画の地図で共有する。拡大は `viewBox` を動かす（CSS の transform で引き伸ばさない）。

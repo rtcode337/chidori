@@ -7,7 +7,7 @@ defmodule Chidori.Relations.People do
 
   ## 名簿
 
-  **人だけ**（俳優・歌手・タレント・お笑い芸人）。**グループは名簿に入れません** ——
+  **人だけ**（俳優・歌手・タレント・お笑い芸人。**俳優は海外の人も**）。**グループは名簿に入れません** ——
   入れていた頃は、ざっと見る回がお笑いコンビの文書ばかり回って、人が育たなかった。
   グループは人のタグ（「グループ:<名前>」）から枠を組みます。**知名度で下を切ります**（Wikipedia の月の閲覧数。既定は 1 万。
   `Chidori.Relations.Settings`）—— カテゴリだけで 3 万人に届き、全部を AI に回すと
@@ -15,6 +15,11 @@ defmodule Chidori.Relations.People do
 
   お笑いコンビだけを名簿にしていた頃は、図の 9 割がコンビで、知りたい夫婦の線は
   1 本も無かった。
+
+  **海外の俳優は「〜の男優」「〜の女優」で終わる分類をまとめて指します**（`tag_suffix`。
+  「アメリカ合衆国の男優」「イングランドの女優」など。分類は男優 53・女優 127）。名作映画の
+  図の主演から、その人へ飛べるようにするため。月 1 万以上で約 270 人増える（日本の分類に
+  入っていない人だけで数えて。5,000 以上なら約 690 人。実測）
 
   **夫婦の相手は、名簿の外からも足させます**（芸能人でなくても、日本語版 Wikipedia に
   記事のある有名人なら。種別は「著名人」）。名簿を知名度で切ると相手が抜けることが多く、
@@ -67,6 +72,9 @@ defmodule Chidori.Relations.People do
     {"日本の女性タレント", "タレント"},
     {"お笑い芸人", "お笑い芸人"}
   ]
+
+  # 海外の俳優も拾う分類の末尾（日本の俳優の分類もこれに当たるが、種別は同じ「俳優」）
+  @actor_suffixes ["の男優", "の女優"]
 
   # 区画の割り方。**種別 × 年代で 25 人ずつ**（画家と同じ大きさ。1 回の答えが
   # 長くなりすぎない）
@@ -182,6 +190,7 @@ defmodule Chidori.Relations.People do
     %{
       source: "jawiki",
       tag: Enum.join(categories(), ","),
+      tag_suffix: Enum.join(@actor_suffixes, ","),
       body: "opening",
       url: "https://ja.wikipedia.org/wiki/{title}",
       min_extra: %{pageviews_month: min_pageviews},
@@ -197,7 +206,8 @@ defmodule Chidori.Relations.People do
     }
   end
 
-  # 人の種別。同じ種別のカテゴリは 1 つの規則にまとめる（規則の数に上限がある）
+  # 人の種別。同じ種別のカテゴリは 1 つの規則にまとめる（規則の数に上限がある）。
+  # **俳優は「〜の男優」「〜の女優」で終わる分類も**（海外の俳優）
   defp person_rules do
     @person_categories
     |> Enum.group_by(&elem(&1, 1), &elem(&1, 0))
@@ -208,6 +218,12 @@ defmodule Chidori.Relations.People do
         format: "#{@category_prefix}:#{kind}"
       }
     end)
+    |> Kernel.++([
+      %{
+        pattern: "^.+(?:" <> Enum.map_join(@actor_suffixes, "|", &Regex.escape/1) <> ")$",
+        format: "#{@category_prefix}:俳優"
+      }
+    ])
   end
 
   # 年代の規則。**生年と没年のカテゴリだけ**（画家の世紀のカテゴリは芸能人には無い）

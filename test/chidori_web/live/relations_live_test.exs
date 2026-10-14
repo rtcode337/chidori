@@ -36,6 +36,21 @@ defmodule ChidoriWeb.RelationsLiveTest do
     assert html =~ "様式の色" or html =~ "この図の見方"
   end
 
+  test "主演から飛んできたら、図が届いたときにその人へ寄って詳細を開く", %{conn: conn} do
+    {:ok, live, _html} =
+      live(conn, ~p"/relations?#{%{"view" => "people", "focus" => "三船敏郎"}}")
+
+    graph =
+      Chidori.Relations.Graph.from_docs(
+        [%{"title" => "三船敏郎", "tags" => ~w(芸能人 種別:俳優 年代:1920-1997)}],
+        Chidori.Relations.People.graph_spec()
+      )
+
+    send(live.pid, {:relation_updated, Map.merge(Chidori.Relations.current("people"), graph)})
+
+    assert render(live) =~ ~s(<strong id="artwork-name">三船敏郎</strong>)
+  end
+
   test "知らない種類は画家の図に丸める", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/relations?view=%2E%2E%2F")
 

@@ -103,6 +103,20 @@ defmodule Chidori.Relations.PeopleTest do
       assert length(attrs.extract.tags) <= 20
     end
 
+    test "俳優は海外の人も「〜の男優」「〜の女優」の分類から引き、種別は俳優", %{attrs: attrs} do
+      assert attrs.extract.tag_suffix == "の男優,の女優"
+
+      actor =
+        Enum.find(
+          attrs.extract.tags,
+          &(Map.get(&1, :format) == "種別:俳優" and String.starts_with?(&1.pattern, "^.+"))
+        )
+
+      assert Regex.match?(Regex.compile!(actor.pattern), "アメリカ合衆国の男優")
+      assert Regex.match?(Regex.compile!(actor.pattern), "イングランドの女優")
+      refute Regex.match?(Regex.compile!(actor.pattern), "日本の男性歌手")
+    end
+
     test "名簿は知名度で下を切り、顔写真の手掛かりに記事の画像を運ぶ", %{attrs: attrs} do
       # カテゴリだけで 3 万人に届くので、月の閲覧数で切ってから AI に回す
       assert attrs.extract.min_extra == %{pageviews_month: 10_000}
@@ -118,6 +132,7 @@ defmodule Chidori.Relations.PeopleTest do
         assert prompt =~ "家族:<相手の名前>:配偶者"
         assert prompt =~ "元配偶者"
         assert prompt =~ "関係は両側に書いてください"
+
         # 並んでいない既存の人は返させない（見えていない 1 件は Chiezo が置き換えずに弾く）
         assert prompt =~ "上に並んでいない人の文書は返さないでください"
 

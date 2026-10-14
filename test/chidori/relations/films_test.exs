@@ -122,4 +122,29 @@ defmodule Chidori.Relations.FilmsTest do
     assert Relations.valid_key("films") == "films"
     assert Relations.collection_of("films") == "chidori_films"
   end
+
+  describe "主演から芸能人の図へ" do
+    alias ChidoriWeb.RelationsLive
+
+    test "芸能人の図に載っている人はその人へ、載っていない人は Wikipedia の記事へ" do
+      known = MapSet.new(["三船敏郎"])
+
+      assert {:inside, href} = RelationsLive.star_href("三船敏郎", known)
+      assert href =~ "view=people"
+      assert URI.decode_query(URI.parse(href).query)["focus"] == "三船敏郎"
+
+      assert {:outside, "https://ja.wikipedia.org/wiki/" <> _} =
+               RelationsLive.star_href("志村喬", known)
+    end
+
+    test "作品の詳細には監督・国・主演を分けて出す" do
+      node = %{name: "七人の侍", tags: ~w(映画 監督:黒澤明 年代:1954 国:日本 主演:三船敏郎 主演:志村喬)}
+      groups = Map.new(RelationsLive.tag_groups(node))
+
+      assert groups["監督"] == ["黒澤明"]
+      assert groups["国"] == ["日本"]
+      assert groups["主演"] == ["三船敏郎", "志村喬"]
+      assert groups["その他"] == ["映画"]
+    end
+  end
 end

@@ -922,7 +922,20 @@
         <dl :if={tag_groups(@detail) != []} class="artwork-tags">
           <%= for {label, values} <- tag_groups(@detail) do %>
             <dt>{label}</dt>
-            <dd>{Enum.join(values, "、")}</dd>
+            <%!-- 主演は押せる名前にする。芸能人の図に載っている人はその人へ飛び、
+                 載っていない人は Wikipedia の記事へ --%>
+            <dd :if={label == "主演"} class="star-links">
+              <%= for {name, index} <- Enum.with_index(values) do %>
+                {if index > 0, do: "、"}
+                <%= case star_href(name, @star_people) do %>
+                  <% {:inside, href} -> %>
+                    <.link patch={href}>{name}</.link>
+                  <% {:outside, href} -> %>
+                    <a href={href} target="_blank" rel="noreferrer">{name} ↗</a>
+                <% end %>
+              <% end %>
+            </dd>
+            <dd :if={label != "主演"}>{Enum.join(values, "、")}</dd>
           <% end %>
         </dl>
 
