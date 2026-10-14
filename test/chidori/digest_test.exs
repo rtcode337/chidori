@@ -202,6 +202,23 @@ defmodule Chidori.DigestTest do
     assert Agent.get(refused, & &1) < 0
   end
 
+  test "枠が埋まった擦れ違い（429）でも、空くのを待ってから頼む", %{topic: topic} do
+    # Chiezo が空きを見た直後に別の 1 本が入ると、焼く側の 429 がそのまま届く。
+    # 「断られた」で落とすと、混む時間帯の定時の回がその理由で止まる（実際に止まった）
+    {:ok, refused} = Agent.start_link(fn -> 1 end)
+
+    stub_chiezo(%{
+      digest: fn ->
+        if Agent.get_and_update(refused, &{&1, &1 - 1}) > 0,
+          do: {:ok, %{status: 429, body: ~s|{"error":"all 1 slot(s) are busy: other"}|}},
+          else: HttpStub.ok("{}")
+      end
+    })
+
+    assert Digest.run(topic, System.monotonic_time(:millisecond) + 5_000) == {:ok, :sent}
+    assert Agent.get(refused, & &1) < 0
+  end
+
   test "次の予定までに空かなければ、その回は諦める", %{topic: topic} do
     stub_chiezo(%{refine: fn -> {:ok, %{status: 409, body: "{}"}} end})
 

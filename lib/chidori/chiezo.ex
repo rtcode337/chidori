@@ -464,7 +464,12 @@ defmodule Chidori.Chiezo do
       {:ok, %{status: status}} when status in 200..299 -> :ok
       {:ok, %{status: 403}} -> {:error, :collection_disabled}
       {:ok, %{status: 404}} -> {:error, :not_requested}
-      {:ok, %{status: 409}} -> {:error, :chiezo_busy}
+      # **409 も 429 も「待てば空く」。** Chiezo は取り込み中なら 409 で断るが、
+      # 空きを見た直後に別の 1 本が入る擦れ違いでは、焼く側(trigger)の 429
+      # (枠が埋まった)がそのまま中継されてくる。どちらも相手の都合で、こちらの
+      # 依頼が悪いわけではない —— 429 を「断られた」で落とすと、定時のまとめが
+      # 混む時間帯に当たるたびに止まる(実際に止まった)
+      {:ok, %{status: status}} when status in [409, 429] -> {:error, :chiezo_busy}
       {:ok, %{status: 503}} -> {:error, :collect_disabled}
       {:ok, %{status: status, body: raw}} -> {:error, {:chiezo_refused, status, reason_of(raw)}}
       {:error, _reason} -> {:error, :chiezo_unavailable}
@@ -543,7 +548,8 @@ defmodule Chidori.Chiezo do
       {:ok, %{status: status}} when status in 200..299 -> :ok
       {:ok, %{status: 403}} -> {:error, :collection_disabled}
       {:ok, %{status: 404}} -> {:error, :not_requested}
-      {:ok, %{status: 409}} -> {:error, :chiezo_busy}
+      # 429 も待てば空く(`focus/7` と同じ)
+      {:ok, %{status: status}} when status in [409, 429] -> {:error, :chiezo_busy}
       {:ok, %{status: 503}} -> {:error, :collect_disabled}
       {:ok, %{status: status}} -> {:error, {:chiezo_status, status}}
       {:error, _reason} -> {:error, :chiezo_unavailable}
