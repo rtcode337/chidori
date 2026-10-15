@@ -1,6 +1,7 @@
 <Layouts.flash_group flash={@flash} />
 
-<main class="relations-page collect-page">
+<%!-- 頭のメニューとタブは main の外に置き、画面の上に残す（スクロールするのは main の中だけ。root.html.heex） --%>
+<div class="relations-page page-head">
   <div>
     <ChidoriWeb.MainNav.main_nav active={:datasets} />
 
@@ -34,7 +35,11 @@
         食事処
       </.link>
     </nav>
+  </div>
+</div>
 
+<main id="page-scroll" class="relations-page collect-page" phx-hook="PageScroll">
+  <div>
     <%!-- 範囲を開いているときは、範囲の一覧へ戻る口を見出しの上に置く --%>
     <p :if={@dataset[:area]} class="area-back">
       <.link navigate={~p"/datasets/areas"}>← 食事処の範囲の一覧</.link>

@@ -26,7 +26,17 @@
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
   </head>
-  <body>
+  <%!-- 画面の骨組み。body を画面の高さちょうどの縦並びにし、頭のメニューとタブ
+       （各画面の .page-head）は先頭に置いたまま、中身（main#page-scroll）だけを
+       スクロールさせる。頭はスクロールしても上に残る。
+       position: fixed で留めないのは、iPhone のホーム画面から開いた PWA で、キーボードを
+       閉じたあとや、キーボードを出したまま別のアプリから戻ったときに、固定した部品が
+       ずれた位置に取り残されるため（WebKit の不具合）。ページ全体をスクロールさせたまま
+       sticky で留める形も同じ系統の問題を踏みうるので、ページ全体はスクロールさせない。
+       そのため window のスクロールは使えない —— 位置を読む・戻すのは main の中で
+       （assets/js/page_scroll.js）。関連図を埋め込んだ枠（embed=1）だけは、枠の高さを
+       中身に合わせるので、この骨組みを外す（app.css の .is-embed） --%>
+  <body class="h-dvh flex flex-col">
     {@inner_content}
   </body>
 </html>

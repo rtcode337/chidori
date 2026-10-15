@@ -1,23 +1,17 @@
 <Layouts.flash_group flash={@flash} />
 
-<%!-- **取り直している最中は、ほかの操作を受け付けない。** 届いた図はいま見ている
-     ものを丸ごと入れ替えるので、途中で押されたことは黙って上書きされる ——
-     押せたのに効かない、という形になる。`inert` で操作ごと止め、覆いで
-     押せないことを見せる（見た目だけ止めても、タブ送りでは押せてしまう） --%>
-<main
-  class={["relations-page", busy?(@relation) && "is-busy", @embed && "is-embed"]}
-  inert={busy?(@relation) || nil}
->
+<%!-- **トップページに埋め込まれたときは、頭のメニューとタブと設定を出さない**
+     （`embed=1`。図と操作だけあればよく、トップの中にもう 1 つ画面の頭が並ぶと
+     どこにいるのか読めない）。
+     頭のメニューとタブは main の外に置き、画面の上に残す（スクロールするのは main の中だけ。
+     root.html.heex）。取り直している間は頭も止める（下の main と同じ理由） --%>
+<div :if={!@embed} class="relations-page page-head" inert={busy?(@relation) || nil}>
   <div>
-    <%!-- **トップページに埋め込まれたときは、頭のメニューとタブと設定を出さない**
-         （`embed=1`。図と操作だけあればよく、トップの中にもう 1 つ画面の頭が並ぶと
-         どこにいるのか読めない） --%>
-    <ChidoriWeb.MainNav.main_nav :if={!@embed} active={:relations} />
+    <ChidoriWeb.MainNav.main_nav active={:relations} />
 
     <%!-- **図の種類はタブで、見出しの上に置く。** 見出しと説明は選んだ図のものなので、
          切り替える口がその下にあると、どこまでが切り替わるのかが読めない --%>
     <nav
-      :if={!@embed}
       id="relation-tabs"
       class="relation-tabs"
       phx-hook="ScrollTabs"
@@ -32,7 +26,20 @@
         {title}
       </.link>
     </nav>
+  </div>
+</div>
 
+<%!-- **取り直している最中は、ほかの操作を受け付けない。** 届いた図はいま見ている
+     ものを丸ごと入れ替えるので、途中で押されたことは黙って上書きされる ——
+     押せたのに効かない、という形になる。`inert` で操作ごと止め、覆いで
+     押せないことを見せる（見た目だけ止めても、タブ送りでは押せてしまう） --%>
+<main
+  id="page-scroll"
+  class={["relations-page", busy?(@relation) && "is-busy", @embed && "is-embed"]}
+  inert={busy?(@relation) || nil}
+  phx-hook="PageScroll"
+>
+  <div>
     <%!-- 埋め込まれたときは**図と取得の行だけ**（見出し・説明・図の下の節は出さない）。
          トップページの中で読むのは図で、見方や設定は関連図の画面で読む。
          **取得の行は図の下へ**（埋め込みでは図が主役。上に置くと図が押し下がる） --%>

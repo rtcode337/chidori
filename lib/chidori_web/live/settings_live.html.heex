@@ -1,5 +1,6 @@
 <Layouts.flash_group flash={@flash} />
-<main class="relations-page settings-page">
+<%!-- 頭のメニューとタブは main の外に置き、画面の上に残す（スクロールするのは main の中だけ。root.html.heex） --%>
+<div class="relations-page page-head">
   <div>
     <ChidoriWeb.MainNav.main_nav active={:settings} />
 
@@ -13,7 +14,11 @@
         {label}
       </.link>
     </nav>
+  </div>
+</div>
 
+<main id="page-scroll" class="relations-page settings-page" phx-hook="PageScroll">
+  <div>
     <%!-- Chiezo 収集。**待ち行列が溜まってきたときに見る表** —— 巡回の間隔だけでは、
          ワーカーが何分おきに何本流すのかが読めないので、両方を並べる --%>
     <section :if={@tab == "chiezo"} class="settings-panel" aria-label="Chiezo 収集">

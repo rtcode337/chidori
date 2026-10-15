@@ -69,7 +69,8 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
   - `components/` —— 収集の枠・レポート・トピックの網・区画の地図・作品の詳細・主要メニューなど
   - `controllers/` —— travel-log 用 ZIP・顔写真・サムネイルの配り口
   - `socket_origin.ex` —— LiveView の接続元の見比べ（`PHX_CHECK_ORIGIN`）
-- `assets/js/` — 図の操作（`pan_zoom.js` を関連図・トピック・区画の地図で共有）、地理院タイル、スワイプ、Web Push
+- `assets/js/` — 図の操作（`pan_zoom.js` を関連図・トピック・区画の地図で共有）、地理院タイル、スワイプ、Web Push、
+  中身のスクロール位置（`page_scroll.js`）
 - `priv/geo/japan_coast.json` — 白地図（Natural Earth）。`priv/static/` — PWA の `manifest.webmanifest`・`sw.js`・アイコン
 - `docs/` — 人向けの詳しい説明（README から辿る）。`basic-design.md`・`technology-selection.md` は作り始める前の構想で、今の実装とは違う
 
@@ -112,6 +113,10 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 - **AI を動かす依頼は `Chidori.SingleFlight` で重ねない**（押すたびに Chiezo の枠を食う）
 - **人に見せる日時は `Chidori.Jst` で書く。** 持ち回りと比較は UTC、変換は出す直前だけ。実行環境の TZ に頼らない
 - **外から来た URL をリンクや画像に使うときは `Chidori.SafeUrl` を通す**（http/https でホストのあるものだけ）
+- **頭のメニューとタブは画面の上に残し、スクロールするのは中身の `main#page-scroll` だけ。**
+  body を画面の高さの縦並びにし（`root.html.heex`）、各画面は頭（`.page-head`）と `main` を並べる。
+  `position: fixed` や sticky で留めない（iPhone の PWA でキーボードの出し入れのあとに位置がずれて取り残される）。
+  ページ全体（window）はスクロールしないので、位置を読む・戻すのは `main` に対して書く（`PageScroll`）
 - 収集の名前は `chidori_` で始める（`chidori_tech`・`chidori_people`・`chidori_dining_<番号>` など）。
   `pta_market` は売買提案のアプリが書く収集で、Chidori は読むだけ
 - コードを変えたら、同じ変更で README（入口。1 画面に収める）と対応する `docs/*.md`、このファイルと

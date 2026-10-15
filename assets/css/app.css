@@ -89,7 +89,17 @@ article p:last-child { color: #475569; line-height: 1.7; }
 .news-page footer { margin-top: 2rem; border-top: 1px solid #e2e8f0; padding: 1.5rem 0; color: #64748b; font-size: .85rem; line-height: 1.7; }
 .news-page footer a { color: #554bc0; }
 
-.relations-page { min-height: 100vh; background: #f6f7fb; color: #182033; }
+.relations-page { background: #f6f7fb; color: #182033; }
+/* 画面の骨組み（root.html.heex）。body は画面の高さちょうどの縦並びで、頭のメニューと
+   タブ（.page-head）はその先頭に縮めずに置き、中身の main だけが残りの高さでスクロールする。
+   頭が上に残るのはこの形のおかげで、position: fixed や sticky は使っていない
+   （iPhone の PWA でキーボードの出し入れのあとに位置がずれて取り残されるため）。
+   min-height: 0 が無いと、main が中身の高さまで伸びて body からはみ出し、中でスクロールしない */
+.page-head { flex: none; }
+.page-head > div { margin: 0 auto; padding-top: 2rem; }
+main.relations-page { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+/* 上の余白は頭の側が持つ（中身はタブのすぐ下の見出しから始まる） */
+main.relations-page > div { padding-top: 0; }
 /* 器の幅は**画面の幅に合わせて広げる**（どの画面も。頭のメニューも中身も同じ幅）。
    決め打ちの上限だと、広い画面で両脇が大きく空く。画面いっぱいまでは広げない ——
    端まで届くと文が読みにくく、どこからが本文かも分かりにくい。広い画面では 75%、
@@ -109,6 +119,8 @@ article p:last-child { color: #475569; line-height: 1.7; }
    （ページ全体が横に広がると、どの画面でも本文が左右に揺れる） */
 @media (max-width: 640px) {
   .relations-page header { gap: .6rem; }
+  /* 頭は常に画面を占めるので、狭い画面では上の余白を詰めて中身に高さを回す */
+  .page-head > div { padding-top: 1rem; }
   .relations-page .brand { flex: none; }
   .relations-page .brand-name { display: none; }
   .relations-page header nav { min-width: 0; gap: .7rem; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; scrollbar-width: none; }
@@ -669,9 +681,10 @@ article p:last-child { color: #475569; line-height: 1.7; }
 /* 要約の窓。**見出し・要旨・目次はここで読める**(章と出典は押して全画面で読む) */
 .digest-preview { cursor: pointer; }
 .digest-open-hint { margin: .7rem 0 0; text-align: center; color: #554bc0; font-size: .82rem; font-weight: 700; }
-/* 全画面の要約。**中だけがスクロールする**(後ろのページは止める) */
+/* 全画面の要約。**中だけがスクロールする**(後ろのページは止める)。
+   後ろでスクロールするのはページ全体ではなく main の中なので、止めるのも main */
 .digest-viewer { position: fixed; inset: 0; z-index: 70; overflow-y: auto; overscroll-behavior: contain; background: #f6f7fb; -webkit-overflow-scrolling: touch; }
-body.digest-open { overflow: hidden; }
+body.digest-open #page-scroll { overflow: hidden; }
 .digest-viewer-bar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: .4rem; padding: .5rem .8rem calc(.5rem); padding-top: calc(.5rem + env(safe-area-inset-top)); background: #fff; border-bottom: 1px solid #e6e8ef; }
 .digest-viewer-bar button { padding: .35rem .7rem; font-size: .85rem; white-space: nowrap; }
 .digest-viewer-bar button:disabled { opacity: .35; }
@@ -1032,8 +1045,11 @@ ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column:
 .home-digest .report-head { padding-right: 2.8rem; }
 /* 高さは中身に合わせる（`AutoHeight`）。読み込むまでの仮の高さだけ持つ */
 /* 埋め込まれた関連図は画面の高さを取らない（枠を中身に合わせて縮められるように）。
-   **横の余白も持たない** —— 外の枠（トップの器）の余白だけにして、図の端を頭のメニューの端に揃える */
-.relations-page.is-embed { min-height: 0; }
+   **横の余白も持たない** —— 外の枠（トップの器）の余白だけにして、図の端を頭のメニューの端に揃える。
+   中だけをスクロールさせる骨組み（root.html.heex）も外す —— body を画面の高さに留めると、
+   中身の高さを測っても枠の高さしか返らず、枠が中身に合わなくなる（`AutoHeight`） */
+body:has(.relations-page.is-embed) { display: block; height: auto; }
+.relations-page.is-embed { overflow: visible; }
 .relations-page.is-embed > div { width: auto; max-width: none; padding: 0; }
 /* トップの関連図は器と同じ幅にする —— 画面の端まではみ出させると、頭のメニューと端が揃わない */
 .home-page { overflow-x: clip; }

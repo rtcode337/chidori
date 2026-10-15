@@ -1,5 +1,6 @@
 <Layouts.flash_group flash={@flash} />
-<main class="relations-page home-page">
+<%!-- 頭のメニューとタブは main の外に置き、画面の上に残す（スクロールするのは main の中だけ。root.html.heex） --%>
+<div class="relations-page page-head">
   <div>
     <ChidoriWeb.MainNav.main_nav active={:home} />
 
@@ -54,7 +55,11 @@
         </ul>
       </div>
     </div>
+  </div>
+</div>
 
+<main id="page-scroll" class="relations-page home-page" phx-hook="PageScroll">
+  <div>
     <%!-- 枠の中を左右に払うと、隣のタブへ（`PanelSwipe`）。タブの列・表・関連図の中では払わない --%>
     <div id="home-panels" phx-hook="PanelSwipe">
       <%!-- 話題の要約と、興味トピックの要約。**全文を見せ、右上のアイコンで全画面に開く**

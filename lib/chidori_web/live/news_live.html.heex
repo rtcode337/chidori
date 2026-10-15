@@ -1,7 +1,8 @@
 <Layouts.flash_group flash={@flash} />
 <%!-- **見た目は関連図・データ収集と同じ枠**（`relations-page`）。画面ごとに色や
      見出しの作りが違うと、同じアプリの中を移っている気がしない --%>
-<main class="relations-page news-page">
+<%!-- 頭のメニューとタブは main の外に置き、画面の上に残す（スクロールするのは main の中だけ。root.html.heex） --%>
+<div class="relations-page page-head">
   <div>
     <ChidoriWeb.MainNav.main_nav active={:news} />
 
@@ -26,7 +27,11 @@
         {topic.name}
       </.link>
     </nav>
+  </div>
+</div>
 
+<main id="page-scroll" class="relations-page news-page" phx-hook="PageScroll">
+  <div>
     <section class="relations-intro">
       <p>DAILY UPDATES</p>
       <h1>{if @topic, do: @topic.name, else: "最新情報"}</h1>
