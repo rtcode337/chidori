@@ -76,9 +76,14 @@ defmodule Chidori.News.MoviesTest do
       assert prompt =~ "出どころ"
     end
 
-    test "公開から時間が経ったものは墓標で落とす", %{prompt: prompt} do
+    test "公開から時間が経ったものは消さずにアーカイブさせ、その時点の評判は外させる",
+         %{prompt: prompt} do
+      # 作品の情報は観た記録と結び付いているので、上映が終わっても残す
+      assert prompt =~ ~s(**tags に "#{Chidori.Chiezo.archived_tag()}" を足して返してください**)
+      assert prompt =~ "60 日以上経ったものは"
+      assert prompt =~ "「口コミ」「興行」「出どころ」の行は外す"
+      # 墓標は要らないもの（劇場公開しない・重複）だけ
       assert prompt =~ Chidori.Chiezo.tombstone_tag()
-      assert prompt =~ "60 日以上経ったもの"
     end
 
     test "情報収集の回の区切りを動かさない", %{prompt: prompt} do
@@ -126,7 +131,9 @@ defmodule Chidori.News.MoviesTest do
           film.("先すぎる", ~D[2027-03-01], :high),
           film.("来週・中", ~D[2026-10-08], :mid),
           film.("来月・高", ~D[2026-11-05], :high),
-          film.("公開中・高", ~D[2026-09-25], :high)
+          film.("公開中・高", ~D[2026-09-25], :high),
+          # アーカイブ済みは名指ししない（AI に見え、印の無い返りで戻ってしまう）
+          Map.put(film.("アーカイブ済み", ~D[2026-09-26], :high), :tags, ["_chiezo_archived"])
         ],
         today
       )

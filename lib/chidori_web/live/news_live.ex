@@ -1545,13 +1545,15 @@ defmodule ChidoriWeb.NewsLive do
   読み方が違います。
   """
   def works_groups(entries, today \\ Chidori.Jst.today(), works \\ Movies) do
-    # 始まってから何日前までを並べるか。**整理の回が落とすのと同じ長さ**
-    # （それより前のものは、落とし損ねていても並べない）
+    # 始まってから何日前までを並べるか。**整理の回がアーカイブするのと同じ長さ**
+    # （それより前のものは、アーカイブし損ねていても並べない）。アーカイブ済みのものは
+    # 記録として残っているだけなので並べない（アニメは放送開始から数えるので窓の中に残る）
     from = Date.add(today, -works.recent_days())
     {started, upcoming} = works.group_labels()
 
     {showing, coming} =
       entries
+      |> Enum.reject(&Events.archived?/1)
       |> Enum.filter(&(Date.compare(&1.date, from) != :lt))
       |> Enum.split_with(&(Date.compare(&1.date, today) != :gt))
 
