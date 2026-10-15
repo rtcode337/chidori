@@ -20,8 +20,13 @@ if System.get_env("PHX_SERVER") do
   config :chidori, ChidoriWeb.Endpoint, server: true
 end
 
+# HTTP/2 は受けない。画面も LiveView の WebSocket も HTTP/1.1 で足り、Bandit の HTTP/2 には
+# 送信の待ちを細い WINDOW_UPDATE で延ばし続けられる勧告（EEF-CVE-2026-105659）が出ている
 config :chidori, ChidoriWeb.Endpoint,
-  http: [port: String.to_integer(System.get_env("PORT", "7000"))]
+  http: [
+    port: String.to_integer(System.get_env("PORT", "7000")),
+    http_2_options: [enabled: false]
+  ]
 
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
