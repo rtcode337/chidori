@@ -60,6 +60,25 @@ defmodule Chidori.Datasets.RequestsPendingTest do
              )
   end
 
+  test "控えを、渡した区画で振り分け直す（区画の並びの順。外れたものは missed へ）" do
+    south = "35.6,139.7/35.65,139.8"
+    north = "35.65,139.7/35.7,139.8"
+
+    items = [
+      %{id: 1, lat: 35.68, lon: 139.75, text: "北の店"},
+      %{id: 2, lat: 35.62, lon: 139.75, text: "南の店"},
+      %{id: 3, lat: 26.2, lon: 127.68, text: "外の店"},
+      %{id: 4, lat: 35.63, lon: 139.76, text: "南の店 2"}
+    ]
+
+    plan = Requests.regroup(items, partitions([south, north]))
+
+    assert plan.keys == [south, north]
+    assert plan.notes == %{south => "南の店\n南の店 2", north => "北の店"}
+    assert Enum.map(plan.points, & &1.id) == [2, 4, 1]
+    assert plan.missed == [{26.2, 127.68}]
+  end
+
   test "捨てた控えは消える" do
     Requests.stash(@dataset, "- [追加] (35.65,139.75): そば屋")
     [%{items: items}] = Requests.pending(@dataset, partitions([@tokyo]))

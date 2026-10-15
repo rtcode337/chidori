@@ -501,8 +501,8 @@ defmodule ChidoriWeb.DatasetsLive do
         # 同じ区画への依頼は 1 本だけ（別のタブから押しても重ねない）
         started =
           SingleFlight.start({:send_pending, dataset.key, key}, fn ->
-            {_log, result} = Requests.send_partition(dataset, key, items, deadline, opts)
-            send(live, {:travel_log_request, result})
+            {_log, result, sent} = Requests.send_partition(dataset, key, items, deadline, opts)
+            send(live, {:travel_log_request, result, sent})
           end)
 
         case started do
@@ -716,10 +716,12 @@ defmodule ChidoriWeb.DatasetsLive do
       else: {:noreply, socket}
   end
 
-  def handle_info({:travel_log_request, result}, socket) do
+  # 頼んだ組は押したときの区画と違うことがある（頼む直前に区画を読み直して振り分け直す。
+  # `Requests.send_partition/5`）ので、一言には実際に頼んだ組を使う
+  def handle_info({:travel_log_request, result, sent}, socket) do
     {:noreply,
      socket
-     |> assign(requesting: nil, requested: {result, socket.assigns.requesting})
+     |> assign(requesting: nil, requested: {result, sent})
      |> assign_pending()
      |> load_request_results()}
   end

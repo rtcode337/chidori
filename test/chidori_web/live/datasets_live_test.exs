@@ -672,6 +672,91 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       refute html =~ "控えている依頼（"
     end
 
+    # 押した後に区画が割り直された状態にする（範囲を広げて保存した直後の回のあと）。
+    # 区画を読む口だけ差し替え、ほかはそのまま
+    defp resplit(partitions) do
+      previous = Application.get_env(:chidori, :http_stub_responder)
+
+      moved = %{
+        @collection
+        | "partitions" => partitions,
+          "partitions_total" => length(partitions)
+      }
+
+      Chidori.HttpStub.stub(fn
+        %{method: :get, url: "http://chiezo.test:7010/v1/collect"} ->
+          Chidori.HttpStub.ok(Jason.encode!(%{"collections" => [moved]}))
+
+        %{method: :get, url: "http://chiezo.test:7010/v1/collect/chidori_dining_1" <> _rest} ->
+          Chidori.HttpStub.ok(Jason.encode!(moved))
+
+        request ->
+          previous.(request)
+      end)
+    end
+
+    defp stash_two(live) do
+      text = """
+      - [修正] 駅前うどん (35.62000,139.75000): 閉店している
+      - [追加] (35.68000,139.76000): そば屋がある
+      """
+
+      live
+      |> form(~s|form[phx-submit="travel_log_request"]|, %{text: text})
+      |> render_submit()
+    end
+
+    test "押した後に区画が割り直されていたら、新しい区画で頼み直す", %{conn: conn} do
+      {live, _html} = shown(conn)
+      stash_two(live)
+
+      # 画面にはまだ前の区画が出ている。押す前に Chiezo で割り直された
+      south = "35.6,139.7/35.65,139.8"
+      north = "35.65,139.7/35.7,139.8"
+
+      resplit([
+        %{"key" => south, "count" => 90, "visits" => %{}},
+        %{"key" => north, "count" => 90, "visits" => %{}}
+      ])
+
+      live
+      |> element(~s|button[phx-click="send_pending"][phx-value-key="35.6,139.7/35.7,139.8"]|)
+      |> render_click()
+
+      # **台帳に無くなった鍵では頼まない。** 補足も新しい区画ごとに分ける
+      assert_receive {:posted, _url, sent}, 2_000
+      assert sent["partitions"] == [south, north]
+      assert sent["notes"][south] =~ "閉店している"
+      refute sent["notes"][south] =~ "そば屋がある"
+      assert sent["notes"][north] =~ "そば屋がある"
+
+      html = wait_for(live, "区画 2 つで整理を頼みました")
+      assert html =~ "区画 2 つで整理を頼みました"
+      refute html =~ "控えている依頼（"
+
+      # 依頼の結果は区画の鍵で引き当てるので、記録も頼んだ鍵になっている
+      assert [log] = Chidori.Datasets.Requests.recent("chidori_dining_1")
+      assert log.keys == [south, north]
+      assert log.status == "sent"
+    end
+
+    test "割り直した区画のどれにも入らなければ、頼まずに控えを残す", %{conn: conn} do
+      {live, _html} = shown(conn)
+      stash_two(live)
+
+      resplit([%{"key" => "43.0,141.3/43.1,141.4", "count" => 90, "visits" => %{}}])
+
+      live
+      |> element(~s|button[phx-click="send_pending"][phx-value-key="35.6,139.7/35.7,139.8"]|)
+      |> render_click()
+
+      refute_receive {:posted, _url, _sent}, 300
+      html = wait_for(live, "控えは残してあります")
+      assert html =~ "控えは残してあります"
+      assert Chidori.Datasets.Requests.pending_count(%{collection: "chidori_dining_1"}) == 2
+      assert [%{status: "failed"}] = Chidori.Datasets.Requests.recent("chidori_dining_1")
+    end
+
     test "最近の回は、自動で回った回も並べ、依頼で走った回には印を付ける", %{conn: conn} do
       # 依頼の結果は依頼ごとに回を引き当てるので、自動の回は出てこなかった
       {:ok, _log} =

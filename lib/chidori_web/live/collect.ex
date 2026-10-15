@@ -360,6 +360,12 @@ defmodule ChidoriWeb.Collect do
       "この収集は Chiezo 側で止まっています。" <>
         "Chiezo の管理画面の「集める」で有効にすると動き出します。"
 
+  # 頼む直前に区画を読み直したら、控えがどの区画にも入らなかった（`Requests.send_partition/5`）
+  def reason_text(:partitions_moved),
+    do:
+      "控えた依頼の座標が、いまの区画のどれにも入りませんでした。控えは残してあります。" <>
+        "範囲を広げた直後なら、次の回で区画が割り直されてから頼んでください。"
+
   def reason_text(:not_requested), do: "Chiezo にこの収集がありません。もう一度押すと作り直します。"
   def reason_text(:collection_crashed), do: "問い合わせの途中で問題が起きました。もう一度押してください。"
   def reason_text(:too_soon), do: "続けて押しています。少し時間を置いてからもう一度押してください。"

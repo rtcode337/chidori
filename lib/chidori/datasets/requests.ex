@@ -426,7 +426,14 @@ defmodule Chidori.Datasets.Requests do
   依頼の記録へ移し**（結果を依頼と並べて見せるため）、Chiezo が受けたら控えから消す。
   断られたら控えに残す（次にまた頼める）。
 
-  取り込み中なら空くまで待ちます（`deadline`）。返すのは `{記録, 結果}`。
+  **区画は頼む直前に読み直し、控えを振り分け直します**（`regroup/2`）。押したときの区画の
+  まま頼むと、待っている間に割り直されていたとき（範囲を広げて保存した直後の回など）に、
+  台帳に無い鍵を名指しすることになる。Chiezo はそれを断るが、断られたまま待ち続けても
+  鍵は戻らない。振り分け直せば、新しい区画で頼める（区画が分かれていれば補足も分けて）。
+  どの区画にも入らなくなった控えは頼まずに残す。
+
+  取り込み中なら空くまで待ちます（`deadline`）。返すのは `{記録, 結果, 頼んだ組}`
+  （頼んだ組は `regroup/2` の形。頼めなかったときは押したときの区画のまま）。
   """
   def send_partition(dataset, key, items, deadline, opts \\ [])
       when is_binary(key) and items != [] do
@@ -436,11 +443,75 @@ defmodule Chidori.Datasets.Requests do
 
     # **頼む直前に外す**（控えたまま取り消された報告では、固定を外さない）
     release_closed(dataset, closures(text))
-    result = run(dataset, plan, deadline, opts)
-    mark(log, result)
 
-    if result == :ok, do: drop(dataset, Enum.map(items, & &1.id))
-    {log, result}
+    case run_regrouped(dataset, items, deadline, opts) do
+      {:ok, sent} ->
+        # 依頼の結果は区画の鍵で引き当てるので、実際に頼んだ鍵に直しておく
+        {:ok, log} = log |> RequestLog.changeset(%{keys: sent.keys}) |> Repo.update()
+        mark(log, :ok)
+        drop(dataset, Enum.map(sent.points, & &1.id))
+        {log, :ok, sent}
+
+      error ->
+        mark(log, error)
+        {log, error, plan}
+    end
+  end
+
+  @doc """
+  控え（`items`）を、渡した区画で振り分け直します。返すのは
+  `%{keys, notes, points, missed}`（`keys` は区画の並びの順、`notes` は区画ごとの補足、
+  `points` は区画に入った控え、`missed` はどの区画にも入らなかった控えの座標）。
+  """
+  def regroup(items, partitions) when is_list(partitions) do
+    boxes = boxes(partitions)
+
+    {inside, outside} =
+      items
+      |> Enum.map(fn item ->
+        {Enum.find_value(boxes, fn {key, box} ->
+           if inside?({item.lat, item.lon}, box), do: key
+         end), item}
+      end)
+      |> Enum.split_with(fn {key, _item} -> key != nil end)
+
+    by_key = Enum.group_by(inside, &elem(&1, 0), &elem(&1, 1))
+    keys = for {key, _box} <- boxes, Map.has_key?(by_key, key), do: key
+
+    %{
+      keys: keys,
+      notes: Map.new(keys, &{&1, Enum.map_join(by_key[&1], "\n", fn item -> item.text end)}),
+      points: Enum.flat_map(keys, &by_key[&1]),
+      missed: Enum.map(outside, fn {nil, item} -> {item.lat, item.lon} end)
+    }
+  end
+
+  # 取り込みが空くのを待ちながら、**空いたその回の直前に**区画を読み直して頼む。
+  # 待つ間に割り直されても、読み直した区画で頼み直せる
+  defp run_regrouped(%{collection: name} = dataset, items, deadline, opts) do
+    with {:ok, base} <- Datasets.base_url() do
+      Chiezo.when_free(
+        fn ->
+          with {:ok, partitions} <- current_partitions(base, name),
+               %{keys: [_ | _]} = plan <- regroup(items, partitions),
+               :ok <- ask(base, dataset, plan, opts) do
+            {:ok, plan}
+          else
+            %{keys: []} -> {:error, :partitions_moved}
+            error -> error
+          end
+        end,
+        deadline
+      )
+    end
+  end
+
+  defp current_partitions(base, name) do
+    case Chiezo.collection(base, name) do
+      {:ok, %{partitions: partitions}} -> {:ok, partitions}
+      {:ok, nil} -> {:error, :not_requested}
+      error -> error
+    end
   end
 
   @doc "控えを消します（頼んだあと・取り消したとき）。消した件数を返す。"
@@ -589,34 +660,21 @@ defmodule Chidori.Datasets.Requests do
 
   defp inside?({lat, lon}, {s, w, n, e}), do: lat >= s and lat <= n and lon >= w and lon <= e
 
-  @doc """
-  区画を名指しして、依頼を引き受ける巡回（`sweep/1`）を 1 回走らせます。**区画ごとの補足を載せます**
-  （`plan/2` の `keys` と `notes`）。
-
-  取り込み中なら空くまで待ちます（`deadline` は `System.monotonic_time(:millisecond)` の値）。
-  `opts` は頼む相手（`backend`・`model`・`worker`。その 1 回だけの上書きで、
-  書かなければ巡回の設定のまま）。
-  """
-  def run(%{collection: name} = dataset, %{keys: keys, notes: notes}, deadline, opts \\ []) do
-    sweep = sweep(dataset)
+  # 区画を名指しして、依頼を引き受ける巡回（`sweep/1`）を 1 回走らせる。**区画ごとの補足を載せる**
+  # （`regroup/2` の `keys` と `notes`）。`opts` は頼む相手（`backend`・`model`・`worker`。
+  # その 1 回だけの上書きで、書かなければ巡回の設定のまま）
+  defp ask(base, %{collection: name} = dataset, %{keys: keys, notes: notes}, opts) do
     notes = Map.new(notes, fn {key, text} -> {key, with_preface(text)} end)
 
-    with {:ok, base} <- Datasets.base_url() do
-      Chiezo.when_free(
-        # 「この区画を頼む」を押したのは人（止めている収集でも走らせる。`Chiezo.by_hand/1`）
-        fn ->
-          Chiezo.by_hand(fn ->
-            Chiezo.run(
-              base,
-              name,
-              [sweep: sweep, partitions: keys, notes: notes] ++
-                Keyword.take(opts, [:backend, :model, :worker])
-            )
-          end)
-        end,
-        deadline
+    # 「この区画を頼む」を押したのは人（止めている収集でも走らせる。`Chiezo.by_hand/1`）
+    Chiezo.by_hand(fn ->
+      Chiezo.run(
+        base,
+        name,
+        [sweep: sweep(dataset), partitions: keys, notes: notes] ++
+          Keyword.take(opts, [:backend, :model, :worker])
       )
-    end
+    end)
   end
 
   @doc """
