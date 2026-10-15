@@ -21,6 +21,40 @@ permissions:
   contents: read
 
 jobs:
+  # 退役した版を使っていないか、既知の脆弱性が無いか。**テストとは別のジョブにする** ——
+  # 同じジョブの頭に置いていた頃は、上流の修正がまだ出ていない勧告で落ちるたびに
+  # コンパイル・整形・テストが 1 つも走らず、そのあいだのコミットが何も検査されなかった。
+  # 勧告が片付くまで、このジョブだけが赤く残る
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    # 版の決め方は test と同じ（そちらの説明を参照）
+    strategy:
+      matrix:
+        image: ["hexpm/elixir:1.20.4-erlang-29.1.1-debian-trixie-20261005-slim"]
+    container:
+      image: ${{ matrix.image }}
+    env:
+      MIX_ENV: test
+      LANG: C.UTF-8
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/cache@v6
+        with:
+          path: deps
+          key: mix-audit-${{ matrix.image }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-audit-${{ matrix.image }}-
+
+      - name: 依存を取る
+        run: |
+          mix local.hex --force
+          mix deps.get
+
+      - name: mix hex.audit
+        run: mix hex.audit
+
   test:
     name: test
     runs-on: ubuntu-latest
@@ -90,10 +124,6 @@ jobs:
           mix local.hex --force
           mix local.rebar --force
           mix deps.get
-
-      # 退役した版を使っていないか、既知の脆弱性が無いか
-      - name: mix hex.audit
-        run: mix hex.audit
 
       - name: 警告なしでコンパイルできるか
         run: mix compile --warnings-as-errors

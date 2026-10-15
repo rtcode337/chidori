@@ -25,9 +25,14 @@ docker run --rm --network host -u "$(id -u):$(id -g)" -v "$PWD:/app" -w /app \
 ## CI
 
 push と PR で `.github/workflows/ci.yml` が回る。`Dockerfile` の builder と同じイメージの中で、
-次を順に見る。
+ジョブを 2 つ並べて走らせる。
 
-- `mix hex.audit` —— 退役した版・既知の脆弱性のある版を使っていないか
+`audit` は `mix hex.audit` で、退役した版・既知の脆弱性のある版を使っていないかを見る。
+テストとは別のジョブにしてあるので、上流の修正がまだ出ていない勧告で落ちても、
+コンパイル・整形・テストはいつもどおり走る（落ちたまま残るのは `audit` だけ）。
+
+`test` は次を順に見る。
+
 - `mix compile --warnings-as-errors` —— 警告を残すと落ちる
 - `mix format --check-formatted` —— 変えたファイルだけ（PR は取り込み先と、push は push 前と比べる）
 - `mix test` —— PostgreSQL はサービスのコンテナで立てる（`DATABASE_URL` で向ける）
