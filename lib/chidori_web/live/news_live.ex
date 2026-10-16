@@ -26,6 +26,7 @@ defmodule ChidoriWeb.NewsLive do
   alias Chidori.Jst
   alias Chidori.News
   alias Chidori.News.Events
+  alias Chidori.News.Favorites
   alias Chidori.News.Interests
   alias Chidori.News.Movies
   alias Chidori.Notify
@@ -37,6 +38,9 @@ defmodule ChidoriWeb.NewsLive do
   alias Chidori.Themes
   alias Chidori.Topics
   alias ChidoriWeb.WorkModal
+
+  # お気に入りのタブの `view`（話題の収集の名前は `chidori_` で始まるので、ぶつからない）
+  @favorites_view "favorites"
 
   @impl true
   def mount(_params, _session, socket) do
@@ -54,6 +58,12 @@ defmodule ChidoriWeb.NewsLive do
         # 詳細を開いている記事（モーダル）。そこから頼んだ割り込みの結果も持つ
         opened_article: nil,
         article_asked: nil,
+        # お気に入りのタブを開いているか（`?view=favorites`）と、お気に入りの記事の URL
+        # （札に印を付ける）・一覧（タブを開いているときだけ）・入れ外しに失敗した旨
+        favorites_view: false,
+        favorite_urls: MapSet.new(),
+        favorites: [],
+        favorite_error: nil,
         digest_message: nil,
         notify_form: nil,
         # 全画面で開いているまとめ（何件目か。閉じていれば nil）と、どちらの並びか
@@ -98,7 +108,10 @@ defmodule ChidoriWeb.NewsLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    topic = pick_topic(socket.assigns.topics, params["view"])
+    # **お気に入りは話題ではない**（話題をまたいで 1 つの一覧）。開いているあいだは
+    # 話題を選んでいない状態にして、話題ごとの節を出さない
+    favorites_view = params["view"] == @favorites_view
+    topic = if favorites_view, do: nil, else: pick_topic(socket.assigns.topics, params["view"])
 
     # 話題を切り替えたら購読も付け替える。付け替えないと、見ていない話題の
     # 収集結果でこの画面が書き換わる
@@ -117,7 +130,11 @@ defmodule ChidoriWeb.NewsLive do
     socket =
       assign(socket,
         topic: topic,
-        page_title: if(topic, do: "最新情報（#{topic.name}）", else: "最新情報"),
+        page_title: page_title(topic, favorites_view),
+        favorites_view: favorites_view,
+        favorite_urls: Favorites.urls(),
+        favorites: if(favorites_view, do: Favorites.list(), else: []),
+        favorite_error: nil,
         news: if(topic, do: News.current(News.server(topic.collection)), else: News.empty()),
         notify_form: notify_form(topic),
         themes: empty_themes(),
@@ -346,6 +363,21 @@ defmodule ChidoriWeb.NewsLive do
     article = Enum.find(socket.assigns.news.articles ++ theme_articles, &(&1.title == title))
     {:noreply, assign(socket, opened_article: article, article_asked: nil)}
   end
+
+  # **お気に入りに入れる / 外す**（記事の詳細から）。残すのは URL と見出しだけ
+  # （`Chidori.News.Favorites`）。記事そのものは Chiezo の期限で消えても、ここは残る
+  def handle_event("toggle_favorite", %{"url" => url, "title" => title}, socket) do
+    result =
+      if MapSet.member?(socket.assigns.favorite_urls, url),
+        do: Favorites.remove(url),
+        else: Favorites.add(url, title)
+
+    {:noreply, after_favorite(socket, result)}
+  end
+
+  # お気に入りの一覧から外す
+  def handle_event("remove_favorite", %{"url" => url}, socket),
+    do: {:noreply, after_favorite(socket, Favorites.remove(url))}
 
   def handle_event("close_article", _params, socket),
     do: {:noreply, assign(socket, opened_article: nil, article_asked: nil)}
@@ -895,6 +927,30 @@ defmodule ChidoriWeb.NewsLive do
     end
   end
 
+  defp after_favorite(socket, result) do
+    socket =
+      assign(socket,
+        favorite_urls: Favorites.urls(),
+        favorites: if(socket.assigns.favorites_view, do: Favorites.list(), else: [])
+      )
+
+    case result do
+      {:error, _reason} -> assign(socket, favorite_error: "お気に入りを保存できませんでした")
+      _ok -> assign(socket, favorite_error: nil)
+    end
+  end
+
+  defp page_title(_topic, true), do: "最新情報（お気に入り）"
+  defp page_title(nil, false), do: "最新情報"
+  defp page_title(topic, false), do: "最新情報（#{topic.name}）"
+
+  @doc "お気に入りのタブの `view` の値（話題の収集の名前とぶつからない語）。"
+  def favorites_view, do: @favorites_view
+
+  @doc "その記事がお気に入りに入っているか（URL で見る）。"
+  def favorite?(urls, %{url: url}) when is_binary(url), do: MapSet.member?(urls, url)
+  def favorite?(_urls, _article), do: false
+
   @doc """
   どの話題を見るか。**知らない名前が来たら先頭に落とします** ——
   消した話題のリンクを踏んだだけで空白の画面を出す理由が無い。
@@ -1147,6 +1203,8 @@ defmodule ChidoriWeb.NewsLive do
   attr :article, :map, required: true
   attr :interests, :list, default: []
   attr :near, :map, default: %{}
+  # お気に入りに入っているか（日付の並びに印を出す）
+  attr :favorite, :boolean, default: false
 
   def article_card(assigns) do
     ~H"""
@@ -1170,7 +1228,7 @@ defmodule ChidoriWeb.NewsLive do
       <div>
         <%!-- 反応の大きさ・興味の近さは重要度と別の軸なので、印の隣ではなく日付の並びに置く --%>
         <p class="news-source">
-          {@article.collected_at}<span
+          <span :if={@favorite} class="favorite-mark" title="お気に入り">★</span>{@article.collected_at}<span
             :if={is_integer(@article[:bookmarks]) and @article[:bookmarks] > 0}
             class="bookmark-count"
           >・{@article[:bookmarks]} users</span><span :if={buzz_text(@article)}>・{buzz_text(@article)}</span><span

@@ -819,6 +819,13 @@ body.digest-open #page-scroll { overflow: hidden; }
 .interest-chip { padding: .25rem .2rem .25rem .7rem; border: 0; background: none; color: #92620a; font-size: .82rem; font-weight: 700; }
 .interest-remove { padding: .25rem .6rem .25rem .3rem; border: 0; background: none; color: #b08a3a; font-size: .85rem; }
 .interest-score { color: #92620a; font-weight: 700; }
+/* ニュースのお気に入り。札の日付の前の印と、お気に入りのタブの一覧(見出し・付けた日・外す) */
+.favorite-mark { margin-right: .3rem; color: #d4a017; }
+.favorite-list { margin: 0 0 2rem; }
+.favorite-list ul { margin: 0; padding: 0; list-style: none; }
+.favorite-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .7rem; padding: .7rem 0; border-bottom: 1px solid #e6e8ef; }
+.favorite-list li a { flex: 1 1 16rem; font-weight: 700; }
+.favorite-list li button { padding: .2rem .7rem; font-size: .8rem; }
 /* 記事一覧の並びの切り替え */
 .article-sort { display: flex; gap: .35rem; margin: 0 0 .7rem; }
 .article-sort button { padding: .25rem .7rem; font-size: .8rem; border-radius: 999px; }

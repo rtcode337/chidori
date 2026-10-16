@@ -26,6 +26,14 @@
       >
         {topic.name}
       </.link>
+      <%!-- お気に入りは話題をまたいだ 1 つの一覧なので、話題のタブの最後に置く --%>
+      <.link
+        patch={~p"/news?view=#{favorites_view()}"}
+        class={if @favorites_view, do: "selected"}
+        aria-current={if @favorites_view, do: "page"}
+      >
+        お気に入り
+      </.link>
     </nav>
   </div>
 </div>
@@ -34,11 +42,38 @@
   <div>
     <section class="relations-intro">
       <p>DAILY UPDATES</p>
-      <h1>{if @topic, do: @topic.name, else: "最新情報"}</h1>
-      <p>
+      <h1>
+        {cond do
+          @favorites_view -> "お気に入り"
+          @topic -> @topic.name
+          true -> "最新情報"
+        end}
+      </h1>
+      <p :if={!@favorites_view}>
         集めるのは Chiezo です。Chidori は収集を依頼して、溜まったものを読みます。
         依頼して作られる収集は止まった状態なので、この画面から AI が勝手に動くことはありません。
       </p>
+      <p :if={@favorites_view}>
+        記事の詳細から ☆ を押した記事です。残しているのは見出しと URL だけで、
+        記事そのものが Chiezo から消えても、ここからは原文を開けます。
+      </p>
+    </section>
+
+    <%!-- **お気に入りの一覧**（話題をまたいで、付けた日の新しい順）。話題ごとの節は出さない --%>
+    <section :if={@favorites_view} class="favorite-list" aria-label="お気に入りの記事">
+      <p :if={@favorite_error} class="muted-note" aria-live="polite">{@favorite_error}</p>
+      <p :if={@favorites == []} class="muted-note">
+        まだありません。記事の詳細の「☆ お気に入りに入れる」で足せます。
+      </p>
+      <ul :if={@favorites != []}>
+        <li :for={favorite <- @favorites}>
+          <a href={SafeUrl.href(favorite.url)} target="_blank" rel="noreferrer">{favorite.title}</a>
+          <span :if={favorite.on} class="muted-note">{Date.to_iso8601(favorite.on)}</span>
+          <button type="button" phx-click="remove_favorite" phx-value-url={favorite.url}>
+            外す
+          </button>
+        </li>
+      </ul>
     </section>
 
     <%!-- まとめ。**カレンダーと記事の一覧より先に出す**（映画の注目作の一覧は長いので、
@@ -407,6 +442,7 @@
             <.article_card
               :for={article <- articles}
               article={article}
+              favorite={favorite?(@favorite_urls, article)}
               interests={@interests}
               near={near_tags(@themes.themes, @interests)}
             />
@@ -446,7 +482,7 @@
     <%!-- **並び替えで閉じない**（開いているかはブラウザが持つ。描き直しで open を
          外されると、押した並び替えのたびに一覧が畳まれる） --%>
     <details
-      :if={Chidori.Topics.articles?(@topic)}
+      :if={!@favorites_view and Chidori.Topics.articles?(@topic)}
       id="news-articles"
       class="news-articles"
       phx-mounted={Phoenix.LiveView.JS.ignore_attributes(["open"])}
@@ -476,6 +512,7 @@
         <.article_card
           :for={article <- sorted_articles(@news, @article_sort)}
           article={article}
+          favorite={favorite?(@favorite_urls, article)}
           interests={@interests}
           near={near}
         />
@@ -485,7 +522,7 @@
     <%!-- 設定は 1 つの枠にまとめる（関連図と同じ形）。状態を見る場所と、直す場所と、
          押す場所が離れていると、何がどこへ効くのか読めない。
          **中は仕事ごとに分ける** —— 集める設定と、知らせる設定は別のもの --%>
-    <section class="settings-panel" aria-label={settings_title(@topic)}>
+    <section :if={!@favorites_view} class="settings-panel" aria-label={settings_title(@topic)}>
       <h2>{settings_title(@topic)}</h2>
 
       <section class="settings-block">
@@ -735,6 +772,21 @@
       <p :if={@opened_article.url}>
         <a href={SafeUrl.href(@opened_article.url)} target="_blank" rel="noreferrer">原文を開く ↗</a>
       </p>
+      <%!-- **お気に入り**。残すのは見出しと URL だけ（記事が Chiezo の期限で消えても残る） --%>
+      <div :if={@opened_article.url} class="button-row">
+        <button
+          type="button"
+          phx-click="toggle_favorite"
+          phx-value-url={@opened_article.url}
+          phx-value-title={@opened_article.title}
+          aria-pressed={to_string(favorite?(@favorite_urls, @opened_article))}
+        >
+          {if favorite?(@favorite_urls, @opened_article),
+            do: "★ お気に入りから外す",
+            else: "☆ お気に入りに入れる"}
+        </button>
+      </div>
+      <p :if={@favorite_error} class="muted-note" aria-live="polite">{@favorite_error}</p>
 
       <form id="article-ask" phx-submit="ask_article" class="article-ask">
         <label>

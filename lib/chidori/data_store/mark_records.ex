@@ -12,6 +12,7 @@ defmodule Chidori.DataStore.MarkRecords do
   | `done` | 読んだ・見た |
   | `on` | その日（`YYYY-MM-DD`。無ければ持たない） |
   | `note` | ひとこと |
+  | `label` | 見せる名前（書いたものだけ。ニュースのお気に入りは鍵が URL なので、記事の見出しをここに持つ） |
 
   タグは `見た・読んだ` と `種類:<view>`（Chiezo の画面で絞れるように）。
   """
@@ -27,12 +28,13 @@ defmodule Chidori.DataStore.MarkRecords do
         do: {doc.extra["key"], doc}
   end
 
-  @doc "記録 1 件の中身（`%{done, on, note}`）。"
+  @doc "記録 1 件の中身（`%{done, on, note, label}`。`label` は書いていなければ nil）。"
   def fields(%{extra: extra}) do
     %{
       done: extra["done"] == true,
       on: parse_date(extra["on"]),
-      note: extra["note"] || ""
+      note: extra["note"] || "",
+      label: extra["label"]
     }
   end
 
@@ -40,8 +42,8 @@ defmodule Chidori.DataStore.MarkRecords do
   書きます。`doc_id` があれば差し替え、無ければ足します。返すのは `{:ok, doc_id}` か
   `{:error, 理由}`。
   """
-  def put(view, key, %{done: done, on: on, note: note}, doc_id) do
-    attrs = record(view, key, done, on, note)
+  def put(view, key, %{done: done, on: on, note: note} = fields, doc_id) do
+    attrs = record(view, key, done, on, note, Map.get(fields, :label))
 
     result =
       if doc_id,
@@ -59,17 +61,18 @@ defmodule Chidori.DataStore.MarkRecords do
   def delete(doc_id), do: DataStore.delete(doc_id)
 
   @doc "1 件の文書の形。"
-  def record(view, key, done, on, note) do
+  def record(view, key, done, on, note, label \\ nil) do
     title = "#{if(view == "books", do: "読んだ", else: "見た")}: #{view} / #{key}"
     on = if match?(%Date{}, on), do: Date.to_iso8601(on), else: on
 
     %{
       title: title,
-      text: Enum.join(Enum.reject([title, note], &(&1 in [nil, ""])), "\n"),
+      text: Enum.join(Enum.reject([title, label, note], &(&1 in [nil, ""])), "\n"),
       tags: [DataStore.mark_tag(), "種類:" <> view],
       extra:
         %{"view" => view, "key" => key, "done" => done == true, "note" => note || ""}
         |> then(&if(on in [nil, ""], do: &1, else: Map.put(&1, "on", on)))
+        |> then(&if(label in [nil, ""], do: &1, else: Map.put(&1, "label", label)))
     }
   end
 

@@ -52,7 +52,7 @@ docker compose up -d     # http://localhost:7000
 docker compose pull && docker compose up -d   # 更新。DB の移行は起動のたびに自動で当たる
 ```
 
-- バックアップは、止めてから `data/`（PostgreSQL の実体）を丸ごとコピーする。興味トピックと読んだ・見た記録は Chiezo の置き場 `chidori_data` にある
+- バックアップは、止めてから `data/`（PostgreSQL の実体）を丸ごとコピーする。興味トピック・読んだ/見た記録・ニュースのお気に入りは Chiezo の置き場 `chidori_data` にある
 - イメージのタグは `latest` と `sha-<短縮SHA>`（`v*` のタグを打てばその名前も）。動かす版を固定したいときは `sha-` を指す
 
 | したいこと | 参照 |

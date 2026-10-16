@@ -82,6 +82,6 @@ docker compose pull && docker compose up -d
 ## バックアップ
 
 - DB の実体は `data/`（単体定義では雛形に書いた置き場）にある。コンテナを止めてから丸ごとコピーすればよい
-- 興味トピックと、読んだ・見た記録は Chidori の DB ではなく Chiezo の置き場 `chidori_data` にある。そちらは Chiezo 側でバックアップする
+- 興味トピックと、読んだ・見た記録、ニュースのお気に入りは Chidori の DB ではなく Chiezo の置き場 `chidori_data` にある。そちらは Chiezo 側でバックアップする
 - 巡回の間隔・整理を止める収集・知名度の下限・食事処の範囲は、DB を失っても Chiezo の収集から戻せる（[利用者が書いたことの置き場](overview.md#利用者が書いたことの置き場)）
 - DB を作り直すと Web Push の鍵が替わるので、端末は登録し直す
