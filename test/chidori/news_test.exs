@@ -958,6 +958,34 @@ defmodule Chidori.NewsTest do
       assert title == "まとめ: 新しい回（2026-09-18 07:00）"
     end
 
+    test "まとめは Chiezo に新しい順で引かせる" do
+      # 点数の順で 20 件だけ引いていた頃は、まとめが 20 件を超えると新しいほうが
+      # 外に落ちた（47 件溜まった収集で、3 日前のまとめが最新として出ていた）
+      newest = Map.put(recent("まとめ: いちばん新しい回"), "tags", ["まとめ"])
+
+      HttpStub.stub(fn
+        %{url: "http://chiezo.test:7010/v1/collect"} ->
+          HttpStub.ok(list_body([collection()]))
+
+        %{url: "http://chiezo.test:7010/v1/sources"} ->
+          HttpStub.ok(sources_body(42))
+
+        %{url: "http://chiezo.test:7010/v1/chidori_news/filter?" <> query} ->
+          params = URI.decode_query(query)
+          assert params["order"] == "newest"
+          assert params["limit"] == "20"
+          HttpStub.ok(Jason.encode!(%{"results" => [newest]}))
+
+        %{url: "http://chiezo.test:7010/v1/chidori_news/doc?" <> _query} ->
+          HttpStub.ok(Jason.encode!(%{"title" => "まとめ", "body" => "## 要旨\n本文。"}))
+
+        %{url: _detail} ->
+          HttpStub.ok(detail_body([recent("新しい記事")]))
+      end)
+
+      assert %{title: "まとめ: いちばん新しい回"} = read_digest()
+    end
+
     test "本文は、一覧の要約ではなく取り直したものを出す" do
       # 一覧に付いてくる要約は冒頭だけ（実測で 240 文字）。1 件ずつの索引には
       # それで足りるが、通しで読ませるまとめは途中で切れる

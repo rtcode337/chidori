@@ -48,3 +48,31 @@ defmodule Chidori.News.AiDigestsTest do
     assert AiDigests.strip_codes("## 要旨\n本文\n") == "## 要旨\n本文"
   end
 end
+
+defmodule Chidori.News.AiDigestsFetchTest do
+  use ExUnit.Case, async: false
+
+  alias Chidori.HttpStub
+  alias Chidori.News.AiDigests
+
+  test "Chiezo に新しい順で引かせる（溜まった数が件数を超えても最新が入る）" do
+    HttpStub.stub(fn %{url: "http://chiezo.test:7010/v1/pta_market/filter?" <> query} ->
+      assert URI.decode_query(query)["order"] == "newest"
+
+      HttpStub.ok(
+        Jason.encode!(%{
+          "results" => [
+            %{
+              "title" => "まとめ a",
+              "tags" => ["まとめ", "担当:a"],
+              "body" => "a の要約",
+              "updated_at" => "2026-10-04T02:00:00+00:00"
+            }
+          ]
+        })
+      )
+    end)
+
+    assert {:ok, [%{author: "a"}]} = AiDigests.latest("http://chiezo.test:7010", "pta_market")
+  end
+end

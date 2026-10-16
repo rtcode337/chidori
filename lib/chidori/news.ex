@@ -881,20 +881,28 @@ defmodule Chidori.News do
   defp interest_digests(base, name),
     do: base |> tagged_digests(name, @interest_digest_tag) |> with_body(base, name)
 
+  # 画面に出すまとめの件数（新しいほうから）。**Chiezo に新しい順で引かせる**
+  # （filter の `order=newest`）—— 既定の点数の順で 20 件だけ引いていた頃は、
+  # まとめが溜まって 20 件を超えると新しいほうが外に落ちた（47 件溜まった収集で、
+  # 3 日前のまとめが最新として出ていた）。全部引いて並べ直す形にすると、
+  # 今度は filter の 1 回の上限（500 件）を超えた日に同じことが起きる
+  @digests_kept 20
+
   defp tagged_digests(base, name, tag \\ @digest_tag) do
     query =
       URI.encode_query(%{
         "tag" => tag,
         "fields" => "title,tags,opening,updated_at,extra",
-        "limit" => 20
+        "order" => "newest",
+        "limit" => @digests_kept
       })
 
     case get(base <> "/v1/" <> name <> "/filter?" <> query) do
       {:ok, %{status: 200, body: body}} ->
         case Jason.decode(body) do
           {:ok, %{"results" => results}} when is_list(results) ->
-            # **並びは新しい順に直す。** filter が返すのは点数の順で、
-            # そのまま先頭を取ると古いまとめが画面に出る
+            # **並びはこちらでも新しい順に直す**（新しい順で引けない古い Chiezo では、
+            # 点数の順のまま返る。先頭を取ると古いまとめが画面に出る）
             results
             |> to_entries()
             |> Enum.filter(&(tag in &1.tags))

@@ -15,7 +15,10 @@ defmodule Chidori.News.AiDigests do
   alias Chidori.Chiezo
   alias Chidori.Jst
 
-  # 1 人 1 日 2 本、14 日ぶん溜まる（数人ぶんでも収まる）
+  # 書き手ごとの最新を拾うために引く件数。**Chiezo に新しい順で並べさせる**
+  # （filter の `order=newest`）—— 既定の点数の順だと、溜まった数がこの件数を超えた日に
+  # 新しいほうが外に落ちる（ふつうのまとめで実際に起きた）。新しい順なら、ここに
+  # 入るのは直近のぶんだけなので、書き手が数人いても最新は必ず入る
   @limit 200
 
   @doc """
@@ -26,6 +29,7 @@ defmodule Chidori.News.AiDigests do
     query =
       URI.encode_query(%{
         "tag" => "まとめ",
+        "order" => "newest",
         "limit" => @limit,
         "fields" => "title,tags,body,updated_at"
       })
