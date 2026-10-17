@@ -24,9 +24,9 @@
       >
         {dataset.name}
       </.link>
-      <%!-- 食事処はタブ 1 つ（範囲の一覧の画面）。**範囲ごとにタブを並べない** ——
+      <%!-- 食事処はタブ 1 つ。**範囲ごとのタブはこの段に並べない** ——
            範囲を足すたびにタブが伸びて、技術書や Pi-hole のタブが押し出される。
-           範囲を開いているときも、このタブを選んだ状態で出す --%>
+           範囲を開いているときも、このタブを選んだ状態で出し、範囲のタブは下の段に出す --%>
       <.link
         navigate={~p"/datasets/areas"}
         class={if @dataset[:area], do: "selected"}
@@ -35,16 +35,12 @@
         食事処
       </.link>
     </nav>
+    <ChidoriWeb.DiningTabs.dining_tabs :if={@dataset[:area]} datasets={@datasets} current={@view} />
   </div>
 </div>
 
 <main id="page-scroll" class="relations-page collect-page" phx-hook="PageScroll">
   <div>
-    <%!-- 範囲を開いているときは、範囲の一覧へ戻る口を見出しの上に置く --%>
-    <p :if={@dataset[:area]} class="area-back">
-      <.link navigate={~p"/datasets/areas"}>← 食事処の範囲の一覧</.link>
-    </p>
-
     <section class="relations-intro">
       <p>{@dataset.eyebrow}</p>
       <h1>{@dataset.title}</h1>

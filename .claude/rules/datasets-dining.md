@@ -5,6 +5,7 @@ paths:
   - "lib/chidori/geo/**"
   - "lib/chidori_web/live/datasets_live*"
   - "lib/chidori_web/live/dining_areas_live*"
+  - "lib/chidori_web/components/dining_tabs.ex"
   - "lib/chidori_web/controllers/datasets_controller.ex"
   - "lib/chidori_web/controllers/thumb_controller.ex"
   - "lib/chidori_web/components/partition_map.ex"
@@ -26,7 +27,8 @@ paths:
 - 技術書: 本ではなく勧めている記事を溜める（`chidori_book_posts`）。数は機械が数え、AI は数に触らない（畳む・分野・説明だけ）。
   検索文は回ごとに巡回の相手が考え、控えるのは Chiezo。調べ終えたものは調べ直さない（`{unreviewed}`）
 - Pi-hole: 繋ぐのは Chiezo（接続先とパスワードは Chiezo 側）。Chidori は Pi-hole に直接つながらない
-- 食事処: 範囲ごとに収集が 1 つ（`Chidori.Datasets.DiningAreas`・`chidori_dining_<番号>`。Chiezo に同じ名前が残っている番号は使わない）
+- 食事処: 範囲ごとに収集が 1 つ（`Chidori.Datasets.DiningAreas`・`chidori_dining_<番号>`。Chiezo に同じ名前が残っている番号は使わない）。
+  データ収集のタブは「食事処」1 つで、範囲ごとのタブはその下の段（`ChidoriWeb.DiningTabs`。「全体」= `/datasets/areas` と範囲ごと）
 - 名前と座標は AI に書かせない。名簿は 3 つの辞典（`jawiki`・`osm_japan`・`overture_japan`）を範囲の四角（`bbox`）で絞って引く。
   どの項目をどの辞典から採るかは決めてあり、順位を譲った辞典の値も空いたところを埋めるのに使う
 - 区画は座標で割り、1 区画 20 件の目安（1 件ずつ確かめさせるため）。母集団は収集自身、矩形は範囲の四角

@@ -66,7 +66,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
   - 共通の道具 —— `jst.ex`（人に見せる日時）・`safe_url.ex`（外から来た URL）・`repo.ex`・`release.ex`（移行）
 - `lib/chidori_web/` — 画面
   - `live/` —— `home_live`・`news_live`・`relations_live`・`datasets_live`・`dining_areas_live`・`settings_live`・`collect.ex`（収集の枠の道具）
-  - `components/` —— 収集の枠・レポート・トピックの網・区画の地図・作品の詳細・主要メニューなど
+  - `components/` —— 収集の枠・レポート・トピックの網・区画の地図・食事処の中のタブ・作品の詳細・主要メニューなど
   - `controllers/` —— travel-log 用 ZIP・顔写真・サムネイルの配り口
   - `socket_origin.ex` —— LiveView の接続元の見比べ（`PHX_CHECK_ORIGIN`）
 - `assets/js/` — 図の操作（`pan_zoom.js` を関連図・トピック・区画の地図で共有）、地理院タイル、スワイプ、Web Push、

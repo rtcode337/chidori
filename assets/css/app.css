@@ -140,6 +140,9 @@ main.relations-page > div { padding-top: 0; }
 .relation-tabs a { margin-bottom: -1px; padding: .6rem 1.1rem; border: 1px solid transparent; border-bottom: 0; border-radius: .7rem .7rem 0 0; color: #616a82; font-size: .9rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
 .relation-tabs a:hover { background: #eceef8; color: #28235e; }
 .relation-tabs a.selected { border-color: #d9dcea; background: #f6f7fb; color: #28235e; box-shadow: inset 0 3px 0 #6254d6; }
+/* 食事処の中のタブ（全体と範囲ごと）。データ収集のタブの下の段なので、間を詰めて一回り小さく */
+.relation-tabs.dining-tabs { margin-top: .4rem; }
+.relation-tabs.dining-tabs a { padding: .45rem .9rem; font-size: .82rem; }
 /* 狭い画面ではタブを詰め、**折り返さずにタブの列だけを横にスクロールさせる** ——
    折り返すと段が増えて本文が押し下げられ、どれが選ばれているのかも読みにくい。
    はみ出したぶんはタブの列の中でスクロールするので、ページ全体は横に広がらない。
@@ -1189,7 +1192,6 @@ a.top-book-cover { display: block; }
 /* 範囲の名前は、その範囲の収集の画面へ飛ぶ口（範囲ごとのタブは並べない） */
 .area-list li > a:first-child { font-weight: 700; }
 /* 範囲の収集の画面で、範囲の一覧へ戻る口 */
-.area-back { margin: .6rem 0 0; font-size: .85rem; }
 .area-list li.is-editing { background: #fff7ed; }
 .area-form { display: flex; flex-direction: column; gap: .6rem; margin-top: .8rem; }
 .area-form label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; }

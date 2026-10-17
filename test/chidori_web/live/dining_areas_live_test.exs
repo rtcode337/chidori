@@ -69,32 +69,38 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
     assert DiningAreas.list() == []
   end
 
-  test "作った範囲はタブに並べず、食事処のタブ 1 つにまとめる", %{conn: conn} do
+  test "作った範囲はデータ収集のタブに並べず、食事処のタブ 1 つにまとめる", %{conn: conn} do
+    # 並べると、範囲を足すたびに技術書や Pi-hole のタブが押し出される
     Chidori.AreaFixture.area!()
 
     {:ok, _live, html} = live(conn, ~p"/datasets")
 
     refute html =~ ~s(href="/datasets?view=dining-1")
+    refute html =~ ~s(id="dining-tabs")
     assert html =~ ~r|href="/datasets/areas"[^>]*>\s*食事処\s*<|
   end
 
-  test "範囲を開いているときは、食事処のタブを選んだ状態にして一覧へ戻る口を出す", %{conn: conn} do
+  test "範囲を開いているときは、食事処のタブと、その下の段の範囲のタブを選んだ状態にする", %{conn: conn} do
     Chidori.AreaFixture.area!()
 
     {:ok, _live, html} = live(conn, ~p"/datasets?view=dining-1")
 
     assert html =~ ~r|href="/datasets/areas"[^>]*class="selected"[^>]*>\s*食事処|
-    assert html =~ "← 食事処の範囲の一覧"
+    assert html =~ ~s(id="dining-tabs")
+    assert html =~ ~r|href="/datasets\?view=dining-1"[^>]*class="selected"[^>]*>\s*テスト範囲|
+    # 「全体」へもタブから戻れる
+    assert html =~ ~r|href="/datasets/areas"[^>]*>\s*全体\s*<|
   end
 
-  test "データ収集の画面と同じタブを出し、食事処のタブを選んだ状態にする。範囲は名前から開く", %{conn: conn} do
+  test "範囲の一覧の画面は、食事処の中の「全体」のタブとして出る", %{conn: conn} do
     Chidori.AreaFixture.area!()
 
     {:ok, _live, html} = live(conn, ~p"/datasets/areas")
 
     assert html =~ ~s(id="dataset-tabs")
     assert html =~ ~r|class="selected"[^>]*>\s*食事処|
-    # 範囲はタブではなく「作った範囲」の名前の欄から開く
+    assert html =~ ~r|href="/datasets/areas"[^>]*class="selected"[^>]*>\s*全体|
+    # 範囲は下の段のタブ（と「作った範囲」の名前の欄）から開く
     assert html =~ ~r|href="/datasets\?view=dining-1"[^>]*>\s*テスト範囲|
   end
 
