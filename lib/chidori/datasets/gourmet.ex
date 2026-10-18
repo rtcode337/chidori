@@ -208,6 +208,20 @@ defmodule Chidori.Datasets.Gourmet do
     {"大会", "大会の受賞・出展"}
   ]
 
+  # 説明欄の「選定理由」の言い回し（裏付けの語ごと。並びは `@backings` の順）。
+  # `{:by, 主語}` は「<主語>・<主語>が名物として紹介」にまとめて読み、`{:says, 文}` はそのまま並べる
+  # —— 語ごとに「〜が名物として紹介」を繰り返すと、県と市区町村の両方がある 1 件で同じ言葉が続く
+  @backing_reasons %{
+    "国" => {:by, "国（農林水産省など）"},
+    "県" => {:by, "県や県の観光協会"},
+    "市区町村" => {:by, "市区町村や地元の観光協会"},
+    "商標" => {:says, "地域団体商標に登録"},
+    "大会" => {:says, "ご当地グルメの大会に出展・受賞"}
+  }
+
+  # 代表店をその店にした理由を AI が書く脇書きの鍵（説明欄の代表店の行のすぐ後ろに出す）
+  @shop_reason_key "shop_reason"
+
   # 提供している店の数の段階（ランクの材料）
   @shop_counts ~w(1 数軒 多数)
 
@@ -225,7 +239,8 @@ defmodule Chidori.Datasets.Gourmet do
 
   # travel-log に出す名前（`extra.display_name`）。**見出しは同じ 1 件を指す鍵なので変えられない**
   # —— 別の見出しで足し直すと、同じ URL の 1 件として Chiezo に弾かれる（消した 1 件の URL も
-  # 突き合わせる）。一般名の名物（「スダチ」）に土地を付けた名前（「徳島のスダチ」）は、ここに書かせる
+  # 突き合わせる）。一般名の名物（「スダチ」）に土地を付けた名前（「徳島のスダチ」）と、料理の発祥の店として
+  # 知られる店の 1 件に出す料理名は、ここに書かせる
   @display_key "display_name"
   # 人が位置を確かめた料理を、AI が終わったと読んだときの印（Chiezo の `locked_doubt_tag`）。
   # 消さずにこの印を付けて残す —— 現地で確かめた人の手がかりごと消さないため
@@ -385,7 +400,9 @@ defmodule Chidori.Datasets.Gourmet do
     [
       %{
         field: "名前（name）",
-        stored: "title（料理名か店名。県ごとに分けた 1 件の「（県名）」は落とす）",
+        stored:
+          "extra.#{@display_key} があればそれ（土地を頭に付けた一般名の名物・発祥の店の 1 件の料理名）、" <>
+            "無ければ title（料理名か店名。県ごとに分けた 1 件の「（県名）」は落とす）",
         who: "百科事典の記事名か、AI（その土地で通っている呼び名・看板どおりの店名）"
       },
       %{
@@ -426,8 +443,10 @@ defmodule Chidori.Datasets.Gourmet do
       },
       %{
         field: "説明（description）",
-        stored: "extra.shop（代表店）・提供の時期・営業時間・extra.url / extra.sources",
-        who: "機械が組み立てる（代表店の名前と選んだ理由・時期・営業時間・出典）"
+        stored:
+          "タグ「裏付け:…」（選定理由）・extra.shop（代表店）・extra.#{@shop_reason_key}（代表店の理由）・" <>
+            "提供の時期・営業時間・extra.url / extra.sources",
+        who: "機械が組み立てる（選定理由は裏付けから機械で、代表店の理由は AI が書いた 1 行）"
       },
       %{
         field: "（座標の出どころ）",
@@ -870,11 +889,17 @@ defmodule Chidori.Datasets.Gourmet do
   end
 
   # 店の 1 件の決め方（利用者の決めごと: 地元で十分に知られた店は店名そのままで入れる）。
-  # **2 つの依頼文で同じ文を使う**。料理と店の重なり（系統の発祥の店）もここで決める ——
+  # **2 つの依頼文で同じ文を使う**。料理と店の重なり（同じ店を指す料理と店）もここで決める ——
   # 同じ店にピンが 2 本立つと、地図ではどちらを押しても同じ店で、数だけが水増しされる。
-  # 残すほうは「その店でしか食べられないか」で分ける: 系統として広まった料理（二郎系・家系）は
-  # 料理の 1 件が本体で、発祥の店はその代表店（発祥店）として名前が地図に出る。逆にその店の
-  # 品書きでしかない料理（提供店が 1 軒）は、店の 1 件のほうが訪ねる先として正しい
+  # **残すのはいつも料理**（利用者の決めごと。スポット名 = 料理名で、店名は説明の代表店の行で出る）。
+  # 提供店が 1 軒の料理でも料理を残す —— 地図で探すのは「その土地で何を食べるか」で、
+  # 店名だけのピンでは何を出す店か読めない。書き出しの `without_same_shop/1` も同じ向き。
+  #
+  # 料理の 1 件が無く、店がある料理の発祥の店として知られているだけ（料理はどこにでもあるので
+  # 料理の 1 件としては入れない）ときは、店の 1 件の `extra.display_name` に料理名を書かせる。
+  # 名前は料理名そのまま（発祥店のカテゴリと説明の「店: …（発祥の店）」で、ここが発祥だと読める）で、
+  # 同じ料理の発祥を名乗る店が別にある・同じ名前の料理の 1 件が別の県にあるときだけ、地図で
+  # 見分けられるよう店のある土地を頭に付ける（一般名の食材の「徳島のスダチ」と同じ付け方）
   defp shop_item_rule do
     """
     **店の 1 件**（tags に "#{@shop_tag}"）
@@ -896,15 +921,25 @@ defmodule Chidori.Datasets.Gourmet do
       軒数（1 軒だけなら 1）
     - "#{genre_tag()}:<種類>" は**その店の主な料理の種類**（料亭・天ぷら・割烹は 和食、
       洋食屋・中華料理店は 洋食・中華、喫茶店は 飲み物）
-    - **料理と店の重なり**: 系統として広まった料理と、その発祥の店（二郎系ラーメンとラーメン二郎、
-      家系ラーメンと吉村家）が両方あるときは、**同じ店にピンが 2 本立たないように**します ——
-      - その料理を出す店が何軒もある（"提供店:数軒" / "提供店:多数"）なら**料理を残し**、
-        料理の代表店をその発祥の店にして "#{@origin_tag}" を付け、**店の 1 件は
-        「<料理>の 1 件にまとめた（代表店・発祥店）」と書いて墓標**で消す
-      - その料理がほぼその店でしか食べられない（"提供店:1"）なら**店を残し**、料理の 1 件を
-        「<店>の 1 件にまとめた」と書いて墓標で消す
-      - 料理の代表店が別の店（発祥の店が閉じた・料理を出していない）なら、両方残してよい
-      - **消す前に、残す 1 件が上に生きていることを確かめてください**（両方消すと、どこにも残りません）
+    - **料理の発祥の店として知られる店**（店の 1 件だけがあり、料理の 1 件は無い。料理はどこにでも
+      あるので料理の 1 件としては入れないもの —— 例: カツカレーのように各地の洋食屋にある料理の、
+      発祥とされる洋食店）は、**店の 1 件のまま**にして、`extra.#{@display_key}` に**その料理の名前**を
+      書き、タグ "#{@origin_tag}" を付けてください（地図には料理名で出て、説明の店の行は店名のまま
+      「店: <店名>（本店・発祥の店）」になります）。名前は**料理名そのまま**です。
+      **同じ料理の発祥を名乗る店が別にある**ときと、**同じ名前の料理の 1 件が別の県にある**ときだけ、
+      店のある土地を頭に付けてください（「銀座の<料理>」のように、市区町村かよく知られた地区の名前）。
+      **料理の 1 件が上の一覧に既にあるときは、この決まりではなく次の「料理と店の重なり」に従ってください**
+    - **料理と店の重なり**: 料理の 1 件と店の 1 件が**同じ店を指す**とき（料理の代表店がその店か、
+      その店が料理の発祥・本店で、いまもその料理を出している。二郎系ラーメンとラーメン二郎、
+      家系ラーメンと吉村家など）は、**同じ店にピンが 2 本立たないように**します。
+      **残すのはいつも料理です**（"提供店:1" で、ほぼその店でしか食べられない料理でも同じ）——
+      - **料理を残し**、料理の代表店をその店にして（発祥・元祖の店なら "#{@origin_tag}" も）、
+        `extra.#{@shop_reason_key}` にその店を選んだ理由を書く
+      - **店の 1 件は「<料理>の 1 件にまとめた（代表店）」と書いて墓標**で消す
+        （発祥の店なら「<料理>の 1 件にまとめた（代表店・発祥店）」）
+      - 情報収集の回で料理の 1 件が上にあるなら、その店の 1 件は足さないでください
+      - 料理の代表店が別の店（その店が閉じた・料理を出していない）なら、両方残してよい
+      - **消す前に、料理の 1 件が上に生きていることを確かめてください**（両方消すと、どこにも残りません）
     """
   end
 
@@ -931,6 +966,12 @@ defmodule Chidori.Datasets.Gourmet do
       書き方が違うことが多く**（ひらがなと漢字・空白・店名の後ろの「本店」など）、名前だけだと
       「辞典に同じ名前がありません」で落ちます。どちらの辞典にも無ければ `ref` は書かない**座標（lat / lon）は書かないでください** —— 辞典から機械で
       引きます（書いても捨てられます）
+    - 代表店を書いたら、**その店を選んだ理由を `extra.#{@shop_reason_key}` に 1 行で**書いてください
+      （例「1950 年創業で、この料理の発祥とされる店。いまも本店で出している」「県の観光協会が
+      この料理の店として紹介している」）。**確かめた頁に書いてある事実だけ**（創業の年・発祥や本店で
+      あること・公的な紹介・駅からの近さ）で、**口コミの評点や「美味しい」「人気」のような感想は
+      書かないでください**。店の 1 件では、その店をご当地グルメに入れた理由を書きます。
+      代表店を null にしたときは `extra.#{@shop_reason_key}` も null
     - **代表店が閉店した・その料理をやめた**ときは、料理は消さずに、上の決まりで店を選び直して
       `extra.shop` を書き直してください。探しても選び直せなければ、`"shop": null` にして
       tags に "#{@no_shop_tag}"、`extra.#{@no_shop_key}` に理由を書いてください（代表店なし）
@@ -952,9 +993,9 @@ defmodule Chidori.Datasets.Gourmet do
 
   # 1 件の形。**2 つの依頼文で同じものを使う**（travel-log が読むのはこの形）。
   # 脇書きの鍵は Chiezo の上限（1 件 20 鍵。Chiezo の印を含む）に収まるよう、AI に書かせる
-  # 9 つ（shop・available_months・season_note・opening_hours・municipality・sources・checked_on・
-  # no_shop・display_name）だけにしてある。機械が運ぶ lat・lon・url と Chiezo の印（消した理由・見直した印など）を
-  # 足しても 20 に届かない
+  # 10 こ（shop・available_months・season_note・opening_hours・municipality・sources・checked_on・
+  # no_shop・display_name・shop_reason）だけにしてある。機械が運ぶ lat・lon・url と Chiezo の印
+  # （消した理由・見直した印など）を足しても 20 に届かない（足すなら、どれかを減らしてから）
   defp item_format do
     """
     **1 件の形**
@@ -985,6 +1026,8 @@ defmodule Chidori.Datasets.Gourmet do
       - "出典:OSM" / "出典:Overture" / "#{@unplaced_tag}" / "#{Chiezo.locked_tag()}" は機械が付けます。
         **足したり消したりしないでください**
     - extra.shop: 代表店の手がかり（上の「代表店の決め方」）
+    - extra.#{@shop_reason_key}: その店を代表店にした理由を 1 行（店の 1 件はその店を入れた理由）。
+      確かめた頁に書いてある事実だけで、口コミの評点や感想は書かない（上の「代表店の決め方」）
     - extra.available_months: **提供の月**（その料理が食べられる・買える月）。`11-3`（11 月〜3 月）・
       `6,7,8`・`12-2,7` の形。**通年なら書かない**。確かめた頁に書いてあるときだけ
     - extra.season_note: 時期の補足を短く（「冬季のみ」「毎年 2 月の祭りの間だけ」）
@@ -996,8 +1039,9 @@ defmodule Chidori.Datasets.Gourmet do
     - extra.checked_on: 代表店がいまもその料理を出していると確かめた日（`YYYY-MM-DD`。今日の日付）。
       代表店なしにしたときは、探して見つからなかった日
     - extra.#{@no_shop_key}: 代表店なしの理由を 1 行（"#{@no_shop_tag}" を付けたときだけ。代表店を書いたら null）
-    - extra.#{@display_key}: 地図に出す名前。**見出しに土地の名が無い一般名の名物だけ**、
-      「徳島のスダチ」「沖縄のゴーヤー」のように土地を頭に付けて書く（見出しのままでよければ書かない）。
+    - extra.#{@display_key}: 地図に出す名前。**見出しに土地の名が無い一般名の名物**は
+      「徳島のスダチ」「沖縄のゴーヤー」のように土地を頭に付けて書き、**料理の発祥の店として
+      知られる店の 1 件**はその料理の名前を書く（上の「店の 1 件」。見出しのままでよければ書かない）。
       **見出しそのものは変えないでください**（同じ 1 件を指す鍵で、付け替えると弾かれます）
     - **ほかの extra の鍵は書かないでください**（1 件に持てる鍵の数に上限があります）。
       **Google マップや食べログなどの中身（口コミの本文・評点・写真・メニュー表）は写さないでください**
@@ -1279,10 +1323,10 @@ defmodule Chidori.Datasets.Gourmet do
   - **同じ店とみなすのは、辞典の同じ記録に引き当たっているときだけ**（Chiezo が
     `extra.shop.identity` に運ぶ元の記録の鍵。鍵の無い引き当ては `extra.shop.ref` =
     「辞典:見出し」で比べる）。名前では突き合わせない —— 同じ名前の別の店舗がある
-  - **残すほうは依頼文と同じ向き**: 料理に `提供店:数軒` か `提供店:多数` が付いていれば
-    料理を残して店を落とす（系統の料理は発祥の店の外でも食べられる）。`提供店:1` か印が
-    無ければ店を残して料理を落とす（その店の品書きでしかない）
-  - 店を落とした料理と同じ店にいる別の料理は、もう店と重ならないので残す
+  - **残すのはいつも料理**（依頼文と同じ向き。利用者の決めごと）。スポットの名前は料理名で、
+    店名は説明の代表店の行で出る。`提供店:1`（その店でしか食べられない）でも料理を残す
+    —— 訪ねる人が探すのは「その土地で何を食べるか」で、店名だけのピンでは何の店か読めない
+  - 店を落としたぶん、同じ店にいる料理はいくつあっても全部残す
   """
   def without_same_shop(made) do
     indexed = Enum.with_index(made)
@@ -1295,22 +1339,13 @@ defmodule Chidori.Datasets.Gourmet do
           do: {index, doc, keys}
 
     {shops, dishes} = Enum.split_with(placed, fn {_index, doc, _keys} -> shop?(doc) end)
-    same? = fn {_, _, a}, {_, _, b} -> not MapSet.disjoint?(a, b) end
 
-    dropped_shops =
-      for shop <- shops,
-          Enum.any?(dishes, fn {_, dish, _} = one -> many_shops?(dish) and same?.(shop, one) end),
-          do: elem(shop, 0)
-
-    kept_shops = Enum.reject(shops, &(elem(&1, 0) in dropped_shops))
-
-    dropped_dishes =
-      for {_, dish, _} = one <- dishes,
-          not many_shops?(dish),
-          Enum.any?(kept_shops, &same?.(&1, one)),
-          do: elem(one, 0)
-
-    drop = MapSet.new(dropped_shops ++ dropped_dishes)
+    drop =
+      MapSet.new(
+        for {index, _doc, keys} <- shops,
+            Enum.any?(dishes, fn {_, _, dish_keys} -> not MapSet.disjoint?(keys, dish_keys) end),
+            do: index
+      )
 
     for {{doc, row}, index} <- indexed do
       if MapSet.member?(drop, index), do: {doc, nil}, else: {doc, row}
@@ -1337,11 +1372,6 @@ defmodule Chidori.Datasets.Gourmet do
       end
 
     MapSet.new(keys)
-  end
-
-  # 提供している店が何軒もある料理か（料理を残す向き）
-  defp many_shops?(doc) do
-    doc |> Map.get("tags", []) |> List.wrap() |> tagged("提供店") |> Enum.any?(&(&1 in ["数軒", "多数"]))
   end
 
   @doc """
@@ -1394,14 +1424,21 @@ defmodule Chidori.Datasets.Gourmet do
   end
 
   @doc """
-  説明文。**代表店の名前と選んだ理由・提供の時期・営業時間・出典**を 1 行ずつ
-  （店の 1 件は代表店ではなく「店:」で、その店自身・本店を書く）。
+  説明文。**選定理由・代表店の名前と選んだ決まり・代表店の理由・提供の時期・営業時間・出典**を
+  1 行ずつ（店の 1 件は代表店ではなく「店:」で、その店自身・本店を書く）。
   料理そのものの説明（本文）は入れません —— 名簿の 1 件は百科事典の冒頭を持っていて、
   写すと CC BY-SA の帰属と継承が付く。座標の出どころ（辞典ごとにライセンスが違う）も添える。
+
+  - **選定理由**（なぜご当地グルメなのか）は、タグ「裏付け:」から機械で組む（AI に文を書かせない。
+    裏付けの無い 1 件には出さない）
+  - **代表店の理由**（なぜこの店か）は、AI が `extra.shop_reason` に書いた 1 行（確かめた頁に
+    基づく事実だけ）。店の 1 件では「選んだ理由」と書く
   """
   def description(tags, extra) do
     [
+      backing_line(tags),
       shop_line(tags, extra),
+      shop_reason_line(tags, extra),
       season_line(extra),
       hours_line(extra),
       sources_line(extra),
@@ -1428,6 +1465,35 @@ defmodule Chidori.Datasets.Gourmet do
 
         head = if @shop_tag in tags, do: "店", else: "代表店"
         "#{head}: #{shop_name}#{why}" <> if(where == "", do: "", else: "／#{where}")
+    end
+  end
+
+  # 選定理由（「選定理由: 国（農林水産省など）・県や県の観光協会が名物として紹介、地域団体商標に登録」）
+  defp backing_line(tags) do
+    backed = tagged(tags, "裏付け")
+
+    {by, says} =
+      @backings
+      |> Enum.map(fn {value, _label} -> value end)
+      |> Enum.filter(&(&1 in backed))
+      |> Enum.map(&Map.fetch!(@backing_reasons, &1))
+      |> Enum.split_with(&match?({:by, _}, &1))
+
+    parts =
+      if(by == [], do: [], else: [Enum.map_join(by, "・", &elem(&1, 1)) <> "が名物として紹介"]) ++
+        Enum.map(says, &elem(&1, 1))
+
+    if parts == [], do: "", else: "選定理由: " <> Enum.join(parts, "、")
+  end
+
+  # 代表店の理由（AI が書いた 1 行。代表店の名前が無ければ出さない —— 店の無い理由は読めない）
+  defp shop_reason_line(tags, extra) do
+    shop = if is_map(extra["shop"]), do: extra["shop"], else: %{}
+
+    case {text(shop["name"]), text(extra[@shop_reason_key])} do
+      {"", _reason} -> ""
+      {_name, ""} -> ""
+      {_name, reason} -> if(@shop_tag in tags, do: "選んだ理由: ", else: "代表店の理由: ") <> reason
     end
   end
 

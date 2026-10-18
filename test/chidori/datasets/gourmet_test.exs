@@ -385,9 +385,9 @@ defmodule Chidori.Datasets.GourmetTest do
       end
     end
 
-    test "AI に書かせる脇書きの鍵は 7 つで、Chiezo の上限（20）に収まる" do
+    test "AI に書かせる脇書きの鍵は 10 こで、Chiezo の上限（20）に収まる" do
       ai_keys =
-        ~w(shop available_months season_note opening_hours municipality sources checked_on)
+        ~w(shop available_months season_note opening_hours municipality sources checked_on no_shop display_name shop_reason)
 
       # 機械が運ぶ鍵（座標と出典）と Chiezo の印（消した理由・見直した印・疑いの印など）
       machine_keys =
@@ -395,8 +395,20 @@ defmodule Chidori.Datasets.GourmetTest do
 
       assert length(ai_keys ++ machine_keys) <= 20
 
-      prompt = Gourmet.tidy_prompt()
-      for key <- ai_keys, do: assert(prompt =~ "extra.#{key}")
+      assert length(ai_keys) == 10
+
+      for prompt <- [Gourmet.survey_prompt(), Gourmet.tidy_prompt()],
+          key <- ai_keys,
+          do: assert(prompt =~ "extra.#{key}")
+    end
+
+    test "代表店の理由は、確かめた事実だけを extra.shop_reason に 1 行（評点や感想は書かせない）" do
+      for prompt <- [Gourmet.survey_prompt(), Gourmet.tidy_prompt()] do
+        assert prompt =~ "その店を選んだ理由を `extra.shop_reason` に 1 行で"
+        assert prompt =~ "確かめた頁に書いてある事実だけ"
+        assert prompt =~ "口コミの評点や「美味しい」「人気」のような感想は"
+        assert length(String.split(prompt, "その店を選んだ理由を `extra.shop_reason` に 1 行で")) == 2
+      end
     end
   end
 
@@ -463,6 +475,48 @@ defmodule Chidori.Datasets.GourmetTest do
       assert description =~ "出典: [ja.wikipedia:ソースカツ丼] https://example.com/fukui-gourmet"
       refute description =~ "javascript"
       assert description =~ "座標: 代表店の位置（OpenStreetMap）"
+    end
+
+    test "選定理由は裏付けのタグから機械で 1 行（語ごとに読める言い回し・無ければ出さない）" do
+      line = fn backings ->
+        tags = ["ご当地グルメ", "地域:福井県"] ++ Enum.map(backings, &"裏付け:#{&1}")
+
+        Gourmet.description(tags, %{})
+        |> String.split("\n")
+        |> Enum.find(&String.starts_with?(&1, "選定理由: "))
+      end
+
+      assert line.(["国"]) == "選定理由: 国（農林水産省など）が名物として紹介"
+      assert line.(["県"]) == "選定理由: 県や県の観光協会が名物として紹介"
+      assert line.(["市区町村"]) == "選定理由: 市区町村や地元の観光協会が名物として紹介"
+      assert line.(["商標"]) == "選定理由: 地域団体商標に登録"
+      assert line.(["大会"]) == "選定理由: ご当地グルメの大会に出展・受賞"
+
+      # 紹介している先はまとめて 1 つの「が名物として紹介」に、並びは語彙の順（付いた順ではない）
+      assert line.(["大会", "県", "国", "商標"]) ==
+               "選定理由: 国（農林水産省など）・県や県の観光協会が名物として紹介、" <>
+                 "地域団体商標に登録、ご当地グルメの大会に出展・受賞"
+
+      # 裏付けの無い 1 件・語彙に無い値には出さない
+      assert line.([]) == nil
+      assert line.(["口コミ"]) == nil
+
+      # 説明の先頭に出る
+      assert Gourmet.spot(doc(%{}), dataset())["description"]
+             |> String.starts_with?("選定理由: 県や県の観光協会が名物として紹介\n代表店: ")
+    end
+
+    test "代表店の理由は代表店の行のすぐ後ろに（書いていなければ出さない）" do
+      extra = Map.put(doc(%{})["extra"], "shop_reason", "1950 年創業の発祥の店で、いまも本店で出している")
+      lines = String.split(Gourmet.spot(doc(%{"extra" => extra}), dataset())["description"], "\n")
+      at = Enum.find_index(lines, &String.starts_with?(&1, "代表店: "))
+
+      assert Enum.at(lines, at + 1) == "代表店の理由: 1950 年創業の発祥の店で、いまも本店で出している"
+      refute Gourmet.spot(doc(%{}), dataset())["description"] =~ "代表店の理由"
+
+      # 代表店の名前が無ければ理由だけを出さない
+      no_shop = Map.put(extra, "shop", nil)
+      refute Gourmet.description([], no_shop) =~ "理由"
     end
 
     test "提供の時期と営業時間は CSV の 2 列にそのまま出す" do
@@ -565,6 +619,50 @@ defmodule Chidori.Datasets.GourmetTest do
       refute description =~ "代表店:"
     end
 
+    test "店の 1 件の理由は「選んだ理由」で、店の行のすぐ後ろに" do
+      extra = Map.put(shop_doc()["extra"], "shop_reason", "県の観光協会が名物の店として紹介している本店")
+
+      description =
+        Gourmet.spot(shop_doc(%{"extra" => extra}), Gourmet.definition())["description"]
+
+      assert description =~
+               "店: サンプル亭 本店（本店・発祥の店）／東京都千代田区丸の内1丁目\n" <>
+                 "選んだ理由: 県の観光協会が名物の店として紹介している本店"
+
+      refute description =~ "代表店の理由"
+    end
+
+    test "料理の発祥の店として知られる店の 1 件は、地図に料理名で出す（説明の店の行は店名のまま）" do
+      shop = %{
+        "doc_id" => 89,
+        "title" => "サンプル洋食店",
+        "tags" => ["ご当地グルメ", "地域:東京都", "区分:店", "種類:洋食・中華", "代表店:本店", "発祥店", "提供店:1"],
+        "extra" => %{
+          "lat" => 35.67,
+          "lon" => 139.76,
+          "display_name" => "カツカレー",
+          "shop" => %{"name" => "サンプル洋食店", "address" => "東京都中央区銀座1丁目"}
+        }
+      }
+
+      row = Gourmet.spot(shop, Gourmet.definition())
+
+      assert row["name"] == "カツカレー"
+      assert row["categories"] =~ "名店|発祥店"
+      assert row["description"] =~ "店: サンプル洋食店（本店・発祥の店）／東京都中央区銀座1丁目"
+    end
+
+    test "どちらの依頼文にも、発祥の店の 1 件の名前の決まりを 1 回ずつ書く（料理の 1 件があれば重なりの決まり）" do
+      for prompt <- [Gourmet.survey_prompt(), Gourmet.tidy_prompt()] do
+        assert prompt =~ "料理の発祥の店として知られる店"
+        assert prompt =~ "`extra.display_name` に**その料理の名前**"
+        assert prompt =~ "名前は**料理名そのまま**"
+        assert prompt =~ "店のある土地を頭に付けて"
+        assert prompt =~ "この決まりではなく次の「料理と店の重なり」に従って"
+        assert length(String.split(prompt, "料理の発祥の店として知られる店**（")) == 2
+      end
+    end
+
     test "種類の語彙は店のぶん（和食・洋食・中華）を足しても 20 を超えない" do
       kinds = Gourmet.kinds()
 
@@ -586,6 +684,12 @@ defmodule Chidori.Datasets.GourmetTest do
         assert prompt =~ "同じ店にピンが 2 本立たないように"
         assert prompt =~ "の 1 件にまとめた（代表店・発祥店）"
         assert length(String.split(prompt, "同じ店にピンが 2 本立たないように")) == 2
+
+        # 重なりではいつも料理を残す（提供店が 1 軒でも）。店を残して料理をまとめる向きは無い
+        assert prompt =~ "残すのはいつも料理です"
+        assert prompt =~ "消す前に、料理の 1 件が上に生きていることを確かめてください"
+        refute prompt =~ "なら**店を残し**"
+        refute prompt =~ "<店>の 1 件にまとめた"
       end
     end
 
@@ -644,18 +748,19 @@ defmodule Chidori.Datasets.GourmetTest do
                ["サンプル系ラーメン"]
     end
 
-    test "提供店が 1 軒か印の無い料理は店を残し、料理を落とす" do
+    test "提供店が 1 軒か印の無い料理でも、料理を残して店を落とす（いつも料理）" do
       shop = resolved(2, "サンプル家", ["区分:店"], @node)
 
-      assert kept([resolved(1, "サンプル麺", ["提供店:1"], @node), shop]) == ["サンプル家"]
-      assert kept([resolved(1, "サンプル麺", [], @node), shop]) == ["サンプル家"]
+      assert kept([resolved(1, "サンプル麺", ["提供店:1"], @node), shop]) == ["サンプル麺"]
+      assert kept([shop, resolved(1, "サンプル麺", ["提供店:1"], @node)]) == ["サンプル麺"]
+      assert kept([resolved(1, "サンプル麺", [], @node), shop]) == ["サンプル麺"]
     end
 
     test "同じ記録とみなすのは元の記録の鍵が 1 つでも重なるとき（どちらかの辞典で当たればよい）" do
       dish = resolved(1, "サンプル麺", [], %{"identity" => ["overture_japan:overture_id=a"]})
       shop = resolved(2, "サンプル家", ["区分:店"], @node)
 
-      assert kept([dish, shop]) == ["サンプル家"]
+      assert kept([dish, shop]) == ["サンプル麺"]
     end
 
     test "記録が違えば、名前が同じでも両方残す" do
@@ -669,7 +774,7 @@ defmodule Chidori.Datasets.GourmetTest do
       ref = %{"ref" => "osm_japan:サンプル家"}
       shop = resolved(2, "サンプル家", ["区分:店"], ref)
 
-      assert kept([resolved(1, "サンプル麺", [], ref), shop]) == ["サンプル家"]
+      assert kept([resolved(1, "サンプル麺", [], ref), shop]) == ["サンプル麺"]
 
       assert kept([resolved(1, "サンプル麺", [], %{"ref" => "osm_japan:サンプル家 (2)"}), shop]) ==
                ["サンプル麺", "サンプル家"]
@@ -683,7 +788,7 @@ defmodule Chidori.Datasets.GourmetTest do
       assert kept([resolved(1, "甲", [], @node), resolved(3, "乙", [], @node)]) == ["甲", "乙"]
     end
 
-    test "店を落とした料理と同じ店にいる別の料理は残す（もう店と重ならない）" do
+    test "同じ店にいる料理はいくつあっても全部残し、店だけを落とす" do
       many = resolved(1, "サンプル系ラーメン", ["提供店:多数"], @node)
       one = resolved(3, "サンプル家の限定麺", ["提供店:1"], @node)
       shop = resolved(2, "サンプル家", ["区分:店"], @node)
