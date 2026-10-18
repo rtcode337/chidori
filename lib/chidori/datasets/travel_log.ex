@@ -55,6 +55,11 @@ defmodule Chidori.Datasets.TravelLog do
   # 明るさで分かれる）。ピンの文字の色は travel-log が面の明るさから選ぶ
   @golden_angle 137.508
   @lightness [42, 55, 32]
+  # **訪問済みの緑に近い色相は使わない**（`series_color/1`）。travel-log は訪問済みのピンを
+  # 緑（`#16a34a`。色相およそ 142°）で塗るので、シリーズが緑〜青緑だと行ったところと
+  # 見分けがつかない。黄金角で回した値をこの帯を除いた 270° に詰めてから、帯の後ろへずらす
+  @avoid_hue_from 95.0
+  @avoid_hue_width 90.0
 
   @doc """
   書き出せる対象か。**スポットにできる収集だけ**（タグの取り決めを持つもの）。
@@ -498,9 +503,10 @@ defmodule Chidori.Datasets.TravelLog do
     )
   end
 
-  @doc "並びの番号からシリーズの色（`#rrggbb`）。同じ番号ならいつも同じ色。"
+  @doc "並びの番号からシリーズの色（`#rrggbb`）。同じ番号ならいつも同じ色。訪問済みの緑に近い色相は避ける。"
   def series_color(index) when is_integer(index) and index >= 0 do
-    hue = :math.fmod(index * @golden_angle, 360.0)
+    hue = :math.fmod(index * @golden_angle, 360.0 - @avoid_hue_width)
+    hue = if hue >= @avoid_hue_from, do: hue + @avoid_hue_width, else: hue
     lightness = Enum.at(@lightness, rem(index, length(@lightness)))
     hsl_hex(hue, 70, lightness)
   end

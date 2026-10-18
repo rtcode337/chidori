@@ -219,6 +219,26 @@ defmodule Chidori.Datasets.TravelLogTest do
       assert TravelLog.series_color(7) == TravelLog.series_color(7)
     end
 
+    test "シリーズの色は訪問済みの緑（色相およそ 142°）に近い色相を使わない" do
+      # 訪問済みのピンは緑で塗るので、緑〜青緑のシリーズは行ったところと見分けがつかない
+      for index <- 0..199 do
+        "#" <> hex = TravelLog.series_color(index)
+        <<r::binary-size(2), g::binary-size(2), b::binary-size(2)>> = hex
+        [r, g, b] = Enum.map([r, g, b], &(String.to_integer(&1, 16) / 255))
+        max = Enum.max([r, g, b])
+        delta = max - Enum.min([r, g, b])
+
+        hue =
+          cond do
+            max == r -> 60 * :math.fmod((g - b) / delta + 6, 6)
+            max == g -> 60 * ((b - r) / delta + 2)
+            true -> 60 * ((r - g) / delta + 4)
+          end
+
+        refute hue > 96 and hue < 184, "#{index} 番の色 ##{hex} の色相 #{round(hue)}° が緑に近い"
+      end
+    end
+
     test "カテゴリの並びは語彙のまま渡し、シリーズには混ぜない" do
       rows = [%{"series" => "和食", "categories" => "ランチ営業"}]
       json = Jason.decode!(TravelLog.settings_json("dining", "食事処", rows, ["ランチ営業", "深夜営業"]))
