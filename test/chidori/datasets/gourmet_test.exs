@@ -321,7 +321,10 @@ defmodule Chidori.Datasets.GourmetTest do
             Chidori.Chiezo.unreviewed_tag(),
             Gourmet.unplaced_tag(),
             "引き当てられなかった",
-            "8〜10 品",
+            "20 品まで",
+            "この県の店は全部片付けて",
+            # 辞典の見出しを先に引かせる（記事名と見出しの書き方が違うと引き当てに落ちる）
+            "手がかりを書く前に引いてください",
             "checked_on",
             Chidori.Chiezo.tombstone_tag(),
             "collect_partition",
