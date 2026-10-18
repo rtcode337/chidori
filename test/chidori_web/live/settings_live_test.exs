@@ -384,8 +384,8 @@ defmodule ChidoriWeb.SettingsLiveTest do
     pace = html |> String.split(~s(id="collect-pace")) |> List.last()
     {scan, tidy} = {:binary.match(pace, "ざっと見る"), :binary.match(pace, "整理")}
     assert elem(scan, 0) < elem(tidy, 0)
-    # ざっと見るは関連図の 3 本（画家・芸能人・映画）とレシピ集の書く回
-    assert pace =~ "Chidori に 4 本・動いている"
+    # ざっと見るは関連図の 3 本（画家・芸能人・映画）とレシピ集の書く回、ご当地グルメ
+    assert pace =~ "Chidori に 5 本・動いている"
   end
 
   test "Chiezo から戻した結果は、変えたものだけを並べる" do
