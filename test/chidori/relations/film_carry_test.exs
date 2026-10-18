@@ -166,4 +166,51 @@ defmodule Chidori.Relations.FilmCarryTest do
       assert CarrySetting.get().attempts == %{"甲" => 2}
     end
   end
+
+  describe "いま頼む" do
+    setup do
+      previous = System.get_env("CHIEZO_BASE_URL")
+      System.put_env("CHIEZO_BASE_URL", "http://chiezo.example")
+
+      on_exit(fn ->
+        if previous,
+          do: System.put_env("CHIEZO_BASE_URL", previous),
+          else: System.delete_env("CHIEZO_BASE_URL")
+      end)
+    end
+
+    test "時計と同じ並びで上から頼み、人が押した 1 回として送る（時計の記録は動かさない）" do
+      test_pid = self()
+      {:ok, _} = CarrySetting.put(%{batch: 5})
+
+      Chidori.HttpStub.stub(fn
+        %{method: :get, url: url} ->
+          body =
+            if String.contains?(url, "chidori_movies"),
+              do: %{
+                "results" => [
+                  %{"title" => "注目作", "tags" => ["注目度:高", "公開日:2026-10-01"]}
+                ],
+                "total" => 1
+              },
+              else: %{"results" => [], "total" => 0}
+
+          Chidori.HttpStub.ok(Jason.encode!(body))
+
+        %{method: :post, url: url, body: body} ->
+          send(test_pid, {:focus, url, Jason.decode!(body)})
+          Chidori.HttpStub.ok("{}")
+      end)
+
+      assert {:ok, 1} = FilmCarry.carry_batch_now()
+      assert_received {:focus, url, %{"prompt" => prompt}}
+      assert url =~ "/v1/collect/chidori_films/focus?manual=true"
+      assert prompt =~ "- 注目作"
+
+      last = CarrySetting.get()
+      assert {last.last_by, last.last_titles} == {"画面", ["注目作"]}
+      assert is_nil(last.clock_at)
+      assert CarrySetting.attempts(last, "注目作") == 1
+    end
+  end
 end

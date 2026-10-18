@@ -93,6 +93,8 @@ defmodule ChidoriWeb.RelationsLive do
        # 引き継ぎを待っている作品（nil = まだ読んでいない / :loading / 一覧 / {:error, 理由}）。
        # **押したときだけ Chiezo に聞く**（図を開くたびには聞かない）
        carry_pending: nil,
+       # 「いま頼む」の結果の一言
+       carry_message: nil,
        mark_saved: nil,
        # 巡回ごとに選んだ相手。**サーバー側で覚える** —— 覚えないと、図が届いた
        # 拍子にフォームが描き直されて、選んだところが元の値に戻る（選んだつもりで
@@ -173,6 +175,7 @@ defmodule ChidoriWeb.RelationsLive do
         mark_saved: nil,
         film_added: nil,
         carry_pending: nil,
+        carry_message: nil,
         # 図を切り替えたら設定は読み直す（別の収集のもの）
         settings_open: false,
         settings: nil,
@@ -530,6 +533,16 @@ defmodule ChidoriWeb.RelationsLive do
     {:noreply, assign(socket, carry_pending: :loading)}
   end
 
+  # 時計を待たずにいま頼む（上から 1 回に頼む数まで）。**重ねて押しても 1 本**（AI を使うので）
+  def handle_event("carry_batch", _params, socket) do
+    {:noreply, start_carry(socket, &FilmCarry.carry_batch_now/0)}
+  end
+
+  # 1 作品だけ頼む（時計が頼むのをやめた作品を頼み直す。見た記録は付けない）
+  def handle_event("carry_one", %{"title" => title}, socket) when title != "" do
+    {:noreply, start_carry(socket, fn -> FilmCarry.carry_now([title]) end)}
+  end
+
   # 見た印を付けたものへ寄る。**名前を思い出せなくても行き先が選べる**のが、
   # この口の役目 —— 探す欄は名前を打てる人のためのもので、
   # 「前に見たあの画家」を探すのには使えない
@@ -750,6 +763,18 @@ defmodule ChidoriWeb.RelationsLive do
       end
 
     {:noreply, socket |> assign(film_added: message) |> load_carry()}
+  end
+
+  def handle_info({:carry_done, result}, socket) do
+    message =
+      case result do
+        {:ok, 0} -> "引き継ぐ作品はありませんでした。"
+        {:ok, n} -> "#{n} 本を図に足すよう頼みました（取り込みが終わって図を取り直すと載ります）。"
+        {:error, reason} -> "頼めませんでした: " <> relation_reason(reason)
+      end
+
+    # 一覧は頼んだ後では古いので畳む（もう一度押せば読み直す）
+    {:noreply, socket |> assign(carry_message: message, carry_pending: nil) |> load_carry()}
   end
 
   def handle_info({:carry_pending, result}, socket) do
@@ -996,6 +1021,15 @@ defmodule ChidoriWeb.RelationsLive do
   # 見た記録の置き場の種類。**映画の図は最新情報の映画と同じ置き場**（`Films.mark_view/0`）
   defp mark_view("films"), do: Films.mark_view()
   defp mark_view(view), do: view
+
+  defp start_carry(socket, fun) do
+    pid = self()
+
+    case Chidori.SingleFlight.start(:film_carry, fn -> send(pid, {:carry_done, fun.()}) end) do
+      {:ok, _pid} -> assign(socket, carry_message: "頼んでいます…")
+      {:error, :busy} -> assign(socket, carry_message: "いま頼んでいる最中です。")
+    end
+  end
 
   # 引き継ぎの時計の設定・前回の記録・次に確かめる時刻（映画の図だけ。DB と時計に聞くだけで、
   # Chiezo には聞かない）

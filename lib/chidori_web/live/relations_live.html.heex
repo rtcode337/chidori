@@ -127,6 +127,14 @@
                 do: "Chiezo に聞いています…",
                 else: "まだ引き継いでいない作品を読む"}
             </button>
+            <button
+              type="button"
+              phx-click="carry_batch"
+              data-confirm={"時計を待たずに、上から #{@carry_setting.batch} 本まで図に足すよう頼みます（AI を 1 回使います）。よろしいですか？"}
+            >
+              いま頼む
+            </button>
+            <span :if={@carry_message} class="muted-note">{@carry_message}</span>
           </p>
           <%= case @carry_pending do %>
             <% {:error, reason} -> %>
@@ -135,15 +143,24 @@
               <p class="muted-note">まだ引き継いでいない作品はありません。</p>
             <% items when is_list(items) -> %>
               <p class="muted-note">
-                {length(items)} 本。見た作品（見た日の新しい順）→ 注目度の高い作品（公開日の新しい順）に並び、次の回に頼むのは上から {@carry_setting.batch} 本です（頼むのをやめた作品は数えません）
+                見た記録を付けた作品と、注目度が高く公開された作品のうち、まだ図に無いもの {length(items)} 本（最新情報の全部ではありません）。見た作品（見た日の新しい順）→ 注目度の高い作品（公開日の新しい順）に並び、次の回に頼むのは上から {@carry_setting.batch} 本です（頼むのをやめた作品は数えません）
               </p>
               <ul>
                 <li :for={item <- items}>
                   {item.title}
                   <span :if={item[:date]} class="muted-note">（公開 {Date.to_iso8601(item.date)}）</span>
                   <span :if={item.tries >= CarrySetting.max_attempts()} class="muted-note">
-                    — {item.tries} 回頼んでも載らなかったので、時計からは頼みません（「見た映画を足す」で手がかりを添えて頼み直せます）
+                    — {item.tries} 回頼んでも載らなかったので、時計からは頼みません
                   </span>
+                  <button
+                    :if={item.tries >= CarrySetting.max_attempts()}
+                    type="button"
+                    phx-click="carry_one"
+                    phx-value-title={item.title}
+                    data-confirm={"「#{item.title}」を図に足すよう頼みます（AI を 1 回使います）。よろしいですか？"}
+                  >
+                    この作品を頼む
+                  </button>
                   <span
                     :if={item.tries > 0 and item.tries < CarrySetting.max_attempts()}
                     class="muted-note"

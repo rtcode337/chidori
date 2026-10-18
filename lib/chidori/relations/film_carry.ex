@@ -189,6 +189,38 @@ defmodule Chidori.Relations.FilmCarry do
     end
   end
 
+  @doc """
+  **時計を待たずに、いま 1 回頼みます**（画面の「いま頼む」。押した人の 1 回なので、
+  止めている収集でも走る）。頼む作品と数は時計の回と同じ（`pending/2` の上から
+  1 回に頼む数まで。何度頼んでも載らない作品は外す）。時計の記録（`clock_at`）は
+  動かさないので、その日の時計の回は飛ばない。
+
+  `{:ok, 頼んだ数}`（無ければ 0）か `{:error, 理由}`。
+  """
+  def carry_batch_now do
+    with base when is_binary(base) <- Chiezo.base_url(),
+         {:ok, items} <- pending(base, CarrySetting.get().batch) do
+      titles = Enum.map(items, & &1.title)
+
+      if items == [] do
+        CarrySetting.record("画面", [], :nothing)
+        {:ok, 0}
+      else
+        result = Chiezo.by_hand(fn -> carry(base, items) end)
+        if result == :ok, do: count(base, titles)
+        CarrySetting.record("画面", titles, reason_text(result))
+
+        case result do
+          :ok -> {:ok, length(items)}
+          {:error, reason} -> {:error, reason}
+        end
+      end
+    else
+      nil -> {:error, :chiezo_not_configured}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   # 頼んだ回数を数える。ついでに、載った作品の回数を消す（読めなければ消さないだけ）
   defp count(base, titles) do
     carried =
