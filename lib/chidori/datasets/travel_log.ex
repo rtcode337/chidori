@@ -47,7 +47,9 @@ defmodule Chidori.Datasets.TravelLog do
   # 1 回に引く件数（Chiezo 側の上限）
   @page_limit 500
 
-  @csv_header ~w(name lat lng region rank series categories description key)
+  # `opening_hours` は地図辞典の書き方のまま渡す —— travel-log の「今営業中」の絞り込みが
+  # この列を読む（説明文の日本語の営業時間は人が読むためのもので、機械は読まない）
+  @csv_header ~w(name lat lng region rank series categories description opening_hours key)
 
   # シリーズの色は**並びの番号から計算する**（`series_color/1`）。決まった 10 色を
   # 回していた頃は、60 ほどあるジャンルで 6 つずつ同じ色になり、地図で見分けられなかった。
@@ -373,6 +375,7 @@ defmodule Chidori.Datasets.TravelLog do
         # カテゴリはパイプ区切りの 1 列（CSV の区切りと衝突しないため）
         "categories" => categories(module, tags, extra, genres) |> Enum.join("|"),
         "description" => description(doc, tags, extra, collection, module, {name, links}),
+        "opening_hours" => clean(Map.get(extra, "opening_hours")),
         "key" => spot_key(Map.get(doc, "doc_id"), dataset)
       }
     end
