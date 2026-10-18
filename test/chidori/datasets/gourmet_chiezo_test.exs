@@ -149,6 +149,41 @@ defmodule Chidori.Datasets.GourmetChiezoTest do
       assert exclude =~ "\r\n9\r\n"
       refute exclude =~ "\r\n1\r\n"
     end
+
+    test "料理の代表店と店の 1 件が辞典の同じ記録なら、片方だけを書いて落としたほうは exclude.txt へ" do
+      shop = %{
+        "name" => "サンプル家",
+        "resolved_at" => "2026-10-01T00:00:00Z",
+        "identity" => ["osm_japan:osm_type=node;osm_id=1"]
+      }
+
+      living = [
+        dish(1, "サンプル系ラーメン", "神奈川県", Map.put(placed(), "shop", shop), ["提供店:多数"]),
+        dish(2, "サンプル家", "神奈川県", Map.put(placed(), "shop", shop), ["区分:店"])
+      ]
+
+      HttpStub.stub(fn
+        %{url: "http://chiezo.test/v1/chidori_gourmet/filter?" <> query} ->
+          if URI.decode_query(query)["include_removed"] == "true",
+            do: page([]),
+            else: page(living)
+
+        %{url: "http://chiezo.test/v1/collect/chidori_gourmet/links"} ->
+          HttpStub.ok(~s({"links": {}}))
+      end)
+
+      assert {:ok, "gourmet.zip", binary, counts} = TravelLog.bundle(dataset())
+      assert counts.rows == 1
+
+      {:ok, files} = :zip.unzip(binary, [:memory])
+      files = Map.new(files, fn {name, body} -> {to_string(name), body} end)
+
+      assert files["gourmet/spots.csv"] =~ "サンプル系ラーメン,"
+      refute files["gourmet/spots.csv"] =~ "\r\nサンプル家,"
+      exclude = files["gourmet/excluded_candidates/exclude.txt"]
+      assert exclude =~ "\r\n2\r\n"
+      refute exclude =~ "\r\n1\r\n"
+    end
   end
 
   describe "travel-log からの依頼を県へ振り分ける" do

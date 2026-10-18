@@ -161,7 +161,10 @@ defmodule Chidori.Datasets.TravelLog do
            fetch_all(base, collection, Chiezo.removed_tag(), include_removed: true) do
       links = link_checks(base, collection)
 
-      made = Enum.map(docs, &{&1, row(&1, dataset, links)})
+      made =
+        docs
+        |> Enum.map(&{&1, row(&1, dataset, links)})
+        |> without_same_shop(module)
 
       {rows, outside} =
         made
@@ -194,6 +197,15 @@ defmodule Chidori.Datasets.TravelLog do
     else
       []
     end
+  end
+
+  # **同じ店に立つ 2 本のピンの片方を落とす**（対象が `without_same_shop/1` を持つときだけ。
+  # ご当地グルメの料理の代表店と店の 1 件）。落とした 1 件は行が nil になるので、
+  # 上の `unplaced_keys` が exclude.txt に入れる（前に読み込んでいれば消える）
+  defp without_same_shop(made, module) do
+    if function_exported?(module, :without_same_shop, 1),
+      do: module.without_same_shop(made),
+      else: made
   end
 
   # 同じ店とみなす近さ（m）。範囲が重なったところで、同じ 1 件が 2 つの収集に居る

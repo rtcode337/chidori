@@ -47,17 +47,48 @@ defmodule Chidori.Datasets.GourmetTest do
       assert "神奈川県の農業" in tags
       # 店の括り（県の飲食店）も 47 県ぶん
       assert "東京都の飲食店" in tags
-      assert length(tags) == 47 * 9
+      # 組で入れる全国の括り（県の食文化にも入っている記事だけ）
+      assert "日本の郷土料理" in tags
+      assert "日本の水産加工品" in tags
+      assert length(tags) == 47 * 9 + length(Gourmet.national_categories())
 
       # 県が読めない括り・どこにでもある料理が混ざる括り・食べもの以外を抱える括りは入れない
-      for wide <- ~w(日本の郷土料理 ご当地グルメ 関東地方のご当地ラーメン 東北地方の駅弁 東京都の食文化 京都府の菓子) do
+      for wide <- ~w(ご当地グルメ 関東地方のご当地ラーメン 東北地方の駅弁 東京都の食文化 京都府の菓子) do
         refute wide in tags
       end
     end
 
+    test "全国の括りは、どこかの県の食文化にも入っている記事だけ（県は食文化から読む）" do
+      extract = Gourmet.extract()
+      [_farm, %{pattern: pattern, with_pattern: partner}] = extract.tag_pairs
+      pattern = Regex.compile!(pattern, "u")
+      partner = Regex.compile!(partner, "u")
+
+      for national <- ~w(日本の郷土料理 日本の水産加工品 日本の鍋料理 日本の発酵食品 農山漁村の郷土料理百選) do
+        assert Regex.match?(pattern, national)
+      end
+
+      # 県の括りは組を要らない（全国の括りの組に当たらない）
+      refute Regex.match?(pattern, "秋田県の麺料理")
+      refute Regex.match?(pattern, "日本の郷土料理の一覧")
+      assert Regex.match?(partner, "秋田県の食文化")
+      refute Regex.match?(partner, "秋田市の食文化")
+
+      # 県は県の括りが先。決まらなかった記事だけ食文化から、当たった県ごとに読む
+      [_kind, region, culture | _rest] = extract.tags
+      assert culture.fallback == "all"
+      assert culture.format == region.format
+      assert culture.map == region.map
+      assert [_, "宮崎県"] = Regex.run(Regex.compile!(culture.pattern, "u"), "宮崎県の食文化")
+
+      # 全国の括りは外す括りと重ならない
+      excluded = String.split(extract.not_tag, ",")
+      for national <- Gourmet.national_categories(), do: refute(national in excluded)
+    end
+
     test "農業の括りは、同じ県の食文化にも入っている記事だけ（米の品種は外す）" do
       extract = Gourmet.extract()
-      assert [%{pattern: pattern, with: "{1}の食文化"}] = extract.tag_pairs
+      assert [%{pattern: pattern, with: "{1}の食文化"}, _national] = extract.tag_pairs
       assert [_, "群馬県"] = Regex.run(Regex.compile!(pattern, "u"), "群馬県の農業")
       # 県は農業の括りからも読む
       [_kind, region | _rest] = extract.tags
@@ -89,7 +120,7 @@ defmodule Chidori.Datasets.GourmetTest do
         refute shop in excluded
       end
 
-      [_kind, region, shop | _kinds] = Gourmet.extract().tags
+      [_kind, region, _culture, shop | _kinds] = Gourmet.extract().tags
       assert shop.format == Gourmet.shop_tag()
       pattern = Regex.compile!(shop.pattern, "u")
 
@@ -137,17 +168,25 @@ defmodule Chidori.Datasets.GourmetTest do
     end
 
     test "種類は細かい括りから 1 つだけ（2 つ目からは前が作っていれば作らない）" do
-      [_kind, _region, _shop | rules] = Gourmet.extract().tags
+      [_kind, _region, _culture, _shop | rules] = Gourmet.extract().tags
 
       # Chiezo の読み替えは 1 本の指定に 20 個まで
-      assert length(rules) + 3 <= 20
+      assert length(rules) + 4 <= 20
       assert hd(rules)[:fallback] == nil
       assert Enum.all?(tl(rules), &(&1.fallback == true))
 
+      # 表の規則（`map`）は捕まえたカテゴリの名前を表で引く（Chiezo と同じ読み方）
       first_kind = fn categories ->
         Enum.find_value(rules, fn rule ->
           pattern = Regex.compile!(rule.pattern, "u")
-          if Enum.any?(categories, &Regex.match?(pattern, &1)), do: rule.format
+
+          Enum.find_value(categories, fn category ->
+            case Regex.run(pattern, category) do
+              nil -> nil
+              [_ | _] when not is_map_key(rule, :map) -> rule.format
+              [_, name | _] -> if kind = rule.map[name], do: "種類:" <> kind
+            end
+          end)
         end)
       end
 
@@ -165,10 +204,23 @@ defmodule Chidori.Datasets.GourmetTest do
       assert first_kind.(["和菓子の店舗・メーカー", "東京都の土産菓子"]) == "種類:菓子"
       assert first_kind.(["料亭", "京都府の飲食店"]) == "種類:和食"
       assert first_kind.(["日本の喫茶店", "神奈川県の飲食店"]) == "種類:飲み物"
+      assert first_kind.(["寿司屋", "石川県の飲食店"]) == "種類:寿司・ごはん"
+      assert first_kind.(["お好み焼店"]) == "種類:粉もの"
       # 店の種類が読めない店は AI に任せる
       assert first_kind.(["東京都の飲食店"]) == nil
 
-      for %{format: "種類:" <> kind} <- rules, do: assert(kind in Gourmet.kinds())
+      # 全国の括りは読める 2 つだけ（県の括りが先）。郷土料理・発酵食品は AI に任せる
+      assert first_kind.(["日本の鍋料理", "秋田県の食文化"]) == "種類:鍋・汁物"
+      assert first_kind.(["日本の水産加工品", "東京都の食文化"]) == "種類:魚介料理"
+      assert first_kind.(["日本の郷土料理", "日本の水産加工品"]) == "種類:魚介料理"
+      assert first_kind.(["日本の郷土料理", "宮崎県の食文化"]) == nil
+      assert first_kind.(["日本の発酵食品", "福井県の食文化"]) == nil
+      assert first_kind.(["日本の鍋料理", "山梨県の麺料理"]) == "種類:麺類"
+
+      for rule <- rules do
+        kinds = if rule[:map], do: Map.values(rule.map), else: [rule.format]
+        for kind <- kinds, do: assert(String.replace_prefix(kind, "種類:", "") in Gourmet.kinds())
+      end
     end
   end
 
@@ -551,6 +603,89 @@ defmodule Chidori.Datasets.GourmetTest do
 
     test "travel-log からの閉店の報告は、店の 1 件なら墓標" do
       assert Gourmet.request_preface() =~ "現地から閉店の報告"
+    end
+  end
+
+  describe "料理と店が同じ店を指すときは、書き出すときに片方だけ" do
+    # 代表店が辞典の記録に引き当たった 1 件（`identity` は Chiezo が運ぶ元の記録の鍵）
+    defp resolved(id, title, tags, shop) do
+      %{
+        "doc_id" => id,
+        "title" => title,
+        "tags" => ["ご当地グルメ", "地域:神奈川県", "種類:ラーメン"] ++ tags,
+        "extra" => %{
+          "lat" => 35.45,
+          "lon" => 139.6,
+          "shop" => Map.merge(%{"name" => "サンプル家", "resolved_at" => "2026-10-01T00:00:00Z"}, shop)
+        }
+      }
+    end
+
+    @node %{"identity" => ["osm_japan:osm_type=node;osm_id=1", "overture_japan:overture_id=a"]}
+
+    defp kept(docs) do
+      docs
+      |> Enum.map(&{&1, Gourmet.spot(&1, Gourmet.definition())})
+      |> Gourmet.without_same_shop()
+      |> Enum.reject(fn {_doc, row} -> is_nil(row) end)
+      |> Enum.map(fn {doc, _row} -> doc["title"] end)
+    end
+
+    test "提供店が数軒以上の料理は料理を残し、店を落とす" do
+      dish = resolved(1, "サンプル系ラーメン", ["提供店:多数"], @node)
+      shop = resolved(2, "サンプル家", ["区分:店", "提供店:1"], @node)
+
+      assert kept([dish, shop]) == ["サンプル系ラーメン"]
+
+      assert kept([shop, resolved(1, "サンプル系ラーメン", ["提供店:数軒"], @node)]) ==
+               ["サンプル系ラーメン"]
+    end
+
+    test "提供店が 1 軒か印の無い料理は店を残し、料理を落とす" do
+      shop = resolved(2, "サンプル家", ["区分:店"], @node)
+
+      assert kept([resolved(1, "サンプル麺", ["提供店:1"], @node), shop]) == ["サンプル家"]
+      assert kept([resolved(1, "サンプル麺", [], @node), shop]) == ["サンプル家"]
+    end
+
+    test "同じ記録とみなすのは元の記録の鍵が 1 つでも重なるとき（どちらかの辞典で当たればよい）" do
+      dish = resolved(1, "サンプル麺", [], %{"identity" => ["overture_japan:overture_id=a"]})
+      shop = resolved(2, "サンプル家", ["区分:店"], @node)
+
+      assert kept([dish, shop]) == ["サンプル家"]
+    end
+
+    test "記録が違えば、名前が同じでも両方残す" do
+      dish = resolved(1, "サンプル麺", [], %{"identity" => ["osm_japan:osm_type=node;osm_id=1"]})
+      shop = resolved(2, "サンプル家", ["区分:店"], %{"identity" => ["osm_japan:osm_type=way;osm_id=1"]})
+
+      assert kept([dish, shop]) == ["サンプル麺", "サンプル家"]
+    end
+
+    test "元の記録の鍵が無い引き当ては、辞典の見出し（ref）で比べる" do
+      ref = %{"ref" => "osm_japan:サンプル家"}
+      shop = resolved(2, "サンプル家", ["区分:店"], ref)
+
+      assert kept([resolved(1, "サンプル麺", [], ref), shop]) == ["サンプル家"]
+
+      assert kept([resolved(1, "サンプル麺", [], %{"ref" => "osm_japan:サンプル家 (2)"}), shop]) ==
+               ["サンプル麺", "サンプル家"]
+    end
+
+    test "引き当てられていない手がかりや、料理どうし・店どうしは突き合わせない" do
+      shop = resolved(2, "サンプル家", ["区分:店"], @node)
+      unresolved = resolved(1, "サンプル麺", [], Map.put(@node, "unresolved", "候補なし"))
+
+      assert kept([unresolved, shop]) == ["サンプル麺", "サンプル家"]
+      assert kept([resolved(1, "甲", [], @node), resolved(3, "乙", [], @node)]) == ["甲", "乙"]
+    end
+
+    test "店を落とした料理と同じ店にいる別の料理は残す（もう店と重ならない）" do
+      many = resolved(1, "サンプル系ラーメン", ["提供店:多数"], @node)
+      one = resolved(3, "サンプル家の限定麺", ["提供店:1"], @node)
+      shop = resolved(2, "サンプル家", ["区分:店"], @node)
+
+      assert kept([many, one, shop]) == ["サンプル系ラーメン", "サンプル家の限定麺"]
     end
   end
 end
