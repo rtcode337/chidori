@@ -113,8 +113,14 @@ defmodule Chidori.Datasets.DiningAreas do
   end
 
   @doc """
-  Chiezo に残っている範囲の収集から、手元に無い範囲を読み戻します。
-  `{:ok, %{restored: 戻した範囲, skipped: 戻せなかった収集の名前}}` か `{:error, 理由}`。
+  Chiezo に残っている範囲の収集から、手元に無い範囲を読み戻し、**四角が違う範囲は
+  Chiezo の四角に合わせます**。
+  `{:ok, %{restored: 戻した範囲, updated: 四角を合わせた範囲, skipped: 戻せなかった収集の名前}}`
+  か `{:error, 理由}`。
+
+  **四角を合わせるのは、Chiezo の画面で区画の範囲を直したとき向け**です。手元が古いままだと、
+  設定ページで「定義が違う」と出続け、「収集の設定を更新」を押すと狭いほうへ戻してしまう。
+  名前は手元のまま（説明は Chidori が書いたものなので、Chiezo 側で変わる理由が無い）。
 
   **範囲の正本は手元の表ですが、同じ中身が Chiezo の収集にも載っています** ——
   番号は収集の名前（`chidori_dining_<番号>`）、四角は区画の指定（`partition.bbox`）、
@@ -128,27 +134,49 @@ defmodule Chidori.Datasets.DiningAreas do
   """
   def restore(collections \\ &chiezo_collections/0) do
     with {:ok, collections} <- collections.() do
-      local = MapSet.new(Repo.all(from(a in __MODULE__, select: a.id)))
+      local = Map.new(Repo.all(__MODULE__), &{&1.id, &1})
       prefix = Chidori.Datasets.Dining.area_collection_prefix()
 
       candidates =
         for %{"name" => name} = collection when is_binary(name) <- collections,
             String.starts_with?(name, prefix),
             {id, ""} <- [Integer.parse(String.replace_prefix(name, prefix, ""))],
-            not MapSet.member?(local, id),
             do: {id, name, collection}
 
-      {restored, skipped} =
+      result =
         candidates
         |> Enum.sort()
-        |> Enum.reduce({[], []}, fn {id, name, collection}, {restored, skipped} ->
-          case restore_one(id, collection) do
-            {:ok, area} -> {[area | restored], skipped}
-            {:error, _reason} -> {restored, [name | skipped]}
+        |> Enum.reduce(%{restored: [], updated: [], skipped: []}, fn {id, name, collection},
+                                                                     acc ->
+          case sync_one(Map.get(local, id), id, collection) do
+            {:restored, area} -> Map.update!(acc, :restored, &[area | &1])
+            {:updated, area} -> Map.update!(acc, :updated, &[area | &1])
+            :same -> acc
+            {:error, _reason} -> Map.update!(acc, :skipped, &[name | &1])
           end
         end)
 
-      {:ok, %{restored: Enum.reverse(restored), skipped: Enum.reverse(skipped)}}
+      {:ok, Map.new(result, fn {key, list} -> {key, Enum.reverse(list)} end)}
+    end
+  end
+
+  defp sync_one(nil, id, collection) do
+    with {:ok, area} <- restore_one(id, collection), do: {:restored, area}
+  end
+
+  defp sync_one(%__MODULE__{} = area, _id, collection) do
+    case get_in(collection, ["partition", "bbox"]) do
+      [south, west, north, east] = box ->
+        if bbox(area) == box do
+          :same
+        else
+          with {:ok, area} <-
+                 __MODULE__.update(area, %{south: south, west: west, north: north, east: east}),
+               do: {:updated, area}
+        end
+
+      _other ->
+        {:error, :unreadable}
     end
   end
 

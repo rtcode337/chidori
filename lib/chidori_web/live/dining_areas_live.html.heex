@@ -68,11 +68,13 @@
           </span>
         </li>
       </ul>
-      <%!-- 動かす場所を変えたとき、描き直さずに Chiezo に残っている収集へつなぎ直す --%>
+      <%!-- 動かす場所を変えたとき、描き直さずに Chiezo に残っている収集へつなぎ直す。
+           Chiezo の画面で範囲を直したときも、ここで手元を合わせる --%>
       <div class="button-row">
         <button type="button" phx-click="restore">Chiezo から範囲を戻す</button>
         <span class="muted-note">
-          Chiezo に残っている範囲の収集のうち、ここに無いものを読み戻します（Chiezo へは何も送りません）。
+          Chiezo に残っている範囲の収集のうち、ここに無いものを読み戻し、四角が違うものは
+          Chiezo の四角に合わせます（Chiezo の画面で範囲を直したとき。Chiezo へは何も送りません）。
         </span>
       </div>
     </section>

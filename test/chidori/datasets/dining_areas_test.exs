@@ -60,24 +60,35 @@ defmodule Chidori.Datasets.DiningAreasTest do
       {:ok, _kept} = create("残っている", ["chidori_dining_2"])
 
       collections = [
-        dining(1, "残っている", [35.6, 139.7, 35.61, 139.71]),
+        dining(1, "残っている", [35.67, 139.75, 35.69, 139.78]),
         dining(2, "丸の内", [35.678, 139.76, 35.686, 139.77]),
         %{"name" => "chidori_news", "description" => "x"}
       ]
 
-      assert {:ok, %{restored: [area], skipped: []}} =
+      assert {:ok, %{restored: [area], updated: [], skipped: []}} =
                DiningAreas.restore(fn -> {:ok, collections} end)
 
       assert {area.id, area.name} == {2, "丸の内"}
       assert DiningAreas.bbox(area) == [35.678, 139.76, 35.686, 139.77]
-      # 手元にある 1 番は上書きしない
+      # 手元にある 1 番は、四角が同じなら触らない
       assert [%{id: 1, name: "残っている"}, %{id: 2}] = DiningAreas.list()
+    end
+
+    test "Chiezo で四角を広げた範囲は、手元を Chiezo の四角に合わせる（名前は手元のまま）" do
+      {:ok, kept} = create("残っている", [])
+      wider = [kept.south - 0.004, kept.west, kept.north, kept.east + 0.002]
+
+      assert {:ok, %{restored: [], updated: [area], skipped: []}} =
+               DiningAreas.restore(fn -> {:ok, [dining(kept.id, "別の名前", wider)]} end)
+
+      assert area.name == "残っている"
+      assert DiningAreas.bbox(DiningAreas.get(kept.id)) == wider
     end
 
     test "説明か区画が読めない収集は飛ばして名前を返す" do
       broken = %{"name" => "chidori_dining_5", "description" => "手で書き換えた説明"}
 
-      assert {:ok, %{restored: [], skipped: ["chidori_dining_5"]}} =
+      assert {:ok, %{restored: [], updated: [], skipped: ["chidori_dining_5"]}} =
                DiningAreas.restore(fn -> {:ok, [broken]} end)
     end
 

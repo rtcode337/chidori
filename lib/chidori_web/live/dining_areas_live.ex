@@ -296,25 +296,31 @@ defmodule ChidoriWeb.DiningAreasLive do
     end
   end
 
-  # Chiezo に残っている範囲の収集から、手元に無い範囲を読み戻す（動かす場所を変えたとき）
+  # Chiezo に残っている範囲の収集から、手元に無い範囲を読み戻し、四角が違う範囲は
+  # Chiezo に合わせる（動かす場所を変えたとき・Chiezo の画面で範囲を直したとき）
   def handle_event("restore", _params, socket) do
     socket =
       case DiningAreas.restore() do
-        {:ok, %{restored: [], skipped: []}} ->
-          put_flash(socket, :info, "Chiezo に、ここに無い範囲の収集はありませんでした。")
+        {:ok, %{restored: [], updated: [], skipped: []}} ->
+          put_flash(socket, :info, "Chiezo の範囲は、ここと同じでした。")
 
-        {:ok, %{restored: restored, skipped: skipped}} ->
-          names = Enum.map_join(restored, "・", & &1.name)
-
-          note =
-            if skipped == [],
-              do: "",
-              else: "（#{Enum.join(skipped, "・")} は説明か区画が読めず、戻せませんでした）"
+        {:ok, %{restored: restored, updated: updated, skipped: skipped}} ->
+          parts =
+            [
+              restored != [] &&
+                "#{length(restored)} 件の範囲（#{Enum.map_join(restored, "・", & &1.name)}）を戻しました。",
+              updated != [] &&
+                "#{length(updated)} 件の範囲（#{Enum.map_join(updated, "・", & &1.name)}）の四角を Chiezo に合わせました。",
+              skipped != [] &&
+                "#{Enum.join(skipped, "・")} は説明か区画が読めないか、四角が大きすぎて戻せませんでした。"
+            ]
+            |> Enum.filter(& &1)
+            |> Enum.join("")
 
           socket
           |> assign(areas: DiningAreas.list(), datasets: Datasets.list())
           |> assign_pending()
-          |> put_flash(:info, "#{length(restored)} 件の範囲（#{names}）を戻しました。#{note}")
+          |> put_flash(:info, parts)
 
         {:error, _reason} ->
           put_flash(socket, :error, "Chiezo の収集の一覧を読めませんでした。")
