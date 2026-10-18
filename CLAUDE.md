@@ -8,7 +8,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
 |---|---|
 | Chiezo | 収集を頼み、溜まったものを読む。依頼文・抽出の指定・区画の割り方・巡回は Chidori が書いて送る |
 | 利用者 | 画面で読み、関心と記録を書く。要約を ntfy・端末（Web Push）で受け取る |
-| travel-log | Chidori が集めさせた食事処を、travel-log の形の ZIP に直して渡す |
+| travel-log | Chidori が集めさせた食事処とご当地グルメを、travel-log の形の ZIP に直して渡す |
 | 売買提案のアプリ | Chiezo の収集（市況ニュースの記事・`pta_market` の要約）を読み書きするだけ |
 
 ## 守る線引き
@@ -47,7 +47,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
 | `news-topics.md` | 最新情報・話題・トピックの網・興味トピック・トップページ | `news*`・`topics.ex`・`themes*`・`home*`・`news_live*`・`home_live*` |
 | `notify-webpush.md` | 要約の段取りと時計・ntfy・Web Push・設定ページ | `digest*`・`notify*`・`ntfy.ex`・`web_push*`・`settings_live*`・`sw.js` |
 | `relations.md` | 関連図（画家・芸能人・名作映画）・代表作・顔写真・図の操作 | `relations*`・`artwork.ex`・`relations_live*`・`face_controller.ex`・`pan_zoom.js` |
-| `datasets-dining.md` | データ収集（技術書・Pi-hole・食事処）・区画の地図・travel-log への書き出し | `datasets*`・`geo/**`・`dining_areas_live*`・`partition_map*`・`gsi_tiles.js` |
+| `datasets-dining.md` | データ収集（技術書・Pi-hole・ご当地グルメ・食事処）・区画の地図・県の地図・travel-log への書き出しと依頼 | `datasets*`・`geo/**`・`dining_areas_live*`・`partition_map*`・`prefecture_map*`・`gsi_tiles.js` |
 | `dev-tooling.md` | mix の回し方・テスト・資産の作り直し・移行 | `mix.exs`・`config/**`・`test/support/**`・`assets/css/**`・`priv/repo/**` |
 | `deploy.md` | Dockerfile・compose・CI・単体定義 | `Dockerfile`・`docker-compose*.yml`・`.github/**`・`.env.example`・`release.ex` |
 
@@ -62,16 +62,16 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
     `themes.ex` / `themes/`（トピックの網）・`home.ex` / `home/`（トップの枠） → `news-topics.md`
   - 要約と通知 —— `digest.ex` / `digest/scheduler.ex`・`notify.ex` / `notify/`・`ntfy.ex`・`web_push.ex` / `web_push/` → `notify-webpush.md`
   - 関連図 —— `relations.ex`・`relations/`（図・区画・芸能人・名作映画・見た記録・顔写真）・`artwork.ex` → `relations.md`
-  - データ収集 —— `datasets.ex`・`datasets/`（技術書・Pi-hole・食事処・範囲・依頼・travel-log 書き出し）・`geo/` → `datasets-dining.md`
+  - データ収集 —— `datasets.ex`・`datasets/`（技術書・Pi-hole・ご当地グルメ・食事処・範囲・依頼・travel-log 書き出し）・`geo/` → `datasets-dining.md`
   - 共通の道具 —— `jst.ex`（人に見せる日時）・`safe_url.ex`（外から来た URL）・`repo.ex`・`release.ex`（移行）
 - `lib/chidori_web/` — 画面
   - `live/` —— `home_live`・`news_live`・`relations_live`・`datasets_live`・`dining_areas_live`・`settings_live`・`collect.ex`（収集の枠の道具）
-  - `components/` —— 収集の枠・レポート・トピックの網・区画の地図・食事処の中のタブ・作品の詳細・主要メニューなど
+  - `components/` —— 収集の枠・レポート・トピックの網・区画の地図・県の地図・食事処の中のタブ・作品の詳細・主要メニューなど
   - `controllers/` —— travel-log 用 ZIP・顔写真・サムネイルの配り口
   - `socket_origin.ex` —— LiveView の接続元の見比べ（`PHX_CHECK_ORIGIN`）
-- `assets/js/` — 図の操作（`pan_zoom.js` を関連図・トピック・区画の地図で共有）、地理院タイル、スワイプ、Web Push、
+- `assets/js/` — 図の操作（`pan_zoom.js` を関連図・トピック・区画の地図・県の地図で共有）、地理院タイル、スワイプ、Web Push、
   中身のスクロール位置（`page_scroll.js`）
-- `priv/geo/japan_coast.json` — 白地図（Natural Earth）。`priv/static/` — PWA の `manifest.webmanifest`・`sw.js`・アイコン
+- `priv/geo/` — 白地図 `japan_coast.json` と県の境界 `japan_prefectures.json`（どちらも Natural Earth。県は `scripts/build_prefectures.py` で作る）。`priv/static/` — PWA の `manifest.webmanifest`・`sw.js`・アイコン
 - `docs/` — 人向けの詳しい説明（README から辿る）。`basic-design.md`・`technology-selection.md` は作り始める前の構想で、今の実装とは違う
 
 ## コマンド
@@ -117,7 +117,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
   body を画面の高さの縦並びにし（`root.html.heex`）、各画面は頭（`.page-head`）と `main` を並べる。
   `position: fixed` や sticky で留めない（iPhone の PWA でキーボードの出し入れのあとに位置がずれて取り残される）。
   ページ全体（window）はスクロールしないので、位置を読む・戻すのは `main` に対して書く（`PageScroll`）
-- 収集の名前は `chidori_` で始める（`chidori_tech`・`chidori_people`・`chidori_dining_<番号>` など）。
+- 収集の名前は `chidori_` で始める（`chidori_tech`・`chidori_people`・`chidori_gourmet`・`chidori_dining_<番号>` など）。
   `pta_market` は売買提案のアプリが書く収集で、Chidori は読むだけ
 - コードを変えたら、同じ変更で README（入口。1 画面に収める）と対応する `docs/*.md`、このファイルと
   `.claude/rules/` の該当ファイルを更新する。新しいファイルを足したら、どのルールファイルの `paths` に入るかも確かめる。

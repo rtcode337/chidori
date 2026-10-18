@@ -353,6 +353,95 @@ defmodule Chidori.Chiezo do
   end
 
   @doc """
+  ある点が**どの都道府県にあるか**（地図辞典の点の所属 `area` で読む）。`{:ok, 県}` か
+  `{:error, 理由}`。決まらなければ `{:error, :unknown}`。
+
+  近い順に広げて引き（200 m → 1 km → 5 km）、**いちばん多い所属**を採ります。
+  同じ数で並んだら決めません（県境の上で片方に倒すと、取り違えが黙って通る）。
+  逆ジオコーディングの外の API は叩かない —— 地図辞典がもう所属を持っている。
+  """
+  def area_at(base, lat, lon) when is_number(lat) and is_number(lon) do
+    Enum.reduce_while([200, 1000, 5000], {:error, :unknown}, fn meters, acc ->
+      case areas_near(base, lat, lon, meters) do
+        {:ok, [_ | _] = areas} ->
+          case areas |> Enum.frequencies() |> Enum.sort_by(&(-elem(&1, 1))) do
+            [{area, n}, {_other, n} | _rest] when is_binary(area) -> {:halt, {:error, :unknown}}
+            [{area, _n} | _rest] -> {:halt, {:ok, area}}
+          end
+
+        {:ok, []} ->
+          {:cont, acc}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  # 点のまわりの地図辞典の地物の所属（1 ページぶんで足りる。数を見るだけ）
+  @area_sample 50
+  defp areas_near(base, lat, lon, meters) do
+    dlat = meters / 111_320
+    dlon = meters / (111_320 * max(:math.cos(lat * :math.pi() / 180), 0.01))
+
+    query =
+      URI.encode_query(%{
+        "bbox" => Enum.join([lat - dlat, lon - dlon, lat + dlat, lon + dlon], ","),
+        "limit" => @area_sample,
+        "fields" => "title,extra"
+      })
+
+    case get(base <> "/v1/" <> @place_source <> "/filter?" <> query) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"results" => results}} when is_list(results) ->
+            {:ok,
+             for(
+               %{"extra" => %{"area" => area}} <- results,
+               is_binary(area) and area != "",
+               do: area
+             )}
+
+          _other ->
+            {:error, :chiezo_unexpected_body}
+        end
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
+  辞典に引き当てられなかった 1 件（`GET /v1/collect/{name}/unresolved`）。
+  `{:ok, %{total: 件数, rows: [%{"title", "reason", …}]}}` か `{:error, 理由}`。
+  口を持たない Chiezo（引き当てを知らない版）は 404 で、`{:error, :not_found}`。
+  """
+  def unresolved(base, name, limit \\ 1000) do
+    case get(base <> "/v1/collect/" <> URI.encode(name) <> "/unresolved?limit=#{limit}") do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"unresolved" => rows} = decoded} when is_list(rows) ->
+            {:ok, %{total: decoded["total"] || length(rows), rows: rows}}
+
+          _other ->
+            {:error, :chiezo_unexpected_body}
+        end
+
+      {:ok, %{status: 404}} ->
+        {:error, :not_found}
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
   1 件の座標を固定します（`POST /v1/collect/{name}/locks`）。**次に焼くときから効き**、
   AI の回が動かしても名簿を引き直しても、その座標に戻ります。
   """

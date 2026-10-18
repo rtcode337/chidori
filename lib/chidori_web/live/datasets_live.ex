@@ -20,6 +20,7 @@ defmodule ChidoriWeb.DatasetsLive do
   import ChidoriWeb.Collect
   import ChidoriWeb.CollectPanel
   import ChidoriWeb.PartitionMap
+  import ChidoriWeb.PrefectureMap
 
   alias Chidori.Chiezo
   alias Chidori.Datasets
@@ -113,7 +114,11 @@ defmodule ChidoriWeb.DatasetsLive do
        settings_open: false,
        # 本棚を最後に Chiezo から読んだ時刻（覚え書きのもの）
        shelf_checked_at: nil,
-       shelf_loading: false
+       shelf_loading: false,
+       # 県ごとの進み具合（ご当地グルメ。数だけ。設定を開いたときに Chiezo から数える）
+       prefecture_progress: nil,
+       # 県の地図（数が届いたときに組む）
+       prefecture_map: nil
      )
      |> assign(state: empty_state(), derived_state: empty_state())}
   end
@@ -150,7 +155,9 @@ defmodule ChidoriWeb.DatasetsLive do
         live_on: false,
         live_rows: [],
         live_cursor: nil,
-        live_error: nil
+        live_error: nil,
+        prefecture_progress: nil,
+        prefecture_map: nil
       )
 
     # **本棚のある対象は、開いただけでは Chiezo と話さない。** 本棚は覚え書きを出し、
@@ -707,6 +714,25 @@ defmodule ChidoriWeb.DatasetsLive do
 
   def handle_async(:recent_runs, _result, socket), do: {:noreply, socket}
 
+  # 県の地図は**数が届いたときに 1 回だけ組む**（`Chidori.Datasets.Map.prefectures/1`）。
+  # 画面で組むと、県を選び直すたびに 47 県ぶんの境目を送り直すことになる
+  def handle_async(:prefecture_progress, {:ok, {:ok, progress} = result}, socket) do
+    map =
+      Chidori.Datasets.Map.prefectures(progress.rows,
+        unresolved?: progress.unresolved_total != nil
+      )
+
+    {:noreply, assign(socket, prefecture_progress: result, prefecture_map: map)}
+  end
+
+  def handle_async(:prefecture_progress, {:ok, result}, socket),
+    do: {:noreply, assign(socket, prefecture_progress: result, prefecture_map: nil)}
+
+  def handle_async(:prefecture_progress, {:exit, _reason}, socket),
+    do:
+      {:noreply,
+       assign(socket, prefecture_progress: {:error, :collection_crashed}, prefecture_map: nil)}
+
   # travel-log からの依頼が終わった（頼めた・断られた・待ちきれなかった）。
   # 見積もりは一言に使うので、結果と組にして残す
   @impl true
@@ -772,7 +798,18 @@ defmodule ChidoriWeb.DatasetsLive do
     |> start_async(:backends, &Datasets.backends/0)
     |> load_request_results()
     |> load_recent_runs()
+    |> load_prefecture_progress(dataset)
   end
+
+  # **県ごとの進み具合**（区画が県の対象だけ。区画の地図の代わり）。数えるのに収集の
+  # 全件を読むので、設定を開いたときと読み直したときだけ
+  defp load_prefecture_progress(socket, %{prefectures: true, module: module}) do
+    socket
+    |> assign(prefecture_progress: :loading)
+    |> start_async(:prefecture_progress, fn -> module.progress() end)
+  end
+
+  defp load_prefecture_progress(socket, _dataset), do: socket
 
   @doc "地名の候補を見分ける一言（地域と種別）。"
   def place_label(place) do
@@ -972,6 +1009,54 @@ defmodule ChidoriWeb.DatasetsLive do
   def extract_text(%{dataset: dataset}) do
     if defines?(dataset, :extract, 0),
       do: Jason.encode!(Datasets.call(dataset, :extract), pretty: true)
+  end
+
+  @doc """
+  県ごとの進み具合の行に、その県の区画の「見終わった巡回」を添えます（区画の台帳から）。
+  台帳に無い県（まだ区画が作られていない）は `by: nil`。
+  """
+  def prefecture_rows(rows, partition_rows) do
+    seen = Map.new(partition_rows, &{&1.key, &1})
+
+    Enum.map(rows, fn row ->
+      case Map.get(seen, row.key) do
+        nil -> Map.merge(row, %{by: nil, seen: nil, in_ledger: false})
+        partition -> Map.merge(row, %{by: partition.by, seen: partition.seen, in_ledger: true})
+      end
+    end)
+  end
+
+  @doc """
+  選んだ県の数（県ごとの進み具合の行）。まだ数えていない・県でない鍵なら nil。
+  """
+  def picked_prefecture({:ok, %{rows: rows}}, key) when is_binary(key),
+    do: Enum.find(rows, &(&1.key == key))
+
+  def picked_prefecture(_progress, _key), do: nil
+
+  @doc "県ごとの進み具合の合計の一文（引き当ての口を持たない Chiezo では、その数を言わない）。"
+  def progress_summary(progress, rows) do
+    total = fn key -> Enum.sum(Enum.map(rows, &Map.get(&1, key, 0))) end
+
+    failed =
+      if progress.unresolved_total,
+        do: "（うち引き当てできず #{total.(:unresolved)} 品）",
+        else: ""
+
+    "料理 #{total.(:dishes)} 品・代表店が決まって地図に置ける #{total.(:placed)} 品・" <>
+      "代表店まだ #{total.(:pending)} 品#{failed}・代表店なし #{total.(:no_shop)} 品。"
+  end
+
+  @doc """
+  引き当てと書式の指定（JSON）。**持つ対象だけ**（ご当地グルメ）。持たなければ nil。
+  """
+  def resolve_text(%{dataset: dataset}) do
+    if defines?(dataset, :resolve, 0) and defines?(dataset, :formats, 0),
+      do:
+        Jason.encode!(
+          %{resolve: Datasets.call(dataset, :resolve), formats: Datasets.call(dataset, :formats)},
+          pretty: true
+        )
   end
 
   @doc "区画の割り方。**座標で割るので、鍵は矩形になります**。"

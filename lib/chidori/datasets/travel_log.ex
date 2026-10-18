@@ -149,19 +149,38 @@ defmodule Chidori.Datasets.TravelLog do
            fetch_all(base, collection, Chiezo.removed_tag(), include_removed: true) do
       links = link_checks(base, collection)
 
+      made = Enum.map(docs, &{&1, row(&1, dataset, links)})
+
       {rows, outside} =
-        docs
-        |> Enum.map(&row(&1, dataset, links))
+        made
+        |> Enum.map(&elem(&1, 1))
         |> Enum.reject(&is_nil/1)
         |> split_outside(dataset)
 
       {:ok,
        %{
          rows: rows,
-         excluded: Enum.uniq(excluded_keys(removed, dataset) ++ Enum.map(outside, & &1["key"])),
+         excluded:
+           Enum.uniq(
+             excluded_keys(removed, dataset) ++
+               Enum.map(outside, & &1["key"]) ++ unplaced_keys(made, dataset)
+           ),
          outside: length(outside),
          skipped: length(docs) - length(rows) - length(outside)
        }}
+    end
+  end
+
+  # **地図に置けなくなった 1 件の key**（自分で行を組む対象 = `spot/2` を持つものだけ）。
+  # ご当地グルメは代表店が閉店して外れたり、引き当てられなくなったりすると座標を失う ——
+  # spots.csv に載らないだけでは、前に読み込んだピンが閉店した店の上に残る。
+  # **一度も書き出していない 1 件も入る**が、travel-log の削除は key の突き合わせなので、
+  # 向こうに無い key は何も消さない
+  defp unplaced_keys(made, %{module: module} = dataset) do
+    if function_exported?(module, :spot, 2) do
+      for {doc, nil} <- made, doc["doc_id"] != nil, do: spot_key(doc["doc_id"], dataset)
+    else
+      []
     end
   end
 
@@ -197,7 +216,7 @@ defmodule Chidori.Datasets.TravelLog do
       [
         {~c"#{key}/settings.json",
          settings_json(key, name, rows, category_order(module), series_order)},
-        {~c"#{key}/spots.csv", csv(rows)}
+        {~c"#{key}/spots.csv", csv(rows, csv_header(module))}
       ] ++
         if excluded == [],
           do: [],
@@ -318,7 +337,16 @@ defmodule Chidori.Datasets.TravelLog do
   （寿司屋の「和食」）ばかりで、絞り込みの軸になっていませんでした。
   `categories/2` を持たない収集は、今までどおりジャンルの 2 つめ以降を回します。
   """
-  def row(doc, %{module: module, collection: collection} = dataset, links \\ %{}) do
+  def row(doc, dataset, links \\ %{})
+
+  # **行を自分で組む対象**（ご当地グルメ。列も説明文の組み方もランクの決め方も違う）
+  def row(doc, %{module: module} = dataset, links) do
+    if Code.ensure_loaded?(module) and function_exported?(module, :spot, 2),
+      do: module.spot(doc, dataset),
+      else: plain_row(doc, dataset, links)
+  end
+
+  defp plain_row(doc, %{module: module, collection: collection} = dataset, links) do
     tags = Map.get(doc, "tags") || []
     extra = Map.get(doc, "extra") || %{}
     name = doc |> Map.get("title") |> clean() |> without_disambiguation()
@@ -522,11 +550,17 @@ defmodule Chidori.Datasets.TravelLog do
     |> Enum.map(&elem(&1, 0))
   end
 
+  # spots.csv の列。**対象が列を持っていればそれ**（ご当地グルメは提供の時期と営業時間の
+  # 2 列を足す。travel-log は列ごと省いた CSV では既存の値を変えないので、食事処は今のまま）
+  defp csv_header(module) do
+    if function_exported?(module, :csv_header, 0), do: module.csv_header(), else: @csv_header
+  end
+
   @doc """
   spots.csv。**改行は CRLF**（travel-log-data の CSV と揃える）。
   """
-  def csv(rows) do
-    [@csv_header | Enum.map(rows, fn row -> Enum.map(@csv_header, &to_string(row[&1])) end)]
+  def csv(rows, header \\ @csv_header) do
+    [header | Enum.map(rows, fn row -> Enum.map(header, &to_string(row[&1])) end)]
     |> Enum.map_join("\r\n", fn cells -> Enum.map_join(cells, ",", &escape/1) end)
     |> Kernel.<>("\r\n")
   end

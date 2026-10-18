@@ -18,6 +18,7 @@ defmodule Chidori.Datasets do
   alias Chidori.Datasets.Books
   alias Chidori.Datasets.DiningAreas
   alias Chidori.Datasets.Dining
+  alias Chidori.Datasets.Gourmet
   alias Chidori.Datasets.Pihole
 
   @doc """
@@ -25,11 +26,15 @@ defmodule Chidori.Datasets do
 
   **食事処は範囲ごとに 1 つ**（`Chidori.Datasets.DiningAreas`。画面で地図に四角を描いて
   足す）。日本全体を 1 つで回していた頃は、費用がかさみ抜け漏れも多すぎた。
+
+  **ご当地グルメは全国で 1 つ**（`Chidori.Datasets.Gourmet`。区画が県なので、範囲で分ける
+  理由が無い）。
   """
   def defined,
     do: [
       Books.definition(),
-      Pihole.definition() | Enum.map(DiningAreas.list(), &Dining.definition/1)
+      Pihole.definition(),
+      Gourmet.definition() | Enum.map(DiningAreas.list(), &Dining.definition/1)
     ]
 
   @doc """

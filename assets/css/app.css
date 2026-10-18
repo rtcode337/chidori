@@ -648,6 +648,40 @@ main.relations-page > div { padding-top: 0; }
    色ごとの境目（上）に負けないよう !important を付ける */
 .partition-map rect:hover { fill: #ea580c !important; stroke: #9a3412 !important; stroke-width: 1; opacity: 1 !important; vector-effect: non-scaling-stroke; }
 
+/* 県の地図（ご当地グルメ）。**器は区画の地図と同じ**（`.map-canvas`。操作も見え方も揃える）。
+   **高さは図の縦横比から決める**（幅 960・高さ 1,099。上限は画面の 7 割）—— 決め打ちの高さだと、
+   狭い画面では幅で縮んだ日本の上下に、器の半分ほどの空きが出ていた */
+.prefecture-map { margin-top: .6rem; }
+.pref-canvas { width: 100%; height: auto; aspect-ratio: 960 / 1099; max-height: min(70vh, 46rem); background: #eef4fb; }
+/* 塗りは代表店ありの割合の段（凡例と同じ色）。**境目は白い細線**（画面の px で見る）。
+   小さい島は面だけでは見えないので、線が 1px の縁を兼ねる（区画の地図と同じ考え方） */
+.prefecture-map path.pref { stroke: rgba(51, 65, 120, .45); stroke-width: .7; stroke-linejoin: round; vector-effect: non-scaling-stroke; cursor: pointer; fill-rule: evenodd; }
+/* **料理がまだ無い県は白に近く、0 % は薄い藍。** 集め始めは 0 % の県が大半なので、
+   その 2 つが同じ薄さだと「まだ何も無い」と「料理はあるが代表店が無い」が見分けられない */
+.prefecture-map .pref-empty { fill: #f8fafc; }
+.prefecture-map .pref-step-0 { fill: #dfe3f8; }
+.prefecture-map .pref-step-1 { fill: #b3bdf0; }
+.prefecture-map .pref-step-2 { fill: #8293e3; }
+.prefecture-map .pref-step-3 { fill: #5265cf; }
+.prefecture-map .pref-step-4 { fill: #2e3a9a; }
+.prefecture-map path.pref:hover { fill: #fdba74; }
+/* 引き当てできずの印。**押す口ではない**（下の県が受ける）。半径は台本が倍率で割り戻す */
+.prefecture-map .pref-flags circle { fill: #f97316; stroke: #fff; stroke-width: 1.5; vector-effect: non-scaling-stroke; pointer-events: none; }
+/* 選んだ県。上に重ねた 1 本を太い縁で囲む（塗りの段は透かして残す） */
+.prefecture-map path.pref-picked { fill: rgba(249, 115, 22, .35); stroke: #c2410c; stroke-width: 2.5; stroke-linejoin: round; vector-effect: non-scaling-stroke; cursor: pointer; fill-rule: evenodd; }
+.pref-legend { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .9rem; margin: .2rem 0 .4rem; padding: 0; list-style: none; font-size: .78rem; color: #3b4463; }
+.pref-legend .legend-title { flex-basis: 100%; font-weight: 700; }
+.pref-legend li { display: flex; align-items: center; gap: .3rem; }
+.pref-legend .swatch { display: inline-block; width: .95rem; height: .95rem; border-radius: .2rem; border: 1px solid #cbd5e1; }
+.pref-legend .swatch.pref-empty { background: #f8fafc; }
+.pref-legend .swatch.pref-step-0 { background: #dfe3f8; }
+.pref-legend .swatch.pref-step-1 { background: #b3bdf0; }
+.pref-legend .swatch.pref-step-2 { background: #8293e3; }
+.pref-legend .swatch.pref-step-3 { background: #5265cf; }
+.pref-legend .swatch.pref-step-4 { background: #2e3a9a; }
+.pref-legend .flag-mark { display: inline-block; width: .65rem; height: .65rem; border-radius: 50%; background: #f97316; border: 1.5px solid #fff; box-shadow: 0 0 0 1px #f97316; }
+.prefecture-table tr.is-picked td { background: #fff7ed; }
+
 /* 選んだ区画。押した先に何があるのかを読んでから頼めるように、選ぶのと頼むのを分ける */
 .partition-picked { margin-top: .8rem; border: 1px solid #dcdff0; border-radius: .8rem; padding: .9rem 1rem; background: #fff; }
 .partition-picked h3 { margin: 0 0 .5rem; font-size: .95rem; }

@@ -141,4 +141,69 @@ defmodule Chidori.Datasets.MapTest do
   test "区画が無ければ空の図" do
     assert PartitionMap.build([]).rects == []
   end
+
+  describe "県の地図（ご当地グルメ）" do
+    defp prefecture(name, dishes, placed, unresolved) do
+      %{
+        prefecture: name,
+        key: "地域:#{name}",
+        dishes: dishes,
+        placed: placed,
+        pending: dishes - placed,
+        unresolved: unresolved,
+        no_shop: 0
+      }
+    end
+
+    test "47 県を、範囲を描く地図と同じ枠と投影で置く" do
+      map = PartitionMap.prefectures([])
+      blank = PartitionMap.blank()
+
+      assert length(map.shapes) == 47
+      assert {map.width, map.height} == {blank.width, blank.height}
+      assert Enum.map(map.shapes, & &1.name) == Chidori.Datasets.Gourmet.prefectures()
+      assert Enum.all?(map.shapes, &String.starts_with?(&1.d, "M"))
+
+      # 印の点は本土の上（東京都は小笠原に、沖縄県は離島に引かれない）
+      tokyo = Enum.find(map.shapes, &(&1.name == "東京都"))
+      %{x: x, y: y} = PartitionMap.xy(%{frame: blank_frame()}, 35.69, 139.5)
+      assert_in_delta tokyo.label.x, x, 15
+      assert_in_delta tokyo.label.y, y, 15
+    end
+
+    test "塗りは代表店ありの割合の段、印は引き当てできずがある県だけ" do
+      map =
+        PartitionMap.prefectures([
+          prefecture("東京都", 4, 3, 1),
+          prefecture("大阪府", 4, 0, 0),
+          prefecture("京都府", 0, 0, 0)
+        ])
+
+      by = Map.new(map.shapes, &{&1.name, &1})
+      assert %{step: 4, flag: true, key: "地域:東京都"} = by["東京都"]
+      assert %{step: 0, flag: false} = by["大阪府"]
+      assert %{step: nil, flag: false} = by["京都府"]
+      # 行の無い県も鍵は持つ（押せば「まだ区画が無い」と言える）
+      assert %{step: nil, key: "地域:沖縄県"} = by["沖縄県"]
+    end
+
+    test "引き当てできずを数えていなければ、印を付けない" do
+      map = PartitionMap.prefectures([prefecture("東京都", 4, 3, 1)], unresolved?: false)
+      tokyo = Enum.find(map.shapes, &(&1.name == "東京都"))
+
+      assert %{flag: false, unresolved: nil} = tokyo
+    end
+
+    test "段の区切り" do
+      assert PartitionMap.share_step(0, 0) == nil
+      assert PartitionMap.share_step(0, 5) == 0
+      assert PartitionMap.share_step(1, 5) == 1
+      assert PartitionMap.share_step(1, 4) == 2
+      assert PartitionMap.share_step(2, 4) == 3
+      assert PartitionMap.share_step(3, 4) == 4
+      assert PartitionMap.share_step(4, 4) == 4
+    end
+  end
+
+  defp blank_frame, do: PartitionMap.blank().frame
 end

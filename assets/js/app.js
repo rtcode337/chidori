@@ -27,6 +27,7 @@ import {hooks as colocatedHooks} from "phoenix-colocated/chidori"
 // ため、テンプレートの中ではなくここに置く（中身は共通の ./pan_zoom で、
 // 倍率の幅や札の留め方といった図ごとの事情だけをそれぞれが足す）
 import PartitionMap from "./partition_map"
+import PrefectureMap from "./prefecture_map"
 import AreaDraw from "./area_draw"
 import RelationMap from "./relation_map"
 import DownloadLink from "./download_link"
@@ -50,7 +51,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, PartitionMap, AreaDraw, RelationMap, DownloadLink, DigestSwipe, PanelSwipe, TopicMap, SortableList, ScrollTabs, AutoHeight, PageScroll, AskNearby, WebPush},
+  hooks: {...colocatedHooks, PartitionMap, PrefectureMap, AreaDraw, RelationMap, DownloadLink, DigestSwipe, PanelSwipe, TopicMap, SortableList, ScrollTabs, AutoHeight, PageScroll, AskNearby, WebPush},
 })
 
 // Show progress bar on live navigation and form submits

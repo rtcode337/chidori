@@ -40,6 +40,8 @@ defmodule Chidori.CollectDrift do
     "verify_tags" => "タグの確かめ方",
     "web" => "web 検索",
     "locked_doubt_tag" => "固定した店を消さずに付けるタグ",
+    "resolve" => "辞典への引き当て",
+    "formats" => "脇書きの書式",
     "after" => "待つ巡回",
     "only_new" => "足すだけにするか",
     "use_feed" => "配信で引くか",

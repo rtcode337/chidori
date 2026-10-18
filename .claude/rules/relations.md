@@ -37,5 +37,5 @@ paths:
   芸能人の名簿は海外の俳優も（「〜の男優」「〜の女優」の `tag_suffix`）
 - 代表作の説明と絵は Chiezo の jawiki から引く（`Chidori.Artwork`。絵は持たず縮小版の URL を指す。結果は 1 日覚える）
 - 見た記録は `chidori_data` に 1 ノード 1 件（`Chidori.Relations.Marks`）。収集には書かない
-- 図の操作は `assets/js/pan_zoom.js` を関連図・トピックの網・区画の地図で共有する。拡大は `viewBox` を動かす（CSS の transform で引き伸ばさない）。
+- 図の操作は `assets/js/pan_zoom.js` を関連図・トピックの網・区画の地図・県の地図で共有する。拡大は `viewBox` を動かす（CSS の transform で引き伸ばさない）。
   図ごとの事情だけを `relation_map.js` に足す

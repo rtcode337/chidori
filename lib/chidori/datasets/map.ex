@@ -237,6 +237,134 @@ defmodule Chidori.Datasets.Map do
     }
   end
 
+  # 県の地図の塗りの段（代表店ありの割合の下限）。**段に分ける**（連続の濃さにしない）——
+  # 凡例の色と県の色を見比べて割合を読むので、近い濃さが何段も並ぶと読み分けられない
+  @shares [{0.75, 4}, {0.5, 3}, {0.25, 2}, {0.0, 1}]
+
+  @doc """
+  県の地図（ご当地グルメ）。**白地図の範囲を描く地図と同じ枠・同じ投影**で 47 県を置き、
+  県ごとの進み具合（`Chidori.Datasets.Gourmet.progress/0` の行）を添えます。
+
+  - `step` —— 塗りの段。代表店ありの割合（料理のうち）で 1〜4、0 % なら 0、料理がまだ無ければ `nil`
+  - `flag` —— 引き当てできずがあるか（塗りとは別の印で出す）
+  - `label` —— 印を置く点（いちばん大きい輪の重心。本土の県では本土の上に来る）
+
+  **大きさは本当のまま描きます**（沖縄・小笠原も縮めたり寄せたりしない）。区画の地図と同じく、
+  小さい島は画面の側が 1px の縁で補い、それでも押しにくい県は表から選びます。
+
+  引き当てできずを数えていないとき（その口を持たない Chiezo。`unresolved?: false`）は、
+  `unresolved` を nil にして印も付けません。
+  """
+  def prefectures(rows, opts \\ []) do
+    counted? = Keyword.get(opts, :unresolved?, true)
+    by_name = Map.new(rows, &{&1.prefecture, &1})
+    %{width: width, height: height, shapes: shapes} = prefecture_shapes()
+
+    %{
+      width: width,
+      height: height,
+      shapes:
+        for shape <- shapes do
+          row =
+            Map.get(by_name, shape.name, %{
+              dishes: 0,
+              placed: 0,
+              pending: 0,
+              unresolved: 0,
+              no_shop: 0
+            })
+
+          key = Map.get(row, :key) || "#{Chidori.Datasets.Gourmet.area_tag()}:#{shape.name}"
+
+          Map.merge(shape, %{
+            key: key,
+            dishes: row.dishes,
+            placed: row.placed,
+            pending: row.pending,
+            unresolved: if(counted?, do: row.unresolved),
+            no_shop: row.no_shop,
+            step: share_step(row.placed, row.dishes),
+            flag: counted? and row.unresolved > 0
+          })
+        end
+    }
+  end
+
+  @doc "代表店ありの割合を塗りの段に（料理が無ければ nil）。凡例と同じ区切り。"
+  def share_step(_placed, 0), do: nil
+  def share_step(0, _dishes), do: 0
+
+  def share_step(placed, dishes) do
+    share = placed / dishes
+    Enum.find_value(@shares, fn {floor, step} -> if share >= floor, do: step end)
+  end
+
+  # 県の輪を図の座標の path に直したもの。**どの回も同じ**（枠も投影も決まっている）ので、
+  # 初めて使うときに 1 回だけ作って取っておく（47 県・6,700 点ほど）
+  defp prefecture_shapes do
+    case :persistent_term.get({__MODULE__, :prefectures}, nil) do
+      nil ->
+        built = build_prefecture_shapes()
+        :persistent_term.put({__MODULE__, :prefectures}, built)
+        built
+
+      built ->
+        built
+    end
+  end
+
+  defp build_prefecture_shapes do
+    {south, west, north, east} = @japan
+    scale = @width / (east - west)
+    top = mercator(north)
+
+    shapes =
+      for %{name: name, rings: rings} <- Chidori.Geo.Prefectures.all() do
+        projected =
+          Enum.map(rings, fn ring ->
+            Enum.map(ring, fn [lon, lat] ->
+              {round2((lon - west) * scale), round2((top - mercator(lat)) * scale)}
+            end)
+          end)
+
+        %{name: name, d: Enum.map_join(projected, &ring_path/1), label: label_point(projected)}
+      end
+
+    %{width: @width, height: Float.round((top - mercator(south)) * scale, 1), shapes: shapes}
+  end
+
+  defp ring_path([{x, y} | rest]),
+    do: "M#{x} #{y}" <> Enum.map_join(rest, fn {px, py} -> "L#{px} #{py}" end) <> "Z"
+
+  # 印を置く点。**いちばん大きい輪の重心**（県の全部の点の平均だと、離れた島に引かれて
+  # 海の上に落ちる —— 東京都は小笠原に、鹿児島県は奄美に）
+  defp label_point(rings) do
+    ring = Enum.max_by(rings, &abs(signed_area(&1)))
+    area = signed_area(ring)
+    pairs = Enum.zip(ring, tl(ring) ++ [hd(ring)])
+
+    {cx, cy} =
+      if area == 0 do
+        {Enum.sum(Enum.map(ring, &elem(&1, 0))) / length(ring),
+         Enum.sum(Enum.map(ring, &elem(&1, 1))) / length(ring)}
+      else
+        Enum.reduce(pairs, {0.0, 0.0}, fn {{x1, y1}, {x2, y2}}, {sx, sy} ->
+          cross = x1 * y2 - x2 * y1
+          {sx + (x1 + x2) * cross, sy + (y1 + y2) * cross}
+        end)
+        |> then(fn {sx, sy} -> {sx / (6 * area), sy / (6 * area)} end)
+      end
+
+    %{x: round1(cx), y: round1(cy)}
+  end
+
+  defp signed_area(ring) do
+    ring
+    |> Enum.zip(tl(ring) ++ [hd(ring)])
+    |> Enum.reduce(0.0, fn {{x1, y1}, {x2, y2}}, acc -> acc + x1 * y2 - x2 * y1 end)
+    |> Kernel./(2)
+  end
+
   @doc "四角（`[南, 西, 北, 東]`）を、その図の座標の矩形へ（`%{x, y, width, height}`）。"
   def box(%{frame: %{west: west, top: top, scale: scale}}, [south, west_lon, north, east]) do
     left = place1((west_lon - west) * scale)
@@ -262,4 +390,7 @@ defmodule Chidori.Datasets.Map do
 
   # 海岸線は**押す口ではない**ので、座標は粗くてよい（点の数がそのまま送る量になる）
   defp round1(value), do: Float.round(value, 1)
+
+  # 県の境目は**押す口でもある**ので、海岸線より 1 桁細かく（寄って隣の県を押さないように）
+  defp round2(value), do: Float.round(value, 2)
 end

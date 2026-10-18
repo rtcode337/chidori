@@ -1,0 +1,1263 @@
+defmodule Chidori.Datasets.Gourmet do
+  @moduledoc """
+  ご当地グルメ —— travel-log の地図に「その土地で何を食べるか（何を買って帰るか）」を
+  並べるための収集です。**1 件は料理**（土産・駅弁・食材も含む）で、ピンは**その料理を
+  いま確実に食べられる・買える代表の店**に立てます。詳しい説明は
+  `docs/datasets.md「ご当地グルメ（travel-log 向け）」`。
+
+  ## 区画は県（47）
+
+  **県で割ります**（Chiezo の `by=tag`・`prefix: "地域:"`・`values` に 47 県を並べる）。
+  値を並べるのは、まだ 1 件も無い県も最初から区画にするためです —— 母集団にある
+  タグからしか区画が生まれない作りだと、何も集めていない県に「足りない料理は無いか」を
+  永遠に問えません。**並べた順が 1 周目の順**で、東京都から JIS の番号順に回り、
+  沖縄県のあと北海道から千葉県まで戻ります（`prefecture_order/0`）。
+
+  ## 名簿は百科事典のカテゴリから機械で
+
+  **最初は空から始めません。** 百科事典（`jawiki`）の「県の名前が付いていて、
+  ご当地の食べものであることが確実な」カテゴリから機械で名簿を作ります
+  （`extract/0`）。AI に一から思い出させると AI の枠をそのぶん使ううえ、
+  回ごとに違う名前で同じ料理が増えます。
+
+  ## 座標は AI に書かせない
+
+  AI が返すのは代表店の手がかり（名前・住所・頁の URL・辞典の見出し）だけで、
+  **座標は Chiezo が焼くときに辞典（地図辞典・店舗辞典）から引き当てます**
+  （`resolve/0`）。名前だけで辞典を引くと同じ名前の別の店舗を掴むので、住所・
+  市区町村・サイト・辞典どうしの一致で確かめたものだけが採られます。
+  引き当てられなかった料理は座標を持たないので、travel-log へは出ません。
+
+  ## 巡回は 3 本
+
+  機械収集（名簿）・情報収集（足りない料理を探して足す）・整理（代表店を決める・
+  空欄を埋める・確かめ直す）。**1 回に 1 県**で、どちらも 12 時間ごとに回ります。
+  """
+
+  alias Chidori.Chiezo
+  alias Chidori.SweepNames
+
+  @collection "chidori_gourmet"
+
+  # travel-log の種別の key と名前（設計で決めたもの。後から変えない —— 変えると
+  # travel-log 側では別の種別になり、読み込んだスポットと記録が切り離される）
+  @export_key "gourmet"
+  @export_name "ご当地グルメ"
+
+  # 47 都道府県（JIS X 0401 の番号順）。**区画の鍵・地域の語彙・カテゴリの名前の
+  # 組み立ての全部がこの並びを使う** —— 書き並べる場所を 1 つにしておかないと、
+  # どこかで 1 県だけ落ちても気づけない
+  @prefectures ~w(
+    北海道 青森県 岩手県 宮城県 秋田県 山形県 福島県 茨城県 栃木県 群馬県
+    埼玉県 千葉県 東京都 神奈川県 新潟県 富山県 石川県 福井県 山梨県 長野県
+    岐阜県 静岡県 愛知県 三重県 滋賀県 京都府 大阪府 兵庫県 奈良県 和歌山県
+    鳥取県 島根県 岡山県 広島県 山口県 徳島県 香川県 愛媛県 高知県 福岡県
+    佐賀県 長崎県 熊本県 大分県 宮崎県 鹿児島県 沖縄県
+  )
+
+  # 1 周目を回り始める県（JIS の番号。13 = 東京都）。ここから番号順に沖縄県まで行き、
+  # 北海道に戻って 12（千葉県）で一周する
+  @first_prefecture 13
+
+  # 名簿に入れるカテゴリの括り（`<県の名前>の<括り>`）。**県の名前が付いているものだけ**。
+  # 「日本の郷土料理」「ご当地グルメ」のような全国の括りは入れない —— 名前から県が
+  # 読めないうえ、カツ丼・おでんのようなどこにでもある料理が混ざる（前の作り方で
+  # 「一般的な料理」が多く入った原因）。地方の括り（関東地方のご当地ラーメン・
+  # 東北地方の駅弁など）も県が読めないので入れない。地方のご当地ラーメンの記事は
+  # ほとんど（108 件中 106 件）が県の麺料理にも入っているので、そちらから入る。
+  #
+  # 本番の Chiezo の `/v1/jawiki/tags?contains=` で実在と件数を確かめてある（2026-10）:
+  # 「<県>の麺料理」47 県・のべ 372 件、「<県>の土産菓子」44 県・のべ 394 件、北海道だけにある
+  # 「北海道のご当地ラーメン」19・「…ご当地焼きそば」9・「…ご当地カレー」14・
+  # 「…ご当地丼」8・「北海道の駅弁」6。**47 県ぶんを組み立てて渡す**（無い県の名前は
+  # 0 件で終わる）—— 書き並べると、あとから県のカテゴリが増えたときに黙って落ちる。
+  #
+  # 「<県>の食文化」「<県>の菓子」は入れない。食文化は企業・番組・人物・動植物まで抱えていて
+  # （前の作り方で 1,007 件のうち 6 割を落とした）、菓子はかき氷・鰹節のような
+  # 土地に紐づかない食品まで入る
+  @roster_kinds ~w(麺料理 土産菓子 ご当地ラーメン ご当地焼きそば ご当地カレー ご当地丼 駅弁)
+
+  # **組で入れる括り**（`<県>の農業` で、同じ県の `<県>の食文化` にも入っている記事だけ）。
+  # 農業のカテゴリは農協・試験場・品種・制度まで抱えるが、食文化にも入っている記事は
+  # その土地の名産の農産物・ブランド牛・茶がよく拾える（本番の Chiezo で 2026-10 に
+  # 確かめた: 47 県のべ 410 件、うち米の品種 47 件。神奈川県 20 件 = 湘南ゴールド・
+  # 三浦大根・足柄茶…、群馬県 14 件 = 下仁田ネギ・国府白菜…）。Chiezo の抽出の
+  # `tag_pairs`（同じ県どうしの組でしか採らない）。種類は「食材」
+  @paired_kind "農業"
+  @paired_with "食文化"
+
+  # 名簿から外すカテゴリ（どれか 1 つでも付いている記事は入れない）。**料理ではなく店・
+  # 会社・商品・作品の記事**を落とす —— 県の麺料理にはラーメン店やチェーンの記事が、
+  # 土産菓子には菓子舗や製菓会社の記事が入っている（前の作り方で除外の半分近くが
+  # 企業・店だった）。銘菓の名前を店の名前にしている記事（暖簾の名前で知られる
+  # 菓子舗）も一緒に落ちるが、それは情報収集の回が料理の名前で足し直す
+  # （AI が菓子の名前で足すほうが、店の記事を料理として残すより地図が読みやすい）。
+  # どれも本番の名簿の候補（746 件）に実際に付いていたタグで、外したあとは 661 件
+  @excluded_categories ~w(
+    ラーメン店 餃子店 洋菓子店 日本のファストフード店 日本の外食事業者
+    和菓子の店舗・メーカー 日本の製菓業者 日本の食品メーカー 日本の製麺業者 日本の即席麺メーカー
+    インスタントラーメン インスタントラーメンの商品名 インスタント焼きそば
+    日清食品の製品 日清食品のインスタントラーメン 東洋水産
+    ガイドブック グルメ番組 ラーメンを題材とした作品 うどんを題材とした作品
+    食文化に関する日本の組織
+    イネの品種
+  )
+  # 県の名前の付いた、店・会社・一覧のカテゴリ（47 県ぶん組み立てる）
+  @excluded_kinds ~w(飲食店 製菓業者 一覧)
+
+  # 料理の種類（travel-log のシリーズ）。**語彙は Chidori が持つ** —— AI に決めさせると
+  # 表記が割れる。並びがそのまま travel-log のシリーズの並びと色になる
+  @kinds ~w(ラーメン うどん そば 焼きそば 麺類 カレー 丼もの 寿司・ごはん 駅弁 粉もの 鍋・汁物 肉料理 魚介料理 食材 菓子 パン 飲み物 その他)
+
+  # 名簿の記事のカテゴリから、種類を機械で読む（細かいものを先に。1 件に 1 つだけ付く）。
+  # 当たらなかったものは AI が付ける
+  @kind_rules [
+    {"^(.+の駅弁|駅弁)$", "駅弁"},
+    {"^(.+のご当地ラーメン|ラーメン|醤油ラーメン|味噌ラーメン|豚骨ラーメン|塩ラーメン)$", "ラーメン"},
+    {"^(.+のご当地焼きそば|ご当地焼きそば|焼きそば|日本の焼きそば)$", "焼きそば"},
+    {"^(うどん|ご当地うどん|煮込みうどん)$", "うどん"},
+    {"^(蕎麦)$", "そば"},
+    {"^(.+のご当地カレー|ご当地カレー|日本のカレー)$", "カレー"},
+    {"^(.+のご当地丼|ご当地丼|丼物)$", "丼もの"},
+    {"^.+の土産菓子$", "菓子"},
+    {"^.+の麺料理$", "麺類"},
+    {"^.+?[都道府県]の農業$", "食材"}
+  ]
+
+  # 代表店をどの決まりで選んだか（利用者の決めごと。上から順に当てる）
+  @shop_rules [
+    {"本店", "本店"},
+    {"有名店", "とりわけ有名な店"},
+    {"行きやすい店", "行きやすい店"}
+  ]
+
+  # 誰が名物として挙げているか（ランクの材料。出典の URL を添えられる事実だけ）
+  @backings [
+    {"国", "国の紹介"},
+    {"県", "県の紹介"},
+    {"市区町村", "市区町村の紹介"},
+    {"商標", "地域団体商標"},
+    {"大会", "大会の受賞・出展"}
+  ]
+
+  # 提供している店の数の段階（ランクの材料）
+  @shop_counts ~w(1 数軒 多数)
+
+  # 代表店がまだ決まっていない料理に Chiezo が付けるタグ（手がかりがまだ無いものと、
+  # 引き当てられなかったものの両方。引き当てたら外れる）。**整理の回はこれが残る県を
+  # 見終わったことにしない**（Chiezo の巡回の `hold_tag`）
+  @unplaced_tag "状態:代表店未定"
+  # 整理の AI が web で調べたが、**確実に食べられる・買える店が見つからなかった**料理の印。
+  # AI が `"shop": null` と一緒に付け、理由を `extra.no_shop` に書く。代表店未定とは別物で、
+  # 県の足止めに数えない（Chiezo の `none_tag`。付いている間は代表店未定が外れ、
+  # 引き当たったら外れる）。座標が無いので書き出さない
+  @no_shop_tag "状態:代表店なし"
+  # 代表店なしの理由を AI が書く脇書きの鍵
+  @no_shop_key "no_shop"
+
+  # travel-log に出す名前（`extra.display_name`）。**見出しは同じ 1 件を指す鍵なので変えられない**
+  # —— 別の見出しで足し直すと、同じ URL の 1 件として Chiezo に弾かれる（消した 1 件の URL も
+  # 突き合わせる）。一般名の名物（「スダチ」）に土地を付けた名前（「徳島のスダチ」）は、ここに書かせる
+  @display_key "display_name"
+  # 人が位置を確かめた料理を、AI が終わったと読んだときの印（Chiezo の `locked_doubt_tag`）。
+  # 消さずにこの印を付けて残す —— 現地で確かめた人の手がかりごと消さないため
+  @doubt_tag "終了の可能性あり"
+  # 人が位置を確かめた料理のカテゴリ（Chiezo の固定の印から機械で付ける）
+  @checked_category "位置確認済み"
+  @season_category "季節限定"
+  @origin_tag "発祥店"
+
+  # 名簿の回（一度きり・足すだけ）。**AI の回はどちらもこれを待つ**
+  @roster_sweep SweepNames.machine()
+  # 足りない料理を探して足す回（足すだけ）
+  @survey_sweep SweepNames.survey()
+  # 代表店を決める・空欄を埋める・確かめ直す回。割り込みと travel-log からの依頼もここ
+  @tidy_sweep SweepNames.tidy()
+
+  # 名簿を引き直す間隔。**週 1 で足りる**（百科事典が焼き直されるのはその程度。AI は使わない）
+  @roster_minutes 10_080
+
+  @doc "この収集の目印のタグ。**travel-log へはこれで拾います**。"
+  def kind_tag, do: "ご当地グルメ"
+
+  @doc "都道府県のタグの頭（区画の鍵・travel-log の `region`）。"
+  def area_tag, do: "地域"
+
+  @doc "料理の種類のタグの頭（travel-log の `series`）。"
+  def genre_tag, do: "種類"
+
+  @doc "収集の名前（Chiezo のソース名）。**後から変えない**。"
+  def collection, do: @collection
+
+  @doc "47 都道府県（JIS の番号順）。"
+  def prefectures, do: @prefectures
+
+  @doc """
+  区画を並べる順（1 周目に回る順）。**東京都から JIS の番号順**に沖縄県まで行き、
+  北海道に戻って千葉県で終わります。
+  """
+  def prefecture_order do
+    {before, from} = Enum.split(@prefectures, @first_prefecture - 1)
+    from ++ before
+  end
+
+  @doc "県の区画の鍵（`地域:東京都`）。Chiezo は接頭辞 + 値を鍵にする。"
+  def partition_key(prefecture), do: "#{area_tag()}:#{prefecture}"
+
+  @doc "区画の鍵から県（鍵でなければ nil）。"
+  def prefecture_of_key(area_tag_key) when is_binary(area_tag_key) do
+    case String.split(area_tag_key, ":", parts: 2) do
+      [head, prefecture] when head == "地域" -> if prefecture in @prefectures, do: prefecture
+      _other -> nil
+    end
+  end
+
+  def prefecture_of_key(_key), do: nil
+
+  @doc "料理の種類の語彙（travel-log のシリーズの並び）。"
+  def kinds, do: @kinds
+
+  @doc "代表店がまだ決まっていない料理に Chiezo が付けるタグ（手がかりなし・引き当てできず）。"
+  def unplaced_tag, do: @unplaced_tag
+
+  @doc "探したが代表店が見つからなかった料理の印（AI が付ける）。"
+  def no_shop_tag, do: @no_shop_tag
+
+  @doc "名簿の回の名前（固定した座標をいま反映するときに走らせる）。"
+  def roster_sweep_name, do: @roster_sweep
+
+  @doc """
+  名簿に入れるカテゴリ（`<県>の<括り>` を 47 県ぶん）。**県の名前が付いたものだけ**。
+  """
+  def roster_categories do
+    for prefecture <- @prefectures,
+        kind <- @roster_kinds ++ [@paired_kind],
+        do: "#{prefecture}の#{kind}"
+  end
+
+  @doc "名簿から外すカテゴリ（店・会社・商品・作品・一覧）。"
+  def excluded_categories do
+    @excluded_categories ++
+      for prefecture <- @prefectures, kind <- @excluded_kinds, do: "#{prefecture}の#{kind}"
+  end
+
+  @doc "データ収集の画面に出す 1 タブぶん。"
+  def definition do
+    %{
+      key: "gourmet",
+      name: "ご当地グルメ",
+      module: __MODULE__,
+      eyebrow: "LOCAL SPECIALTIES, ONE PREFECTURE AT A TIME",
+      title: "ご当地グルメ",
+      description:
+        "travel-log の地図に「その土地で何を食べるか」を並べます。1 件は料理で、" <>
+          "ピンはその料理をいま確実に食べられる・買える代表の店に立てます。" <>
+          "県ごとに回り、回るたびに料理と代表店が増えていきます。",
+      collection: @collection,
+      reader: "travel-log",
+      unit: "1 料理 1 文書",
+      # **記号で強調しない。** ここは Markdown として描かれない
+      note:
+        "座標は AI に書かせません。AI が返すのは代表店の名前・住所・頁の URL だけで、" <>
+          "座標は Chiezo が焼くときに地図辞典と店舗辞典から引き当てます。" <>
+          "引き当てられなかった料理は座標を持たないので、travel-log へは書き出しません。",
+      extract_note:
+        "名簿は百科事典の「県の名前が付いた」食のカテゴリ（県の麺料理・県の土産菓子・" <>
+          "北海道のご当地ラーメンなど）と、県の農業と県の食文化の両方に入っている名産から引き、" <>
+          "店・会社・商品・作品の記事と米の品種を外しています。" <>
+          "県はカテゴリの名前から読み、2 つの県に入っている記事は県ごとの 1 件に分けます。AI は関わりません。",
+      partition_note:
+        "区画は県です（47 県を並べてあり、まだ 1 件も無い県も区画になります）。" <>
+          "1 周目は東京都から JIS の番号順に回ります。",
+      prompt_note:
+        "AI が書くのは辞典に書いていないことだけです —— 足りない料理、代表店の手がかり、" <>
+          "提供の時期、誰が名物として挙げているか、いまも提供しているか。",
+      survey_sweep: @tidy_sweep,
+      request_sweep: @tidy_sweep,
+      # **区画を回る巡回を、回る順に**（情報収集と整理は並んで回る）
+      partition_sweeps: [@tidy_sweep, @survey_sweep],
+      # **県ごとの進み具合を出す対象**（データ収集の画面。区画の地図の代わり）
+      prefectures: true,
+      export_key: @export_key,
+      export_name: @export_name,
+      series_order: @kinds
+    }
+  end
+
+  @doc "巡回ごとの依頼文（画面に出すため）。"
+  def prompts, do: [{@tidy_sweep, tidy_prompt()}, {@survey_sweep, survey_prompt()}]
+
+  @doc "travel-log がスポットにするときに読む項目（画面の「travel-log に渡す中身」）。"
+  def fields do
+    [
+      %{
+        field: "名前（name）",
+        stored: "title（県ごとに分けた 1 件の「（県名）」は落とす）",
+        who: "百科事典の記事名か、AI（その土地で通っている呼び名）"
+      },
+      %{
+        field: "座標（lat / lng）",
+        stored: "extra.lat / extra.lon（代表店の位置）",
+        who: "Chiezo が辞典から引き当てる（AI の座標は捨てる）"
+      },
+      %{
+        field: "地域（region）",
+        stored: "タグ「#{area_tag()}:<都道府県>」（区画の鍵）",
+        who: "百科事典のカテゴリの名前、AI が足した料理は受け持ちの県"
+      },
+      %{
+        field: "シリーズ（series）",
+        stored: "タグ「#{genre_tag()}:…」の先頭",
+        who: "百科事典のカテゴリから機械で、残りは AI（語彙から選ぶ）"
+      },
+      %{
+        field: "カテゴリ（categories）",
+        stored: "タグ「代表店:…」「#{@origin_tag}」「裏付け:…」と extra.available_months",
+        who: "AI（季節限定は提供の月から機械で）"
+      },
+      %{
+        field: "ランク（rank）",
+        stored: "タグ「裏付け:…」「提供店:…」",
+        who: "機械（誰が名物として挙げているかと、提供している店の数から決める）"
+      },
+      %{
+        field: "提供の時期（available_months）",
+        stored: "extra.available_months（と extra.season_note）",
+        who: "AI（確かめた頁に書いてあるときだけ。書式は Chiezo が確かめる）"
+      },
+      %{
+        field: "営業時間（opening_hours）",
+        stored: "extra.opening_hours",
+        who: "代表店の辞典の値が先、無ければ AI"
+      },
+      %{
+        field: "説明（description）",
+        stored: "extra.shop（代表店）・提供の時期・営業時間・extra.url / extra.sources",
+        who: "機械が組み立てる（代表店の名前と選んだ理由・時期・営業時間・出典）"
+      },
+      %{
+        field: "（座標の出どころ）",
+        stored: "タグ「出典:OSM」「出典:Overture」",
+        who: "Chiezo（引き当てた辞典。辞典ごとにライセンスが違う）"
+      }
+    ]
+  end
+
+  @doc """
+  名簿の引き方（Chiezo の抽出の指定）。**県の名前が付いたカテゴリだけ**から引き、
+  県はカテゴリの名前から読みます（`map` に 47 県を並べ、それ以外の値では作らない）。
+  2 つ以上の県のカテゴリに入っている記事は、県ごとの 1 件に分けます（`split`。
+  発祥を争う料理は県ごとに 1 件ずつ —— 利用者の決めごと。広い地域にまたがるだけの
+  料理は、整理の回が 1 県にまとめる）。
+  """
+  def extract do
+    %{
+      source: "jawiki",
+      tag: Enum.join(roster_categories(), ","),
+      not_tag: Enum.join(excluded_categories(), ","),
+      # 記事の冒頭は AI が料理を確かめる材料（travel-log へは写さない。CC BY-SA の
+      # 文をそのまま地図に出すと、帰属と継承の条件が付く）
+      body: "opening",
+      url: "https://ja.wikipedia.org/wiki/{title}",
+      # **農業の括りは、同じ県の食文化にも入っている記事だけ**（ほかの括りは今までどおり）
+      tag_pairs: [
+        %{pattern: "^(.+?[都道府県])の#{@paired_kind}$", with: "{1}の#{@paired_with}"}
+      ],
+      tags:
+        [
+          %{const: kind_tag()},
+          %{
+            pattern: "^(.+?[都道府県])の(?:#{Enum.join(@roster_kinds ++ [@paired_kind], "|")})$",
+            format: "#{area_tag()}:{1}",
+            map: Map.new(@prefectures, &{&1, &1})
+          }
+        ] ++ kind_rules(),
+      # 脇書きには何も運ばない（知名度はランクに使わない。1 件の脇書きは鍵の数に
+      # 上限があるので、読まないものは載せない）
+      extra: [],
+      split: %{prefix: "#{area_tag()}:", title: "{title}（{value}）"}
+    }
+  end
+
+  # 種類の読み替え。**最初の 1 つだけ**（2 つ目からは前が作っていれば作らない）
+  defp kind_rules do
+    @kind_rules
+    |> Enum.with_index()
+    |> Enum.map(fn {{pattern, kind}, index} ->
+      rule = %{pattern: pattern, format: "#{genre_tag()}:#{kind}"}
+      if index == 0, do: rule, else: Map.put(rule, :fallback, true)
+    end)
+  end
+
+  @doc "区画の割り方（県 47。並べた順が 1 周目の順）。"
+  def partition do
+    %{by: "tag", prefix: "#{area_tag()}:", values: prefecture_order(), target: 5000}
+  end
+
+  @doc """
+  代表店の引き当て（Chiezo の `resolve`）。AI は `extra.shop` に手がかりを書き、
+  Chiezo が地図辞典（先）と店舗辞典を引いて座標を運ぶ。**営業時間は辞典の値が先**。
+  """
+  def resolve do
+    %{
+      clue: "shop",
+      sources: [
+        %{source: "osm_japan", identity: ["osm_type", "osm_id"], tag: "出典:OSM"},
+        %{source: "overture_japan", identity: ["overture_id"], tag: "出典:Overture"}
+      ],
+      area_tag: "#{area_tag()}:",
+      agree_meters: 100,
+      carry: ["address", "phone", "website", "opening_hours"],
+      to_extra: %{opening_hours: "opening_hours"},
+      failed_tag: @unplaced_tag,
+      # **手がかりがまだ無い料理にも代表店未定を付ける**（整理の県の足止めと、画面の
+      # 「代表店まだ」に数える）。代表店なしの印の付いた料理には付けない
+      failed_when_missing: true,
+      none_tag: @no_shop_tag,
+      ai_coords: false
+    }
+  end
+
+  @doc "脇書きの書式（travel-log の CSV の 2 列。崩れた値は Chiezo が焼く前に落とす）。"
+  def formats, do: %{available_months: "months", opening_hours: "opening_hours"}
+
+  @doc """
+  巡回 3 本。**1 回に 1 県**（1 県ぶんの調べものは重く、まとめて渡すと後ろの県が薄くなる）。
+  **並びは 機械収集 → 整理 → 情報収集。** 名簿の確かめと代表店決めが先で、料理を足すのは
+  その後でよい（画面で 1 回走らせるときの既定も、この並びの先頭の整理になる）。
+  情報収集は整理が全県を一周してから時計で回る（約 24 日後。画面から名指しした 1 回は待たない）。
+
+  整理は機械収集を待つ。設計では「情報収集が一周してから」だったが、名簿を機械で
+  作るようにしたので、1 周目から各県に料理が並んでいる —— 待つと、代表店が付き
+  始めるまで 24 日（47 県 × 12 時間）かかる。
+  """
+  def sweeps do
+    [
+      %{
+        name: @roster_sweep,
+        interval_minutes: @roster_minutes,
+        use_extract: true,
+        # **足すだけ**。AI が肉付けしたぶんを、記事の冒頭しか持たない名簿で上書きしない
+        only_new: true,
+        once: true
+      },
+      %{
+        name: @tidy_sweep,
+        prompt: :tidy,
+        interval_minutes: SweepNames.tidy_minutes(),
+        partitions_per_run: 1,
+        after: @roster_sweep,
+        # **代表店未定が残る県は見終わったことにしない**（次の回もその県に戻る）。1 回に
+        # 決めるのは 8〜10 品までなので、印を付けて次の県へ進むと、残りは一周先（約 24 日後）
+        # になる。その回に 1 品も減らなければ Chiezo が見終わりにして次へ進む（歯止め）
+        hold_tag: @unplaced_tag
+      },
+      %{
+        name: @survey_sweep,
+        prompt: :survey,
+        interval_minutes: SweepNames.tidy_minutes(),
+        partitions_per_run: 1,
+        # **足すだけ**。見せているのはその県のぶんだけなので、AI には「もう居るか」が
+        # 確かには分からない —— 触らせると既にある料理が薄い中身で上書きされる
+        only_new: true,
+        # **整理が全県を一周してから時計で回る。** 名簿に混ざった料理でないもの・どこにでも
+        # ある料理を整理が外す前に足し始めると、その並びを手本に同じものを足してくる。
+        # 待つのは時計の回だけで、画面から県を名指しした 1 回はいつでも走る
+        after: @tidy_sweep
+      }
+    ]
+  end
+
+  @doc "Chiezo へ送る依頼の中身（作るときも、送り直すときも同じもの）。"
+  def attrs(choices \\ %{}) do
+    %{
+      name: @collection,
+      # 収集の依頼文は整理のもの（割り込み・travel-log からの依頼もこの文で走る）
+      prompt: tidy_prompt(),
+      interval_minutes: SweepNames.tidy_minutes(),
+      sweeps: with_choices(sweeps(), choices),
+      kind: "stock",
+      resolve: resolve(),
+      formats: formats(),
+      locked_doubt_tag: @doubt_tag,
+      # 出典の URL を Chiezo に開いて確かめさせる（開けない頁を説明に書かない）
+      links: true,
+      requested_by: "chidori"
+    }
+    |> Map.merge(shape())
+  end
+
+  @doc "説明・名簿の指定・区画（画面の「区画の割り方」もここから読む）。"
+  def shape do
+    %{
+      description: "Chidori のデータ収集（ご当地グルメ / travel-log 向け）",
+      extract: extract(),
+      partition: partition()
+    }
+  end
+
+  # 画面で選んだ相手を巡回に載せる（`Chidori.Datasets.Dining` と同じ。Chidori は覚えない）
+  defp with_choices(sweeps, choices) do
+    for sweep <- Enum.map(sweeps, &resolve_prompt/1) do
+      case Map.get(choices, sweep.name) do
+        nil -> sweep
+        picked -> Map.merge(sweep, Map.reject(picked, fn {_k, v} -> is_nil(v) end))
+      end
+    end
+  end
+
+  defp resolve_prompt(%{prompt: :survey} = sweep), do: %{sweep | prompt: survey_prompt()}
+  defp resolve_prompt(%{prompt: :tidy} = sweep), do: %{sweep | prompt: tidy_prompt()}
+  defp resolve_prompt(sweep), do: sweep
+
+  @doc """
+  情報収集の依頼文。**1 県を受け持ち、まだ並んでいない料理を探して足す**（足すだけ）。
+
+  **回るたびに厚くなる**ように、探す切り口を `{current}` から決めさせます。
+  何を試したかの控えを別に持たなくても、並んでいる料理の種類を数えれば、
+  薄い切り口がその場で分かる（控えを置く場所は Chiezo の 1 件の脇書きしか無く、
+  鍵の数に上限がある）。
+  """
+  def survey_prompt do
+    """
+    「ご当地グルメ」の一覧を、**この県のぶんだけ厚くしてください**。
+    travel-log という地図アプリのスポットとして使います（1 件 = 1 つの料理。ピンは
+    その料理を食べられる・買える代表の店に立てます）。
+
+    **今回受け持つ県**
+    {partition}
+
+    {current}
+
+    **上に並んでいるのが、この県のいまの全部です。** 今回の仕事は**まだ並んでいない
+    料理を探して足す**ことだけです（並んでいるものは直せません。返しても無視されます）。
+    今日は {now} です。
+
+    **1. 探す切り口を決める。** 上の料理を「#{genre_tag()}:」のタグで数え、**少ない切り口から**
+    探してください。切り口は次のとおりです:
+    郷土料理 / ご当地ラーメン・うどん・そば・焼きそば / ご当地丼・カレー / 土地と食材の組
+    （「大間のマグロ」のような、その土地の名で知られる食材） / 駅弁 / 郷土菓子・土産菓子 /
+    季節の名物 / 祭りや行事の料理。
+    **手元の知識サーバー（chiezo の MCP）を先に引いてください**（レート制限がありません）。
+    百科事典（jawiki）のカテゴリ「日本の郷土料理」「農山漁村の郷土料理百選」「ご当地グルメ」
+    「ご当地丼」「ご当地カレー」「ご当地焼きそば」「ご当地うどん」「ご当地麺料理」
+    「地方のご当地ラーメン」「地方の駅弁」「地域団体商標」「日本のブランド牛」「100年フード」の
+    うち、この県の料理だと記事に書いてあるもの、県の食文化のカテゴリ（「<県>の食文化」）にある
+    料理が手がかりになります（filter で tag を名指しして引く）。足りなければ web で、
+    県・市区町村・観光協会・農林水産省（うちの郷土料理）の頁を見てください。
+    **web の検索は 1 品につき 2〜3 回まで**にしてください。
+
+    #{scope_rule()}
+
+    **2. 足すものを確かめる。** 次のどれかで、**いまも食べられる・買える**ことを確かめた
+    料理だけを足してください（直近 1 年ほどの公式の告知・店のメニュー・観光協会の紹介）。
+    **終わったもの**（イベントの終了・団体の解散・作っていた店の閉業で、もうどこにも無いもの）は
+    足さないでください。
+
+    **3. 足す 1 件の形。** 下の形で返してください。**1 回に足すのは 10 品まで**で構いません
+    （確信の持てるものだけ。思い当たらなければ足さなくて構いません —— 既にあるものを
+    挙げ直しても一覧は変わらず、AI の枠だけが減ります）。
+    代表店（`extra.shop`）は、**下の決まりで決められたときだけ**書いてください
+    （決められなければ書かない。次の整理の回が決めます）。
+
+    #{shop_rule()}
+
+    #{item_format()}
+
+    **何を調べたかを、答えの `checked` に 1 行ずつ書いてください**（items と並べて
+    `"checked": ["…", "…"]`）。どの切り口で、どこを引いて、何件見つけ、なぜ足さなかったか。
+    例: "切り口 駅弁: jawiki の地方の駅弁から 3 件、うち 1 件は販売終了で足さず"。
+    """
+  end
+
+  @doc """
+  整理の依頼文。**1 県を受け持ち、次の順に進める**（上ほど大事）。
+
+  1. travel-log からの報告（付いているときだけ）
+  2. 名簿から機械で入った料理を確かめる（料理でないもの・どこにでもある料理を落とす）
+  3. 代表店の決まっていない料理に代表店を決める（1 回 8〜10 品まで）
+  4. 空いている項目（時期・裏付け・提供店の数・市区町村）を埋める
+  5. 残りの時間で、確かめてから日の経った料理を見直す（`extra.checked_on` の古いもの。
+     代表店なしの料理も、ここで探し直す）
+  6. 代表店未定が 1 つも無い回だけ、名簿に無い名産（土地と食材の組）を数品探して足す
+     （情報収集は整理の一周を待つので、1 周目のあいだはここが唯一の足す道）
+
+  代表店を決めきれなかった料理（代表店なしを除く）が残る県には、次の回も戻ります
+  （`hold_tag`）。6 で足した料理に代表店が決まらなくても、その回は代表店未定が
+  「減っていない」ので Chiezo が見終わりにして次の県へ進む（足したことで県に留まらない）。
+
+  代表店を決める数に上限を置くのは、1 回の答えが切れないようにするため（切れると、
+  返らなかったぶんは次の周まで空のまま）。
+  """
+  def tidy_prompt do
+    """
+    「ご当地グルメ」の一覧を、**この県のぶんだけ手入れしてください**。
+    travel-log という地図アプリのスポットとして使います（1 件 = 1 つの料理。ピンは
+    その料理を食べられる・買える代表の店に立てます）。
+
+    **今回受け持つ県**
+    {partition}
+
+    {current}
+
+    **上に並んでいるのが、この県のいまの全部です。** 今日は {now} です。
+    **次の順に進めてください**（上のものほど大事です）。
+
+    **1. 地図を使っている人からの報告に答える。** この依頼文の後ろに、現地で見た人の
+    報告が付いていることがあります。**付いていたら、何より先にそれに答えてください。**
+
+    **2. 名簿から機械で入った料理を確かめる。** tags に "#{Chiezo.unreviewed_tag()}" が
+    付いている料理は、百科事典のカテゴリから機械で入れたもので、まだ誰も見ていません。
+    次のものは墓標で消してください（body に理由を 1 行）:
+    料理・食品でないもの（店・会社・団体・番組・大会・一覧や総称の記事）、
+    **この県のご当地と言えない、どこにでもある料理**（「素麺」「鍋焼きうどん」のような一般名）、
+    **終わったもの**。一般名の食材は下の「一般名の食材」の決まりで判断してください。
+    **2 つ以上の県に分けて入った料理**（見出しの後ろに「（県名）」が付いたもの）は、
+    **発祥を複数の県が主張している料理なら、県ごとに残します**。広い地域で食べられているだけで
+    発祥の争いが無い料理は、**発祥か本場の 1 県にまとめます** —— この県が本場でなければ、
+    この県の 1 件を「◯◯県の 1 件にまとめた」と書いて墓標で消してください。**消す前に、
+    残す県の 1 件が生きていることを chiezo の MCP（collect_partition で
+    「#{area_tag()}:<その県>」の区画）で確かめてください**（両方の県で消すと、どこにも残りません）。
+    迷ったら残してください。残すものは、body を**自分の言葉で 2〜3 文**に書き直し
+    （百科事典の文を写さない）、空いているタグ（種類・裏付け・提供店）を埋めて返してください。
+
+    **3. 代表店の決まっていない料理に、代表店を決める。** tags に "#{@unplaced_tag}" が
+    付いた料理です（`extra.shop` がまだ無いものと、前に書いた手がかりで辞典の店に
+    引き当てられなかったもの）。**1 回に 8〜10 品まで**で構いません（残りは次の回に、
+    この県のまま続きから頼みます）。
+    上の一覧に「〔shop: 引き当てられなかった —— 理由（手がかり: …）〕」と添えられている料理は、
+    前に書いた手がかりで辞典の店に引き当てられなかったものです。理由を読んで、
+    **正式な店名（看板どおり）と、都道府県から番地までの住所**を書き直すか、別の店を選んでください。
+    **同じ手がかりをもう一度書いても、同じ理由で落ちます。**
+    **web で調べても、いまその料理を確実に食べられる・買える店が見つからなかったら**、
+    代表店なしとして返してください: `extra.shop` に null、tags に "#{@no_shop_tag}"、
+    `extra.#{@no_shop_key}` に理由を 1 行（何を調べて何が無かったか。例「県と観光協会の紹介に
+    提供店が無く、最後の提供店は 2021 年に閉店」）、`extra.checked_on` に今日の日付。
+    **料理そのものが終わった証拠**（どこでも出さなくなった・イベントの終了・団体の解散）が
+    見つかったときは、代表店なしではなく墓標で消してください（下の「終わったもの」）。
+    "#{@no_shop_tag}" の付いた料理は、ここでは探し直さないでください（5 で、確かめてから
+    日の経ったものを探し直します）。
+
+    #{shop_rule()}
+
+    **4. 空いている項目を埋める。** 提供の時期（`extra.available_months`・`extra.season_note`）・
+    裏付け・提供店の数・市区町村（`extra.municipality`）・営業時間（`extra.opening_hours`）の
+    空いている料理を、確かめられたものだけ埋めてください（当てずっぽうで埋めない）。
+
+    **5. 時間が残っていたら、確かめてから日の経った料理を見直す。** `extra.checked_on` の
+    古いもの（無いもの）から順に、代表店がいまもその料理を出しているか（売っているか）、
+    季節限定の時期が変わっていないか、イベントや団体が終わっていないかを見てください。
+    **"#{@no_shop_tag}" の料理も、`extra.checked_on` の古いものから代表店を探し直してください。**
+    見つかったら 3 と同じく `extra.shop` を書き、tags から "#{@no_shop_tag}" を外して
+    `extra.#{@no_shop_key}` に null を書く。やはり無ければ理由と `extra.checked_on` を書き直す。
+    **6. 上の一覧に "#{@unplaced_tag}" の料理が 1 つも無い回だけ、名簿に無い名産を足す。**
+    名簿は百科事典のカテゴリから機械で作っているので、記事やカテゴリの無い名産
+    （土地の名で知られる魚介・肉・果物・野菜など、土地と食材の組。「氷見の寒ぶり」
+    「大間のマグロ」のようなもの）は入っていません。この県の名産で上に無いものを
+    **1 回に 3 品まで**探して足してください（確信の持てるものだけ。無ければ足さない）。
+    - **この県の名物と言えない一般名の食材**（「一般名の食材」の決まり）と**米の品種・銘柄米**は入れない
+    - **足したものにも、3 と同じ決まりで代表店を決めてください**（市場・直売所・それを出す
+      食堂でよい。見つからなければ代表店なし）。種類は "#{genre_tag()}:食材"
+    - **上に並んでいる料理の見出しでは返さないでください**（直すとき以外）。この回は直す回で、
+      返した 1 件で中身が丸ごと置き換わります。足すのは上に無い見出しだけです
+    - 3〜5 が残っている回は、この 6 はしないでください
+
+    **4〜6 は全部でなくて構いません。** 見直せなかった料理は申告しないでください
+    （`not_reviewed` に入れない）。
+
+    #{ending_rule()}
+
+    #{scope_rule()}
+
+    #{item_format()}
+
+    **直した料理・消す料理・足す料理だけを返してください。** 直すところが無かった料理は
+    返さなくて構いません（そのまま残ります）。
+
+    **何を調べたかを、答えの `checked` に 1 行ずつ書いてください**（items と並べて
+    `"checked": ["…", "…"]`）。例: "ソースカツ丼: 本店の公式メニューで提供を確認、代表店を本店に"、
+    "見直し: 5 品の代表店の頁を確認、変更なし"。地図には載りません。
+    """
+  end
+
+  # 何をご当地グルメに入れるか。**2 つの依頼文で同じ文を使う** —— 書き分けると、
+  # 片方の回が足したものをもう片方の回が消す
+  defp scope_rule do
+    """
+    **入れるもの・入れないもの**
+
+    - **入れる** …… その土地の名で知られる料理・郷土料理・ご当地の麺や丼・郷土菓子・
+      土産菓子・駅弁・土地と食材の組（「大間のマグロ」「関あじ」）。食べられる店でも、
+      **買える店でもかまいません**（市場・直売所・駅の売店・土産物店も可）
+    - **入れない** …… どこにでもある料理（カツ丼・おでん・素麺のような一般名）、
+      この県の名物と言えない一般名の食材（下の「一般名の食材」の決まり）、店や会社やチェーンそのもの、即席麺のような全国で売る商品、
+      イベント・団体・番組・マスコット、一覧や総称（「◯◯三大麺」）、**米の品種・銘柄米**
+      （スーパーで買えるものがほとんどで、行き先が決まらない。名簿に混ざっていたら墓標で消す）、
+      **もう終わったもの**
+    - **県は受け持ちの県だけ**です（タグ "#{area_tag()}:<県>" はこの県の 1 つ）。
+      **広い地域にまたがる料理は 1 件・1 県**（発祥か本場の県）にします。
+      **発祥を 2 つ以上の県が主張している料理**（ソースカツ丼など）は県ごとに 1 件ずつで、
+      見出しの後ろに「（県名）」を付けます（見出しは一覧の中で 1 つしか持てないため）
+
+    #{generic_food_rule()}
+    """
+  end
+
+  # 一般名の食材（「スダチ」「ユズ」のように土地の名が付かない作物）の決め方。**地名の有無では
+  # 分けない** —— ほぼ一つの県でしか作られない作物は、地名を付ける必要が無かったので名前に
+  # 土地が入らない（スダチ・シークヮーサー）。名簿の確かめ（整理）と足すとき（情報収集・整理）で同じ文を使う
+  defp generic_food_rule do
+    """
+    **一般名の食材**（「スダチ」「ユズ」「サトウキビ」のように、名前に土地の名が付かない作物・魚介）は、
+    次のどちらかに当てはまるときだけ残してください: **この県が全国でずば抜けた産地**（収穫量の大半を
+    占める・発祥の地）、または**県や市町村が名物として売り出している**（その頁を `extra.sources` に）。
+    残すものは `extra.#{@display_key}` に「徳島のスダチ」のように**土地を頭に付けた名前**を書きます。
+    当てはまらないもの（ユズのように各地にあるもの、サトウキビのように作物そのもので訪ねた人が
+    そのまま食べるものでないもの）は、理由を書いて墓標で消してください
+    """
+  end
+
+  # 代表店の決め方（利用者の決めごと）。**2 つの依頼文で同じ文を使う**
+  defp shop_rule do
+    """
+    **代表店の決め方**（上から順に当ててください）
+
+    1. **本店**があれば本店（チェーンや暖簾分けで広まった料理・菓子） → タグ "代表店:本店"
+    2. 無ければ**とりわけ有名な店**（公的な紹介・取材・行列で名前が挙がる店） → "代表店:有名店"
+    3. どちらも無ければ**行きやすい店**（駅や観光の中心から近く、いつも出している・売っている店。
+       土産や駅弁なら駅や空港の売店・直営店、食材なら市場・直売所・それを出す食堂） → "代表店:行きやすい店"
+
+    - **いまその料理を出している（売っている）と確かめた店だけ**にしてください
+      （公式のメニュー・直近 1 年ほどの告知や紹介で）
+    - 代表店は**料理の県の外でもかまいません**（本店が東京にある、など）
+    - **発祥・元祖とされる店が、いまも営業していてその料理を出しているなら**、タグ "#{@origin_tag}" を
+      付けてください（代表店がその店のときだけ。発祥店でも本店を先に選びます）
+    - 書くのは `extra.shop` の `name`（看板どおりの店名）・`address`（都道府県から番地まで）・
+      `url`（その店の公式の頁か、その店を紹介している公的な頁）、引けたら `ref`
+      （chiezo の MCP で地図辞典 osm_japan・店舗辞典 overture_japan を引いて見つけた見出し。
+      `osm_japan:見出し` の形）。**座標（lat / lon）は書かないでください** —— 辞典から機械で
+      引きます（書いても捨てられます）
+    - **代表店が閉店した・その料理をやめた**ときは、料理は消さずに、上の決まりで店を選び直して
+      `extra.shop` を書き直してください。探しても選び直せなければ、`"shop": null` にして
+      tags に "#{@no_shop_tag}"、`extra.#{@no_shop_key}` に理由を書いてください（代表店なし）
+    """
+  end
+
+  # 終わったものの扱い（利用者の決めごと: 地図から消し、理由は Chiezo に残す）
+  defp ending_rule do
+    """
+    **終わったものは墓標で消してください**（tags に "#{Chiezo.tombstone_tag()}"、body に
+    「2019 年に実行委員会が解散」のように理由を 1 行）。**消すのは終わった証拠が見つかった
+    ときだけ**です（見つからないだけでは消さない）。代表店の閉店は料理の終わりではないので、
+    消さずに代表店を選び直してください。
+    **tags に "#{Chiezo.locked_tag()}" が付いた料理は、人が現地で位置を確かめたものです。**
+    墓標にすると消えずに "#{@doubt_tag}" が付いて残ります（"#{@doubt_tag}" は消さないでください）。
+    """
+  end
+
+  # 1 件の形。**2 つの依頼文で同じものを使う**（travel-log が読むのはこの形）。
+  # 脇書きの鍵は Chiezo の上限（1 件 20 鍵。Chiezo の印を含む）に収まるよう、AI に書かせる
+  # 9 つ（shop・available_months・season_note・opening_hours・municipality・sources・checked_on・
+  # no_shop・display_name）だけにしてある。機械が運ぶ lat・lon・url と Chiezo の印（消した理由・見直した印など）を
+  # 足しても 20 に届かない
+  defp item_format do
+    """
+    **1 件の形**
+
+    - title: **料理の名前だけ**（その土地で通っている呼び名。百科事典に記事があれば記事名に
+      揃える。土地と食材の組は「大間のマグロ」のように土地を頭に）。**丸かっこの補足は付けない**
+      （発祥を争う料理の「（県名）」だけ）。**同じ料理は同じ表記で**返してください —— ここが
+      同一の鍵で、上に並んでいるものはその表記のまま返します
+    - body: **2〜3 文の説明を自分の言葉で**（何で・どこで・いつ食べるものか）。百科事典や
+      口コミの文を写さないでください
+    - url: いちばん確かな出典 1 つ（県・市区町村・観光協会・農林水産省の紹介、代表店の公式の頁、
+      百科事典の記事）。**実際に開いて確かめたものだけ**
+    - tags: **いま付いているタグは、直すもの以外そのまま残してください**（返した内容で丸ごと
+      置き換わるので、書かなかったタグは消えます）
+      - "#{kind_tag()}" —— この一覧の目印。**必ず付けてください**
+      - "#{area_tag()}:<県>" —— 受け持ちの県。**変えないでください**
+      - "#{genre_tag()}:<種類>" —— 1 つだけ、次の語から: #{Enum.join(@kinds, " / ")}
+      - "代表店:本店" / "代表店:有名店" / "代表店:行きやすい店" —— 代表店を選んだ決まり（代表店があるとき）
+      - "#{@no_shop_tag}" —— 調べたが代表店が見つからなかったとき（`extra.shop` は null、理由は
+        `extra.#{@no_shop_key}`）。代表店を書いたら外す
+      - "#{@origin_tag}" —— 代表店が発祥・元祖の店で、いまも営業しているとき
+      - "裏付け:<誰が名物として挙げているか>" —— 次の語から、確かめた頁があるものを全部:
+        #{Enum.map_join(@backings, " / ", &elem(&1, 0))}
+        （国 = 農林水産省「うちの郷土料理」など、県 = 県や県の観光協会、市区町村 = 市町村や地元の観光協会、
+        商標 = 地域団体商標、大会 = ご当地グルメの大会への出展・受賞）。その頁の URL は `extra.sources` に
+      - "提供店:<店の数>" —— #{Enum.join(@shop_counts, " / ")}（1 軒だけ・数軒・町に専門店が並ぶ／組合や公式の店舗一覧がある）
+      - "出典:OSM" / "出典:Overture" / "#{@unplaced_tag}" / "#{Chiezo.locked_tag()}" は機械が付けます。
+        **足したり消したりしないでください**
+    - extra.shop: 代表店の手がかり（上の「代表店の決め方」）
+    - extra.available_months: **提供の月**（その料理が食べられる・買える月）。`11-3`（11 月〜3 月）・
+      `6,7,8`・`12-2,7` の形。**通年なら書かない**。確かめた頁に書いてあるときだけ
+    - extra.season_note: 時期の補足を短く（「冬季のみ」「毎年 2 月の祭りの間だけ」）
+    - extra.opening_hours: 代表店の営業時間を OpenStreetMap の `opening_hours` の書き方で
+      （例 `Mo-Fr 11:00-14:30,17:30-22:00; Sa,Su,PH 11:00-21:00; We off`）。確かめたときだけ
+      （辞典に営業時間がある店では辞典の値が使われます）
+    - extra.municipality: 料理の市区町村（県全体の料理なら書かない）
+    - extra.sources: 確かめた頁の URL の並び（5 つまで）
+    - extra.checked_on: 代表店がいまもその料理を出していると確かめた日（`YYYY-MM-DD`。今日の日付）。
+      代表店なしにしたときは、探して見つからなかった日
+    - extra.#{@no_shop_key}: 代表店なしの理由を 1 行（"#{@no_shop_tag}" を付けたときだけ。代表店を書いたら null）
+    - extra.#{@display_key}: 地図に出す名前。**見出しに土地の名が無い一般名の名物だけ**、
+      「徳島のスダチ」「沖縄のゴーヤー」のように土地を頭に付けて書く（見出しのままでよければ書かない）。
+      **見出しそのものは変えないでください**（同じ 1 件を指す鍵で、付け替えると弾かれます）
+    - **ほかの extra の鍵は書かないでください**（1 件に持てる鍵の数に上限があります）。
+      **Google マップや食べログなどの中身（口コミの本文・評点・写真・メニュー表）は写さないでください**
+      —— 確かめるのに読むのはよいですが、残すのはそこから分かった事実と、確かめた頁の URL までです
+
+    **消す 1 件**: tags に "#{Chiezo.tombstone_tag()}" を入れ、**body に消す理由を 1 行**
+    （「どこにでもある料理でご当地と言えない」「2019 年に販売終了」のように、何をどう判断したか）。
+    理由の無い墓標は、あとから誰にも直せません。
+    """
+  end
+
+  @doc """
+  travel-log からの依頼の前置き（`Chidori.Datasets.Requests` が補足の頭に付ける）。
+  食事処の前置きは「店」の話なので、料理と代表店の言い方で書き直したもの。
+
+  **報告は現地を見た人のもの**なので、食事処と同じく報告を先に済ませ、そのあと
+  いつもの仕事も続けてもらいます。
+  """
+  def request_preface do
+    """
+    この補足は、**地図を使っている人が現地で見て書いた報告**です。
+    **この県では、ほかの仕事より先に、この報告に答えてください。**
+    **答えたら、そのあと上の依頼文のいつもの仕事も続けてください**（報告に答えただけで終えない）。
+
+    - 名前は地図に出している料理の名前です。見出しの後ろの「（県名）」や「 (補足)」が
+      落ちていることがあります —— **座標の近い、同じ名前の 1 件**を指しています
+    - 「代表店が閉店」「もう出していない」「売っていない」と書かれたものは、**料理は消さずに、
+      代表店を選び直してください**（決まりは上の依頼文のとおり。現地の報告を信じ、web で
+      営業を確かめられない限り、その店は外す）
+    - 「料理そのものが終わった」と書かれたもの（どの店でも出していない）は、営業していると
+      確かめられない限り、墓標で消してください（body に「現地から終了の報告」）
+    - 「ある」「追加」と書かれた料理は、上に無ければ足してください（座標の近くの店を代表店の
+      手がかりにする。web で確かめられなくても、現地で見た報告なので足してよい。そのときは
+      body に「現地からの報告（web では確かめられず）」と書く）。上の「消したもの」に並んで
+      いたら、新しく足さずに戻してください（tags に "#{Chiezo.restore_tag()}" を入れ、同じ見出しで返す）
+    - 位置のずれの報告は、代表店の住所を確かめて `extra.shop` を書き直してください
+      （座標は書かない。辞典から引き直されます）
+    """
+    |> String.trim_trailing()
+  end
+
+  @doc """
+  travel-log からの依頼 1 件を、**どの県の区画で頼むか**（区画の鍵。決まらなければ nil）。
+
+  名前の出てくる依頼（`[修正] 料理名 (緯度,経度)`）は、その座標の近くにある同じ名前の
+  料理（消えたものも含む）の県へ —— 代表店は料理の県の外にあってよいので、座標の
+  県とは限らない。見つからなければ・名前の無い依頼（`[追加]`）は、**座標のある県**へ
+  （地図辞典の点の所属で読む。`Chidori.Chiezo.area_at/3`）。
+  """
+  def request_partition(%{text: text, lat: lat, lon: lon}) do
+    with {:ok, base} <- Chidori.Datasets.base_url() do
+      by_name(base, text, lat, lon) || by_point(base, lat, lon)
+    else
+      _unavailable -> nil
+    end
+  end
+
+  # 料理を探す広さ（メートル）。地図に出ているのは代表店の座標そのものなので狭くてよい
+  @request_meters 300
+
+  defp by_name(base, text, lat, lon) do
+    said = Chidori.Datasets.Requests.same_name(request_name(text))
+
+    with true <- String.length(said) >= 2,
+         {:ok, docs} <- Chiezo.nearby(base, @collection, lat, lon, @request_meters),
+         %{} = doc <-
+           Enum.find(docs, &(Chidori.Datasets.Requests.same_name(&1["title"] || "") == said)) do
+      doc
+      |> Map.get("tags", [])
+      |> Enum.find_value(fn tag ->
+        prefecture = prefecture_of_key(tag)
+        prefecture && partition_key(prefecture)
+      end)
+    else
+      _none -> nil
+    end
+  end
+
+  defp by_point(base, lat, lon) do
+    case Chiezo.area_at(base, lat, lon) do
+      {:ok, prefecture} when prefecture in @prefectures -> partition_key(prefecture)
+      _unknown -> nil
+    end
+  end
+
+  # 依頼の 1 行目から料理の名前（`- [修正] 名前 (緯度,経度): 理由`）
+  defp request_name(text) do
+    text
+    |> String.split("\n", parts: 2)
+    |> List.first()
+    |> String.replace(~r/^\s*-?\s*\[[^\]]*\]\s*/u, "")
+    |> String.split("(", parts: 2)
+    |> List.first()
+    |> String.trim()
+  end
+
+  @doc """
+  県ごとの進み具合（データ収集の画面に出す）。**数だけ**を返します（溜まったもの
+  そのものは見せない決まり）。
+
+  `{:ok, %{rows: [%{prefecture, key, dishes, placed, pending, unresolved, no_shop}],
+  unplaced_region: 件数, unresolved_total: 件数}}` か `{:error, 理由}`。
+
+  - `dishes` —— 生きている料理の数（まだ AI が見ていないものを含む）
+  - `placed` —— 代表店あり。引き当たって座標を持つ料理（travel-log へ出せるもの。AI が見たあとなら）
+  - `pending` —— 代表店まだ。座標が無く、代表店なしでもない料理（手がかりがまだ無いものと、
+    引き当てできなかったもの。整理の回はこれが残る県に戻る）
+  - `unresolved` —— `pending` のうち、手がかりを書いたが引き当てられなかった料理
+    （Chiezo の `unresolved` の口）
+  - `no_shop` —— 代表店なし。整理の AI が探したが、確実に食べられる・買える店が
+    見つからなかった料理（`no_shop_tag/0`。座標が無いので書き出さない）
+
+  `dishes = placed + pending + no_shop`。**「AI が見たか」（未確認）は数えません** ——
+  名簿の料理は整理が目を通すと印が外れるので、代表店がまだでも 0 になり、
+  「この県は片付いた」と読めてしまう。
+
+  **数えるために消えたものも受け取って、こちらで落とします**（Chiezo の読み口は既定で
+  未レビューも外すので、それでは名簿の数が出ない）。選り分け直しではなく、数えるだけ。
+
+  引き当てられなかったものの口を持たない Chiezo では、その数だけ数えません
+  （`unresolved_total: nil`。ほかの数は出す）。
+  """
+  def progress do
+    with {:ok, base} <- Chidori.Datasets.base_url(),
+         {:ok, docs} <- all_docs(base) do
+      unresolved =
+        case Chiezo.unresolved(base, @collection) do
+          {:ok, found} -> found
+          {:error, _reason} -> %{total: nil, rows: []}
+        end
+
+      alive = Enum.reject(docs, &(Chiezo.removed_tag() in (&1["tags"] || [])))
+      waiting = alive |> Enum.filter(&(shop_state(&1) == :pending)) |> Map.new(&{&1["title"], &1})
+
+      # 引き当てできずは代表店まだのうち（座標を人が固定した料理・代表店なしは数えない）
+      failed =
+        unresolved.rows
+        |> Enum.flat_map(fn row ->
+          case waiting[row["title"]] do
+            nil -> []
+            doc -> [region_of(doc)]
+          end
+        end)
+        |> Enum.frequencies()
+
+      by_region = Enum.group_by(alive, &region_of/1)
+
+      rows =
+        for prefecture <- prefecture_order() do
+          states = by_region |> Map.get(prefecture, []) |> Enum.frequencies_by(&shop_state/1)
+
+          %{
+            prefecture: prefecture,
+            key: partition_key(prefecture),
+            dishes: states |> Map.values() |> Enum.sum(),
+            placed: Map.get(states, :placed, 0),
+            pending: Map.get(states, :pending, 0),
+            unresolved: Map.get(failed, prefecture, 0),
+            no_shop: Map.get(states, :no_shop, 0)
+          }
+        end
+
+      {:ok,
+       %{
+         rows: rows,
+         unplaced_region: length(Map.get(by_region, nil, [])),
+         unresolved_total: unresolved.total
+       }}
+    end
+  end
+
+  @doc """
+  1 件の代表店の状態。`:placed`（座標がある）・`:no_shop`（代表店なしの印）・
+  `:pending`（それ以外 = 代表店まだ）。**座標が先**（人が位置を固定した料理は地図に置ける）。
+  """
+  def shop_state(doc) do
+    cond do
+      placed?(doc) -> :placed
+      @no_shop_tag in (doc["tags"] || []) -> :no_shop
+      true -> :pending
+    end
+  end
+
+  # 1 回に引く件数（Chiezo 側の上限）
+  @page_limit 500
+
+  defp all_docs(base, offset \\ 0, acc \\ []) do
+    case Chiezo.spot_docs(base, @collection, kind_tag(), offset, @page_limit,
+           include_removed: true
+         ) do
+      {:ok, %{docs: []}} ->
+        {:ok, acc}
+
+      {:ok, %{total: total, docs: docs}} ->
+        got = acc ++ docs
+        if length(got) >= total, do: {:ok, got}, else: all_docs(base, length(got), got)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc "1 件の県（語彙に無い値・無ければ nil）。"
+  def region_of(doc) do
+    doc
+    |> Map.get("tags", [])
+    |> Enum.find_value(fn tag -> is_binary(tag) && prefecture_of_key(tag) end)
+  end
+
+  defp placed?(doc) do
+    extra = doc["extra"] || %{}
+    is_number(extra["lat"]) and is_number(extra["lon"])
+  end
+
+  # ── travel-log への書き出し（`Chidori.Datasets.TravelLog` が呼ぶ） ──
+
+  @csv_header ~w(name lat lng region rank series categories description available_months opening_hours key)
+
+  @doc "spots.csv の列（提供の時期と営業時間の 2 列を足したもの）。"
+  def csv_header, do: @csv_header
+
+  @doc "travel-log のカテゴリの並び（絞り込みの並び）。"
+  def category_order do
+    [@origin_tag] ++
+      Enum.map(@shop_rules, &elem(&1, 0)) ++
+      [@season_category] ++
+      Enum.map(@backings, &elem(&1, 1)) ++ [@doubt_tag, @checked_category]
+  end
+
+  @doc """
+  1 件をスポットの行にします。**地図に置けないものは作りません**（nil）——
+  代表店が引き当たっていない（座標が無い）・県が語彙に無いもの。
+  """
+  def spot(doc, dataset) do
+    tags = Map.get(doc, "tags") || []
+    extra = Map.get(doc, "extra") || %{}
+    region = region_of(doc)
+    lat = number(extra["lat"])
+    lon = number(extra["lon"])
+
+    # 地図に出す名前は AI が書いたものを先に（見出しは鍵なので変えられない）
+    name =
+      case text(extra[@display_key]) do
+        "" -> dish_name(doc["title"], region)
+        shown -> shown
+      end
+
+    if name == "" or is_nil(lat) or is_nil(lon) or is_nil(region) do
+      nil
+    else
+      %{
+        "name" => name,
+        "lat" => lat,
+        "lng" => lon,
+        "region" => region,
+        "rank" => rank(tags),
+        "series" => tags |> tagged(genre_tag()) |> List.first() || "",
+        "categories" => tags |> categories(extra) |> Enum.join("|"),
+        "description" => description(tags, extra),
+        "available_months" => text(extra["available_months"]),
+        "opening_hours" => text(extra["opening_hours"]),
+        "key" => Chidori.Datasets.TravelLog.spot_key(doc["doc_id"], dataset)
+      }
+    end
+  end
+
+  @doc """
+  ランク（A〜E）。**AI には段階を決めさせず、確かめられる事実から機械で**決めます
+  （誰が名物として挙げているかと、提供している店の数）。
+
+  | ランク | 決まり |
+  |---|---|
+  | A | 国か地域団体商標の裏付けがあり、提供店が多数 |
+  | B | 国・商標・県のどれかの裏付けがある |
+  | C | 市区町村の裏付けがある |
+  | D | 公的な裏付けは無いが、提供店が数軒以上ある |
+  | E | それ以外（1 軒だけの名物・まだ調べていないもの） |
+
+  A が多すぎると丸の大きさが何も表さなくなるので、A は「国か商標」と「多数」の両方が要る。
+  """
+  def rank(tags) do
+    backed = MapSet.new(tagged(tags, "裏付け"))
+    shops = tags |> tagged("提供店") |> List.first()
+    national = MapSet.member?(backed, "国") or MapSet.member?(backed, "商標")
+
+    cond do
+      national and shops == "多数" -> "A"
+      national or MapSet.member?(backed, "県") -> "B"
+      MapSet.member?(backed, "市区町村") -> "C"
+      shops in ["数軒", "多数"] -> "D"
+      true -> "E"
+    end
+  end
+
+  @doc "1 件のカテゴリ（`category_order/0` の並び。語彙に無い語は落とす）。"
+  def categories(tags, extra) do
+    have =
+      MapSet.new(
+        [if(@origin_tag in tags, do: @origin_tag)] ++
+          Enum.map(tagged(tags, "代表店"), & &1) ++
+          [if(text(extra["available_months"]) != "", do: @season_category)] ++
+          for(
+            value <- tagged(tags, "裏付け"),
+            {^value, label} <- @backings,
+            do: label
+          ) ++
+          [
+            if(@doubt_tag in tags, do: @doubt_tag),
+            if(Chiezo.locked_tag() in tags, do: @checked_category)
+          ]
+      )
+
+    Enum.filter(category_order(), &MapSet.member?(have, &1))
+  end
+
+  @doc """
+  説明文。**代表店の名前と選んだ理由・提供の時期・営業時間・出典**を 1 行ずつ。
+  料理そのものの説明（本文）は入れません —— 名簿の 1 件は百科事典の冒頭を持っていて、
+  写すと CC BY-SA の帰属と継承が付く。座標の出どころ（辞典ごとにライセンスが違う）も添える。
+  """
+  def description(tags, extra) do
+    [
+      shop_line(tags, extra),
+      season_line(extra),
+      hours_line(extra),
+      sources_line(extra),
+      coords_line(tags)
+    ]
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n")
+  end
+
+  defp shop_line(tags, extra) do
+    shop = if is_map(extra["shop"]), do: extra["shop"], else: %{}
+
+    case text(shop["name"]) do
+      "" ->
+        ""
+
+      shop_name ->
+        reasons =
+          for(value <- tagged(tags, "代表店"), {^value, label} <- @shop_rules, do: label) ++
+            if(@origin_tag in tags, do: ["発祥の店"], else: [])
+
+        why = if reasons == [], do: "", else: "（#{Enum.join(reasons, "・")}）"
+        where = text(shop["address"])
+
+        "代表店: #{shop_name}#{why}" <> if(where == "", do: "", else: "／#{where}")
+    end
+  end
+
+  defp season_line(extra) do
+    months = text(extra["available_months"])
+    note = text(extra["season_note"])
+
+    case {months_text(months), note} do
+      {"", ""} -> ""
+      {"", note} -> "提供の時期: #{note}"
+      {months, ""} -> "提供の時期: #{months}"
+      {months, note} -> "提供の時期: #{months}（#{note}）"
+    end
+  end
+
+  @doc "月の並び（`11-3,7`）を日本語に（`11〜3月・7月`）。読めなければ空。"
+  def months_text(months) when is_binary(months) and months != "" do
+    parts = String.split(months, ",", trim: true)
+
+    if Enum.all?(parts, &(&1 =~ ~r/^\d{1,2}(-\d{1,2})?$/)) do
+      Enum.map_join(parts, "・", fn part ->
+        case String.split(part, "-") do
+          [from, to] -> "#{from}〜#{to}月"
+          [one] -> "#{one}月"
+        end
+      end)
+    else
+      ""
+    end
+  end
+
+  def months_text(_months), do: ""
+
+  defp hours_line(extra) do
+    case text(extra["opening_hours"]) do
+      "" -> ""
+      hours -> "営業時間: " <> (Chidori.Datasets.OpeningHours.to_japanese(hours) || hours)
+    end
+  end
+
+  # 出典（`extra.url` と `extra.sources`。http/https だけ、重複を落として 3 つまで）。
+  # 百科事典の記事は travel-log の決まりの `[ja.wikipedia:記事名]` で書く
+  # （向こうがアイコン付きのリンクに描く。URL のままだと長いうえ、日本語が % で崩れる）
+  @shown_sources 3
+  defp sources_line(extra) do
+    urls =
+      [extra["url"] | List.wrap(extra["sources"])]
+      |> Enum.map(&Chidori.SafeUrl.href/1)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.take(@shown_sources)
+
+    if urls == [], do: "", else: "出典: " <> Enum.map_join(urls, " ", &source_ref/1)
+  end
+
+  defp source_ref(url) do
+    case URI.parse(url) do
+      %URI{host: "ja.wikipedia.org", path: "/wiki/" <> article} ->
+        "[ja.wikipedia:#{URI.decode(article)}]"
+
+      _other ->
+        url
+    end
+  end
+
+  defp coords_line(tags) do
+    from =
+      tags
+      |> tagged("出典")
+      |> Enum.map(fn
+        "OSM" -> "OpenStreetMap"
+        "Overture" -> "Overture Maps"
+        other -> other
+      end)
+
+    if from == [], do: "", else: "座標: 代表店の位置（#{Enum.join(from, " / ")}）"
+  end
+
+  @doc """
+  地図に出す料理の名前。県ごとに分けた 1 件の「（県名）」と、百科事典の見分けの補足
+  （「チェルシー (菓子)」の「 (菓子)」）を落とします（地図に出るのは名前なので、
+  機械の都合は見せない。travel-log 側の鍵は doc_id）。
+  """
+  def dish_name(title, region) do
+    title
+    |> text()
+    |> then(fn name ->
+      if region, do: String.replace_suffix(name, "（#{region}）", ""), else: name
+    end)
+    |> String.replace(~r/\s+\([^()]*\)$/u, "")
+    |> String.trim()
+  end
+
+  # そのタグの値だけを、付いている順で
+  defp tagged(tags, prefix) do
+    tags
+    |> Enum.filter(&(is_binary(&1) and String.starts_with?(&1, prefix <> ":")))
+    |> Enum.map(&String.trim(String.replace_prefix(&1, prefix <> ":", "")))
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  defp number(value) when is_number(value), do: value
+  defp number(_value), do: nil
+
+  # 見出しや本文に混じる制御文字を落とす（`Chidori.Datasets.TravelLog` と同じ）
+  defp text(value) when is_binary(value) do
+    value |> String.replace(~r/[\x00-\x08\x0b\x0c\x0e-\x1f]/, "") |> String.trim()
+  end
+
+  defp text(_value), do: ""
+end

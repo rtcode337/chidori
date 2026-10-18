@@ -386,7 +386,48 @@
           </p>
         </div>
 
+        <%!-- **区画が県の対象（ご当地グルメ）は、区画の地図の代わりに県の地図と県ごとの数を並べる。**
+           区画の鍵が矩形ではないので区画の地図にはできず、知りたいのも「どこまで見たか」より
+           「県ごとに料理と代表店がどれだけ揃ったか」。溜まったものそのもの（料理の名前）は
+           出さない —— 読むのは travel-log。
+           **並びは 地図 → 選んだ県（数と 1 回走らせる）→ 表。** 狭い画面で地図の県を押したとき、
+           表の 47 行の下まで探しに行かずに済むように --%>
+        <section
+          :if={@dataset[:prefectures]}
+          class="settings-block prefecture-progress"
+          aria-label="県ごとの進み具合"
+        >
+          <h3>県ごとの進み具合</h3>
+          <%= case @prefecture_progress do %>
+            <% nil -> %>
+              <p class="muted-note">まだ数えていません。</p>
+            <% :loading -> %>
+              <p class="muted-note">Chiezo の収集を数えています…</p>
+            <% {:error, reason} -> %>
+              <p class="muted-note">数えられませんでした。{reason_text(reason)}</p>
+            <% {:ok, progress} -> %>
+              <p class="muted-note">
+                {progress_summary(progress, prefecture_rows(progress.rows, rows))} 「代表店あり」は辞典に引き当たって座標を持つもの（AI が見たあとなら travel-log へ出ます）。
+                「代表店まだ」は代表店の手がかりがまだ無いものと、手がかりを書いたが辞典の店に決まらなかったもの（「引き当てできず」。理由は Chiezo の収集の面の「引き当てと書式」）で、整理の回はこれが残る県に次の回も戻ります。
+                「代表店なし」は整理の AI が調べたが、確実に食べられる・買える店が見つからなかったもの（日が経ったら探し直します。travel-log へは出ません）。
+                <%= if progress.unresolved_total == nil do %>
+                  この Chiezo は引き当てられなかったものの口を持っていないので、引き当てできずの数は出していません。
+                <% end %>
+                <%= if progress.unplaced_region > 0 do %>
+                  県の読めない料理が {progress.unplaced_region} 品あります（どの区画にも入らず、書き出しもしません）。
+                <% end %>
+              </p>
+          <% end %>
+          <%!-- 地図は**数が届いたときに組んだもの**（`@prefecture_map`）だけで描く。
+             画面の中の値から組むと、選び直すたびに 47 県の境目を送り直す --%>
+          <.prefecture_map :if={@prefecture_map} map={@prefecture_map} picked={@picked} />
+          <p :if={@prefecture_map && @picked && !picked_row(rows, @picked)} class="muted-note">
+            {@dataset.module.prefecture_of_key(@picked)}はまだ区画がありません。収集を作って有効にしたあと、最初の回で区画になります。
+          </p>
+        </section>
+
         <.partition_map
+          :if={!@dataset[:prefectures]}
           map={Chidori.Datasets.Map.build(rows)}
           sweeps={@dataset.partition_sweeps}
           picked={@picked}
@@ -400,13 +441,39 @@
           <h3>選んだ区画</h3>
           <dl class="collect-facts">
             <div>
-              <dt>範囲（南西 / 北東）</dt>
-              <dd>{picked.key}</dd>
+              <dt>{if @dataset[:prefectures], do: "県", else: "範囲（南西 / 北東）"}</dt>
+              <dd>
+                {if @dataset[:prefectures],
+                  do: @dataset.module.prefecture_of_key(picked.key) || picked.key,
+                  else: picked.key}
+              </dd>
             </div>
             <div>
               <dt>この区画にあるもの</dt>
               <dd>{picked.count} 件</dd>
             </div>
+            <%= if counts = @dataset[:prefectures] && picked_prefecture(@prefecture_progress, picked.key) do %>
+              <div>
+                <dt>料理</dt>
+                <dd>{counts.dishes} 品</dd>
+              </div>
+              <div>
+                <dt>代表店あり</dt>
+                <dd>{counts.placed} 品</dd>
+              </div>
+              <div>
+                <dt>代表店まだ</dt>
+                <dd>
+                  {counts.pending} 品{if elem(@prefecture_progress, 1).unresolved_total,
+                    do: "（うち引き当てできず #{counts.unresolved} 品）",
+                    else: ""}
+                </dd>
+              </div>
+              <div>
+                <dt>代表店なし</dt>
+                <dd>{counts.no_shop} 品</dd>
+              </div>
+            <% end %>
             <div>
               <dt>見終わった巡回</dt>
               <dd>{if picked.by, do: "#{picked.by}（#{picked.seen}）", else: "まだ"}</dd>
@@ -457,7 +524,12 @@
              割り込み（進み具合にも印にも触らない）は、押しても画面が変わらず
              「何が起きたのか分からない」になっていた。こちらは**ふつうの回として
              走る**ので、印が付き、読み直せば結果が見える --%>
-          <form phx-submit="run_partition" phx-change="pick_run" class="collect-form">
+          <form
+            id="run-partition-form"
+            phx-submit="run_partition"
+            phx-change="pick_run"
+            class="collect-form"
+          >
             <input type="hidden" name="key" value={picked.key} />
             <% {plain, hands} = by_kind(@backends) %>
             <% models = models_for(@backends, @run_backend) %>
@@ -517,6 +589,58 @@
           </form>
         </section>
 
+        <%!-- **県ごとの数の表。** 地図で押しにくい小さな県を選ぶ口で、数を並べて読む用 --%>
+        <section
+          :if={@dataset[:prefectures] && match?({:ok, _}, @prefecture_progress)}
+          class="settings-block prefecture-progress"
+          aria-label="県ごとの数"
+        >
+          <% {:ok, progress} = @prefecture_progress %>
+          <% prows = prefecture_rows(progress.rows, rows) %>
+          <table class="partition-table prefecture-table">
+            <thead>
+              <tr>
+                <th>県</th>
+                <th>料理</th>
+                <th>代表店あり</th>
+                <th>代表店まだ</th>
+                <th>代表店なし</th>
+                <th>見終わった巡回</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={row <- prows} class={if @picked == row.key, do: "is-picked"}>
+                <td>{row.prefecture}</td>
+                <td>{row.dishes}</td>
+                <td>{row.placed}</td>
+                <td>
+                  {row.pending}<span
+                    :if={progress.unresolved_total && row.unresolved > 0}
+                    class="muted-note"
+                  >（うち引き当てできず {row.unresolved}）</span>
+                </td>
+                <td>{row.no_shop}</td>
+                <td>{if row.by, do: "#{row.by}（#{row.seen}）", else: "まだ"}</td>
+                <td>
+                  <button
+                    :if={row.in_ledger}
+                    type="button"
+                    phx-click="pick_partition"
+                    phx-value-key={row.key}
+                  >
+                    選ぶ
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="muted-note">
+            地図の県か「選ぶ」を押すと、その県を選んだ巡回で 1 回走らせられます（押しただけでは走りません）。
+            区画がまだ無い県は、収集を作って有効にしたあと、最初の回で区画になります。
+          </p>
+        </section>
+
         <h3>Chiezo の収集</h3>
         <p aria-live="polite">{status_message(@state)}</p>
         <p class="muted-note">{push_note(@state)}</p>
@@ -567,7 +691,10 @@
           <% partition = partition_text(assigns) %>
           <%= if extract do %>
             <h3>抽出の指定（辞典から機械的に引く条件）</h3>
-            <p class="news-prompt-note">
+            <p :if={@dataset[:extract_note]} class="news-prompt-note">
+              {@dataset[:extract_note]}
+            </p>
+            <p :if={!@dataset[:extract_note]} class="news-prompt-note">
               名前・座標・住所・電話・サイト・ジャンル・紹介文は、この指定で辞典から引いています。 <strong>AI は関わりません</strong>（決まった結果が出ます）。 <strong>何本かに分けて書いてあれば、書いた順が優先の順</strong>です ——
               <code>provides</code>
               はその辞典が<strong>勝ちにいく項目</strong>で、
@@ -578,15 +705,28 @@
 
           <%= if partition do %>
             <h3>区画の割り方</h3>
-            <p class="news-prompt-note">
+            <p :if={@dataset[:partition_note]} class="news-prompt-note">
+              {@dataset[:partition_note]}
+            </p>
+            <p :if={!@dataset[:partition_note]} class="news-prompt-note">
               巡回はここで割った区画を 1 つずつ回ります。<strong>母集団は集めたもの自身</strong>なので、
               座標が直れば区画も追随し、育ちすぎた区画・空になった区画は Chiezo が割り直します。
             </p>
             <pre>{partition}</pre>
           <% end %>
 
+          <%= if resolve = resolve_text(assigns) do %>
+            <h3>辞典への引き当てと書式</h3>
+            <p class="news-prompt-note">
+              AI が書いた代表店の手がかり（名前・住所・頁の URL）から、Chiezo が焼くときに辞典の店を引き当て、
+              座標と営業時間を運びます。提供の月と営業時間は書式を確かめ、崩れた値は落とします。 <strong>AI は関わりません</strong>。
+            </p>
+            <pre>{resolve}</pre>
+          <% end %>
+
           <h3>指示文（AI に頼んでいる内容）</h3>
-          <p :if={extract} class="news-prompt-note">
+          <p :if={@dataset[:prompt_note]} class="news-prompt-note">{@dataset[:prompt_note]}</p>
+          <p :if={extract && !@dataset[:prompt_note]} class="news-prompt-note">
             AI が書くのは<strong>辞典に書いていないこと</strong>だけです ——
             まだ開いているか、食べに行く価値があるか、どんな店か。
             どこを見るかは Chiezo が区画で渡すので、指示文には書いてありません。
@@ -668,7 +808,7 @@
           </details>
         </section>
 
-        <details :if={rows != []} class="partition-list">
+        <details :if={rows != [] and !@dataset[:prefectures]} class="partition-list">
           <% progress = partition_progress(rows, @dataset.partition_sweeps) %>
           <summary>
             区画（<span :if={progress}>{elem(progress, 1)} / </span>{length(rows)}）
@@ -724,7 +864,13 @@
                 <textarea
                   name="text"
                   rows="6"
-                  placeholder="- [修正] 店名 (35.68123,139.76712): 閉店している&#10;- [追加] (35.68000,139.76000): うどんの名店がある"
+                  placeholder={
+                    if @dataset[:prefectures],
+                      do:
+                        "- [修正] 料理名 (35.68123,139.76712): 代表店が閉店している\n- [追加] (35.68000,139.76000): この土地の名物を出す店がある",
+                      else:
+                        "- [修正] 店名 (35.68123,139.76712): 閉店している\n- [追加] (35.68000,139.76000): うどんの名店がある"
+                  }
                 ></textarea>
               </label>
             </p>
@@ -820,8 +966,12 @@
                 控えを捨てる
               </button>
             </div>
-            <p :if={!group.key} class="muted-note">
+            <p :if={!group.key and !@dataset[:prefectures]} class="muted-note">
               範囲の外の座標です。範囲を広げると、その区画に入り直します。
+            </p>
+            <p :if={!group.key and @dataset[:prefectures]} class="muted-note">
+              どの県の依頼か決められませんでした（近くに同じ名前の料理が無く、座標の県も読めなかった）。
+              捨てて、料理の名前と座標を確かめてから貼り直してください。
             </p>
           </details>
         </section>

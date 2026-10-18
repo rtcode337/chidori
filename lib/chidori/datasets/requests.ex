@@ -318,7 +318,7 @@ defmodule Chidori.Datasets.Requests do
 
     results =
       for item <- items(text) do
-        item = revive_point(item, nearby.(item))
+        item = item |> revive_point(nearby.(item)) |> with_partition_key(dataset)
 
         %PendingRequest{}
         |> PendingRequest.changeset(Map.put(item, :collection, name))
@@ -335,6 +335,17 @@ defmodule Chidori.Datasets.Requests do
        skipped: Enum.count(results, &(&1 == :skipped))
      }}
   end
+
+  # **座標で区画を引けない対象は、控えるときに区画の鍵を決めて残す**（対象の
+  # `request_partition/1`。ご当地グルメは料理の県）。決まらなければ鍵を持たずに控え、
+  # 「どの区画にも入らない」に並ぶ
+  defp with_partition_key(item, %{module: module}) when is_atom(module) do
+    if Code.ensure_loaded?(module) and function_exported?(module, :request_partition, 1),
+      do: Map.put(item, :partition_key, module.request_partition(item)),
+      else: item
+  end
+
+  defp with_partition_key(item, _dataset), do: item
 
   @doc """
   依頼を振り分ける座標。**報告に名前の出てくる店が近くで消えていたら、その店の座標**、
@@ -402,14 +413,13 @@ defmodule Chidori.Datasets.Requests do
   """
   def pending(%{collection: name}, partitions) when is_list(partitions) do
     boxes = boxes(partitions)
+    keys = MapSet.new(partitions, & &1.key)
 
     PendingRequest
     |> where([p], p.collection == ^name)
     |> order_by([p], asc: p.inserted_at, asc: p.id)
     |> Repo.all()
-    |> Enum.group_by(fn item ->
-      Enum.find_value(boxes, fn {key, box} -> if inside?({item.lat, item.lon}, box), do: key end)
-    end)
+    |> Enum.group_by(&partition_of(&1, boxes, keys))
     |> Enum.map(fn {key, items} -> %{key: key, items: items, since: hd(items).inserted_at} end)
     |> Enum.sort_by(&{&1.key == nil, -length(&1.items), DateTime.to_unix(&1.since)})
   end
@@ -465,18 +475,15 @@ defmodule Chidori.Datasets.Requests do
   """
   def regroup(items, partitions) when is_list(partitions) do
     boxes = boxes(partitions)
+    known = MapSet.new(partitions, & &1.key)
 
     {inside, outside} =
       items
-      |> Enum.map(fn item ->
-        {Enum.find_value(boxes, fn {key, box} ->
-           if inside?({item.lat, item.lon}, box), do: key
-         end), item}
-      end)
+      |> Enum.map(&{partition_of(&1, boxes, known), &1})
       |> Enum.split_with(fn {key, _item} -> key != nil end)
 
     by_key = Enum.group_by(inside, &elem(&1, 0), &elem(&1, 1))
-    keys = for {key, _box} <- boxes, Map.has_key?(by_key, key), do: key
+    keys = for %{key: key} <- partitions, Map.has_key?(by_key, key), do: key
 
     %{
       keys: keys,
@@ -484,6 +491,20 @@ defmodule Chidori.Datasets.Requests do
       points: Enum.flat_map(keys, &by_key[&1]),
       missed: Enum.map(outside, fn {nil, item} -> {item.lat, item.lon} end)
     }
+  end
+
+  # 控え 1 件の区画。**鍵を持っていれば、いまの台帳にあるときだけその鍵**（区画が
+  # 消えていれば迷子として残す）、持っていなければ座標の入る矩形の区画
+  defp partition_of(item, boxes, known) do
+    case Map.get(item, :partition_key) do
+      key when is_binary(key) and key != "" ->
+        if MapSet.member?(known, key), do: key
+
+      _none ->
+        Enum.find_value(boxes, fn {key, box} ->
+          if inside?({item.lat, item.lon}, box), do: key
+        end)
+    end
   end
 
   # 取り込みが空くのを待ちながら、**空いたその回の直前に**区画を読み直して頼む。
@@ -664,7 +685,7 @@ defmodule Chidori.Datasets.Requests do
   # （`regroup/2` の `keys` と `notes`）。`opts` は頼む相手（`backend`・`model`・`worker`。
   # その 1 回だけの上書きで、書かなければ巡回の設定のまま）
   defp ask(base, %{collection: name} = dataset, %{keys: keys, notes: notes}, opts) do
-    notes = Map.new(notes, fn {key, text} -> {key, with_preface(text)} end)
+    notes = Map.new(notes, fn {key, text} -> {key, with_preface(text, dataset)} end)
 
     # 「この区画を頼む」を押したのは人（止めている収集でも走らせる。`Chiezo.by_hand/1`）
     Chiezo.by_hand(fn ->
@@ -755,7 +776,19 @@ defmodule Chidori.Datasets.Requests do
     |> String.trim_trailing()
   end
 
-  defp with_preface(text), do: preface() <> "\n\n" <> text
+  @doc """
+  対象ごとの前置き。**対象が自分の前置きを持っていればそれ**（`request_preface/0`。
+  ご当地グルメは料理と代表店の言い方で書く）、無ければ `preface/0`（食事処）。
+  """
+  def preface(%{module: module}) when is_atom(module) do
+    if Code.ensure_loaded?(module) and function_exported?(module, :request_preface, 0),
+      do: module.request_preface(),
+      else: preface()
+  end
+
+  def preface(_dataset), do: preface()
+
+  defp with_preface(text, dataset), do: preface(dataset) <> "\n\n" <> text
 
   # 画面に並べる依頼の数
   @shown_logs 5
