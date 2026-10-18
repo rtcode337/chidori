@@ -34,6 +34,7 @@ defmodule Chidori.Datasets do
     do: [
       Books.definition(),
       Pihole.definition(),
+      Chidori.Datasets.Recipes.definition(),
       Gourmet.definition() | Enum.map(DiningAreas.list(), &Dining.definition/1)
     ]
 
@@ -193,10 +194,18 @@ defmodule Chidori.Datasets do
     with {:ok, base} <- base_url(), do: listing.list(base)
   end
 
+  # **溜まったものを読む画面を持つ対象**（レシピ集）。同じ口で読み、同じ覚え書きに置く
+  def shelf(%{reading: reading}) when not is_nil(reading) do
+    with {:ok, base} <- base_url(), do: reading.list(base)
+  end
+
   def shelf(_dataset), do: {:ok, nil}
 
-  @doc "一覧を持つ対象か（本棚、または自分に溜まったものの一覧）。"
-  def listed?(dataset), do: not is_nil(dataset[:derived]) or not is_nil(dataset[:listing])
+  @doc "一覧を持つ対象か（本棚、自分に溜まったものの一覧、または読む画面）。"
+  def listed?(dataset),
+    do:
+      not is_nil(dataset[:derived]) or not is_nil(dataset[:listing]) or
+        not is_nil(dataset[:reading])
 
   @doc """
   選んだ区画を、選んだ巡回で **1 回走らせます**（Chiezo の「選んだ区画で 1 回

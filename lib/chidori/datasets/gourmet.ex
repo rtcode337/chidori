@@ -222,6 +222,13 @@ defmodule Chidori.Datasets.Gourmet do
   # 代表店をその店にした理由を AI が書く脇書きの鍵（説明欄の代表店の行のすぐ後ろに出す）
   @shop_reason_key "shop_reason"
 
+  # ランクの材料の閲覧数の段（月の閲覧数の下限 → 段。上から見る）。東京・神奈川・福井の
+  # 記事のある 118 件で 2000 以上が 9 件・500 以上が 32 件・100 以上が 83 件
+  @fame_steps [{2000, "A"}, {500, "B"}, {100, "C"}]
+  # AI の見立てで付けてよいいちばん上の段
+  @ai_rank_ceiling "B"
+  @rank_tag "ランク"
+
   # 提供している店の数の段階（ランクの材料）
   @shop_counts ~w(1 数軒 多数)
 
@@ -428,8 +435,8 @@ defmodule Chidori.Datasets.Gourmet do
       },
       %{
         field: "ランク（rank）",
-        stored: "タグ「裏付け:…」「提供店:…」",
-        who: "機械（誰が名物として挙げているかと、提供している店の数から決める）"
+        stored: "タグ「裏付け:…」「提供店:…」と extra.pageviews_month（記事の無い 1 件はタグ「#{@rank_tag}:…」）",
+        who: "機械（誰が名物として挙げているか・提供している店の数・百科事典の閲覧数から決める。記事の無い 1 件だけ AI の見立てを B まで）"
       },
       %{
         field: "提供の時期（available_months）",
@@ -505,9 +512,9 @@ defmodule Chidori.Datasets.Gourmet do
             format: @shop_tag
           }
         ] ++ kind_rules(),
-      # 脇書きには何も運ばない（知名度はランクに使わない。1 件の脇書きは鍵の数に
-      # 上限があるので、読まないものは載せない）
-      extra: [],
+      # **知名度（月の閲覧数）だけ運ぶ**。ランクの材料（`rank/2`）。1 件の脇書きは鍵の数に
+      # 上限があるので、読まないものは載せない
+      extra: ["pageviews_month"],
       split: %{prefix: "#{area_tag()}:", title: "{title}（{value}）"}
     }
   end
@@ -1000,7 +1007,7 @@ defmodule Chidori.Datasets.Gourmet do
   # 1 件の形。**2 つの依頼文で同じものを使う**（travel-log が読むのはこの形）。
   # 脇書きの鍵は Chiezo の上限（1 件 20 鍵。Chiezo の印を含む）に収まるよう、AI に書かせる
   # 10 こ（shop・available_months・season_note・opening_hours・municipality・sources・checked_on・
-  # no_shop・display_name・shop_reason）だけにしてある。機械が運ぶ lat・lon・url と Chiezo の印
+  # no_shop・display_name・shop_reason）だけにしてある。機械が運ぶ lat・lon・url・pageviews_month と Chiezo の印
   # （消した理由・見直した印など）を足しても 20 に届かない（足すなら、どれかを減らしてから）
   defp item_format do
     """
@@ -1029,6 +1036,10 @@ defmodule Chidori.Datasets.Gourmet do
         （国 = 農林水産省「うちの郷土料理」など、県 = 県や県の観光協会、市区町村 = 市町村や地元の観光協会、
         商標 = 地域団体商標、大会 = ご当地グルメの大会への出展・受賞）。その頁の URL は `extra.sources` に
       - "提供店:<店の数>" —— #{Enum.join(@shop_counts, " / ")}（1 軒だけ・数軒・町に専門店が並ぶ／組合や公式の店舗一覧がある）
+      - "#{@rank_tag}:<A〜E>" —— **百科事典に記事の無い 1 件だけ**（足した名産など）、どれくらい
+        知られているか。A=全国から人が来る、B=その県を代表する、C=その市区町村で知られる、
+        D=地元で親しまれている、E=それ以外。**迷ったら下の段に**してください（地図の丸の大きさに
+        なります）。記事のある 1 件は記事の閲覧数で機械が決めるので付けません
       - "出典:OSM" / "出典:Overture" / "#{@unplaced_tag}" / "#{Chiezo.locked_tag()}" は機械が付けます。
         **足したり消したりしないでください**
     - extra.shop: 代表店の手がかり（上の「代表店の決め方」）
@@ -1306,7 +1317,7 @@ defmodule Chidori.Datasets.Gourmet do
         "lat" => lat,
         "lng" => lon,
         "region" => region,
-        "rank" => rank(tags),
+        "rank" => rank(tags, extra),
         "series" => tags |> tagged(genre_tag()) |> List.first() || "",
         "categories" => tags |> categories(extra) |> Enum.join("|"),
         "description" => description(tags, extra),
@@ -1381,20 +1392,32 @@ defmodule Chidori.Datasets.Gourmet do
   end
 
   @doc """
-  ランク（A〜E）。**AI には段階を決めさせず、確かめられる事実から機械で**決めます
-  （誰が名物として挙げているかと、提供している店の数）。
+  ランク（A〜E）。**段階は機械で**決めます。材料は 3 つで、**いちばん高い段**を採ります。
 
-  | ランク | 決まり |
-  |---|---|
-  | A | 国か地域団体商標の裏付けがあり、提供店が多数 |
-  | B | 国・商標・県のどれかの裏付けがある |
-  | C | 市区町村の裏付けがある |
-  | D | 公的な裏付けは無いが、提供店が数軒以上ある |
-  | E | それ以外（1 軒だけの名物・まだ調べていないもの） |
+  1. 裏付け（誰が名物として挙げているか）と提供している店の数
 
-  A が多すぎると丸の大きさが何も表さなくなるので、A は「国か商標」と「多数」の両方が要る。
+     | ランク | 決まり |
+     |---|---|
+     | A | 国か地域団体商標の裏付けがあり、提供店が多数 |
+     | B | 国・商標・県のどれかの裏付けがある |
+     | C | 市区町村の裏付けがある |
+     | D | 公的な裏付けは無いが、提供店が数軒以上ある |
+     | E | それ以外 |
+
+  2. 百科事典の月の閲覧数（`extra.pageviews_month`。名簿が記事から運ぶ）——
+     2000 以上で A・500 以上で B・100 以上で C・記事があれば D。
+     **食材は C まで**（記事が果物や魚としても引かれ、名物としての知名度より伸びる）
+  3. 記事の無い 1 件（AI が足した名産など）だけ、AI の見立て（タグ「ランク:」）。
+     **B まで**（A は機械の材料で決まるものだけにして、丸の大きさの天井を保つ）
+
+  A が多すぎると丸の大きさが何も表さなくなるので、A は「国か商標」と「多数」の両方か、
+  閲覧数の上位だけ。
   """
-  def rank(tags) do
+  def rank(tags, extra \\ %{}) do
+    Enum.min([backing_rank(tags), fame_rank(tags, extra), ai_rank(tags, extra)])
+  end
+
+  defp backing_rank(tags) do
     backed = MapSet.new(tagged(tags, "裏付け"))
     shops = tags |> tagged("提供店") |> List.first()
     national = MapSet.member?(backed, "国") or MapSet.member?(backed, "商標")
@@ -1405,6 +1428,37 @@ defmodule Chidori.Datasets.Gourmet do
       MapSet.member?(backed, "市区町村") -> "C"
       shops in ["数軒", "多数"] -> "D"
       true -> "E"
+    end
+  end
+
+  defp fame_rank(tags, extra) do
+    case pageviews(extra) do
+      nil ->
+        "E"
+
+      views ->
+        rank =
+          Enum.find_value(@fame_steps, "D", fn {floor, rank} -> if views >= floor, do: rank end)
+
+        if "#{genre_tag()}:食材" in tags, do: Enum.max([rank, "C"]), else: rank
+    end
+  end
+
+  # AI の見立ては記事の無い 1 件だけ（記事があれば閲覧数のほうが確か）
+  defp ai_rank(tags, extra) do
+    with nil <- pageviews(extra),
+         rank when rank in ~w(A B C D E) <- tags |> tagged(@rank_tag) |> List.first() do
+      Enum.max([rank, @ai_rank_ceiling])
+    else
+      _ -> "E"
+    end
+  end
+
+  defp pageviews(extra) do
+    case Map.get(extra || %{}, "pageviews_month") do
+      n when is_integer(n) and n >= 0 -> n
+      n when is_float(n) and n >= 0 -> trunc(n)
+      _ -> nil
     end
   end
 

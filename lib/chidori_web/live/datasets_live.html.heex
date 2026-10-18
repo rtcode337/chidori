@@ -131,6 +131,18 @@
       </table>
     </section>
 
+    <%!-- **レシピ集**（設定より先に置く。見に来るのは溜まったレシピのほう） --%>
+    <ChidoriWeb.RecipeBook.book
+      :if={@dataset[:reading] && match?({:ok, _}, @shelf)}
+      recipes={elem(@shelf, 1)}
+      filter={@recipe_filter}
+      opened={@recipe_open}
+      message={@recipe_message}
+    />
+    <p :if={@dataset[:reading] && match?({:error, _}, @shelf)} class="muted-note">
+      レシピを読めませんでした: {reason_text(elem(@shelf, 1))}
+    </p>
+
     <%!-- **Pi-hole のドメイン**（設定より先に置く。見に来るのは溜まったドメインのほう）。
          気になる通信を先に、止めた回数の多い順。押すと調べた中身の全文が開く --%>
     <section

@@ -6,6 +6,7 @@ paths:
   - "lib/chidori_web/live/datasets_live*"
   - "lib/chidori_web/live/dining_areas_live*"
   - "lib/chidori_web/components/dining_tabs.ex"
+  - "lib/chidori_web/components/recipe_book.ex"
   - "lib/chidori_web/controllers/datasets_controller.ex"
   - "lib/chidori_web/controllers/thumb_controller.ex"
   - "lib/chidori_web/components/partition_map.ex"
@@ -22,12 +23,22 @@ paths:
   - "test/support/area_fixture.ex"
 ---
 
-# データ収集（技術書・Pi-hole・ご当地グルメ・食事処）
+# データ収集（技術書・Pi-hole・レシピ集・ご当地グルメ・食事処）
 
 詳しい説明・travel-log の項目との対応表・実測値は `docs/datasets.md`。
 
-- 他のアプリで使うデータを集めさせる画面。溜まったものは見せない（例外は読む側のアプリを持たない技術書の本棚と Pi-hole）。
-  対象は `Chidori.Datasets.defined/0` に 1 つ書けばタブも依頼も増える
+- データを集めて分かりやすく見せる画面（技術書の本棚・Pi-hole のドメイン・レシピ集は溜まったものをここで読む）。
+  食事処とご当地グルメは読むのが travel-log なので、Chidori では一覧にしない（両方に出すと二重に管理することになる）。
+  対象は `Chidori.Datasets.defined/0` に 1 つ書けばタブも依頼も増える。読む画面を持つ対象は定義の `reading`
+  （`Datasets.shelf/1` が `list/1` を呼び、本棚と同じ覚え書きに置く）
+- レシピ集（`Chidori.Datasets.Recipes`・`chidori_recipes`。網羅）: 各地の料理の正統とされる作り方。料理名は AI に考えさせず、
+  百科事典の「〜料理」の分類（`tag_suffix`）を月の閲覧数で絞って機械で引く（既定 1,000。画面の「名簿を引き直す」で変える。
+  値は `Relations.Settings` の `recipes`）。店・商品・食材・行事の分類は `not_tag` で外し、地域は「<地域>の食文化」から。
+  AI は正統とされる形・材料・手順・アレンジとの違い・出典を、決めた見出しで書く（`body_sections/1` が緩く読む）。
+  根拠は発祥地の団体・料理学校・公的機関・定評のある文献（個人のブログは使わない）、定説が無ければそう書かせ、文は自分の言葉で。
+  写真は百科事典の記事の写真を Chiezo が縮めて持つ（`thumbs`）。Commons のファイルの頁へリンクする。レシピサイトの写真は使わない。
+  区画は料理名の順に 20 品（`by: "title"`）。巡回は 名簿 → 書く（ざっと見る。一周で止まる）→ 見直す（整理）。
+  画面（`ChidoriWeb.RecipeBook`）は書いた料理だけを写真と名前で並べ、国・種類・語で絞り、押すと詳細を重ねて開く
 - 技術書: 本ではなく勧めている記事を溜める（`chidori_book_posts`）。数は機械が数え、AI は数に触らない（畳む・分野・説明だけ）。
   検索文は回ごとに巡回の相手が考え、控えるのは Chiezo。調べ終えたものは調べ直さない（`{unreviewed}`）
 - Pi-hole: 繋ぐのは Chiezo（接続先とパスワードは Chiezo 側）。Chidori は Pi-hole に直接つながらない
@@ -75,7 +86,7 @@ paths:
   なしは足止めに数えず、書き出さず、整理の ⑤ で日の経ったものから探し直す。終わったものは墓標（なしと混ぜない）。
   巡回は 機械収集 → 整理（機械の名簿の確認・代表店・空欄（代表店の理由と発祥の店の地図の名前も。後から足した項目を前に決めた 1 件で埋める道。1 回 30 件まで）・見直し・未定が無い回だけ名簿に無い名産を数品足す）→ 情報収集（足すだけ・薄い切り口から。時計では整理の一周を待つ `after`）。どちらも 1 回 1 県。
   整理は代表店未定が残る県を見終わりにしない（`hold_tag`。1 品も減らなければ Chiezo が次へ進める）
-  ランクは裏付けと提供店の数から書き出すときに機械で決める（AI に段階を決めさせない）。終わったものは墓標、代表店の閉店は選び直し。
+  ランクは書き出すときに機械で決める（`rank/2`。裏付けと提供店の数・百科事典の閲覧数 `extra.pageviews_month`（名簿が運ぶ。食材は C まで）の高いほう。記事の無い 1 件だけ AI のタグ `ランク:` を B まで）。終わったものは墓標、代表店の閉店は選び直し。
   画面は区画の地図の代わりに県の地図と県ごとの数（料理・店（うち店）・代表店あり・代表店まだ（うち引き当てできず）・代表店なし）だけを出し、地図の県か表の「選ぶ」で県を選んで 1 回頼める。
   「AI が見たか」（未確認）は出さない（代表店がまだでも 0 になり紛らわしい）
 - 県の地図（`ChidoriWeb.PrefectureMap`・`Chidori.Datasets.Map.prefectures/1`）: 県の境界は手元（`priv/geo/japan_prefectures.json`。Natural Earth の admin-1、

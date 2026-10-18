@@ -53,6 +53,10 @@ defmodule ChidoriWeb.DatasetsLive do
        derived_picks: %{},
        # この収集から作る収集に溜まっているもの（本棚の本）。nil は「並べない対象」
        shelf: nil,
+       # レシピ集の絞り込み（国・種類・語）と、詳細を開いている料理、名簿を引き直した結果の一言
+       recipe_filter: %{},
+       recipe_open: nil,
+       recipe_message: nil,
        # 本ごとの「勧めている記事」。**開いたものだけ引く**（79 冊ぶんを先に引かない）
        book_posts: %{},
        # 詳細を開いている本（見出し）。本を押すとモーダルで開く
@@ -144,6 +148,9 @@ defmodule ChidoriWeb.DatasetsLive do
         book_marks: if(dataset[:derived], do: BookMarks.all(), else: %{}),
         book_mark_saved: nil,
         opened_domain: nil,
+        recipe_filter: %{},
+        recipe_open: nil,
+        recipe_message: nil,
         domain_filter: "all",
         domain_marks:
           if(dataset[:listing],
@@ -345,6 +352,37 @@ defmodule ChidoriWeb.DatasetsLive do
       do: {:noreply, assign(socket, domain_filter: filter)}
 
   # 押すと詳細を開く。**調べた中身の全文は開いたときに初めて引く**（一覧は冒頭だけ）
+  # レシピ集（`ChidoriWeb.RecipeBook`）。絞り込みは手元の一覧で済ませる（Chiezo に聞き直さない）
+  def handle_event("filter_recipes", params, socket),
+    do: {:noreply, assign(socket, recipe_filter: Map.take(params, ["country", "kind", "q"]))}
+
+  def handle_event("open_recipe", %{"title" => title}, socket),
+    do: {:noreply, assign(socket, recipe_open: title)}
+
+  def handle_event("close_recipe", _params, socket),
+    do: {:noreply, assign(socket, recipe_open: nil)}
+
+  # 名簿の広さを変えて引き直す（機械収集を 1 回。AI は使わない）。**重ねて押しても 1 本**
+  def handle_event("reroster_recipes", %{"min" => min}, socket) do
+    pid = self()
+
+    started =
+      with {n, ""} <- Integer.parse(min) do
+        SingleFlight.start(:recipes_reroster, fn ->
+          send(pid, {:recipes_rerostered, Chidori.Datasets.Recipes.reroster(n)})
+        end)
+      end
+
+    message =
+      case started do
+        {:ok, _pid} -> "名簿を引き直しています…"
+        {:error, :busy} -> "いま引き直している最中です。"
+        _other -> "選べない下限です。"
+      end
+
+    {:noreply, assign(socket, recipe_message: message)}
+  end
+
   def handle_event("open_domain", %{"domain" => domain}, socket) do
     socket = assign(socket, opened_domain: domain)
 
@@ -736,6 +774,19 @@ defmodule ChidoriWeb.DatasetsLive do
   # travel-log からの依頼が終わった（頼めた・断られた・待ちきれなかった）。
   # 見積もりは一言に使うので、結果と組にして残す
   @impl true
+  def handle_info({:recipes_rerostered, result}, socket) do
+    message =
+      case result do
+        :ok ->
+          "名簿を引き直しました。新しく入った料理は、書く回が順にレシピを書きます（書き終えたものから並びます）。"
+
+        {:error, reason} ->
+          "名簿を引き直せませんでした: " <> reason_text(reason)
+      end
+
+    {:noreply, assign(socket, recipe_message: message)}
+  end
+
   def handle_info(:live_tick, socket) do
     if socket.assigns.live_on and socket.assigns.dataset[:listing],
       do: {:noreply, poll_live(socket)},

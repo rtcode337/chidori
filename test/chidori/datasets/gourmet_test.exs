@@ -296,10 +296,10 @@ defmodule Chidori.Datasets.GourmetTest do
       refute Map.has_key?(tidy, :model)
     end
 
-    test "データ収集の対象に 1 つ並ぶ（技術書・Pi-hole のあと）" do
+    test "データ収集の対象に 1 つ並ぶ（技術書・Pi-hole・レシピのあと）" do
       keys = Enum.map(Datasets.defined(), & &1.key)
 
-      assert Enum.take(keys, 3) == ["books", "pihole", "gourmet"]
+      assert Enum.take(keys, 4) == ["books", "pihole", "recipes", "gourmet"]
       assert %{collection: "chidori_gourmet", prefectures: true} = Datasets.get("gourmet")
       assert Chidori.Datasets.TravelLog.exportable?(Datasets.get("gourmet"))
     end
@@ -551,6 +551,30 @@ defmodule Chidori.Datasets.GourmetTest do
       assert Gourmet.rank(["提供店:数軒"]) == "D"
       assert Gourmet.rank(["提供店:1"]) == "E"
       assert Gourmet.rank([]) == "E"
+    end
+
+    test "百科事典の閲覧数でも段を上げる（高いほうを採る）" do
+      assert Gourmet.rank([], %{"pageviews_month" => 2500}) == "A"
+      assert Gourmet.rank([], %{"pageviews_month" => 800}) == "B"
+      assert Gourmet.rank([], %{"pageviews_month" => 150}) == "C"
+      # 記事があるだけで D
+      assert Gourmet.rank([], %{"pageviews_month" => 3}) == "D"
+      # 裏付けのほうが高ければそちら
+      assert Gourmet.rank(["裏付け:県"], %{"pageviews_month" => 150}) == "B"
+      # 食材は閲覧数では C まで
+      assert Gourmet.rank(["種類:食材"], %{"pageviews_month" => 9000}) == "C"
+
+      assert Gourmet.rank(["種類:食材", "裏付け:国", "提供店:多数"], %{"pageviews_month" => 9000}) ==
+               "A"
+    end
+
+    test "記事の無い 1 件だけ AI の見立てを B まで使う" do
+      assert Gourmet.rank(["ランク:C"]) == "C"
+      assert Gourmet.rank(["ランク:A"]) == "B"
+      # 記事があれば AI の見立ては読まない
+      assert Gourmet.rank(["ランク:A"], %{"pageviews_month" => 30}) == "D"
+      # 知らない段は読まない
+      assert Gourmet.rank(["ランク:S"]) == "E"
     end
 
     test "名前から見分けの補足を落とす" do
