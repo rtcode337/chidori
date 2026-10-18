@@ -1,8 +1,12 @@
 defmodule Chidori.Relations.Films do
   @moduledoc """
-  名作映画の関連図（関連図の画面の「名作映画のつながり」）。**同じ監督の作品を枠で囲んで
+  映画の関連図（関連図の画面の「映画のつながり」）。**同じ監督の作品を枠で囲んで
   近くに置き、同じ主演の作品どうしを線で結びます**。画家・芸能人の図と同じ仕組みで、
   Chiezo に名簿を持たせて育てます。
+
+  名簿の元は名作（下の「名簿」）ですが、**新しく公開された作品も入ります** ——
+  最新情報の映画のうち注目度が高いものと見た記録を付けたもの、それに図の画面から
+  見た記録と一緒に足したもの（「引き継ぎ」。`Chidori.Relations.FilmCarry`）。
 
   ## 名簿 —— ほとんど機械で引ける
 
@@ -35,6 +39,14 @@ defmodule Chidori.Relations.Films do
   ## 並べ方
 
   縦は公開年（枠は作品の公開年の中ほど）。区画は「国 × 公開年」で切ります。
+
+  ## 見た記録
+
+  **最新情報の映画と同じ置き場を使います**（`mark_view/0` = `Chidori.News.Movies.mark_view/0`）。
+  最新情報で付けた記録が、図へ引き継いだ作品にそのまま出るようにするため。鍵は見出しですが、
+  図の見出しは日本語版 Wikipedia の記事名にそろうので、最新情報の見出しと違うことがあります
+  （「〇〇 (映画)」）。そこで**引き継いだ作品には元の見出しをタグで残させ**（`記録:<見出し>`）、
+  図の札の記録はその見出しでも引きます（`marks_by_node/2`）。
   """
 
   alias Chidori.Chiezo
@@ -47,6 +59,9 @@ defmodule Chidori.Relations.Films do
   @director_prefix "監督"
   # 線を組む材料（値は主演の日本語版 Wikipedia の記事名。AI が書く）
   @star_prefix "主演"
+
+  # 見た記録の見出し（引き継いだ作品の、最新情報や画面で書いたときの見出し）
+  @record_prefix "記録"
 
   # 監督の分類の末尾（「黒澤明の監督映画」）
   @director_suffix "の監督映画"
@@ -96,6 +111,118 @@ defmodule Chidori.Relations.Films do
 
   @doc "区画の割り方。"
   def partition, do: @partition
+
+  @doc "見た記録の見出しのタグの頭（引き継いだ作品が持つ）。"
+  def record_tag, do: @record_prefix
+
+  @doc "見た記録の置き場の種類。**最新情報の映画と同じ**（記録を引き継ぐため）。"
+  def mark_view, do: Chidori.News.Movies.mark_view()
+
+  @doc "札が持つ、見た記録の見出し（`記録:<見出し>`）。無ければ空。"
+  def record_titles(%{tags: tags}) when is_list(tags) do
+    for tag <- tags,
+        String.starts_with?(tag, @record_prefix <> ":"),
+        value = tag |> String.replace_prefix(@record_prefix <> ":", "") |> String.trim(),
+        value != "",
+        do: value
+  end
+
+  def record_titles(_node), do: []
+
+  @doc """
+  記録の置き場（見出し → 記録）を、**図の札の名前で引ける形**に直します。
+  札の名前で書かれた記録が先、無ければ札が持つ `記録:` の見出しで書かれたもの。
+  """
+  def marks_by_node(marks, nodes) when is_map(marks) and is_list(nodes) do
+    for node <- nodes,
+        key = mark_key(node, marks),
+        mark = Map.get(marks, key),
+        into: %{},
+        do: {node.name, mark}
+  end
+
+  @doc """
+  その札の記録をどの見出しで書くか。**既に書いてある見出しがあればそれ**（2 つに割れない）、
+  無ければ札の名前。
+  """
+  def mark_key(%{name: name} = node, marks) when is_map(marks) do
+    cond do
+      Map.has_key?(marks, name) -> name
+      key = Enum.find(record_titles(node), &Map.has_key?(marks, &1)) -> key
+      true -> name
+    end
+  end
+
+  @doc """
+  **図にまだ載っていない記録**（見出し → 記録）。引き継ぎを頼んだばかりの作品と、
+  引き継げなかった作品がここに残ります（画面で「まだ図に無い」として出す）。
+  """
+  def unplaced(marks, nodes) when is_map(marks) and is_list(nodes) do
+    placed =
+      nodes
+      |> Enum.flat_map(&[&1.name | record_titles(&1)])
+      |> MapSet.new()
+
+    Map.reject(marks, fn {key, _mark} -> MapSet.member?(placed, key) end)
+  end
+
+  @doc """
+  引き継ぎの回の依頼文（割り込み 1 回だけの文。定義の文は変わらない）。`items` は
+  `%{title, date, summary, url}`（`date`・`summary`・`url` は分からなければ nil）。
+
+  **図に足すかは AI に選ばせません**（並んでいるものは全部足す）。名作かどうかではなく、
+  見た・話題になった、という事情で入れるものなので。**元の見出しを `記録:` で残させます**
+  —— 見出しを記事名にそろえると、見た記録の見出しと違ってくるため。
+  """
+  def carry_prompt(items) when is_list(items) do
+    lines =
+      Enum.map_join(items, "\n", fn item ->
+        facts =
+          [
+            item[:date] && "公開日 #{Date.to_iso8601(item.date)}",
+            present(item[:summary]),
+            present(item[:url])
+          ]
+          |> Enum.reject(&is_nil/1)
+          |> Enum.join(" / ")
+
+        if facts == "", do: "- #{item.title}", else: "- #{item.title}（#{facts}）"
+      end)
+
+    """
+    映画の関連図に、**下に並べた作品を足してください**。最近公開された映画で、見た記録が
+    付いたか、話題になったものです。**名作かどうかは問いません。全部足してください。**
+
+    #{lines}
+
+    図に既にある作品で、上と同じものかもしれないものは次のとおりです（無ければ空）。
+    {current}
+
+    - **既にある作品と同じなら、新しく足さずに、その作品を返して** "#{@record_prefix}:<上の見出し>" のタグを
+      足してください（いま付いているタグはすべて残す）
+    - 新しく足すとき、title は**日本語版 Wikipedia の記事名**にしてください（記事が無ければ上の見出しのまま）。
+      **"#{@record_prefix}:<上の見出し>" のタグを必ず付けてください**（上に書いた見出しをそのまま。
+      見た記録と結び付ける印です）
+    - tags には "#{@kind_tag}"・"#{Graph.years_tag()}:<公開年>"・"#{@country_prefix}:<製作国>"・"#{@director_prefix}:<監督>"
+      （監督の日本語版 Wikipedia の記事名。記事の無い監督は書かない）を付けてください
+
+    #{stars_rule()}
+    返す形は次のとおりです。
+    - title: 作品名
+    - body: どんな作品か（1〜2 文。**結末や仕掛けは書かない**）
+    - url: 日本語版 Wikipedia の記事の URL（無ければ公式サイト）
+    - tags: 上のとおり
+    """
+  end
+
+  defp present(value) when is_binary(value) do
+    case value |> String.split("\n") |> Enum.map(&String.trim/1) |> Enum.find(&(&1 != "")) do
+      nil -> nil
+      line -> String.slice(line, 0, 160)
+    end
+  end
+
+  defp present(_value), do: nil
 
   @doc "知名度に関わらず入れる賞の分類。"
   def award_categories, do: @award_categories
@@ -150,7 +277,7 @@ defmodule Chidori.Relations.Films do
   def attrs(choices \\ %{}) do
     %{
       name: collection(),
-      description: "Chidori の関連図（名作映画のつながり）",
+      description: "Chidori の関連図（映画のつながり）",
       prompt: prompt(),
       interval_minutes: Chidori.SweepNames.scan_minutes(),
       partition: @partition,
@@ -234,6 +361,7 @@ defmodule Chidori.Relations.Films do
     """
     **"#{@director_prefix}:"・"#{Graph.years_tag()}:"・"#{@country_prefix}:" のタグは Wikipedia の分類から
     機械で付けたものです。そのまま残してください**（足りないときだけ足してください）。
+    **"#{@record_prefix}:" のタグも、そのまま残してください**（見た記録と結び付ける印です）。
     """
   end
 
@@ -243,7 +371,7 @@ defmodule Chidori.Relations.Films do
   """
   def prompt do
     """
-    名作映画の関連図を育ててください。**同じ監督の作品と、同じ主演の作品をつなぐ図**です。
+    映画の関連図を育ててください。**同じ監督の作品と、同じ主演の作品をつなぐ図**です。
 
     **今回見る範囲**
     {partition}
@@ -263,7 +391,7 @@ defmodule Chidori.Relations.Films do
 
     **変えないものを返す必要はありません。** 返すものは次の形にしてください。
     - title: 作品名（**上に並んでいる表記をそのまま使う**）
-    - body: どんな作品か（1〜2 文。あらすじの核と、なぜ名作とされるか）
+    - body: どんな作品か（1〜2 文。あらすじの核と、なぜ知られているか）
     - url: 日本語版 Wikipedia の記事の URL
     - tags: **いま付いているタグをすべて残したうえで**、上のタグを足す
     """
@@ -272,7 +400,7 @@ defmodule Chidori.Relations.Films do
   @doc "区画ごとに仕上げる回の依頼文。**主演の漏れと誤りを直し、要らないものを消す**。"
   def survey_prompt do
     """
-    名作映画の関連図を、**この区画ぶんだけ仕上げてください**。
+    映画の関連図を、**この区画ぶんだけ仕上げてください**。
 
     **今回見る範囲**
     {partition}
@@ -300,7 +428,7 @@ defmodule Chidori.Relations.Films do
     - body: どんな作品か（1〜2 文）
     - url: 日本語版 Wikipedia の記事の URL
     - tags: "#{@kind_tag}"・"#{@director_prefix}:<監督>"・"#{Graph.years_tag()}:<公開年>"・"#{@country_prefix}:<国>"・
-      "#{@star_prefix}:<主演>"。"#{Graph.related_tag()}" のタグは**そのまま残してください**
+      "#{@star_prefix}:<主演>"。"#{Graph.related_tag()}" と "#{@record_prefix}:" のタグは**そのまま残してください**
     """
   end
 end

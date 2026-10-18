@@ -73,13 +73,6 @@ defmodule Chidori.News.Events do
   @doc "注目度のタグの頭。"
   def attention_tag, do: @attention_tag
 
-  @doc """
-  アーカイブ済みの作品か（`Chidori.Chiezo.archived_tag/0`）。**記録として残っているだけ**なので、
-  注目作の一覧・要約・絵探しには出さない（カレンダーの過去の月には出る）。
-  """
-  def archived?(%{tags: tags}) when is_list(tags), do: Chidori.Chiezo.archived_tag() in tags
-  def archived?(_entry), do: false
-
   @doc "注目度のタグ（`:high` → `注目度:高`）。"
   def attention_tag(:high), do: @attention_tag <> ":高"
   def attention_tag(:mid), do: @attention_tag <> ":中"

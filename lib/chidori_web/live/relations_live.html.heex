@@ -49,6 +49,50 @@
       <p>{@relation.description}</p>
 
       <.checked_line relation={@relation} />
+
+      <%!-- 図に無い映画も、見た記録を付けられる。**記録はその場で書き**、図へは AI に
+           足させる（載るのは取り込みが終わってから）。それまでのあいだ、記録だけある
+           作品は下に「まだ図に無い」として並べる（書いたのに見当たらない、にしない） --%>
+      <details :if={@view == "films"} class="seen-mark film-add">
+        <summary>
+          見た映画を足す
+          <span :if={@unplaced_marks != %{}} class="seen-badge">
+            まだ図に無い {map_size(@unplaced_marks)}
+          </span>
+        </summary>
+        <form phx-submit="add_film">
+          <p>
+            <label>
+              題名 <input type="text" name="title" required placeholder="例: 七人の侍" />
+            </label>
+          </p>
+          <p class="seen-row">
+            <label>
+              見た日
+              <input type="date" name="seen_on" value={Date.to_iso8601(Jst.today())} />
+            </label>
+          </p>
+          <p>
+            <label>
+              メモ<br />
+              <textarea name="note" rows="2"></textarea>
+            </label>
+          </p>
+          <p class="muted-note">
+            図に無い作品は、図の収集に足すよう頼みます（AI が監督・主演を調べて足すので、
+            載るのは取り込みが終わって図を取り直してから）。最新情報の映画で付けた見た記録と
+            注目度が高い作品も、1 日 1 回まとめて図へ足します。
+          </p>
+          <button type="submit" phx-disable-with="記録しています…">記録して足す</button>
+          <span :if={@film_added} class="muted-note">{@film_added}</span>
+        </form>
+        <div :if={@unplaced_marks != %{}}>
+          <p class="seen-mark-title">まだ図に無い見た映画</p>
+          <ul>
+            <li :for={{_name, label} <- unplaced_options(@unplaced_marks)}>{label}</li>
+          </ul>
+        </div>
+      </details>
     </section>
 
     <%!-- 図は地図と同じ操作にする（押し広げ・引きずり）。**全画面はブラウザの

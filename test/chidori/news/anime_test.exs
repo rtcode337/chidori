@@ -54,11 +54,9 @@ defmodule Chidori.News.AnimeTest do
       assert prompt =~ "先の展開は書かないでください"
     end
 
-    test "放送が終わって時間が経ったものは消さずにアーカイブさせ、その時点の評判は外させる",
-         %{prompt: prompt} do
-      assert prompt =~ ~s(**tags に "#{Chidori.Chiezo.archived_tag()}" を足して返してください**)
+    test "放送が終わって時間が経ったものを落とさせる", %{prompt: prompt} do
       assert prompt =~ "最終回から 30 日以上経ったもの"
-      assert prompt =~ "「評判」「出どころ」の行は外す"
+      assert prompt =~ Chidori.Chiezo.tombstone_tag()
     end
   end
 
@@ -114,13 +112,7 @@ defmodule Chidori.News.AnimeTest do
           %{title: "来期の中", date: ~D[2026-10-08], attention: :mid, tags: []},
           %{title: "放送中の中", date: ~D[2026-10-02], attention: :mid, tags: []},
           %{title: "放送中の高", date: ~D[2026-07-05], attention: :high, tags: []},
-          %{title: "完走した", date: ~D[2026-07-03], attention: :high, tags: ["放送終了:2026-09-27"]},
-          %{
-            title: "アーカイブ済み",
-            date: ~D[2026-07-04],
-            attention: :high,
-            tags: ["放送終了:2026-09-27", "_chiezo_archived"]
-          }
+          %{title: "完走した", date: ~D[2026-07-03], attention: :high, tags: ["放送終了:2026-09-27"]}
         ],
         today
       )

@@ -1,6 +1,6 @@
 defmodule Chidori.Relations.FilmsTest do
   @moduledoc """
-  名作映画の関連図（`Chidori.Relations.Films`）。**芸能人の図と同じ仕組み**で、
+  映画の関連図（`Chidori.Relations.Films`）。**芸能人の図と同じ仕組み**で、
   同じ監督の作品を枠で囲み、同じ主演の作品どうしを線で結ぶ。
   """
 
@@ -118,7 +118,7 @@ defmodule Chidori.Relations.FilmsTest do
   end
 
   test "関連図の 3 つ目の図として並ぶ" do
-    assert {"films", "名作映画のつながり"} in Relations.views()
+    assert {"films", "映画のつながり"} in Relations.views()
     assert Relations.valid_key("films") == "films"
     assert Relations.collection_of("films") == "chidori_films"
   end
@@ -145,6 +145,71 @@ defmodule Chidori.Relations.FilmsTest do
       assert groups["国"] == ["日本"]
       assert groups["主演"] == ["三船敏郎", "志村喬"]
       assert groups["その他"] == ["映画"]
+    end
+  end
+
+  describe "見た記録と引き継ぎ" do
+    alias Chidori.Relations.Mark
+
+    defp film(name, tags \\ []), do: %{name: name, tags: tags}
+
+    test "記録は最新情報の映画と同じ置き場" do
+      assert Films.mark_view() == Chidori.News.Movies.mark_view()
+    end
+
+    test "札の名前で書いた記録が先、無ければ `記録:` の見出しで引く" do
+      seen = %Mark{seen: true}
+      other = %Mark{note: "メモ"}
+
+      marks = %{"サンプル映画" => seen, "七人の侍" => other}
+
+      nodes = [
+        film("サンプル映画 (映画)", ["映画", "記録:サンプル映画"]),
+        film("七人の侍", ["映画"]),
+        film("用心棒", ["映画"])
+      ]
+
+      assert Films.marks_by_node(marks, nodes) == %{
+               "サンプル映画 (映画)" => seen,
+               "七人の侍" => other
+             }
+    end
+
+    test "書く見出しは、既に書いてあるものに合わせる（2 つに割らない）" do
+      carried = film("サンプル映画 (映画)", ["記録:サンプル映画"])
+
+      assert Films.mark_key(carried, %{"サンプル映画" => %Mark{}}) == "サンプル映画"
+      assert Films.mark_key(carried, %{}) == "サンプル映画 (映画)"
+    end
+
+    test "図に載っていない記録を拾う" do
+      marks = %{"サンプル映画" => %Mark{}, "まだ無い映画" => %Mark{}, "七人の侍" => %Mark{}}
+      nodes = [film("サンプル映画 (映画)", ["記録:サンプル映画"]), film("七人の侍")]
+
+      assert Map.keys(Films.unplaced(marks, nodes)) == ["まだ無い映画"]
+    end
+
+    test "引き継ぎの依頼文に、作品と元の見出しを残す決まりが載る" do
+      prompt =
+        Films.carry_prompt([
+          %{
+            title: "サンプル映画",
+            date: ~D[2026-10-01],
+            summary: "どんな作品か: 架空の作品。\n注目の理由: なし",
+            url: "https://example.com/film"
+          },
+          %{title: "題名だけの映画"}
+        ])
+
+      assert prompt =~ "- サンプル映画（公開日 2026-10-01 / どんな作品か: 架空の作品。 / https://example.com/film）"
+      assert prompt =~ "- 題名だけの映画\n"
+      assert prompt =~ "記録:<上の見出し>"
+      assert prompt =~ "{current}"
+    end
+
+    test "定義の依頼文も `記録:` を残させる" do
+      assert Films.prompt() =~ "記録:"
+      assert Films.survey_prompt() =~ "記録:"
     end
   end
 end

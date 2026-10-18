@@ -87,7 +87,7 @@ defmodule Chidori.SettingsRestore do
         do: name
   end
 
-  # 名簿の広さを持つ図は芸能人と名作映画。**返すのは芸能人の値**（画面の知らせはそちらだけ）
+  # 名簿の広さを持つ図は芸能人と映画。**返すのは芸能人の値**（画面の知らせはそちらだけ）
   defp restore_min_pageviews(collections) do
     restore_min_pageviews(collections, "films", Relations.Films.collection())
     restore_min_pageviews(collections, "people", Relations.People.collection())

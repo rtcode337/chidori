@@ -57,13 +57,6 @@ defmodule Chidori.Chiezo do
   """
   def restore_tag, do: "_chiezo_restore"
 
-  @doc """
-  アーカイブ済みの印。**終わった作品を、消さずに記録として残す**ときに AI が付けて返します。
-  付いたものは以後 AI へ渡されず（整理の回の入力が太らない）、期限でも消えません。
-  読み口からはそのまま返るので、画面ではこちらで見分けます（`Chidori.News.Events.archived?/1`）。
-  """
-  def archived_tag, do: "_chiezo_archived"
-
   @doc "AI がまだ目を通していないものの印（機械で入ったばかりのもの）。"
   def unreviewed_tag, do: "_chiezo_unreviewed"
 

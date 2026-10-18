@@ -13,6 +13,8 @@ defmodule ChidoriWeb.RelationsLive do
 
   alias Chidori.Jst
   alias Chidori.Relations
+  alias Chidori.Relations.FilmCarry
+  alias Chidori.Relations.Films
   alias Chidori.Relations.Mark
   alias Chidori.Relations.Marks
 
@@ -63,7 +65,7 @@ defmodule ChidoriWeb.RelationsLive do
        # **ほかの絞り込みとは排他**（重ねると、出ていない理由が読めない）
        review_filter: nil,
        focus_sent: nil,
-       # 開いている作品の主演のうち、芸能人の図に載っている人（名作映画の図。押すとその人へ飛ぶ）
+       # 開いている作品の主演のうち、芸能人の図に載っている人（映画の図。押すとその人へ飛ぶ）
        star_people: MapSet.new(),
        # URL の `focus` で名指しされた人。**図がまだ読めていなければ、読めたときに寄る**
        pending_focus: nil,
@@ -76,6 +78,13 @@ defmodule ChidoriWeb.RelationsLive do
        # 「見た」印。**ノード名で引く** —— 図は読み直すたびに id が振り直されるので、
        # id で持つと印が別人へ移る
        marks: %{},
+       # 置き場にある記録そのもの（見出し → 記録）。`marks` は図の札の名前で引ける形に
+       # 直したもので、映画の図では見出しが札の名前と違うことがある（`Films.marks_by_node/2`）
+       raw_marks: %{},
+       # 映画の図で、まだ図に載っていない見た記録（見出し → 記録）
+       unplaced_marks: %{},
+       # 「見た映画を足す」の結果の一言
+       film_added: nil,
        mark_saved: nil,
        # 巡回ごとに選んだ相手。**サーバー側で覚える** —— 覚えないと、図が届いた
        # 拍子にフォームが描き直されて、選んだところが元の値に戻る（選んだつもりで
@@ -153,9 +162,8 @@ defmodule ChidoriWeb.RelationsLive do
         # トップページに埋め込まれているか（頭のメニューとタブと設定を出さない）
         embed: params["embed"] == "1",
         relation: Relations.current(view),
-        # 印は図ごとに別。切り替えたら引き直す
-        marks: Marks.for_view(view),
         mark_saved: nil,
+        film_added: nil,
         # 図を切り替えたら設定は読み直す（別の収集のもの）
         settings_open: false,
         settings: nil,
@@ -163,11 +171,13 @@ defmodule ChidoriWeb.RelationsLive do
         detail: nil,
         edge: nil
       )
+      # 印は図ごとに別。切り替えたら引き直す
+      |> with_marks(Marks.for_view(mark_view(view)))
 
     {:noreply, apply_pending_focus(socket)}
   end
 
-  # URL の `focus` で名指しされた人へ寄り、詳細を開く（名作映画の図の主演から飛んできたとき）。
+  # URL の `focus` で名指しされた人へ寄り、詳細を開く（映画の図の主演から飛んできたとき）。
   # **図がまだ読めていなければ待つ**（読めたら `:relation_updated` でもう一度試す）
   defp apply_pending_focus(%{assigns: %{pending_focus: name}} = socket) when is_binary(name) do
     case Enum.find(socket.assigns.relation[:nodes] || [], &(&1.name == name)) do
@@ -244,7 +254,7 @@ defmodule ChidoriWeb.RelationsLive do
   # 相手を選んだ拍子に「考える量: 空」まで覚えてしまい、そのあと考える量を選んでも
   # 空のまま送られていた（画面では選べているように見えるので、押すまで気づけない）。
   # フォームは変更のたびに丸ごと届くので、この控えだけで全部の欄が揃う
-  # 名簿の知名度の下限を変えて、名簿を引き直す（芸能人・名作映画の図）。**選べる値だけ受ける**
+  # 名簿の知名度の下限を変えて、名簿を引き直す（芸能人・映画の図）。**選べる値だけ受ける**
   def handle_event("reroster", %{"min" => min}, socket) do
     with true <- socket.assigns.view in ["people", "films"],
          {value, ""} <- Integer.parse(to_string(min)),
@@ -405,14 +415,17 @@ defmodule ChidoriWeb.RelationsLive do
       "note" => params["note"] || ""
     }
 
-    case Marks.put(socket.assigns.view, name, attrs) do
-      {:ok, mark} ->
-        marks =
-          if mark,
-            do: Map.put(socket.assigns.marks, name, mark),
-            else: Map.delete(socket.assigns.marks, name)
+    view = socket.assigns.view
+    key = mark_key(socket, name)
 
-        {:noreply, assign(socket, marks: marks, mark_saved: name)}
+    case Marks.put(mark_view(view), key, attrs) do
+      {:ok, mark} ->
+        raw =
+          if mark,
+            do: Map.put(socket.assigns.raw_marks, key, mark),
+            else: Map.delete(socket.assigns.raw_marks, key)
+
+        {:noreply, socket |> with_marks(raw) |> assign(mark_saved: name)}
 
       {:error, _changeset} ->
         # 書けなかったことは黙って捨てない。押した人には確かめようがない
@@ -446,6 +459,47 @@ defmodule ChidoriWeb.RelationsLive do
   # 図の座標だけで、いま器が何 px なのかは向こうしか知らない。
   def handle_event("focus", %{"name" => name}, socket) do
     {:noreply, focus_node(socket, name)}
+  end
+
+  # 図に無い映画を、見た記録と一緒に足す（映画の図）。**記録はその場で書き**、図へは
+  # 引き継ぎを頼む（AI が足すので、載るのは取り込みが終わってから）
+  def handle_event("add_film", params, socket) do
+    title = String.trim(params["title"] || "")
+
+    attrs = %{
+      "seen" => true,
+      "seen_on" => blank_to_nil(params["seen_on"]),
+      "note" => params["note"] || ""
+    }
+
+    cond do
+      socket.assigns.view != "films" or title == "" ->
+        {:noreply, socket}
+
+      # 図にもうある作品なら、その札に記録を付けるだけ（頼まない）
+      Enum.any?(socket.assigns.relation[:nodes] || [], &(&1.name == title)) ->
+        handle_event("save_mark", Map.merge(attrs, %{"name" => title, "seen" => "on"}), socket)
+        |> then(fn {:noreply, socket} -> {:noreply, focus_node(socket, title)} end)
+
+      true ->
+        case Marks.put(Films.mark_view(), title, attrs) do
+          {:ok, mark} ->
+            raw = Map.put(socket.assigns.raw_marks, title, mark)
+            pid = self()
+
+            Task.Supervisor.start_child(Chidori.TaskSupervisor, fn ->
+              send(pid, {:film_carried, title, FilmCarry.carry_now([title])})
+            end)
+
+            {:noreply,
+             socket
+             |> with_marks(raw)
+             |> assign(film_added: "「#{title}」を記録しました。図に足すよう頼んでいます…")}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "記録を保存できませんでした。")}
+        end
+    end
   end
 
   # 見た印を付けたものへ寄る。**名前を思い出せなくても行き先が選べる**のが、
@@ -522,7 +576,7 @@ defmodule ChidoriWeb.RelationsLive do
 
   defp star_people(_view, _node), do: MapSet.new()
 
-  @doc "作品の主演（名作映画の図。タグ「主演:<名前>」）。"
+  @doc "作品の主演（映画の図。タグ「主演:<名前>」）。"
   def stars_of(node), do: for(t <- node[:tags] || [], v = strip(t, "主演:"), do: v)
 
   @doc """
@@ -655,11 +709,32 @@ defmodule ChidoriWeb.RelationsLive do
     {:noreply, assign(socket, reroster_message: message)}
   end
 
+  def handle_info({:film_carried, title, result}, socket) do
+    message =
+      case result do
+        {:ok, _count} ->
+          "「#{title}」を記録しました。図に足すよう頼みました" <>
+            "（取り込みが終わって図を取り直すと載ります）。"
+
+        {:error, reason} ->
+          "「#{title}」を記録しましたが、図に足すよう頼めませんでした: " <>
+            relation_reason(reason) <> "（あとで自動でもう一度頼みます）"
+      end
+
+    {:noreply, assign(socket, film_added: message)}
+  end
+
   def handle_info({:relation_updated, relation}, socket) do
     # **設定を送り終えたら、開いている設定欄を読み直す。** 送った中身は Chiezo の
     # 側で書き換わっているので、前に読んだものを出し続けると、送れていないように見える
     sent? = socket.assigns.relation[:pushing] == true and relation[:pushing] != true
-    socket = socket |> assign(relation: relation) |> apply_pending_focus()
+
+    socket =
+      socket
+      |> assign(relation: relation)
+      # 札が入れ替わると、記録の見出しと札の名前の対応も変わる（映画の図）
+      |> with_marks(socket.assigns.raw_marks)
+      |> apply_pending_focus()
 
     {:noreply,
      if(sent? and socket.assigns.settings_open, do: load_settings(socket), else: socket)}
@@ -880,6 +955,44 @@ defmodule ChidoriWeb.RelationsLive do
       URI.encode_query(%{"tbm" => "isch", "q" => "#{painter} #{work}"})
   end
 
+  # 見た記録の置き場の種類。**映画の図は最新情報の映画と同じ置き場**（`Films.mark_view/0`）
+  defp mark_view("films"), do: Films.mark_view()
+  defp mark_view(view), do: view
+
+  # 置き場の記録を、図の札の名前で引ける形にして持つ
+  defp with_marks(socket, raw) do
+    nodes = socket.assigns[:relation][:nodes] || []
+
+    if socket.assigns.view == "films" do
+      assign(socket,
+        raw_marks: raw,
+        marks: Films.marks_by_node(raw, nodes),
+        unplaced_marks: Films.unplaced(raw, nodes)
+      )
+    else
+      assign(socket, raw_marks: raw, marks: raw, unplaced_marks: %{})
+    end
+  end
+
+  # その札の記録を書く見出し（映画の図は、既に書いてある見出しを優先する）
+  defp mark_key(socket, name) do
+    with "films" <- socket.assigns.view,
+         %{} = node <- Enum.find(socket.assigns.relation[:nodes] || [], &(&1.name == name)) do
+      Films.mark_key(node, socket.assigns.raw_marks)
+    else
+      _other -> name
+    end
+  end
+
+  @doc """
+  まだ図に載っていない見た記録（映画の図）。見た日の新しい順に `{見出し, 一言}`。
+  """
+  def unplaced_options(unplaced) do
+    unplaced
+    |> Enum.sort_by(fn {name, mark} -> {seen_order(mark), name} end)
+    |> Enum.map(fn {name, mark} -> {name, seen_label(name, mark)} end)
+  end
+
   @doc """
   見た印の付いた行き先。**図に出ているものだけ**を並べます ——
   選んでも動かない行き先を混ぜると、押し間違えたのか壊れているのか読めません。
@@ -978,7 +1091,7 @@ defmodule ChidoriWeb.RelationsLive do
       {"種別", for(t <- tags, v = strip(t, "種別:"), do: v)},
       {"家族", for(t <- tags, v = strip(t, "家族:"), do: family_text(v))},
       {"グループ", for(t <- tags, v = strip(t, "グループ:"), do: v)},
-      # 名作映画の図のタグ
+      # 映画の図のタグ
       {"監督", for(t <- tags, v = strip(t, "監督:"), do: v)},
       {"国", for(t <- tags, v = strip(t, "国:"), do: v)},
       {"主演", stars_of(node)},

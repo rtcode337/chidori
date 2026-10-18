@@ -51,9 +51,10 @@ defmodule Chidori.Application do
 
   # 要約を作る時刻の時計。テストでは立てない —— 1 分ごとに起きて Chiezo を
   # 叩きに行かれると、何を見ているのか分からないテストになります
+  # 最新情報の映画を図へ引き継ぐ時計（`Chidori.Relations.FilmCarry`）も同じ扱い
   defp scheduler do
     if Application.get_env(:chidori, :digest_scheduler, true),
-      do: [Chidori.Digest.Scheduler],
+      do: [Chidori.Digest.Scheduler, Chidori.Relations.FilmCarry],
       else: []
   end
 

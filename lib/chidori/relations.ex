@@ -2,7 +2,7 @@ defmodule Chidori.Relations do
   @moduledoc """
   関連図ページで使う、表示用のネットワークデータです。
 
-  図は Chiezo に溜まった収集（画家・芸能人・名作映画）を読み直したものです。集めて整理するのは
+  図は Chiezo に溜まった収集（画家・芸能人・映画）を読み直したものです。集めて整理するのは
   Chiezo の役目で、Chidori は図の形にして見せるだけです。「収集の設定を更新」は
   Chidori の依頼文と回り方を Chiezo へ送り直し（まだ無ければ作り）、読み直すだけで、
   その場で集めさせはしません。読めるまでは手書きの表示例を持ち、読めなくても
@@ -161,7 +161,7 @@ defmodule Chidori.Relations do
 
   @views %{
     "films" => %{
-      title: "名作映画のつながり",
+      title: "映画のつながり",
       eyebrow: "DIRECTORS & STARS",
       # **これは手書きの表示例**（芸能人の図と同じ扱い。読めたものに差し替わるまで図は描かない）
       sample?: true,
@@ -426,7 +426,7 @@ defmodule Chidori.Relations do
   """
   def views, do: Enum.map(@chiezo_views, &{&1, @views[&1].title})
 
-  @doc "Chiezo に名簿を持たせて育てる図か（画家・芸能人・名作映画）。"
+  @doc "Chiezo に名簿を持たせて育てる図か（画家・芸能人・映画）。"
   def chiezo_view?(key), do: key in @chiezo_views
 
   @doc "その図の収集の名前。"

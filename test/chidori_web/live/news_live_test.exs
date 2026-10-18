@@ -138,17 +138,6 @@ defmodule ChidoriWeb.NewsLiveTest do
       assert Enum.map(coming, & &1.title) == ["来週", "来月"]
     end
 
-    test "アーカイブ済みの作品は窓の中でも並べない" do
-      # 記録として残っているだけ（アニメは放送開始から数えるので、終わっても窓に残る）
-      archived = Map.put(work("終わった", ~D[2026-09-20], :high), :tags, ["_chiezo_archived"])
-
-      assert [{"公開中", [%{title: "公開中"}]}] =
-               NewsLive.works_groups(
-                 [archived, Map.put(work("公開中", ~D[2026-09-21], :mid), :tags, [])],
-                 ~D[2026-10-01]
-               )
-    end
-
     test "絵は Chiezo が縮めたものを先に使う" do
       # 見る人のブラウザが知らない外のサイトへつながないため
       assert NewsLive.entry_thumb(%{thumb: nil, image: "https://example.com/a.png"}) ==
