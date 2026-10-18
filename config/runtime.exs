@@ -28,23 +28,6 @@ config :chidori, ChidoriWeb.Endpoint,
     http_2_options: [enabled: false]
   ]
 
-if config_env() == :dev do
-  # Reload browser tabs when matching files change.
-  config :chidori, ChidoriWeb.Endpoint,
-    live_reload: [
-      web_console_logger: true,
-      patterns: [
-        # Static assets, except user uploads
-        ~r"priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$"E,
-        # Gettext translations
-        ~r"priv/gettext/.*\.po$"E,
-        # Router, Controllers, LiveViews and LiveComponents
-        ~r"lib/chidori_web/router\.ex$"E,
-        ~r"lib/chidori_web/(controllers|live|components)/.*\.(ex|heex)$"E
-      ]
-    ]
-end
-
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||
