@@ -491,9 +491,14 @@ defmodule ChidoriWeb.RelationsLive do
         {:noreply, socket}
 
       # 図にもうある作品なら、その札に記録を付けるだけ（頼まない）
-      Enum.any?(socket.assigns.relation[:nodes] || [], &(&1.name == title)) ->
-        handle_event("save_mark", Map.merge(attrs, %{"name" => title, "seen" => "on"}), socket)
-        |> then(fn {:noreply, socket} -> {:noreply, focus_node(socket, title)} end)
+      # （比べ方は探すときと同じ。大文字と小文字、全角と半角を区別しない）
+      node = Enum.find(socket.assigns.relation[:nodes] || [], &(fold(&1.name) == fold(title))) ->
+        handle_event(
+          "save_mark",
+          Map.merge(attrs, %{"name" => node.name, "seen" => "on"}),
+          socket
+        )
+        |> then(fn {:noreply, socket} -> {:noreply, focus_node(socket, node.name)} end)
 
       true ->
         case Marks.put(Films.mark_view(), title, attrs) do
@@ -655,12 +660,21 @@ defmodule ChidoriWeb.RelationsLive do
         []
 
       needle ->
+        needle = fold(needle)
+
         relation.nodes
-        |> Enum.filter(&String.contains?(&1.name, needle))
+        |> Enum.filter(&String.contains?(fold(&1.name), needle))
         |> Enum.sort_by(&radius_of/1, :desc)
         |> Enum.take(@max_matches)
     end
   end
+
+  @doc """
+  探すときに比べる形。**大文字と小文字、全角と半角を区別しない** —— 映画の題は
+  「STAR WARS」「Ｓｔａｒ　Ｗａｒｓ」「star wars」のどれでも書かれていて、
+  打った人の書き方と札の書き方が揃っているとは限らない（揃っていないと 1 件も出ない）。
+  """
+  def fold(text), do: text |> String.normalize(:nfkc) |> String.downcase()
 
   @impl true
   def handle_async(:settings, {:ok, {:ok, loaded}}, socket),

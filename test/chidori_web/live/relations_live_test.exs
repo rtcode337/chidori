@@ -36,6 +36,11 @@ defmodule ChidoriWeb.RelationsLiveTest do
     assert html =~ ~s(href="/settings?tab=chiezo")
   end
 
+  test "探すときは大文字と小文字、全角と半角を区別しない" do
+    assert RelationsLive.fold("ＳＴＡＲ Ｗａｒｓ") == RelationsLive.fold("star wars")
+    assert String.contains?(RelationsLive.fold("スター・ウォーズ STAR WARS"), RelationsLive.fold("Star"))
+  end
+
   test "画家の関連図へ切り替えられる", %{conn: conn} do
     {:ok, live, _html} = live(conn, ~p"/relations?view=people")
 
