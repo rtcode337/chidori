@@ -23,6 +23,19 @@ defmodule ChidoriWeb.RelationsLiveTest do
     refute html =~ "松田優作"
   end
 
+  test "映画の図に、見た映画を足す欄と引き継ぎの様子を出す（時刻は設定ページで決める）", %{
+    conn: conn
+  } do
+    {:ok, _live, html} = live(conn, ~p"/relations?view=films")
+
+    assert html =~ "映画のつながり"
+    assert html =~ "見た映画を足す"
+    assert html =~ "最新情報からの引き継ぎ"
+    assert html =~ "まだ頼んでいません"
+    assert html =~ "時刻を決めていないので、頼みません"
+    assert html =~ ~s(href="/settings?tab=chiezo")
+  end
+
   test "画家の関連図へ切り替えられる", %{conn: conn} do
     {:ok, live, _html} = live(conn, ~p"/relations?view=people")
 

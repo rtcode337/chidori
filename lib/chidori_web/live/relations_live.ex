@@ -13,6 +13,7 @@ defmodule ChidoriWeb.RelationsLive do
 
   alias Chidori.Jst
   alias Chidori.Relations
+  alias Chidori.Relations.CarrySetting
   alias Chidori.Relations.FilmCarry
   alias Chidori.Relations.Films
   alias Chidori.Relations.Mark
@@ -85,6 +86,13 @@ defmodule ChidoriWeb.RelationsLive do
        unplaced_marks: %{},
        # 「見た映画を足す」の結果の一言
        film_added: nil,
+       # 引き継ぎの時計の設定と前回の記録・次の予定（映画の図で開いたときに読む。
+       # 時刻と 1 回の数を直すのは設定ページの「Chiezo 収集」）
+       carry_setting: nil,
+       carry_next: nil,
+       # 引き継ぎを待っている作品（nil = まだ読んでいない / :loading / 一覧 / {:error, 理由}）。
+       # **押したときだけ Chiezo に聞く**（図を開くたびには聞かない）
+       carry_pending: nil,
        mark_saved: nil,
        # 巡回ごとに選んだ相手。**サーバー側で覚える** —— 覚えないと、図が届いた
        # 拍子にフォームが描き直されて、選んだところが元の値に戻る（選んだつもりで
@@ -164,6 +172,7 @@ defmodule ChidoriWeb.RelationsLive do
         relation: Relations.current(view),
         mark_saved: nil,
         film_added: nil,
+        carry_pending: nil,
         # 図を切り替えたら設定は読み直す（別の収集のもの）
         settings_open: false,
         settings: nil,
@@ -173,6 +182,7 @@ defmodule ChidoriWeb.RelationsLive do
       )
       # 印は図ごとに別。切り替えたら引き直す
       |> with_marks(Marks.for_view(mark_view(view)))
+      |> load_carry()
 
     {:noreply, apply_pending_focus(socket)}
   end
@@ -465,6 +475,7 @@ defmodule ChidoriWeb.RelationsLive do
   # 引き継ぎを頼む（AI が足すので、載るのは取り込みが終わってから）
   def handle_event("add_film", params, socket) do
     title = String.trim(params["title"] || "")
+    hint = params["hint"] || ""
 
     attrs = %{
       "seen" => true,
@@ -488,7 +499,7 @@ defmodule ChidoriWeb.RelationsLive do
             pid = self()
 
             Task.Supervisor.start_child(Chidori.TaskSupervisor, fn ->
-              send(pid, {:film_carried, title, FilmCarry.carry_now([title])})
+              send(pid, {:film_carried, title, FilmCarry.carry_now([title], hint)})
             end)
 
             {:noreply,
@@ -500,6 +511,23 @@ defmodule ChidoriWeb.RelationsLive do
             {:noreply, put_flash(socket, :error, "記録を保存できませんでした。")}
         end
     end
+  end
+
+  # 引き継ぎを待っている作品を Chiezo に聞く（押したときだけ）
+  def handle_event("carry_pending", _params, socket) do
+    pid = self()
+
+    Task.Supervisor.start_child(Chidori.TaskSupervisor, fn ->
+      result =
+        case Chidori.Chiezo.base_url() do
+          nil -> {:error, :chiezo_not_configured}
+          base -> FilmCarry.pending(base)
+        end
+
+      send(pid, {:carry_pending, result})
+    end)
+
+    {:noreply, assign(socket, carry_pending: :loading)}
   end
 
   # 見た印を付けたものへ寄る。**名前を思い出せなくても行き先が選べる**のが、
@@ -721,7 +749,17 @@ defmodule ChidoriWeb.RelationsLive do
             relation_reason(reason) <> "（あとで自動でもう一度頼みます）"
       end
 
-    {:noreply, assign(socket, film_added: message)}
+    {:noreply, socket |> assign(film_added: message) |> load_carry()}
+  end
+
+  def handle_info({:carry_pending, result}, socket) do
+    pending =
+      case result do
+        {:ok, items} -> items
+        {:error, reason} -> {:error, relation_reason(reason)}
+      end
+
+    {:noreply, assign(socket, carry_pending: pending)}
   end
 
   def handle_info({:relation_updated, relation}, socket) do
@@ -958,6 +996,15 @@ defmodule ChidoriWeb.RelationsLive do
   # 見た記録の置き場の種類。**映画の図は最新情報の映画と同じ置き場**（`Films.mark_view/0`）
   defp mark_view("films"), do: Films.mark_view()
   defp mark_view(view), do: view
+
+  # 引き継ぎの時計の設定・前回の記録・次に確かめる時刻（映画の図だけ。DB と時計に聞くだけで、
+  # Chiezo には聞かない）
+  defp load_carry(%{assigns: %{view: "films"}} = socket) do
+    setting = CarrySetting.get()
+    assign(socket, carry_setting: setting, carry_next: FilmCarry.next_at(setting))
+  end
+
+  defp load_carry(socket), do: socket
 
   # 置き場の記録を、図の札の名前で引ける形にして持つ
   defp with_marks(socket, raw) do

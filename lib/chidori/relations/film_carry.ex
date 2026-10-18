@@ -24,10 +24,18 @@ defmodule Chidori.Relations.FilmCarry do
 
   ## 時計
 
-  **1 時間ごとに起き、まだのものがあれば 1 日 1 回まで頼みます。** 取り込みが混んで
-  断られたら（`:chiezo_busy`）、次に起きたときにまた試します。**止めた収集には頼みません**
-  （割り込みは止めた収集を断る。時計は人が押した 1 回ではないので `by_hand` で囲まない）。
-  図の画面から足したときだけは、押した人の 1 回としてすぐ頼みます（`carry_now/1`）。
+  **決めた時刻（JST）に頼みます**（設定ページの「Chiezo 収集」の表、映画の図の
+  「最新情報からの引き継ぎ」の行。`Chidori.Relations.CarrySetting`）。**時刻を書いて
+  いなければ頼みません（既定）** —— 時計は Chidori の中にあるので、本番とテストの 2 つを
+  立てていると同じ割り込みが二重に出る。時刻を書いた Chidori だけが頼む。
+
+  5 分ごとに起きて、予定を過ぎた回があれば頼みます（まだのものが無ければ頼まず、
+  そう記録する）。**過ぎて 30 分までの回だけ拾います**（要約の時計と同じ。夜中に立ち上げた
+  拍子に朝の回が走らないように）。**頼めなかった回は、次の予定まで起きるたびに試し直します**
+  （取り込みが混んで断られるのは普通にある。断られた回は AI を使っていない）。
+  **止めた収集には頼みません**（割り込みは止めた収集を断る。時計は人が押した 1 回では
+  ないので `by_hand` で囲まない）。図の画面から足したときだけは、押した人の 1 回として
+  すぐ頼みます（`carry_now/2`）。
   """
 
   use GenServer
@@ -37,15 +45,15 @@ defmodule Chidori.Relations.FilmCarry do
   alias Chidori.Chiezo
   alias Chidori.News.Events
   alias Chidori.News.Movies
+  alias Chidori.Relations.CarrySetting
   alias Chidori.Relations.Films
   alias Chidori.Relations.Marks
 
-  @tick_ms 60 * 60 * 1000
-  # 起動直後は待つ（立ち上げの最中に Chiezo を叩かない）
-  @first_tick_ms 10 * 60 * 1000
-  @min_interval_hours 24
-  # 1 回に頼む数。**AI が 1 回で返し切れる数**に抑える（残りは次の日）
-  @batch 20
+  @tick_ms 5 * 60 * 1000
+  # 起動直後は少し待つ（立ち上げの最中に Chiezo を叩かない）
+  @first_tick_ms 60 * 1000
+  # 予定を過ぎてから拾う長さ（要約の時計と同じ）
+  @grace_seconds 30 * 60
   # 似た見出しとして見せる、図に既にある作品の上限（割り込みで名指しできる数）
   @max_named 50
 
@@ -56,79 +64,207 @@ defmodule Chidori.Relations.FilmCarry do
   @impl true
   def init(_opts) do
     Process.send_after(self(), :tick, @first_tick_ms)
-    {:ok, %{last_at: nil}}
+    {:ok, %{}}
   end
 
   @impl true
   def handle_info(:tick, state) do
     Process.send_after(self(), :tick, @tick_ms)
-    {:noreply, maybe_carry(state)}
+    maybe_carry(DateTime.utc_now())
+    {:noreply, state}
   end
 
   def handle_info(_message, state), do: {:noreply, state}
 
-  defp maybe_carry(%{last_at: last} = state) do
-    due? =
-      is_nil(last) or DateTime.diff(DateTime.utc_now(), last, :hour) >= @min_interval_hours
+  defp maybe_carry(now) do
+    setting = CarrySetting.get()
 
-    with true <- due?,
+    with true <- due?(setting, now),
          base when is_binary(base) <- Chiezo.base_url(),
-         {:ok, items} when items != [] <- pending(base),
-         :ok <- carry(base, items) do
-      %{state | last_at: DateTime.utc_now()}
+         {:ok, items} <- pending(base, setting.batch) do
+      titles = Enum.map(items, & &1.title)
+
+      if items == [] do
+        CarrySetting.record("時計", [], :nothing)
+      else
+        result = carry(base, items)
+        # 数えるのは頼めた回だけ（断られた回は AI を使っていない）
+        if result == :ok, do: count(base, titles)
+        CarrySetting.record("時計", titles, reason_text(result))
+      end
     else
       {:error, reason} ->
         Logger.info("映画の引き継ぎを頼めませんでした: #{inspect(reason)}")
-        state
+        CarrySetting.record("時計", [], reason_text({:error, reason}))
 
       _nothing ->
-        state
+        :ok
+    end
+  end
+
+  @doc false
+  # 頼む番か。直近の予定（今以前で最も新しい時刻）を過ぎて、まだ時計が頼みに
+  # 行っていなければ 30 分まで拾う。頼みに行って済まなかった回は、次の予定まで試し直す
+  def due?(%CarrySetting{} = setting, now) do
+    case last_slot(setting, now) do
+      nil ->
+        false
+
+      slot ->
+        if is_nil(setting.clock_at) or DateTime.compare(setting.clock_at, slot) == :lt,
+          do: DateTime.diff(now, slot, :second) <= @grace_seconds,
+          else: not setting.clock_ok
     end
   end
 
   @doc """
+  次の予定。`{:at, UTC の時刻}`・`:retry`（済まなかった回を試し直している）・
+  `:off`（時刻を決めていない）。**まだのものが無ければ頼まない**ので、その時刻に
+  必ず頼むわけではない（確かめに行く時刻）。
+  """
+  def next_at(%CarrySetting{} = setting, now \\ DateTime.utc_now()) do
+    slot = last_slot(setting, now)
+
+    cond do
+      CarrySetting.times(setting) == [] ->
+        :off
+
+      slot && setting.clock_at && DateTime.compare(setting.clock_at, slot) != :lt &&
+          not setting.clock_ok ->
+        :retry
+
+      true ->
+        {:at, next_slot(setting, now)}
+    end
+  end
+
+  @doc "次の予定の一言（画面に出す。関連図と設定ページで同じ書き方にする）。"
+  def next_text({:at, %DateTime{} = at}), do: Chidori.Jst.format(at)
+  def next_text(:retry), do: "前の回が済まなかったので、5 分ごとに試し直しています"
+  def next_text(:off), do: "時刻を決めていないので、頼みません"
+  def next_text(_other), do: "—"
+
+  # 今以前で最も新しい予定（今日と昨日の JST から）。時刻が無ければ nil
+  defp last_slot(setting, now) do
+    setting
+    |> slots(now, [-1, 0])
+    |> Enum.filter(&(DateTime.compare(&1, now) != :gt))
+    |> Enum.max(DateTime, fn -> nil end)
+  end
+
+  defp next_slot(setting, now) do
+    setting
+    |> slots(now, [0, 1])
+    |> Enum.filter(&(DateTime.compare(&1, now) == :gt))
+    |> Enum.min(DateTime, fn -> nil end)
+  end
+
+  defp slots(setting, now, days) do
+    today = Chidori.Jst.today(now)
+
+    for offset <- days,
+        {hour, minute} <- CarrySetting.times(setting),
+        do: Chidori.Jst.utc_at(Date.add(today, offset), hour, minute)
+  end
+
+  @doc """
   **図の画面から足した作品を、すぐ頼みます**（押した人の 1 回。止めた収集でも走る）。
+  `hint` は人が添えた手がかり（公開年・監督など。空でもよい）。
   `{:ok, 頼んだ数}` か `{:error, 理由}`。
   """
-  def carry_now(titles) when is_list(titles) do
+  def carry_now(titles, hint \\ "") when is_list(titles) do
     with base when is_binary(base) <- Chiezo.base_url(),
-         {:ok, items} <- items_for(base, titles),
-         :ok <- Chiezo.by_hand(fn -> carry(base, items) end) do
-      {:ok, length(items)}
+         {:ok, items} <- items_for(base, titles, hint) do
+      result = Chiezo.by_hand(fn -> carry(base, items) end)
+      if result == :ok, do: count(base, titles)
+      CarrySetting.record("画面", titles, reason_text(result))
+
+      case result do
+        :ok -> {:ok, length(items)}
+        {:error, reason} -> {:error, reason}
+      end
     else
       nil -> {:error, :chiezo_not_configured}
       {:error, reason} -> {:error, reason}
     end
   end
 
-  @doc "まだ図へ引き継いでいない作品（`%{title, date, summary, url}`）。"
-  def pending(base) do
+  # 頼んだ回数を数える。ついでに、載った作品の回数を消す（読めなければ消さないだけ）
+  defp count(base, titles) do
+    carried =
+      case carried(base) do
+        {:ok, carried} -> carried
+        {:error, _reason} -> MapSet.new()
+      end
+
+    CarrySetting.count_attempts(titles, carried)
+  end
+
+  defp reason_text(:ok), do: :ok
+  defp reason_text({:error, reason}), do: {:error, ChidoriWeb.Collect.reason_text(reason)}
+
+  @doc """
+  まだ図へ引き継いでいない作品（`%{title, date, summary, url, tries}`）。`tries` は頼んだ回数。
+
+  **並びは、見た記録を付けた作品（見た日の新しい順）→ 注目度の高い作品（公開日の新しい順）**。
+  `limit` を渡すと時計が頼むぶん —— **何度頼んでも載らなかった作品
+  （`CarrySetting.max_attempts/0` 回）を外して**その数まで。外さないと、その作品が毎回の枠の
+  頭を占め続け、後ろの作品がいつまでも頼まれない。画面に並べるときは全部。
+  """
+  def pending(base, limit \\ nil) do
     with {:ok, carried} <- carried(base),
          {:ok, released} <- released_high(base) do
-      by_title = Map.new(released, &{&1.title, &1})
-      marked = Map.keys(Marks.for_view(Films.mark_view()))
-
-      items =
-        (Map.keys(by_title) ++ marked)
-        |> Enum.uniq()
-        |> Enum.reject(&MapSet.member?(carried, &1))
-        |> Enum.sort()
-        |> Enum.take(@batch)
-        |> Enum.map(&(Map.get(by_title, &1) || %{title: &1}))
-
-      {:ok, items}
+      setting = CarrySetting.get()
+      {:ok, order(carried, released, Marks.for_view(Films.mark_view()), setting, limit)}
     end
   end
 
-  # 名指しした見出しを、最新情報に残っていればその中身つきで
-  defp items_for(base, titles) do
+  @doc false
+  def order(carried, released, marks, setting, limit \\ nil) do
+    by_title = Map.new(released, &{&1.title, &1})
+
+    seen =
+      marks
+      |> Enum.sort_by(fn {title, mark} ->
+        {if(mark.seen_on, do: -Date.to_gregorian_days(mark.seen_on), else: 1), title}
+      end)
+      |> Enum.map(&elem(&1, 0))
+
+    high =
+      released
+      |> Enum.sort_by(&{-Date.to_gregorian_days(&1.date), &1.title})
+      |> Enum.map(& &1.title)
+
+    items =
+      (seen ++ high)
+      |> Enum.uniq()
+      |> Enum.reject(&MapSet.member?(carried, &1))
+      |> Enum.map(fn title ->
+        (Map.get(by_title, title) || %{title: title})
+        |> Map.put(:tries, CarrySetting.attempts(setting, title))
+      end)
+
+    if limit,
+      do: items |> Enum.reject(&(&1.tries >= CarrySetting.max_attempts())) |> Enum.take(limit),
+      else: items
+  end
+
+  # 名指しした見出しを、最新情報に残っていればその中身つきで。人が添えた手がかりは
+  # 説明の代わりに渡す（最新情報に無い作品は、見出しのほかに手がかりが無い）
+  defp items_for(base, titles, hint) do
     known =
       case released_high(base) do
         {:ok, entries} -> Map.new(entries, &{&1.title, &1})
         {:error, _reason} -> %{}
       end
 
-    {:ok, Enum.map(titles, &(Map.get(known, &1) || %{title: &1}))}
+    hint = String.trim(hint || "")
+
+    {:ok,
+     Enum.map(titles, fn title ->
+       item = Map.get(known, title) || %{title: title}
+       if hint == "", do: item, else: Map.put(item, :summary, "手がかり: " <> hint)
+     end)}
   end
 
   @doc """
@@ -156,16 +292,22 @@ defmodule Chidori.Relations.FilmCarry do
     )
   end
 
-  # 図にある作品のうち、見出しが同じ語で始まるもの（最大 3 つ）
+  # 図にある作品のうち、同じ作品かもしれないもの。**見出しの前方一致と全文検索の両方**
+  # —— 人が打った題名は記事名と一字違うことがあり（「7人の侍」）、前方一致だけでは
+  # 拾えない。拾えないと AI が二重に足すか、見ていない作品を上書きする
   defp similar(base, title) do
-    query = URI.encode_query(%{"prefix" => title, "limit" => 3})
+    by_prefix = titles_from(base, "titles", %{"prefix" => title, "limit" => 3}, "titles")
+    by_search = titles_from(base, "search", %{"q" => title, "limit" => 3}, "results")
+    Enum.uniq(by_prefix ++ by_search)
+  end
 
-    with {:ok, %{status: 200, body: body}} <-
-           Chiezo.get(base <> "/v1/" <> Films.collection() <> "/titles?" <> query),
-         {:ok, %{"titles" => titles}} when is_list(titles) <- Jason.decode(body) do
-      Enum.flat_map(titles, fn
+  defp titles_from(base, path, params, key) do
+    url = base <> "/v1/" <> Films.collection() <> "/" <> path <> "?" <> URI.encode_query(params)
+
+    with {:ok, %{status: 200, body: body}} <- Chiezo.get(url),
+         {:ok, %{^key => list}} when is_list(list) <- Jason.decode(body) do
+      Enum.flat_map(list, fn
         %{"title" => t} when is_binary(t) -> [t]
-        t when is_binary(t) -> [t]
         _other -> []
       end)
     else
@@ -173,18 +315,42 @@ defmodule Chidori.Relations.FilmCarry do
     end
   end
 
-  @doc "図が既に持っている `記録:` の見出し（引き継ぎ済み）。"
-  def carried(base) do
-    query = URI.encode_query(%{"prefix" => Films.record_tag() <> ":", "limit" => 5000})
+  # Chiezo の filter が 1 回に返す上限（`limit` は 500 まで。超えると 422）
+  @page 500
 
-    case Chiezo.get(base <> "/v1/" <> Films.collection() <> "/tags?" <> query) do
+  @doc """
+  **図にもう居る作品の見出し**（引き継ぎ済み）。図の作品の見出しと、引き継いだ作品が持つ
+  `記録:` の見出しの両方。図の札に直接付けた見た記録も同じ置き場に入るので、`記録:` だけで
+  数えると、図に元から居る作品まで「まだ」になり、時計が毎回頼みに行く。
+
+  **ページを送って全部読みます**（1 回に #{@page} 件まで）。図の作品は数千件になるので
+  数回の往復になるが、読むのは見出しとタグだけで、時計の回と押したときにしか読まない。
+  """
+  def carried(base), do: carried(base, 0, MapSet.new())
+
+  defp carried(base, offset, acc) do
+    query =
+      URI.encode_query(%{
+        "tag" => Films.kind_tag(),
+        "fields" => "title,tags",
+        "limit" => @page,
+        "offset" => offset
+      })
+
+    case Chiezo.get(base <> "/v1/" <> Films.collection() <> "/filter?" <> query) do
       {:ok, %{status: 200, body: body}} ->
         case Jason.decode(body) do
-          {:ok, %{"tags" => tags}} when is_list(tags) ->
-            {:ok,
-             MapSet.new(tags, fn %{"tag" => tag} ->
-               String.replace_prefix(tag, Films.record_tag() <> ":", "")
-             end)}
+          {:ok, %{"results" => docs}} when is_list(docs) ->
+            acc =
+              Enum.reduce(docs, acc, fn doc, acc ->
+                [doc["title"] | Films.record_titles(%{tags: doc["tags"] || []})]
+                |> Enum.filter(&is_binary/1)
+                |> Enum.reduce(acc, &MapSet.put(&2, &1))
+              end)
+
+            if length(docs) < @page,
+              do: {:ok, acc},
+              else: carried(base, offset + @page, acc)
 
           _other ->
             {:error, :chiezo_unexpected_body}

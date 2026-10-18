@@ -66,10 +66,15 @@
               題名 <input type="text" name="title" required placeholder="例: 七人の侍" />
             </label>
           </p>
+          <p>
+            <label>
+              手がかり（任意）
+              <input type="text" name="hint" placeholder="例: 1954年・黒澤明監督" />
+            </label>
+          </p>
           <p class="seen-row">
             <label>
-              見た日
-              <input type="date" name="seen_on" value={Date.to_iso8601(Jst.today())} />
+              見た日 <input type="date" name="seen_on" value={Date.to_iso8601(Jst.today())} />
             </label>
           </p>
           <p>
@@ -80,8 +85,9 @@
           </p>
           <p class="muted-note">
             図に無い作品は、図の収集に足すよう頼みます（AI が監督・主演を調べて足すので、
-            載るのは取り込みが終わって図を取り直してから）。最新情報の映画で付けた見た記録と
-            注目度が高い作品も、1 日 1 回まとめて図へ足します。
+            載るのは取り込みが終わって図を取り直してから）。題名は正確でなくて構いません ——
+            AI が作品を確かめて Wikipedia の記事名で足し、ここで書いた題名は記録との結び付けに残します。
+            同じ題名の別の作品があるときや、うろ覚えのときは手がかりを添えてください。
           </p>
           <button type="submit" phx-disable-with="記録しています…">記録して足す</button>
           <span :if={@film_added} class="muted-note">{@film_added}</span>
@@ -91,6 +97,63 @@
           <ul>
             <li :for={{_name, label} <- unplaced_options(@unplaced_marks)}>{label}</li>
           </ul>
+        </div>
+
+        <%!-- 最新情報からの引き継ぎ。**時計の動きを画面で読めるようにする** —— 見えないと、
+             頼んだのか・いつ頼むのか・何が残っているのかを確かめようがない --%>
+        <div :if={@carry_setting} class="film-carry">
+          <p class="seen-mark-title">最新情報からの引き継ぎ</p>
+          <p class="muted-note">
+            最新情報の映画のうち、見た記録を付けた作品と、注目度が高く公開された作品を、決めた時刻に
+            まとめて図へ足すよう頼みます（まだのものがあるときだけ。AI を 1 回使います）。時刻と 1 回に頼む数は
+            <.link navigate={~p"/settings?tab=chiezo"}>設定 › Chiezo 収集</.link>
+            の「映画のつながり」の行で決めます。時刻を決めていない Chidori からは頼みません。
+          </p>
+          <p>
+            前回:
+            <%= if @carry_setting.last_at do %>
+              {Jst.format(@carry_setting.last_at)}（{@carry_setting.last_by}） {@carry_setting.last_result}
+              <span :if={@carry_setting.last_titles != []} class="muted-note">
+                — {Enum.join(@carry_setting.last_titles, "・")}
+              </span>
+            <% else %>
+              まだ頼んでいません
+            <% end %>
+          </p>
+          <p>次の予定: {FilmCarry.next_text(@carry_next)}</p>
+          <p>
+            <button type="button" phx-click="carry_pending" disabled={@carry_pending == :loading}>
+              {if @carry_pending == :loading,
+                do: "Chiezo に聞いています…",
+                else: "まだ引き継いでいない作品を読む"}
+            </button>
+          </p>
+          <%= case @carry_pending do %>
+            <% {:error, reason} -> %>
+              <p class="muted-note">読めませんでした: {reason}</p>
+            <% [] -> %>
+              <p class="muted-note">まだ引き継いでいない作品はありません。</p>
+            <% items when is_list(items) -> %>
+              <p class="muted-note">
+                {length(items)} 本。見た作品（見た日の新しい順）→ 注目度の高い作品（公開日の新しい順）に並び、次の回に頼むのは上から {@carry_setting.batch} 本です（頼むのをやめた作品は数えません）
+              </p>
+              <ul>
+                <li :for={item <- items}>
+                  {item.title}
+                  <span :if={item[:date]} class="muted-note">（公開 {Date.to_iso8601(item.date)}）</span>
+                  <span :if={item.tries >= CarrySetting.max_attempts()} class="muted-note">
+                    — {item.tries} 回頼んでも載らなかったので、時計からは頼みません（「見た映画を足す」で手がかりを添えて頼み直せます）
+                  </span>
+                  <span
+                    :if={item.tries > 0 and item.tries < CarrySetting.max_attempts()}
+                    class="muted-note"
+                  >
+                    — {item.tries} 回頼みました
+                  </span>
+                </li>
+              </ul>
+            <% _ -> %>
+          <% end %>
         </div>
       </details>
     </section>

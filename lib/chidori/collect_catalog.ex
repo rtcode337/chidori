@@ -150,7 +150,8 @@ defmodule Chidori.CollectCatalog do
             enabled: true,
             # 送っていなくても、整理を止める選択は Chidori が覚えている
             by_caller:
-              d.name == Chidori.SweepNames.tidy() and Chidori.CollectPace.tidy_stopped?(entry.name),
+              d.name == Chidori.SweepNames.tidy() and
+                Chidori.CollectPace.tidy_stopped?(entry.name),
             clock: "—",
             last_run_at: nil,
             last_status: nil,
@@ -166,7 +167,9 @@ defmodule Chidori.CollectCatalog do
       screen: entry.screen,
       in_chiezo: chiezo != nil,
       enabled: chiezo == nil or chiezo.enabled,
-      sweeps: sweeps,
+      # Chiezo の巡回の後ろに、Chidori の時計が起こす行（映画の図への引き継ぎ）を足す。
+      # **巡回は定義から組み直すので、ここで足さないと落ちる**
+      sweeps: sweeps ++ Chidori.CollectOverview.chidori_rows(entry.name),
       push: entry.push,
       # **Chidori の定義と違う項目**（Chiezo にまだ無い収集は空）
       drift: if(chiezo, do: drift.(entry, chiezo), else: [])

@@ -222,12 +222,27 @@
                       placeholder="07:00,19:00"
                       aria-label={"#{collection.label}の#{sweep.name}を起こす時刻"}
                     />
+                    <%!-- 引き継ぎは 1 回に頼む数も決める（AI が 1 回で返し切れる数に抑える） --%>
+                    <select
+                      :if={elem(sweep.wake, 0) == :carry}
+                      name="batch"
+                      aria-label="1 回に頼む数"
+                    >
+                      <option
+                        :for={n <- Chidori.Relations.CarrySetting.batch_choices()}
+                        value={n}
+                        selected={n == elem(sweep.wake, 2)}
+                      >
+                        1 回 {n} 本まで
+                      </option>
+                    </select>
                     <button type="submit" phx-disable-with="保存しています…">時刻を保存</button>
                   </form>
                 </td>
                 <td class="pick">
+                  <span :if={sweep[:virtual]} class="muted-note">{sweep.virtual}</span>
                   <span :if={sweep.mechanical} class="muted-note">AI を使いません</span>
-                  <%= if !sweep.mechanical do %>
+                  <%= if !sweep.mechanical and !sweep[:virtual] do %>
                     <% backend = picked_backend(@picks, collection.name, sweep) %>
                     <% models = models_for(overview.backends, backend) %>
                     <select name={"sweep|#{sweep.name}|backend"} form={form_id}>

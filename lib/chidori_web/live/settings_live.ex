@@ -241,13 +241,25 @@ defmodule ChidoriWeb.SettingsLive do
     end
   end
 
-  # **Chidori が起こす回の時刻を直す**（要約の回は `Notify.Settings` の digest_at）。
+  # **Chidori が起こす回の時刻を直す**（要約の回は `Notify.Settings` の digest_at、
+  # 映画の図への引き継ぎは `Relations.CarrySetting` の run_at）。
   # Chiezo には送らない
-  def handle_event("save_wake", %{"collection" => name, "kind" => kind, "times" => times}, socket) do
+  def handle_event(
+        "save_wake",
+        %{"collection" => name, "kind" => kind, "times" => times} = params,
+        socket
+      ) do
     result =
       case kind do
-        "digest" -> Chidori.Notify.Settings.put(name, %{"digest_at" => times})
-        _other -> {:error, :unknown}
+        "digest" ->
+          Chidori.Notify.Settings.put(name, %{"digest_at" => times})
+
+        # 最新情報の映画を図へ引き継ぐ時刻と 1 回の数（`Chidori.Relations.CarrySetting`）
+        "carry" ->
+          Chidori.Relations.CarrySetting.put(%{"run_at" => times, "batch" => params["batch"]})
+
+        _other ->
+          {:error, :unknown}
       end
 
     message =

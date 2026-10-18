@@ -362,11 +362,19 @@ defmodule ChidoriWeb.SettingsLiveTest do
     assert html =~ ~s(value="07:00")
 
     live
-    |> form(".wake-form", times: "6, 19")
+    |> form(~s|.wake-form:has(input[value="digest"])|, times: "6, 19")
     |> render_submit()
 
     assert Chidori.Notify.Settings.get("chidori_news").digest_at == "06:00,19:00"
     assert render_async(live) =~ "起こす時刻を保存しました。"
+
+    # 映画の図の行では、最新情報からの引き継ぎの時刻と 1 回の数を決める
+    live
+    |> form(~s|.wake-form:has(input[value="carry"])|, times: "4", batch: "30")
+    |> render_submit()
+
+    setting = Chidori.Relations.CarrySetting.get()
+    assert {setting.run_at, setting.batch} == {"04:00", 30}
   end
 
   test "巡回の間隔はざっと見るが先で、それぞれ何本あって何本動いているかを出す", %{conn: conn} do

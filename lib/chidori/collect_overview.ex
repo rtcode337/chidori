@@ -121,6 +121,58 @@ defmodule Chidori.CollectOverview do
   end
 
   @doc """
+  **Chidori の時計が起こす行**（Chiezo の巡回ではないもの）。いまは映画の図の
+  「最新情報からの引き継ぎ」だけ（`Chidori.Relations.FilmCarry`）。時刻を持つのは
+  Chidori なので、要約の回と同じくここで時刻を直せる（`wake`）。**Chiezo へは送らない**
+  （`virtual` の行は相手を選ばせず、送るときも数えない）。
+  """
+  def chidori_rows(name) do
+    if name == Chidori.Relations.Films.collection() do
+      setting = Chidori.Relations.CarrySetting.get()
+      next = Chidori.Relations.FilmCarry.next_at(setting)
+
+      [
+        %{
+          name: "最新情報からの引き継ぎ",
+          virtual: "「整理」の相手で動きます（頼むたびに AI を 1 回）",
+          enabled: true,
+          by_caller: false,
+          clock:
+            case Chidori.Relations.CarrySetting.times(setting) do
+              [] -> "時刻を決めていない（頼まない）"
+              times -> "Chidori が起こす（" <> Enum.map_join(times, "・", &Setting.format/1) <> "）"
+            end,
+          wake: {:carry, setting.run_at || "", setting.batch},
+          backend: nil,
+          model: nil,
+          pick: "",
+          pick_model: "",
+          mechanical: false,
+          last_run_at: setting.last_at && DateTime.to_iso8601(setting.last_at),
+          next_run_at:
+            case next do
+              {:at, at} -> DateTime.to_iso8601(at)
+              _other -> nil
+            end,
+          last_status:
+            cond do
+              is_nil(setting.last_at) -> nil
+              Chidori.Relations.CarrySetting.ok?(setting) -> "ok"
+              true -> "error"
+            end,
+          blocked:
+            case next do
+              {:at, _at} -> nil
+              other -> Chidori.Relations.FilmCarry.next_text(other)
+            end
+        }
+      ]
+    else
+      []
+    end
+  end
+
+  @doc """
   画面に出す名前。**Chidori が置いた説明の頭から取ります** —— 話題は「Chidori の「〜」」、
   トピックの網は「〜のトピック」、関連図とデータ収集は括弧の中。読めなければ収集の名前のまま。
   """
