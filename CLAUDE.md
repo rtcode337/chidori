@@ -80,7 +80,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
 
 ```bash
 # mix はコンテナで回す（手元に Elixir を入れない）。テストは docker-compose.dev.yml の
-# PostgreSQL（localhost:7071）を使うので先に立てる
+# PostgreSQL（localhost:7001）を使うので先に立てる
 docker compose -f docker-compose.dev.yml up -d
 docker run --rm --network host -u "$(id -u):$(id -g)" -v "$PWD:/app" -w /app \
   -e HOME=/app/.docker-home -e MIX_ENV=test elixir:1.20.4-otp-28 mix test

@@ -7,7 +7,7 @@
 手元に Elixir を入れずに、公式イメージで mix を回せる。Elixir の版は `Dockerfile` の builder と揃える。
 OTP は builder が 29、手元のコマンドは 28 にしている。開発サーバーと `_build` を共有するので、
 別の OTP で焼くと開発サーバーが読めなくなるため。コードはどちらでもコンパイルできる書き方にとどめる。
-テストは `docker-compose.dev.yml` の PostgreSQL（`localhost:7071`）を使うので、先に立てておく。
+テストは `docker-compose.dev.yml` の PostgreSQL（`localhost:7001`）を使うので、先に立てておく。
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d
@@ -50,7 +50,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 ## ホストで動かす
 
-ホストで直接動かすなら、DB だけ立てて繋ぐ（開発用の DB は `127.0.0.1:7071` にだけ開く）。
+ホストで直接動かすなら、DB だけ立てて繋ぐ（開発用の DB は `127.0.0.1:7001` にだけ開く）。
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d

@@ -3,7 +3,7 @@ import Config
 # 開発の接続先。**ホストで直接動かすことを前提にしない** —— compose で立てた
 # PostgreSQL を指す。ホストで動かすなら DATABASE_URL か、この値を上書きする
 config :chidori, Chidori.Repo,
-  url: System.get_env("DATABASE_URL") || "ecto://chidori:chidori@localhost:7071/chidori_dev",
+  url: System.get_env("DATABASE_URL") || "ecto://chidori:chidori@localhost:7001/chidori_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10

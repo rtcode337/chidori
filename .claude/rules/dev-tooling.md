@@ -23,7 +23,7 @@ paths:
   （OTP 29 にしか無い関数を使わない）
 - CI（`.github/workflows/ci.yml`）は builder と同じイメージで `hex.audit`・`compile --warnings-as-errors`・
   変えたファイルの `mix format --check-formatted`・`mix test` を回す。警告を残すと落ちる
-- テストは `docker-compose.dev.yml` の PostgreSQL（`127.0.0.1:7071`）を使う。外への取得は `Chidori.Http` を
+- テストは `docker-compose.dev.yml` の PostgreSQL（`127.0.0.1:7001`）を使う。外への取得は `Chidori.Http` を
   `test/support/http_stub.ex` に差し替え、ネットワークには出ない。Chiezo の置き場は `test/support/data_store_memory.ex`
 - `mix format` は変えたファイルにだけかける（リポジトリ全体は揃えていない）
 - 開発サーバーは watcher を持たない（`config/dev.exs` の `watchers: []`）。CSS は `mix tailwind chidori`、JS は `mix esbuild chidori` で焼く。
