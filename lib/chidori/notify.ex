@@ -44,6 +44,46 @@ defmodule Chidori.Notify do
   end
 
   @doc """
+  定時の回が止まったことを知らせます（`text` は理由の一言）。**まとめと同じ送り先へ**、
+  知らせる設定の話題にだけ送ります —— 知らせを待っている人にとって、止まった回は
+  「来ない」としか見えない。画面の記録（`last_digest_result`）は誰も見ていない時刻に
+  書かれるので、気づくのは来ていないと思ったとき、になっていた。
+
+  **「最後に知らせた」は進めません**（まとめを知らせたわけではないので）。
+  """
+  def deliver_failure(collection, text) when is_binary(text) do
+    with {:ok, channels} <- ready(collection) do
+      title = notice_title(collection, "まとめを作れませんでした")
+
+      results =
+        Enum.map(channels, fn
+          :ntfy ->
+            {:ntfy, Ntfy.notify(collection, title, text, click: click_url(collection))}
+
+          :push ->
+            sent =
+              Subscriptions.deliver_all(title, text, open_path(collection),
+                tag: "digest-failed-" <> collection
+              )
+
+            {:push,
+             if(Enum.any?(sent, fn {_s, result} -> result == :ok end),
+               do: :ok,
+               else: {:error, :push_failed}
+             )}
+        end)
+
+      for {channel, {:error, reason}} <- results do
+        Logger.warning("#{channel} へ止まったことを知らせられなかった（#{collection}）: #{inspect(reason)}")
+      end
+
+      if Enum.any?(results, fn {_channel, result} -> result == :ok end),
+        do: :ok,
+        else: {:error, :not_delivered}
+    end
+  end
+
+  @doc """
   その話題を知らせられる状態か。返すのは送り先の並び（`:ntfy`・`:push`）。
 
   - `:notify_off` —— その話題は知らせない設定（話題の画面の「知らせる」）

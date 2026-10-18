@@ -127,11 +127,28 @@ defmodule Chidori.Digest do
         # **どう終わったかを残す。** 誰も見ていない時刻に走る回なので、残さないと
         # 知らせが来なかった理由がログにしか無い
         Settings.mark_digest_result(collection, result_text(result))
+        tell_failure(collection, result)
         result
     end
   end
 
   def run(_topic, _free_by), do: {:error, :no_topic}
+
+  # **定時の回が止まったら、止まったことを知らせる**（知らせる設定の話題だけ）。
+  # 画面から押した回は押した人が画面で見ているので送らない。知らせられなかった理由
+  # （知らせない設定・宛先が無い・送れなかった）で止まった回は、同じ送り先へ送っても
+  # 届かないので送らない。収集を Chiezo 側で止めているのは人が決めたことなので、
+  # 回のたびに知らせると止めている間ずっと鳴る
+  @quiet [:notify_off, :no_destination, :push_failed, :push_expired, :collection_disabled]
+
+  defp tell_failure(collection, result, what \\ nil)
+
+  defp tell_failure(collection, {:error, reason}, what) when reason not in @quiet do
+    text = if what, do: what <> ": " <> error_text(reason), else: error_text(reason)
+    unless Chiezo.by_hand?(), do: Notify.deliver_failure(collection, text)
+  end
+
+  defp tell_failure(_collection, _result, _what), do: :ok
 
   # `free_by` までは、取り込みが空くのを待って頼み直す（断られても、その回を落とさない）
   defp walk(base, topic, free_by) do
@@ -250,6 +267,9 @@ defmodule Chidori.Digest do
         {:error, reason} ->
           Logger.warning("#{collection} の興味トピックの要約: #{inspect(reason)}")
           tell(collection, "興味トピックの要約は作れませんでした（#{error_text(reason)}）")
+
+          # ふつうのまとめは届いているので、こちらだけ止まったことを知らせる
+          tell_failure(collection, {:error, reason}, "興味トピックの要約")
 
         _done ->
           :ok

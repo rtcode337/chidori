@@ -224,6 +224,30 @@ defmodule Chidori.DigestTest do
 
     assert Digest.run(topic, System.monotonic_time(:millisecond) + 50) == {:error, :chiezo_busy}
     assert Settings.get(@collection).last_digest_result =~ "空きませんでした"
+
+    # **止まったことを知らせる。** 定時の回は誰も見ていない時刻に走るので、
+    # 画面の記録だけでは「来ない」としか分からない
+    assert_received {:notify, _url, notice}
+    assert Jason.decode!(notice)["title"] =~ "まとめを作れませんでした"
+    assert Jason.decode!(notice)["message"] =~ "空きませんでした"
+  end
+
+  test "画面から押した回が止まっても、知らせない（押した人が画面で見ている）", %{topic: topic} do
+    stub_chiezo(%{refine: fn -> {:ok, %{status: 409, body: "{}"}} end})
+
+    assert Chidori.Chiezo.by_hand(fn ->
+             Digest.run(topic, System.monotonic_time(:millisecond) + 50)
+           end) == {:error, :chiezo_busy}
+
+    refute_received {:notify, _url, _notice}
+  end
+
+  test "知らせない設定の話題は、止まっても知らせない", %{topic: topic} do
+    Settings.put(@collection, %{"notify" => "false"})
+    stub_chiezo(%{refine: fn -> {:ok, %{status: 409, body: "{}"}} end})
+
+    assert Digest.run(topic, System.monotonic_time(:millisecond) + 50) == {:error, :chiezo_busy}
+    refute_received {:notify, _url, _notice}
   end
 
   test "整理が終わらなければ、要約は起こさない", %{topic: topic} do
@@ -249,7 +273,9 @@ defmodule Chidori.DigestTest do
 
     assert_received {:posted, url}
     assert url =~ "/run"
-    refute_received {:posted, _focus}
+    refute_received {:posted, "http://chiezo.test:7010" <> _focus}
+    # 止まったことは知らせる（定時の回なので）
+    assert_received {:posted, "http://ntfy.test" <> _notice}
   end
 
   test "止まっている収集は、起こさずに断る", %{topic: topic} do
@@ -267,6 +293,7 @@ defmodule Chidori.DigestTest do
         flunk("止まっている収集を起こした: #{url}")
     end)
 
+    # 止めているのは人が決めたことなので、止まったことも知らせない（起こしもしない）
     assert Digest.run(topic) == {:error, :collection_disabled}
 
     # 止まった理由も画面から読める（次に何をすればよいかまで）
