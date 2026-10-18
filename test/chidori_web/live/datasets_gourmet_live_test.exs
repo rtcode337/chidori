@@ -31,8 +31,9 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
   @docs [
     %{
       "doc_id" => 1,
-      "title" => "東京のうどん（秘密の名前）",
-      "tags" => ["ご当地グルメ", "地域:東京都"],
+      "title" => "東京の名店（秘密の名前）",
+      # 店の 1 件（料理と同じ数に入り、内訳に「うち店」で出る）
+      "tags" => ["ご当地グルメ", "地域:東京都", "区分:店"],
       "extra" => %{"lat" => 35.68, "lon" => 139.76}
     },
     %{
@@ -77,20 +78,20 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
     :ok
   end
 
-  test "県ごとに料理・代表店あり・代表店まだ・代表店なしを出し、料理の名前は出さない", %{conn: conn} do
+  test "県ごとに料理・店（うち店）・代表店あり・代表店まだ・代表店なしを出し、名前は出さない", %{conn: conn} do
     {:ok, live, _html} = live(conn, ~p"/datasets?view=gourmet")
     html = render_async(live)
 
     assert html =~ "県ごとの進み具合"
 
     assert html =~
-             "料理 2 品・代表店が決まって地図に置ける 1 品・代表店まだ 1 品（うち引き当てできず 1 品）・代表店なし 0 品"
+             "料理・店 2 件（うち店 1 件）・代表店が決まって地図に置ける 1 件・代表店まだ 1 件（うち引き当てできず 1 件）・代表店なし 0 件"
 
     # 県の並びは東京都から（区画の 1 周目の順）
     [_, table] = String.split(html, "prefecture-table", parts: 2)
 
     assert table =~
-             ~r/<td>東京都<\/td>\s*<td>2<\/td>\s*<td>1<\/td>\s*<td>\s*1<span[^>]*>（うち引き当てできず 1）<\/span>\s*<\/td>\s*<td>0<\/td>/
+             ~r/<td>東京都<\/td>\s*<td>\s*2<span[^>]*>（うち店 1）<\/span>\s*<\/td>\s*<td>1<\/td>\s*<td>\s*1<span[^>]*>（うち引き当てできず 1）<\/span>\s*<\/td>\s*<td>0<\/td>/
 
     # 「AI が見たか」の列は出さない（代表店がまだでも 0 になり紛らわしい）
     refute table =~ "未確認"
@@ -143,11 +144,13 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
     # 東京都は料理 2・代表店あり 1（50 %）で 3 段目、引き当てできずがあるので印が 1 つ
     assert html =~ ~r/class="pref pref-step-3"[^>]*phx-value-key="地域:東京都"/
     assert length(Regex.scan(~r/<circle[^>]*data-flag/, html)) == 1
-    # 料理の無い県は「料理がまだ無い」の色
+    # 料理も店も無い県は「料理も店もまだ無い」の色
     assert html =~ ~r/class="pref pref-empty"[^>]*phx-value-key="地域:北海道"/
     # 色だけに頼らない（県名と数が読める）
-    assert html =~ "東京都：料理 2・代表店あり 1（50 %）・代表店まだ 1（うち引き当てできず 1）・代表店なし 0"
-    assert html =~ "代表店ありの割合（料理のうち）"
+    assert html =~
+             "東京都：料理・店 2（うち店 1）・代表店あり 1（50 %）・代表店まだ 1（うち引き当てできず 1）・代表店なし 0"
+
+    assert html =~ "代表店ありの割合（料理と店のうち）"
     assert html =~ "引き当てできずがある"
     assert html =~ "Natural Earth"
     # 料理の名前は地図にも出さない
@@ -169,8 +172,8 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
     assert html =~ ~s(<input type="hidden" name="key" value="地域:東京都")
     # 選んだ県の数
     [_, picked] = String.split(html, "選んだ区画", parts: 2)
-    assert picked =~ ~r/<dt>料理<\/dt>\s*<dd>2 品<\/dd>/
-    assert picked =~ ~r/<dt>代表店あり<\/dt>\s*<dd>1 品<\/dd>/
+    assert picked =~ ~r/<dt>料理・店<\/dt>\s*<dd>\s*2 件（うち店 1 件）\s*<\/dd>/
+    assert picked =~ ~r/<dt>代表店あり<\/dt>\s*<dd>1 件<\/dd>/
     # 地図の上でも選んだ県が分かる（表の行と同じ状態）
     assert html =~ ~r/class="pref-picked"[^>]*phx-value-key="地域:東京都"/
     assert html =~ ~r/<tr class="is-picked">\s*<td>東京都<\/td>/

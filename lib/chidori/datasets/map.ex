@@ -245,7 +245,7 @@ defmodule Chidori.Datasets.Map do
   県の地図（ご当地グルメ）。**白地図の範囲を描く地図と同じ枠・同じ投影**で 47 県を置き、
   県ごとの進み具合（`Chidori.Datasets.Gourmet.progress/0` の行）を添えます。
 
-  - `step` —— 塗りの段。代表店ありの割合（料理のうち）で 1〜4、0 % なら 0、料理がまだ無ければ `nil`
+  - `step` —— 塗りの段。代表店ありの割合（料理と店のうち）で 1〜4、0 % なら 0、料理がまだ無ければ `nil`
   - `flag` —— 引き当てできずがあるか（塗りとは別の印で出す）
   - `label` —— 印を置く点（いちばん大きい輪の重心。本土の県では本土の上に来る）
 
@@ -268,6 +268,7 @@ defmodule Chidori.Datasets.Map do
           row =
             Map.get(by_name, shape.name, %{
               dishes: 0,
+              shops: 0,
               placed: 0,
               pending: 0,
               unresolved: 0,
@@ -279,6 +280,7 @@ defmodule Chidori.Datasets.Map do
           Map.merge(shape, %{
             key: key,
             dishes: row.dishes,
+            shops: Map.get(row, :shops, 0),
             placed: row.placed,
             pending: row.pending,
             unresolved: if(counted?, do: row.unresolved),

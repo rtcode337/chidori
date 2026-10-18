@@ -3,7 +3,7 @@ defmodule ChidoriWeb.PrefectureMap do
   県の地図（ご当地グルメ）。**県を押して選ぶ**口で、押した県は表の「選ぶ」と同じ状態になります
   （その県の数と「この区画で 1 回走らせる」が出る）。**押しただけでは走らせません**。
 
-  **塗りの濃さは代表店ありの割合**（料理のうち、代表店が引き当たって地図に置けるもの）を
+  **塗りの濃さは代表店ありの割合**（料理と店のうち、代表店が引き当たって地図に置けるもの）を
   段に分けて出し、**引き当てできずがある県には別の印**（丸）を置きます。色だけに頼らない ——
   県に指を置けば名前と数が出て（`title`）、押せば下に数が並び、表にも同じ数があります。
 
@@ -73,8 +73,8 @@ defmodule ChidoriWeb.PrefectureMap do
         </svg>
       </div>
       <ul class="pref-legend" aria-label="地図の凡例">
-        <li class="legend-title">代表店ありの割合（料理のうち）</li>
-        <li><span class="swatch pref-empty"></span>料理がまだ無い</li>
+        <li class="legend-title">代表店ありの割合（料理と店のうち）</li>
+        <li><span class="swatch pref-empty"></span>料理も店もまだ無い</li>
         <li><span class="swatch pref-step-0"></span>0 %</li>
         <li><span class="swatch pref-step-1"></span>25 % 未満</li>
         <li><span class="swatch pref-step-2"></span>25〜50 %</li>
@@ -99,6 +99,10 @@ defmodule ChidoriWeb.PrefectureMap do
   defp step_class(nil), do: "pref-empty"
   defp step_class(step), do: "pref-step-#{step}"
 
+  # 料理と店の内訳（店が無ければ書かない）
+  defp shops_note(0), do: ""
+  defp shops_note(shops), do: "（うち店 #{shops}）"
+
   @doc "県に指を置いたときの一言（県名と数）。色だけでは割合が読めないので、数で書く。"
   def shape_title(shape) do
     share =
@@ -108,7 +112,7 @@ defmodule ChidoriWeb.PrefectureMap do
 
     failed = if shape.unresolved, do: "（うち引き当てできず #{shape.unresolved}）", else: ""
 
-    "#{shape.name}：料理 #{shape.dishes}・代表店あり #{shape.placed}#{share}" <>
+    "#{shape.name}：料理・店 #{shape.dishes}#{shops_note(Map.get(shape, :shops, 0))}・代表店あり #{shape.placed}#{share}" <>
       "・代表店まだ #{shape.pending}#{failed}・代表店なし #{shape.no_shop}"
   end
 end

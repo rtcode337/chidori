@@ -45,7 +45,9 @@ defmodule Chidori.Datasets.GourmetTest do
       assert "北海道のご当地ラーメン" in tags
       assert "北海道の駅弁" in tags
       assert "神奈川県の農業" in tags
-      assert length(tags) == 47 * 8
+      # 店の括り（県の飲食店）も 47 県ぶん
+      assert "東京都の飲食店" in tags
+      assert length(tags) == 47 * 9
 
       # 県が読めない括り・どこにでもある料理が混ざる括り・食べもの以外を抱える括りは入れない
       for wide <- ~w(日本の郷土料理 ご当地グルメ 関東地方のご当地ラーメン 東北地方の駅弁 東京都の食文化 京都府の菓子) do
@@ -60,16 +62,59 @@ defmodule Chidori.Datasets.GourmetTest do
       # 県は農業の括りからも読む
       [_kind, region | _rest] = extract.tags
       assert [_, "群馬県"] = Regex.run(Regex.compile!(region.pattern, "u"), "群馬県の農業")
+
+      # 県の飲食店は組を要らない（tag_pairs のどの pattern にも当たらない）
+      refute Regex.match?(Regex.compile!(pattern, "u"), "群馬県の飲食店")
       assert "イネの品種" in String.split(extract.not_tag, ",")
       assert Gourmet.tidy_prompt() =~ "米の品種"
     end
 
-    test "店・会社・商品・作品・一覧の記事は外す" do
+    test "会社・メーカー・商品・作品・店でないもの・閉じた店・一覧の記事は外す" do
       excluded = String.split(Gourmet.extract().not_tag, ",")
 
-      for shop <- ~w(ラーメン店 和菓子の店舗・メーカー 日本の外食事業者 インスタントラーメンの商品名 東京都の飲食店 北海道の一覧) do
-        assert shop in excluded
+      for company <- ~w(日本の製菓業者 東京都の製菓業者 日本の食品メーカー 日本の製麺業者 日本の即席麺メーカー
+                        インスタントラーメンの商品名 日本のファストフード店 ナイトクラブ
+                        かつて存在した日本の外食事業者 かつて存在した東京都の企業 北海道の一覧) do
+        assert company in excluded
       end
+
+      # 閉じた施設のカテゴリは名前に空白を含む（カンマで区切るので、そのまま渡る）
+      assert "神奈川県の商業施設 (廃止)" in excluded
+    end
+
+    test "店の記事は外さず、店の 1 件として入れる（店と会社が混ざる括りも整理が分ける）" do
+      excluded = String.split(Gourmet.extract().not_tag, ",")
+
+      for shop <- ~w(ラーメン店 餃子店 洋菓子店 和菓子の店舗・メーカー 日本の外食事業者 東京都の飲食店) do
+        refute shop in excluded
+      end
+
+      [_kind, region, shop | _kinds] = Gourmet.extract().tags
+      assert shop.format == Gourmet.shop_tag()
+      pattern = Regex.compile!(shop.pattern, "u")
+
+      for category <- ~w(ラーメン店 和菓子の店舗・メーカー うどん・蕎麦屋 東京都の飲食店) do
+        assert Regex.match?(pattern, category)
+      end
+
+      # 料理のカテゴリには当たらない（「鰻料理」は うなぎパイ にも付くので店の印にしない）
+      for category <- ~w(東京都の麺料理 静岡県の土産菓子 鰻料理 日本の飲食店) do
+        refute Regex.match?(pattern, category)
+      end
+
+      # 県は県の飲食店からも読む
+      assert [_, "東京都"] = Regex.run(Regex.compile!(region.pattern, "u"), "東京都の飲食店")
+
+      # Chiezo の pattern は 200 文字まで
+      for %{pattern: pattern} <- Gourmet.extract().tags, do: assert(String.length(pattern) <= 200)
+    end
+
+    test "名簿の括りと外す括りが重ならない（県の飲食店を外したまま入れようとしない）" do
+      extract = Gourmet.extract()
+      wanted = MapSet.new(String.split(extract.tag, ","))
+      excluded = MapSet.new(String.split(extract.not_tag, ","))
+
+      assert MapSet.disjoint?(wanted, excluded)
     end
 
     test "県はカテゴリの名前から読み、47 県の名前のときだけ作る" do
@@ -92,10 +137,10 @@ defmodule Chidori.Datasets.GourmetTest do
     end
 
     test "種類は細かい括りから 1 つだけ（2 つ目からは前が作っていれば作らない）" do
-      [_kind, _region | rules] = Gourmet.extract().tags
+      [_kind, _region, _shop | rules] = Gourmet.extract().tags
 
       # Chiezo の読み替えは 1 本の指定に 20 個まで
-      assert length(rules) + 2 <= 20
+      assert length(rules) + 3 <= 20
       assert hd(rules)[:fallback] == nil
       assert Enum.all?(tl(rules), &(&1.fallback == true))
 
@@ -114,6 +159,14 @@ defmodule Chidori.Datasets.GourmetTest do
       # 麺料理にも入っていれば、そちらが先
       assert first_kind.(["長野県の麺料理", "長野県の農業"]) == "種類:麺類"
       assert first_kind.(["三重県の土産菓子"]) == "種類:菓子"
+
+      # 店は店の種類が先（ラーメン店で県の麺料理に入っている店は「麺類」ではない）
+      assert first_kind.(["ラーメン店", "東京都の麺料理"]) == "種類:ラーメン"
+      assert first_kind.(["和菓子の店舗・メーカー", "東京都の土産菓子"]) == "種類:菓子"
+      assert first_kind.(["料亭", "京都府の飲食店"]) == "種類:和食"
+      assert first_kind.(["日本の喫茶店", "神奈川県の飲食店"]) == "種類:飲み物"
+      # 店の種類が読めない店は AI に任せる
+      assert first_kind.(["東京都の飲食店"]) == nil
 
       for %{format: "種類:" <> kind} <- rules, do: assert(kind in Gourmet.kinds())
     end
@@ -402,6 +455,102 @@ defmodule Chidori.Datasets.GourmetTest do
       assert Gourmet.months_text("6,7,8") == "6月・7月・8月"
       assert Gourmet.months_text("12-2,7") == "12〜2月・7月"
       assert Gourmet.months_text("冬") == ""
+    end
+  end
+
+  describe "店の 1 件" do
+    defp shop_doc(overrides \\ %{}) do
+      Map.merge(
+        %{
+          "doc_id" => 88,
+          "title" => "サンプル亭 (ラーメン店)",
+          "tags" => [
+            "ご当地グルメ",
+            "地域:東京都",
+            "区分:店",
+            "種類:ラーメン",
+            "代表店:本店",
+            "発祥店",
+            "提供店:数軒",
+            "出典:OSM"
+          ],
+          "extra" => %{
+            "lat" => 35.6812,
+            "lon" => 139.7671,
+            "shop" => %{"name" => "サンプル亭 本店", "address" => "東京都千代田区丸の内1丁目"}
+          }
+        },
+        overrides
+      )
+    end
+
+    test "見出しは店名のまま（見分けの補足は落とす）、ピンはその店（本店）" do
+      row = Gourmet.spot(shop_doc(), Gourmet.definition())
+
+      assert row["name"] == "サンプル亭"
+      assert row["lat"] == 35.6812
+      assert row["series"] == "ラーメン"
+      assert Gourmet.shop?(shop_doc())
+      refute Gourmet.shop?(%{"tags" => ["ご当地グルメ", "地域:東京都"]})
+    end
+
+    test "travel-log では「名店」のカテゴリで料理と見分ける（代表店の「有名店」とは別の語）" do
+      row = Gourmet.spot(shop_doc(), Gourmet.definition())
+
+      assert row["categories"] == "名店|発祥店|本店"
+      assert hd(Gourmet.category_order()) == "名店"
+      assert "有名店" in Gourmet.category_order()
+      assert length(Enum.uniq(Gourmet.category_order())) == length(Gourmet.category_order())
+    end
+
+    test "説明は「代表店」ではなく「店」でその店自身を書く" do
+      description = Gourmet.spot(shop_doc(), Gourmet.definition())["description"]
+
+      assert description =~ "店: サンプル亭 本店（本店・発祥の店）／東京都千代田区丸の内1丁目"
+      refute description =~ "代表店:"
+    end
+
+    test "種類の語彙は店のぶん（和食・洋食・中華）を足しても 20 を超えない" do
+      kinds = Gourmet.kinds()
+
+      assert "和食" in kinds
+      assert "洋食・中華" in kinds
+      assert length(kinds) <= 20
+      assert List.last(kinds) == "その他"
+    end
+
+    test "どちらの依頼文にも、店の 1 件の決まりと料理との重なりの決め方を 1 回ずつ書く" do
+      for prompt <- [Gourmet.survey_prompt(), Gourmet.tidy_prompt()] do
+        assert prompt =~ ~s(tags に "区分:店")
+        assert prompt =~ "地元でも知られていない店"
+        assert prompt =~ "本店（発祥の店）が決まらないチェーン"
+        assert prompt =~ "全国チェーンそのもの"
+        assert prompt =~ "閉店した店"
+        assert prompt =~ "その店自身"
+        # 同じ店にピンを 2 本立てない（系統の料理と発祥の店）
+        assert prompt =~ "同じ店にピンが 2 本立たないように"
+        assert prompt =~ "の 1 件にまとめた（代表店・発祥店）"
+        assert length(String.split(prompt, "同じ店にピンが 2 本立たないように")) == 2
+      end
+    end
+
+    test "情報収集は記事の無い店を足しすぎない（1 回 2 軒まで・公的な紹介があるものだけ）" do
+      prompt = Gourmet.survey_prompt()
+
+      assert prompt =~ "1 回 2 軒まで"
+      assert prompt =~ "県・市区町村・観光協会がその土地の名物の店として紹介している"
+    end
+
+    test "整理は店の印を確かめ、2 県に分かれた店は本店の県の 1 件にまとめる" do
+      prompt = Gourmet.tidy_prompt()
+
+      assert prompt =~ "看板の菓子・料理そのものの記事"
+      assert prompt =~ "本店のある県の 1 件だけを残し"
+      assert prompt =~ "店の 1 件は、その店の閉店が終わり"
+    end
+
+    test "travel-log からの閉店の報告は、店の 1 件なら墓標" do
+      assert Gourmet.request_preface() =~ "現地から閉店の報告"
     end
   end
 end

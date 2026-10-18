@@ -1040,11 +1040,12 @@ defmodule ChidoriWeb.DatasetsLive do
 
     failed =
       if progress.unresolved_total,
-        do: "（うち引き当てできず #{total.(:unresolved)} 品）",
+        do: "（うち引き当てできず #{total.(:unresolved)} 件）",
         else: ""
 
-    "料理 #{total.(:dishes)} 品・代表店が決まって地図に置ける #{total.(:placed)} 品・" <>
-      "代表店まだ #{total.(:pending)} 品#{failed}・代表店なし #{total.(:no_shop)} 品。"
+    "料理・店 #{total.(:dishes)} 件（うち店 #{total.(:shops)} 件）・" <>
+      "代表店が決まって地図に置ける #{total.(:placed)} 件・" <>
+      "代表店まだ #{total.(:pending)} 件#{failed}・代表店なし #{total.(:no_shop)} 件。"
   end
 
   @doc """

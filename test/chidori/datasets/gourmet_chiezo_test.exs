@@ -36,12 +36,16 @@ defmodule Chidori.Datasets.GourmetChiezoTest do
   defp page(docs), do: HttpStub.ok(Jason.encode!(%{"total" => length(docs), "results" => docs}))
 
   describe "県ごとの進み具合" do
-    test "料理・代表店あり・代表店まだ（うち引き当てできず）・代表店なしを県ごとに数え、消えたものは数えない" do
+    test "料理・店（うち店）・代表店あり・代表店まだ（うち引き当てできず）・代表店なしを県ごとに数え、消えたものは数えない" do
       docs = [
-        dish(1, "東京のうどん", "東京都", placed()),
+        # 店の 1 件も同じ数に入り、内訳（shops）にも数える
+        dish(1, "東京の名店", "東京都", placed(), [Gourmet.shop_tag()]),
         dish(2, "東京のそば", "東京都", %{}, [Chidori.Chiezo.unreviewed_tag()]),
         dish(3, "東京の菓子", "東京都", %{"shop" => %{"unresolved" => "辞典に無い"}}),
-        dish(4, "消えた料理", "東京都", placed(), [Chidori.Chiezo.removed_tag()]),
+        dish(4, "消えた店", "東京都", placed(), [
+          Chidori.Chiezo.removed_tag(),
+          Gourmet.shop_tag()
+        ]),
         dish(5, "北の麺", "北海道", placed()),
         dish(7, "店の無い菓子", "東京都", %{}, [Gourmet.no_shop_tag()]),
         %{"doc_id" => 6, "title" => "県の無い料理", "tags" => ["ご当地グルメ", "地域:東京"]}
@@ -65,6 +69,7 @@ defmodule Chidori.Datasets.GourmetChiezoTest do
                prefecture: "東京都",
                key: "地域:東京都",
                dishes: 4,
+               shops: 1,
                placed: 1,
                # 手がかりなし（東京のそば。AI が見ていなくても数える）と引き当てできず
                pending: 2,

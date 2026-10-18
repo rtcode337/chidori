@@ -388,7 +388,7 @@
 
         <%!-- **区画が県の対象（ご当地グルメ）は、区画の地図の代わりに県の地図と県ごとの数を並べる。**
            区画の鍵が矩形ではないので区画の地図にはできず、知りたいのも「どこまで見たか」より
-           「県ごとに料理と代表店がどれだけ揃ったか」。溜まったものそのもの（料理の名前）は
+           「県ごとに料理・店と代表店がどれだけ揃ったか」。溜まったものそのもの（料理や店の名前）は
            出さない —— 読むのは travel-log。
            **並びは 地図 → 選んだ県（数と 1 回走らせる）→ 表。** 狭い画面で地図の県を押したとき、
            表の 47 行の下まで探しに行かずに済むように --%>
@@ -414,7 +414,7 @@
                   この Chiezo は引き当てられなかったものの口を持っていないので、引き当てできずの数は出していません。
                 <% end %>
                 <%= if progress.unplaced_region > 0 do %>
-                  県の読めない料理が {progress.unplaced_region} 品あります（どの区画にも入らず、書き出しもしません）。
+                  県の読めない料理・店が {progress.unplaced_region} 件あります（どの区画にも入らず、書き出しもしません）。
                 <% end %>
               </p>
           <% end %>
@@ -454,24 +454,28 @@
             </div>
             <%= if counts = @dataset[:prefectures] && picked_prefecture(@prefecture_progress, picked.key) do %>
               <div>
-                <dt>料理</dt>
-                <dd>{counts.dishes} 品</dd>
+                <dt>料理・店</dt>
+                <dd>
+                  {counts.dishes} 件{if Map.get(counts, :shops, 0) > 0,
+                    do: "（うち店 #{counts.shops} 件）",
+                    else: ""}
+                </dd>
               </div>
               <div>
                 <dt>代表店あり</dt>
-                <dd>{counts.placed} 品</dd>
+                <dd>{counts.placed} 件</dd>
               </div>
               <div>
                 <dt>代表店まだ</dt>
                 <dd>
-                  {counts.pending} 品{if elem(@prefecture_progress, 1).unresolved_total,
-                    do: "（うち引き当てできず #{counts.unresolved} 品）",
+                  {counts.pending} 件{if elem(@prefecture_progress, 1).unresolved_total,
+                    do: "（うち引き当てできず #{counts.unresolved} 件）",
                     else: ""}
                 </dd>
               </div>
               <div>
                 <dt>代表店なし</dt>
-                <dd>{counts.no_shop} 品</dd>
+                <dd>{counts.no_shop} 件</dd>
               </div>
             <% end %>
             <div>
@@ -601,7 +605,7 @@
             <thead>
               <tr>
                 <th>県</th>
-                <th>料理</th>
+                <th>料理・店</th>
                 <th>代表店あり</th>
                 <th>代表店まだ</th>
                 <th>代表店なし</th>
@@ -612,7 +616,9 @@
             <tbody>
               <tr :for={row <- prows} class={if @picked == row.key, do: "is-picked"}>
                 <td>{row.prefecture}</td>
-                <td>{row.dishes}</td>
+                <td>
+                  {row.dishes}<span :if={Map.get(row, :shops, 0) > 0} class="muted-note">（うち店 {row.shops}）</span>
+                </td>
                 <td>{row.placed}</td>
                 <td>
                   {row.pending}<span
