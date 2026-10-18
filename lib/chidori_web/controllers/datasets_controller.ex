@@ -17,7 +17,7 @@ defmodule ChidoriWeb.DatasetsController do
 
   require Logger
 
-  def export(conn, %{"key" => key}) do
+  def export(conn, %{"key" => key} = params) do
     dataset = Datasets.get(key)
 
     cond do
@@ -30,7 +30,7 @@ defmodule ChidoriWeb.DatasetsController do
         text(conn, 404, "この収集はスポットとして書き出せません")
 
       true ->
-        case TravelLog.bundle(dataset) do
+        case TravelLog.bundle(dataset, style_opts(params)) do
           {:ok, filename, binary, _counts} ->
             send_download(conn, {:binary, binary}, filename: filename)
 
@@ -49,10 +49,10 @@ defmodule ChidoriWeb.DatasetsController do
   **食事処の全範囲を 1 つの ZIP に**（範囲の画面の「全範囲をまとめて書き出す」）。
   travel-log では範囲によらず 1 つの種別に読み込むので、範囲ごとに読み込ませない。
   """
-  def export_areas(conn, _params) do
+  def export_areas(conn, params) do
     case DiningAreas.list()
          |> Enum.map(&Dining.definition/1)
-         |> TravelLog.bundle_all("dining-all") do
+         |> TravelLog.bundle_all("dining-all", style_opts(params)) do
       {:ok, filename, binary, _counts} ->
         send_download(conn, {:binary, binary}, filename: filename)
 
@@ -66,6 +66,11 @@ defmodule ChidoriWeb.DatasetsController do
         failed(conn, "dining-all", reason)
     end
   end
+
+  # `?styles=replace` のときだけ、travel-log 側のシリーズの見た目も上書きさせる
+  # （`TravelLog.settings_json/6`。既定は残してもらう）
+  defp style_opts(%{"styles" => "replace"}), do: [keep_styles: false]
+  defp style_opts(_params), do: []
 
   defp failed(conn, key, reason) do
     Logger.warning("travel-log 用の ZIP を書き出せなかった（#{key}）: #{inspect(reason)}")

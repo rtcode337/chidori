@@ -262,6 +262,12 @@ defmodule Chidori.Datasets.TravelLogTest do
 
       # 見た目は travel-log 側で付けたものを残してもらう（範囲ごとに読み込むため）
       assert settings["keep_series_styles"] == true
+
+      # 上書きを頼まれたときだけ付けない（色の決め方を変えたあとに 1 回だけ使う）
+      replaced =
+        Jason.decode!(TravelLog.settings_json("dining", "食事処", [], nil, nil, keep_styles: false))
+
+      assert replaced["keep_series_styles"] == false
     end
   end
 

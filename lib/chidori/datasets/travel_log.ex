@@ -79,8 +79,11 @@ defmodule Chidori.Datasets.TravelLog do
 
   内訳は `%{rows: 書き出した件数, skipped: 落とした件数, outside: 範囲の外の件数,
   excluded: 消えたもの（範囲の外を含む）の件数}`。
+
+  `opts` の `keep_styles: false` で、travel-log 側のシリーズの見た目も上書きさせる
+  （`settings_json/6`。既定は残してもらう）。
   """
-  def bundle(%{key: zip_name, module: module} = dataset) do
+  def bundle(%{key: zip_name, module: module} = dataset, opts \\ []) do
     # **種別の key と名前は、範囲の収集では範囲によらず同じ**（`dining`）。書き出しは
     # 範囲ごとでも、travel-log では 1 つの種別に読み込む
     key = dataset[:export_key] || zip_name
@@ -89,7 +92,7 @@ defmodule Chidori.Datasets.TravelLog do
     with true <- exportable?(dataset) || {:error, :not_exportable},
          {:ok, base} <- Datasets.base_url(),
          {:ok, part} <- gather(base, dataset) do
-      zip(zip_name, key, name, part, module, dataset[:series_order])
+      zip(zip_name, key, name, part, module, dataset[:series_order], opts)
     else
       {:error, reason} -> {:error, reason}
       false -> {:error, :not_exportable}
@@ -106,7 +109,9 @@ defmodule Chidori.Datasets.TravelLog do
   後のものは exclude.txt へ回す —— 範囲ごとの ZIP で前に読み込んでいれば、それが消える。
   **書き出す行と同じ鍵は exclude.txt に入れない**（同じ鍵を残しつつ消す、にならないように）。
   """
-  def bundle_all([first | _rest] = datasets, zip_name) do
+  def bundle_all(datasets, zip_name, opts \\ [])
+
+  def bundle_all([first | _rest] = datasets, zip_name, opts) do
     %{module: module} = first
     key = first[:export_key] || first.key
     name = first[:export_name] || first.name
@@ -131,14 +136,14 @@ defmodule Chidori.Datasets.TravelLog do
         skipped: Enum.sum(Enum.map(parts, & &1.skipped)) + length(twins)
       }
 
-      zip(zip_name, key, name, part, module, first[:series_order])
+      zip(zip_name, key, name, part, module, first[:series_order], opts)
     else
       {:error, reason} -> {:error, reason}
       false -> {:error, :not_exportable}
     end
   end
 
-  def bundle_all([], _zip_name), do: {:error, :nothing_to_export}
+  def bundle_all([], _zip_name, _opts), do: {:error, :nothing_to_export}
 
   defp gather_all(base, datasets) do
     Enum.reduce_while(datasets, {:ok, []}, fn dataset, {:ok, acc} ->
@@ -216,13 +221,13 @@ defmodule Chidori.Datasets.TravelLog do
     :math.sqrt(dx * dx + dy * dy)
   end
 
-  defp zip(zip_name, key, name, part, module, series_order) do
+  defp zip(zip_name, key, name, part, module, series_order, opts) do
     %{rows: rows, excluded: excluded} = part
 
     files =
       [
         {~c"#{key}/settings.json",
-         settings_json(key, name, rows, category_order(module), series_order)},
+         settings_json(key, name, rows, category_order(module), series_order, opts)},
         {~c"#{key}/spots.csv", csv(rows, csv_header(module))}
       ] ++
         if excluded == [],
@@ -470,8 +475,12 @@ defmodule Chidori.Datasets.TravelLog do
   **カテゴリの並びも渡します**（`categories`。収集が語彙を持っていれば、その並び）。
   travel-log はこれを絞り込みの並びに使います。カテゴリは見た目に効かないので、
   シリーズの一覧には混ぜません。
+
+  **`keep_styles: false` を渡すと、見た目も上書きさせます**（`keep_series_styles` を付けない）。
+  見た目の決め方を変えたとき（訪問済みの緑に近い色を避けるようにした、など）に、
+  既にあるシリーズの色まで入れ替えるための 1 回きりの道。画面で付けた見た目も消える。
   """
-  def settings_json(key, name, rows, categories \\ nil, order \\ nil) do
+  def settings_json(key, name, rows, categories \\ nil, order \\ nil, opts \\ []) do
     series =
       rows
       |> Enum.map(& &1["series"])
@@ -496,8 +505,8 @@ defmodule Chidori.Datasets.TravelLog do
         # **見た目は travel-log 側で付けたものを残してもらう**。ここで決めているのは
         # 機械の見た目（2 文字のラベルと色）だけなので、範囲ごとの ZIP を同じ種別へ
         # 読み込むたびに上書きされると、画面で付けたアイコンや色が消える。
-        # 足されるのは、まだ無かったシリーズだけ
-        keep_series_styles: true
+        # 足されるのは、まだ無かったシリーズだけ。上書きを頼まれたときだけ付けない
+        keep_series_styles: Keyword.get(opts, :keep_styles, true)
       }
       |> then(fn json ->
         if is_list(categories), do: Map.put(json, :categories, categories), else: json

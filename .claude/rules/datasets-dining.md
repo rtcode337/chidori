@@ -45,7 +45,7 @@ paths:
   人が閉店と報告した店は頼む直前に固定を外す（`Requests.release_closed/2`）
 - travel-log への書き出しは `Chidori.Datasets.TravelLog`。行を自分で組む対象（`spot/2`。ご当地グルメ）は列（`csv_header/0`）も
   説明文もランクもその対象が決め、地図に置けない 1 件（座標が無い）の key は exclude.txt に入れる。travel-log に Chidori の決めごとを持たせず、向こうの形（`settings.json`・`spots.csv`・`exclude.txt`）に直す。
-  key は食事処が `<範囲の番号>-<doc_id>`・ご当地グルメが `doc_id`、シリーズの並びと色は Chidori の語彙の順で固定（色は訪問済みの緑に近い色相を避ける）、説明には 1 件ごとに出典を添える（辞典ごとにライセンスが違う）。
+  key は食事処が `<範囲の番号>-<doc_id>`・ご当地グルメが `doc_id`、シリーズの並びと色は Chidori の語彙の順で固定（色は訪問済みの緑に近い色相を避ける。既にある見た目は残してもらい、上書きさせるのは `?styles=replace` の ZIP だけ）、説明には 1 件ごとに出典を添える（辞典ごとにライセンスが違う）。
   URL は Chiezo に確かめさせた結果で選ぶ（`Chidori.Datasets.ShopLinks`）
 - ご当地グルメ（`Chidori.Datasets.Gourmet`・`chidori_gourmet`。全国で 1 つ）: 1 件は料理（土産・駅弁・食材も）か、地元で十分に知られた店（店名そのまま。タグ `区分:店`、料理は無印）。
   料理のピンは確実に食べられる・買える代表店（本店 → とりわけ有名な店 → 行きやすい店。県の外でもよい。発祥店はタグ）、店のピンはその店（チェーンなら本店・発祥の店）。区画は県（`by=tag`・`values` に 47 県を東京都から JIS 順）。

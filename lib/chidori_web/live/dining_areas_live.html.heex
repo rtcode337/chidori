@@ -97,7 +97,24 @@
         role="status"
         phx-update="ignore"
       ></span>
+      <a
+        id="download-restyle-dining-all"
+        class="download-link"
+        href={~p"/datasets/areas/travel-log.zip?styles=replace"}
+        download
+        phx-hook="DownloadLink"
+        data-status="download-status-restyle-dining-all"
+      >
+        ⬇ シリーズの見た目も上書きする ZIP
+      </a>
+      <span
+        id="download-status-restyle-dining-all"
+        class="download-status"
+        role="status"
+        phx-update="ignore"
+      ></span>
       <p class="muted-note">
+        「見た目も上書きする」は、travel-log に既にあるシリーズの色やアイコンも Chidori が決めたものに置き換えます（色の決め方を変えたあとに 1 回だけ使う。travel-log で手で付けた見た目も消えます）。
         全部の範囲の店を 1 つの ZIP にします（travel-log では範囲によらず「食事処」の 1 つの種別に読み込みます）。範囲が重なったところで同じ店が 2 つの範囲に居るときは、先に作った範囲のほうだけを入れ、もう片方は exclude.txt に回します。範囲の数だけ取り出すので、十数秒ずつかかります。
       </p>
     </section>

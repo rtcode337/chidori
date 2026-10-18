@@ -384,6 +384,30 @@
             目を通したあとで消えたもの（閉店など）は exclude.txt に入り、
             travel-log で読み込むと消えます。取り出しに十数秒かかります。
           </p>
+          <%!-- **見た目も上書きさせる ZIP**（`?styles=replace`。1 回きりの道）。ふだんの ZIP は
+             travel-log 側で付けたシリーズの見た目を残してもらうので、色の決め方を変えても
+             既にあるシリーズには届かない --%>
+          <a
+            id={"download-restyle-#{@dataset.key}"}
+            class="download-link"
+            href={~p"/datasets/#{@dataset.key}/travel-log.zip?styles=replace"}
+            download
+            phx-hook="DownloadLink"
+            data-status={"download-status-restyle-#{@dataset.key}"}
+          >
+            ⬇ シリーズの見た目も上書きする ZIP
+          </a>
+          <span
+            id={"download-status-restyle-#{@dataset.key}"}
+            class="download-status"
+            role="status"
+            phx-update="ignore"
+          ></span>
+          <p class="muted-note">
+            ふだんの ZIP は、travel-log に既にあるシリーズの色やアイコンを残します。こちらは
+            既にあるシリーズの見た目も Chidori が決めたものに置き換えます（色の決め方を変えたあとに
+            1 回だけ使う。travel-log で手で付けた見た目も消えます）。
+          </p>
         </div>
 
         <%!-- **区画が県の対象（ご当地グルメ）は、区画の地図の代わりに県の地図と県ごとの数を並べる。**

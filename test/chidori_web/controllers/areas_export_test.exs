@@ -80,5 +80,17 @@ defmodule ChidoriWeb.AreasExportTest do
     assert csv =~ ",1-10\r\n"
     assert files["dining/excluded_candidates/exclude.txt"] =~ "2-20"
     assert Map.has_key?(files, "dining/settings.json")
+    # ふだんは travel-log 側のシリーズの見た目を残してもらう
+    assert Jason.decode!(files["dining/settings.json"])["keep_series_styles"] == true
+  end
+
+  test "?styles=replace のときだけ、シリーズの見た目も上書きさせる", %{conn: conn} do
+    # 色の決め方を変えたあとに、既にあるシリーズの色まで入れ替えるための 1 回きりの道
+    conn = get(conn, ~p"/datasets/areas/travel-log.zip?styles=replace")
+
+    assert conn.status == 200
+    {:ok, files} = :zip.unzip(conn.resp_body, [:memory])
+    files = Map.new(files, fn {name, body} -> {to_string(name), body} end)
+    assert Jason.decode!(files["dining/settings.json"])["keep_series_styles"] == false
   end
 end
