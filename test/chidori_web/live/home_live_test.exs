@@ -294,5 +294,22 @@ defmodule ChidoriWeb.HomeLiveTest do
 
       assert ChidoriWeb.HomeLive.started_works(:loading, topic) == nil
     end
+
+    test "見た作品は見た日の新しい順、日付の無いものは後ろに名前順。見ていない記録は入れない" do
+      alias Chidori.Relations.Mark
+
+      marks = %{
+        "古い" => %Mark{node_name: "古い", seen: true, seen_on: ~D[2026-01-05]},
+        "新しい" => %Mark{node_name: "新しい", seen: true, seen_on: ~D[2026-10-01]},
+        "日付なしB" => %Mark{node_name: "日付なしB", seen: true},
+        "日付なしA" => %Mark{node_name: "日付なしA", seen: true},
+        "メモだけ" => %Mark{node_name: "メモだけ", seen: false, note: "気になる"}
+      }
+
+      assert Enum.map(ChidoriWeb.HomeLive.seen_works(marks), & &1.node_name) ==
+               ["新しい", "古い", "日付なしA", "日付なしB"]
+
+      assert ChidoriWeb.HomeLive.seen_works(nil) == []
+    end
   end
 end

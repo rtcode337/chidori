@@ -221,6 +221,27 @@ defmodule ChidoriWeb.HomeLive do
 
   def started_works(_works, _topic), do: nil
 
+  @doc """
+  見た作品（見た印の付いた記録）。**見た日の新しい順**、日付の無いものはその後ろに名前順。
+  印がまだ読めていなければ空。
+  """
+  def seen_works(marks) when is_map(marks) do
+    {dated, undated} =
+      marks
+      |> Map.values()
+      |> Enum.filter(& &1.seen)
+      |> Enum.split_with(&match?(%Date{}, &1.seen_on))
+
+    Enum.sort_by(dated, & &1.seen_on, {:desc, Date}) ++ Enum.sort_by(undated, & &1.node_name)
+  end
+
+  def seen_works(_marks), do: []
+
+  @doc "見た作品の組の見出し（映画なら「見た映画」）。"
+  def seen_label(topic) do
+    if Topics.works(topic) == Chidori.News.Movies, do: "見た映画", else: "見た作品"
+  end
+
   @doc "全画面で行き来する並び（話題の要約なら `:main`、興味トピックの要約なら `:interest`）。"
   def digest_kind(%{kind: :interest}), do: :interest
   def digest_kind(_panel), do: :main

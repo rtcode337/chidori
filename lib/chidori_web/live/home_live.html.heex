@@ -109,8 +109,11 @@
         <% group = if kind == :main, do: started_works(@works, @panel.topic) %>
         <%= if group do %>
           <% {label, list} = group %>
-          <section class="event-day-list home-works">
-            <h2 class="news-section-title">{label}の注目作（{length(list)} 本）</h2>
+          <%!-- 既定は畳む（数十本あり、開いたままだと下の見た作品まで遠い）。見出しを押すと開く --%>
+          <details id="home-works-started" class="event-day-list home-works works-group">
+            <summary>
+              <h2 class="news-section-title">{label}の注目作（{length(list)} 本）</h2>
+            </summary>
             <ul>
               <li
                 :for={entry <- list}
@@ -140,8 +143,36 @@
                 </p>
               </li>
             </ul>
-          </section>
+          </details>
         <% end %>
+        <%!-- 見た作品（見た記録の付いたもの。見た日の新しい順）。これも既定は畳む。
+           注目作から外れた古い作品も並ぶ（押すと詳細が開き、記録を読み書きできる） --%>
+        <% seen = if kind == :main, do: seen_works(@work_marks), else: [] %>
+        <details
+          :if={seen != []}
+          id="home-works-seen"
+          class="event-day-list home-works works-group"
+        >
+          <summary>
+            <h2 class="news-section-title">{seen_label(@panel.topic)}（{length(seen)} 本）</h2>
+          </summary>
+          <ul>
+            <li
+              :for={mark <- seen}
+              class={["event-item", "is-work"]}
+              phx-click="open_work"
+              phx-value-title={mark.node_name}
+              role="button"
+              tabindex="0"
+            >
+              <div class="event-item-head">
+                <strong>{mark.node_name}</strong>
+                <span class="seen-badge">{NewsLive.mark_summary(mark)}</span>
+              </div>
+              <p :if={mark.note not in [nil, ""]} class="event-item-facts">{mark.note}</p>
+            </li>
+          </ul>
+        </details>
         <p><a href={~p"/news?view=#{@panel.topic.collection}"}>{@panel.topic.name}の画面へ</a></p>
       </section>
 

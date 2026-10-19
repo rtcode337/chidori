@@ -1274,7 +1274,8 @@ a.top-book-cover { display: block; }
 .theater-places .muted-note { width: 100%; margin: 0; }
 /* 注目作の組（公開中・これから）は畳んで置く。見出しを押すと開く */
 .works-group > summary { cursor: pointer; list-style: revert; }
-.works-group > summary h3 { display: inline; }
+.works-group > summary h3,
+.works-group > summary h2 { display: inline; }
 /* 作品の詳細の「上映スケジュール」 */
 .showtime-box { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: .8rem; }
 /* 上映スケジュールの答え（上映の始まる順に 1 本の表） */
