@@ -232,6 +232,9 @@ defmodule Chidori.Datasets.Gourmet do
   @ai_rank_ceiling "B"
   @rank_tag "ランク"
 
+  # 住所から座標を引く辞典の出どころのタグ（`出典:` の後ろ）
+  @address_source_label "位置参照情報"
+
   # 提供している店の数の段階（ランクの材料）
   @shop_counts ~w(1 数軒 多数)
 
@@ -467,8 +470,8 @@ defmodule Chidori.Datasets.Gourmet do
       },
       %{
         field: "（座標の出どころ）",
-        stored: "タグ「出典:OSM」「出典:Overture」",
-        who: "Chiezo（引き当てた辞典。辞典ごとにライセンスが違う）"
+        stored: "タグ「出典:OSM」「出典:Overture」「出典:位置参照情報」",
+        who: "Chiezo（引き当てた辞典。辞典ごとにライセンスが違う。店の辞典に無い店は住所から街区の代表点を引く）"
       }
     ]
   end
@@ -566,6 +569,9 @@ defmodule Chidori.Datasets.Gourmet do
         %{source: "osm_japan", identity: ["osm_type", "osm_id"], tag: "出典:OSM"},
         %{source: "overture_japan", identity: ["overture_id"], tag: "出典:Overture"}
       ],
+      # **店の辞典に無い店は、AI が確かめた住所から座標を引く**（最後の段。街区まで当たった
+      # ときだけ）。辞典の漏れを AI に探させているのに、見つけた店ほど地図に置けなかった
+      address: %{source: "address_jp", tag: "出典:#{@address_source_label}"},
       area_tag: "#{area_tag()}:",
       agree_meters: 100,
       carry: ["address", "phone", "website", "opening_hours"],
@@ -1089,8 +1095,10 @@ defmodule Chidori.Datasets.Gourmet do
       overture_japan をその店名で引き（search か titles。「本店」や支店名を外した名前でも引く）、
       住所の合う見出しを `osm_japan:見出し` の形で書きます。**百科事典の記事名と辞典の見出しは
       書き方が違うことが多く**（ひらがなと漢字・空白・店名の後ろの「本店」など）、名前だけだと
-      「辞典に同じ名前がありません」で落ちます。どちらの辞典にも無ければ `ref` は書かない**座標（lat / lon）は書かないでください** —— 辞典から機械で
-      引きます（書いても捨てられます）
+      「辞典に同じ名前がありません」で落ちます。どちらの辞典にも無ければ `ref` は書かず、
+      **住所を店の公式の頁などで確かめて番地まで正確に**書いてください（店の辞典に無い店は、
+      住所から座標を引きます。番地まで合わないと地図に置けません）
+    - **座標（lat / lon）は書かないでください** —— 辞典から機械で引きます（書いても捨てられます）
     - 代表店を書いたら、**その店を選んだ理由を `extra.#{@shop_reason_key}` に 1 行で**書いてください
       （例「1950 年創業で、この料理の発祥とされる店。いまも本店で出している」「県の観光協会が
       この料理の店として紹介している」）。**確かめた頁に書いてある事実だけ**（創業の年・発祥や本店で
@@ -1152,7 +1160,7 @@ defmodule Chidori.Datasets.Gourmet do
         知られているか。A=全国から人が来る、B=その県を代表する、C=その市区町村で知られる、
         D=地元で親しまれている、E=それ以外。**迷ったら下の段に**してください（地図の丸の大きさに
         なります）。記事のある 1 件は記事の閲覧数で機械が決めるので付けません
-      - "出典:OSM" / "出典:Overture" / "#{@unplaced_tag}" / "#{Chiezo.locked_tag()}" は機械が付けます。
+      - "出典:OSM" / "出典:Overture" / "出典:#{@address_source_label}" / "#{@unplaced_tag}" / "#{Chiezo.locked_tag()}" は機械が付けます。
         **足したり消したりしないでください**
     - extra.shop: 代表店の手がかり（上の「代表店の決め方」）
     - extra.#{@shop_reason_key}: その店を代表店にした理由を 1 行（店の 1 件はその店を入れた理由）。
@@ -1614,7 +1622,7 @@ defmodule Chidori.Datasets.Gourmet do
       season_line(extra),
       hours_line(extra),
       sources_line(extra),
-      coords_line(tags)
+      coords_line(tags, extra)
     ]
     |> Enum.reject(&(&1 == ""))
     |> Enum.join("\n")
@@ -1731,17 +1739,39 @@ defmodule Chidori.Datasets.Gourmet do
     end
   end
 
-  defp coords_line(tags) do
-    from =
-      tags
-      |> tagged("出典")
-      |> Enum.map(fn
-        "OSM" -> "OpenStreetMap"
-        "Overture" -> "Overture Maps"
-        other -> other
-      end)
+  defp coords_line(tags, extra) do
+    from = tagged(tags, "出典")
 
-    if from == [], do: "", else: "座標: 代表店の位置（#{Enum.join(from, " / ")}）"
+    cond do
+      # **住所から引いた座標は、そう書く**（店の辞典で確かめた位置ではなく、街区の代表点）。
+      # 位置参照情報は加工して使うとき出典と整備年を書く約束（利用約款 第 2 条 3）
+      @address_source_label in from ->
+        "座標: 代表店の住所の街区（街区レベル位置参照情報 国土交通省#{isj_year(extra)}を加工）"
+
+      from == [] ->
+        ""
+
+      true ->
+        names =
+          Enum.map(from, fn
+            "OSM" -> "OpenStreetMap"
+            "Overture" -> "Overture Maps"
+            other -> other
+          end)
+
+        "座標: 代表店の位置（#{Enum.join(names, " / ")}）"
+    end
+  end
+
+  # 位置参照情報の版（`24.0a`）から整備年（令和 7 年度）。版の頭の数は平成 30 年度が 17 で、
+  # 年に 1 つずつ上がる（読めなければ書かない）
+  defp isj_year(extra) do
+    shop = if is_map(extra["shop"]), do: extra["shop"], else: %{}
+
+    case Integer.parse(text(shop["version"])) do
+      {major, _rest} when major > 17 -> " 令和#{major - 17}年度"
+      _ -> ""
+    end
   end
 
   @doc """

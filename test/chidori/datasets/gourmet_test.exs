@@ -239,6 +239,9 @@ defmodule Chidori.Datasets.GourmetTest do
       refute Gourmet.no_shop_tag() == Gourmet.unplaced_tag()
       assert resolve.to_extra == %{opening_hours: "opening_hours"}
       assert resolve.ai_coords == false
+
+      # 店の辞典に無い店は、AI が確かめた住所から街区の代表点を引く（最後の段）
+      assert resolve.address == %{source: "address_jp", tag: "出典:位置参照情報"}
     end
 
     test "提供の月と営業時間の書式は Chiezo に確かめさせる" do
@@ -515,6 +518,26 @@ defmodule Chidori.Datasets.GourmetTest do
       assert description =~ "出典: [ja.wikipedia:ソースカツ丼] https://example.com/fukui-gourmet"
       refute description =~ "javascript"
       assert description =~ "座標: 代表店の位置（OpenStreetMap）"
+    end
+
+    test "住所から引いた座標は、出典と整備年を添えて街区の代表点と書く" do
+      row =
+        Gourmet.spot(
+          doc(%{
+            "tags" => ["ご当地グルメ", "地域:福井県", "種類:丼もの", "出典:位置参照情報"],
+            "extra" => %{
+              "lat" => 36.0613,
+              "lon" => 136.2229,
+              "shop" => %{"name" => "見本食堂", "address" => "福井県福井市中央一丁目1", "version" => "24.0a"}
+            }
+          }),
+          dataset()
+        )
+
+      assert row["description"] =~
+               "座標: 代表店の住所の街区（街区レベル位置参照情報 国土交通省 令和7年度を加工）"
+
+      refute row["description"] =~ "代表店の位置"
     end
 
     test "選定理由は裏付けのタグから機械で 1 行（語ごとに読める言い回し・無ければ出さない）" do
