@@ -98,22 +98,38 @@ defmodule Chidori.Ntfy do
   """
   def notify(collection, title, body, opts \\ []) do
     with {:ok, {base, topic}} <- ready(collection) do
-      payload =
-        %{topic: topic, title: title, message: body}
-        |> put_unless_nil(:click, opts[:click])
-        |> put_unless_nil(:tags, opts[:tags])
-        |> Jason.encode!()
+      post(base, topic, title, body, opts)
+    end
+  end
 
-      case Http.post(base <> "/", payload,
-             headers: [{"user-agent", @user_agent}],
-             content_type: "application/json",
-             timeout: @timeout,
-             connect_timeout: @connect_timeout
-           ) do
-        {:ok, %{status: status}} when status in 200..299 -> :ok
-        {:ok, %{status: status}} -> {:error, {:ntfy_status, status}}
-        {:error, _reason} -> {:error, :ntfy_unavailable}
-      end
+  @doc """
+  話題に依らない知らせを 1 件送ります（画面で頼んだ AI の答えが返ったときなど）。
+  **話題の「知らせる」は見ません** —— 頼んだ本人に返すものなので。宛先が無ければ送らない。
+  """
+  def notify_any(title, body, opts \\ []) do
+    cond do
+      not enabled?() -> {:error, :ntfy_off}
+      topic() == nil -> {:error, :ntfy_topic_missing}
+      true -> post(base_url(), topic(), title, body, opts)
+    end
+  end
+
+  defp post(base, topic, title, body, opts) do
+    payload =
+      %{topic: topic, title: title, message: body}
+      |> put_unless_nil(:click, opts[:click])
+      |> put_unless_nil(:tags, opts[:tags])
+      |> Jason.encode!()
+
+    case Http.post(base <> "/", payload,
+           headers: [{"user-agent", @user_agent}],
+           content_type: "application/json",
+           timeout: @timeout,
+           connect_timeout: @connect_timeout
+         ) do
+      {:ok, %{status: status}} when status in 200..299 -> :ok
+      {:ok, %{status: status}} -> {:error, {:ntfy_status, status}}
+      {:error, _reason} -> {:error, :ntfy_unavailable}
     end
   end
 

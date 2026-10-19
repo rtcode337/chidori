@@ -120,7 +120,9 @@ defmodule ChidoriWeb.ShowtimeAsk do
       started =
         Chidori.SingleFlight.start(:theater_search, fn ->
           AskStore.started(:theater_search, form)
-          AskStore.finished(:theater_search, TheaterFinder.ask(base, backend, origin, minutes))
+          result = TheaterFinder.ask(base, backend, origin, minutes)
+          AskStore.finished(:theater_search, result)
+          notify_done(:theater_search, result)
         end)
 
       case started do
@@ -164,6 +166,7 @@ defmodule ChidoriWeb.ShowtimeAsk do
             end
 
           AskStore.finished(:showtimes, result)
+          notify_done(:showtimes, result)
         end)
 
       case started do
@@ -174,4 +177,35 @@ defmodule ChidoriWeb.ShowtimeAsk do
       _invalid -> assign(socket, showtimes: {:error, :bad_request}, showtime_form: form)
     end
   end
+
+  # 押した画面は数分待つことになるので、**答えが返ったら通知でも知らせる**（ntfy と登録した端末。
+  # 話題の「知らせる」は見ない —— 頼んだ本人に返すもの。`Chidori.Notify.deliver_notice/4`）
+  @movies_path "/news?view=chidori_movies"
+
+  @doc false
+  def notify_done(key, result) do
+    {title, text} = notice(key, result)
+    Chidori.Notify.deliver_notice(title, text, @movies_path, "ask-" <> to_string(key))
+  end
+
+  @doc "答えが返ったときの通知の見出しと本文。"
+  def notice(:theater_search, {:ok, %{origin: origin, minutes: minutes, theaters: theaters}}) do
+    names = theaters |> Enum.take(3) |> Enum.map_join("・", & &1.name)
+    more = if length(theaters) > 3, do: " ほか", else: ""
+
+    {"映画館を探し終えました",
+     "#{origin}から#{minutes}分以内に #{length(theaters)} 館" <>
+       if(theaters == [], do: "（見つかりませんでした）", else: "（#{names}#{more}）")}
+  end
+
+  def notice(:theater_search, _error),
+    do: {"映画館を探せませんでした", "映画の画面で理由を確かめてください。"}
+
+  def notice(:showtimes, {:ok, %{title: title, date: date, theaters: theaters}}) do
+    found = Enum.count(theaters, & &1.found)
+    {"上映スケジュールを調べ終えました", "#{title}（#{date}）: #{length(theaters)} 館のうち #{found} 館で上映が見つかりました"}
+  end
+
+  def notice(:showtimes, _error),
+    do: {"上映スケジュールを調べられませんでした", "映画の画面で理由を確かめてください。"}
 end

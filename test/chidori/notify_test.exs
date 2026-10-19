@@ -328,6 +328,56 @@ defmodule Chidori.NotifyTest do
     end
   end
 
+  describe "画面で頼んだ AI の答えが返ったときの知らせ" do
+    test "話題の「知らせる」を切っていても、ntfy の宛先へ送る" do
+      # 頼んだ本人に「終わった」と返すもので、まとめの知らせとは別
+      Settings.put("chidori_movies", %{"notify" => "false"})
+      stub_ok()
+
+      assert Notify.deliver_notice("映画館を探し終えました", "本文", "/news?view=chidori_movies", "ask-x") ==
+               :ok
+
+      assert_receive {:notified, "http://ntfy.test/", sent}, 2_000
+      assert sent["title"] == "映画館を探し終えました"
+      assert sent["topic"] == "chidori-tech"
+    end
+
+    test "宛先が無ければ送らない" do
+      Destination.put(%{"topic" => ""})
+
+      assert Notify.deliver_notice("t", "b", "/news", "ask-x") == {:error, :no_destination}
+    end
+
+    test "映画館を探した答えは、出発地・時間・館の数と近い順の名前を書く" do
+      result =
+        {:ok,
+         %{
+           origin: "東京駅",
+           minutes: 30,
+           theaters: for(n <- 1..4, do: %{name: "館#{n}"})
+         }}
+
+      assert {"映画館を探し終えました", text} = ChidoriWeb.ShowtimeAsk.notice(:theater_search, result)
+      assert text == "東京駅から30分以内に 4 館（館1・館2・館3 ほか）"
+
+      assert {"映画館を探せませんでした", _text} =
+               ChidoriWeb.ShowtimeAsk.notice(:theater_search, {:error, :chiezo_unavailable})
+    end
+
+    test "上映スケジュールは、上映の見つかった館の数を書く" do
+      result =
+        {:ok,
+         %{
+           title: "作品",
+           date: "2026-10-20",
+           theaters: [%{name: "館1", found: true}, %{name: "館2", found: false}]
+         }}
+
+      assert {_title, "作品（2026-10-20）: 2 館のうち 1 館で上映が見つかりました"} =
+               ChidoriWeb.ShowtimeAsk.notice(:showtimes, result)
+    end
+  end
+
   test "通知の見出しに、どの話題のまとめかを付ける" do
     assert Notify.notice_title("chidori_tech", "まとめ: 新しい版が出た（2026-10-10 07:00 JST）") ==
              "技術ニュースのまとめ: 新しい版が出た（2026-10-10 07:00 JST）"

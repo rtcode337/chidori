@@ -1,6 +1,6 @@
 defmodule Chidori.Notify do
   @moduledoc """
-  まとめを知らせるところ。
+  まとめを知らせるところ（と、画面で頼んだ AI の答えが返ったことの知らせ。`deliver_notice/4`）。
 
   **知らせるのは、新しくできたまとめ 1 件と、画面で押されたときだけ**です
   （`Chidori.Digest` と最新情報の「知らせる」）。Chiezo に溜まったまとめを読み直して
@@ -80,6 +80,45 @@ defmodule Chidori.Notify do
       if Enum.any?(results, fn {_channel, result} -> result == :ok end),
         do: :ok,
         else: {:error, :not_delivered}
+    end
+  end
+
+  @doc """
+  話題に依らない知らせを送ります（映画館を探した答え・上映スケジュールのように、画面で頼んで
+  数分かかる AI の答えが返ったとき）。**話題の「知らせる」は見ず**、ntfy の宛先と登録した端末の
+  あるほうへ送ります —— 頼んだ本人に「終わった」と返すもので、まとめの知らせとは別のため。
+  `path` は押したときに開く画面、`tag` は端末の通知を置き換える印（同じ種類の知らせは 1 つに）。
+  `:ok`・`{:error, :no_destination}`・`{:error, :not_delivered}` のどれか。**「最後に知らせた」は進めません。**
+  """
+  def deliver_notice(title, text, path, tag) do
+    channels =
+      [ntfy: Ntfy.usable?(), push: Subscriptions.list() != []]
+      |> Enum.filter(&elem(&1, 1))
+      |> Enum.map(&elem(&1, 0))
+
+    results =
+      Enum.map(channels, fn
+        :ntfy ->
+          {:ntfy, Ntfy.notify_any(title, text, click: click_to(path))}
+
+        :push ->
+          sent = Subscriptions.deliver_all(title, text, path, tag: tag)
+
+          {:push,
+           if(Enum.any?(sent, fn {_s, result} -> result == :ok end),
+             do: :ok,
+             else: {:error, :push_failed}
+           )}
+      end)
+
+    for {channel, {:error, reason}} <- results do
+      Logger.warning("#{channel} へ知らせられなかった（#{tag}）: #{inspect(reason)}")
+    end
+
+    cond do
+      channels == [] -> {:error, :no_destination}
+      Enum.any?(results, fn {_channel, result} -> result == :ok end) -> :ok
+      true -> {:error, :not_delivered}
     end
   end
 
@@ -203,6 +242,12 @@ defmodule Chidori.Notify do
     if local?(url),
       do: nil,
       else: url <> open_path(collection)
+  end
+
+  @doc false
+  # 話題に依らない知らせの、ntfy で押したときに開く先（`click_url/2` と同じ決まり）
+  def click_to(path, url \\ ChidoriWeb.Endpoint.url()) do
+    if local?(url), do: nil, else: url <> path
   end
 
   defp local?(url) do
