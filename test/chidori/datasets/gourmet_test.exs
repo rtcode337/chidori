@@ -295,6 +295,11 @@ defmodule Chidori.Datasets.GourmetTest do
       assert attrs.formats == Gourmet.formats()
       assert attrs.locked_doubt_tag == "終了の可能性あり"
 
+      # 空欄を埋める段のために、空いている脇書きを一覧の 1 行に添えてもらう
+      assert attrs.show_blanks == ["shop_reason", "opening_hours"]
+      assert Gourmet.scan_prompt() =~ "〔空: shop_reason, opening_hours〕"
+      assert Gourmet.tidy_prompt() =~ "〔空: shop_reason, opening_hours〕"
+
       prompts = Map.new(attrs.sweeps, &{&1.name, &1[:prompt]})
       assert prompts[SweepNames.survey()] == Gourmet.survey_prompt()
       assert prompts[SweepNames.tidy()] == Gourmet.tidy_prompt()

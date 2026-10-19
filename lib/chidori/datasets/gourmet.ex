@@ -222,6 +222,9 @@ defmodule Chidori.Datasets.Gourmet do
   # 代表店をその店にした理由を AI が書く脇書きの鍵（説明欄の代表店の行のすぐ後ろに出す）
   @shop_reason_key "shop_reason"
 
+  # 一覧の 1 行に「空いている」と添えてもらう脇書きの鍵（`attrs/1` の `show_blanks`）
+  @blank_keys ["shop_reason", "opening_hours"]
+
   # ランクの材料の閲覧数の段（月の閲覧数の下限 → 段。上から見る）。東京・神奈川・福井の
   # 記事のある 118 件で 2000 以上が 9 件・500 以上が 32 件・100 以上が 83 件
   @fame_steps [{2000, "A"}, {500, "B"}, {100, "C"}]
@@ -655,6 +658,11 @@ defmodule Chidori.Datasets.Gourmet do
       resolve: resolve(),
       formats: formats(),
       locked_doubt_tag: @doubt_tag,
+      # **一覧の 1 行に、空いている脇書きを添えてもらう**（Chiezo の `show_blanks`）。一覧は
+      # 見出し・タグ・本文だけなので、空欄を埋める段を頼んでも AI にはどれが空か見えず、
+      # 1 件も埋めずに終えた。提供の月（通年なら書かない）と市区町村（県全体の料理なら
+      # 書かない）は空が正しい 1 件も多いので載せない
+      show_blanks: @blank_keys,
       # 出典の URL を Chiezo に開いて確かめさせる（開けない頁を説明に書かない）
       links: true,
       requested_by: "chidori"
@@ -958,6 +966,9 @@ defmodule Chidori.Datasets.Gourmet do
     `extra.display_name` が空のもの）の空いている 1 件を、確かめられたものだけ埋めてください
     （当てずっぽうで埋めない）。**1 回に 30 件まで**で構いません（残りは次の回に続きから）。
     代表店はそのままにして、空いていた項目だけを足して返してください。
+    **上の一覧で行の終わりに「〔空: #{Enum.join(@blank_keys, ", ")}〕」のように出ているのが、
+    その 1 件で空いている脇書きです**（#{Enum.join(@blank_keys, "・")}。ほかの項目の空きは、
+    タグと本文から読んでください）。
     """
   end
 
