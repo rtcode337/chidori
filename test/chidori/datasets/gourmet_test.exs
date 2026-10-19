@@ -242,6 +242,8 @@ defmodule Chidori.Datasets.GourmetTest do
 
       # 店の辞典に無い店は、AI が確かめた住所から街区の代表点を引く（最後の段）
       assert resolve.address == %{source: "address_jp", tag: "出典:位置参照情報"}
+      # 店舗辞典の座標は住所の街区で確かめる（地図辞典は確かめない）
+      assert [false, true] == Enum.map(resolve.sources, &Map.get(&1, :check_coords, false))
     end
 
     test "提供の月と営業時間の書式は Chiezo に確かめさせる" do

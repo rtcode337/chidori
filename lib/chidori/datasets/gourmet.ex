@@ -567,7 +567,15 @@ defmodule Chidori.Datasets.Gourmet do
       clue: "shop",
       sources: [
         %{source: "osm_japan", identity: ["osm_type", "osm_id"], tag: "出典:OSM"},
-        %{source: "overture_japan", identity: ["overture_id"], tag: "出典:Overture"}
+        # **店舗辞典の座標は住所の街区で確かめる**（`check_coords`）。住所は合っているのに座標が
+        # 数 km ずれた記録・住所そのものが違う記録が多い。地図辞典の点と重ならず、住所の街区から
+        # 離れていれば、座標だけ街区の代表点に替える
+        %{
+          source: "overture_japan",
+          identity: ["overture_id"],
+          tag: "出典:Overture",
+          check_coords: true
+        }
       ],
       # **店の辞典に無い店は、AI が確かめた住所から座標を引く**（最後の段。街区まで当たった
       # ときだけ）。辞典の漏れを AI に探させているのに、見つけた店ほど地図に置けなかった
