@@ -710,6 +710,13 @@ defmodule Chidori.Datasets.GourmetTest do
       assert Gourmet.rank(["種類:フルーツ"], %{"pageviews_month" => 17_000}) == "C"
     end
 
+    test "店の 1 件は、消す理由を確かめたときだけ消す（会社の記事でも本店を訪ねられれば残す）" do
+      for prompt <- [Gourmet.scan_prompt(), Gourmet.tidy_prompt(), Gourmet.survey_prompt()] do
+        assert prompt =~ "**消すのは、消す理由を確かめたときだけ**"
+        assert prompt =~ "書いている」だけでは消さないでください"
+      end
+    end
+
     test "名前から見分けの補足を落とす" do
       assert Gourmet.dish_name("チェルシー (菓子)", "北海道") == "チェルシー"
       assert Gourmet.dish_name("イタリアン (新潟)（福島県）", "福島県") == "イタリアン"
