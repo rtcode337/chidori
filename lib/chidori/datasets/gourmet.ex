@@ -391,7 +391,6 @@ defmodule Chidori.Datasets.Gourmet do
   # 県を読む括り（料理・店・組の農業）
   defp roster_kinds, do: @roster_kinds ++ [@shop_kind, @paired_kind]
 
-  @doc "名簿から外すカテゴリ（会社・メーカー・商品・作品・店でないもの・閉じた店・一覧）。"
   @doc "会社のカテゴリ（店のカテゴリにも入っていなければ外す。`extract/0` の `not_tag_unless`）。"
   def company_categories do
     @company_categories ++
@@ -420,6 +419,7 @@ defmodule Chidori.Datasets.Gourmet do
   """
   def shop_entry_categories, do: @shop_categories -- ["日本の外食事業者"]
 
+  @doc "名簿から外すカテゴリ（会社・メーカー・商品・作品・店でないもの・閉じた店・一覧）。"
   def excluded_categories do
     @excluded_categories ++
       for(prefecture <- @prefectures, kind <- @excluded_kinds, do: "#{prefecture}の#{kind}") ++
