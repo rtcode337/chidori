@@ -338,7 +338,8 @@ defmodule ChidoriWeb.RelationsLive do
           "family" => :family,
           "spouse" => :spouse,
           "duo" => :duo,
-          "costar" => :costar
+          "costar" => :costar,
+          "director" => :director
         },
         params["kind"],
         :related
@@ -1117,6 +1118,10 @@ defmodule ChidoriWeb.RelationsLive do
   def unit_of("painters"), do: "画家"
   def unit_of("films"), do: "作品"
   def unit_of(_view), do: "人"
+
+  @doc "数を数える助数詞（帯・凡例・レビューの数に添える）。作品は「本」、人は「人」。"
+  def counter_of("films"), do: "本"
+  def counter_of(_view), do: "人"
 
   @doc "札の色の元になるもの（線の詳細の表の見出し）。"
   def style_heading("painters"), do: "様式"

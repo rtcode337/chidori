@@ -13,20 +13,6 @@ defmodule Chidori.News.TheatersTest do
 
   @base "http://chiezo.example"
 
-  defp cinema(id, name, lat, lon, feature \\ "category=cinema") do
-    %{
-      "title" => name,
-      "extra" => %{
-        "overture_id" => id,
-        "feature" => feature,
-        "lat" => lat,
-        "lon" => lon,
-        "address" => "東京都千代田区丸の内",
-        "website" => "https://example.com/#{id}"
-      }
-    }
-  end
-
   describe "辞典の映画館" do
     test "試写室と、辞典の確からしさが低い場所は出さず、名前の後ろの英語名と番号は落とす" do
       doc = fn name, confidence ->

@@ -1,7 +1,7 @@
 defmodule Chidori.Relations.FilmsTest do
   @moduledoc """
   映画の関連図（`Chidori.Relations.Films`）。**芸能人の図と同じ仕組み**で、
-  同じ監督の作品を枠で囲み、同じ主演の作品どうしを線で結ぶ。
+  横は国の帯、同じ監督の作品どうしと同じ主演の作品どうしを、別の種類の線で結ぶ。
   """
 
   use ExUnit.Case, async: true
@@ -19,8 +19,9 @@ defmodule Chidori.Relations.FilmsTest do
         doc("用心棒", ~w(映画 監督:黒澤明 年代:1961 国:日本 主演:三船敏郎)),
         doc("赤ひげ", ~w(映画 監督:黒澤明 年代:1965 国:日本 主演:三船敏郎)),
         doc("東京物語", ~w(映画 監督:小津安二郎 年代:1953 国:日本 主演:笠智衆)),
-        # 監督が 1 本だけの作品は枠にしない
         doc("ローマの休日", ~w(映画 監督:ウィリアム・ワイラー 年代:1953 国:アメリカ合衆国)),
+        # 監督の新しい作品が、ほかの監督のそれより古い作品より上に来ない（枠で囲まない）
+        doc("新作", ~w(映画 監督:小津安二郎 年代:2026 国:日本 国:アメリカ合衆国)),
         # 図に載せる印の無いものは出さない
         doc("誰か", ~w(芸能人 年代:1950-))
       ]
@@ -33,20 +34,34 @@ defmodule Chidori.Relations.FilmsTest do
       refute Enum.any?(graph.nodes, &(&1.name == "誰か"))
     end
 
-    test "同じ監督の作品を枠で囲み、隣り合わせに置く", %{graph: graph} do
-      nodes = Map.new(graph.nodes, &{&1.name, &1})
+    test "監督の枠は作らず、同じ監督の作品は公開年の順に隣どうしを線で結ぶ", %{graph: graph} do
+      names = Map.new(graph.nodes, &{&1.id, &1.name})
+      assert graph.clusters == []
 
-      assert [frame] = graph.clusters
-      assert frame.name == "黒澤明"
+      lines =
+        for edge <- graph.edges,
+            edge.kind == :director,
+            do: {names[edge.from], names[edge.to], edge.label}
 
-      assert Enum.sort(frame.members) ==
-               Enum.sort(for name <- ~w(七人の侍 用心棒 赤ひげ), do: nodes[name].id)
+      assert Enum.sort(lines) ==
+               Enum.sort([
+                 {"七人の侍", "用心棒", "黒澤明"},
+                 {"用心棒", "赤ひげ", "黒澤明"},
+                 {"東京物語", "新作", "小津安二郎"}
+               ])
+    end
 
-      for name <- ~w(七人の侍 用心棒 赤ひげ) do
-        node = nodes[name]
-        assert node.x > frame.x and node.x < frame.x + frame.width
-        assert node.y > frame.y and node.y < frame.y + frame.height
-      end
+    test "縦は作品ごとの公開年の順", %{graph: graph} do
+      y = Map.new(graph.nodes, &{&1.name, &1.y})
+      assert y["赤ひげ"] < y["新作"]
+      assert y["七人の侍"] <= y["用心棒"]
+    end
+
+    test "横は国の帯。合作は先に挙げた帯（日本）に入る", %{graph: graph} do
+      band = Map.new(graph.nodes, &{&1.name, &1.band})
+      assert band["新作"] == "日本"
+      assert band["ローマの休日"] == "アメリカ"
+      assert Enum.map(graph.bands, & &1.band) == ["日本", "アメリカ"]
     end
 
     test "同じ主演の作品は、公開年の順に隣どうしを線で結ぶ（網にしない）", %{graph: graph} do

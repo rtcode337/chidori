@@ -33,7 +33,8 @@ paths:
   押すと Commons のファイルのページ（出典とライセンス）へのリンクを出す
 - 映画（`Chidori.Relations.Films`・収集 `chidori_films`）: 札は作品だけ。名簿・監督・公開年・国は分類から機械で
   （「〜の監督映画」の `tag_suffix` と主な賞の受賞作の `tag`、知名度で下を切る）、主演だけ AI（`verify_tags` で実在の記事に限る）。
-  同じ監督は枠（`clusters`）、同じ主演は公開年順に隣どうしを結ぶ線（`edge_rules` の `shared`）。
+  同じ監督と同じ主演は、どちらも公開年順に隣どうしを結ぶ線（`edge_rules` の `shared`。種類 `:director` と `:costar` で色を分ける）。
+  監督の枠は使わない（枠は 1 つの高さにしか置けず、縦の公開年が崩れた）。横は国の帯（`@country_bands`。合作は先に当たる帯）。
   受賞作は知名度の下限を免除する（Chiezo の `min_extra_unless_tag`）。主演の名前は芸能人の図へ飛ぶ（`?view=people&focus=<名前>`）。
   芸能人の名簿は海外の俳優も（「〜の男優」「〜の女優」の `tag_suffix`）
 - 映画の図には新しい作品も引き継ぐ（`Chidori.Relations.FilmCarry`）。最新情報の映画のうち見た記録を付けたものと注目度が高く公開済みのもの、

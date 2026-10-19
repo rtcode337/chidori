@@ -323,11 +323,14 @@
           </text>
         </g>
         <%!-- 帯の名前。**上端に貼り付ける** —— 下へ引きずったときに、いま見ている
-             縦の列がどの地域なのか分からなくなる（年代の札と同じ理由）--%>
+             縦の列がどの地域なのか分からなくなる（年代の札と同じ理由）。
+             数は名前の下の行に置く（細い帯が並ぶと、横に続けた字が隣の帯の名前と重なる）--%>
         <g class="band-labels" data-pinned-top>
           <text :for={band <- shown[:bands] || []} x={band.x + band.width / 2} y="0">
             {band.band}
-            <tspan class="band-count">{band.members}人</tspan>
+            <tspan class="band-count" x={band.x + band.width / 2} dy="1.15em">
+              {band.members}{counter_of(@view)}
+            </tspan>
           </text>
         </g>
         <%!-- **描くのは見えているぶんだけ**（`drawn_nodes/2`）。全部を並べると
@@ -487,9 +490,9 @@
     >
       <p>
         <span class="review-swatch reviewed" aria-hidden="true"></span>
-        レビュー済み {length(@relation.nodes) - @relation.unreviewed} 人
+        レビュー済み {length(@relation.nodes) - @relation.unreviewed} {counter_of(@view)}
         <span class="review-swatch unreviewed" aria-hidden="true"></span>
-        未レビュー {@relation.unreviewed} 人（薄い札。AI がまだ目を通していません）
+        未レビュー {@relation.unreviewed} {counter_of(@view)}（薄い札。AI がまだ目を通していません）
       </p>
       <%!-- 2 つは排他。**押しているほうをもう一度押すと全員に戻る**（凡例と同じ押し方） --%>
       <button
@@ -538,7 +541,7 @@
             aria-pressed={to_string(@style_filter == style)}
           >
             <span class="swatch" style={"background: hsl(#{hue} 62% 72%)"}></span>
-            {style}<span class="muted-note">{count}人</span>
+            {style}<span class="muted-note">{count}{counter_of(@view)}</span>
           </button>
         </li>
         <li :if={@style_filter}>
@@ -593,10 +596,10 @@
       <% else %>
         <%= if @view == "films" do %>
           <p>
-            <strong>縦は公開年</strong>です（上から下へ）。 <strong>同じ監督の作品は枠で囲み</strong>、ひとかたまりに並べます（枠の高さは作品の公開年の中ほど。監督の名前は枠の左上）。 <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、 <strong>色は国</strong>です。
+            <strong>縦は公開年</strong>（上から下へ）、 <strong>横は国</strong>です（日本・アメリカ・ほかの国。合作は先に書いた順に当たる帯へ、国の分類が無い作品は「その他」へ）。 <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、 <strong>色は国</strong>です。
           </p>
           <p>
-            <strong>線は同じ俳優が主演した作品どうし</strong>で、公開年の順に隣どうしを結んでいます（線の字が俳優の名前）。監督をまたいで、俳優で作品をたどれます。
+            <strong>緑の線は同じ監督の作品どうし、橙の線は同じ俳優が主演した作品どうし</strong>で、どちらも公開年の順に隣どうしを結んでいます（線の字が監督・俳優の名前）。
             名簿・監督・公開年・国は Wikipedia の分類から機械的に引き、 <strong>主演だけは AI が書いています</strong>（主演の分類は Wikipedia に無いため）。
             薄い線は記事どうしが互いにリンクしている（続編など）というだけの関係です。
           </p>
@@ -931,6 +934,9 @@
           {@edge.to.name}の影響元はほかに: {Enum.join(@edge.others, "、")}
         </p>
 
+        <p :if={@edge.kind == :director} class="muted-note">
+          どちらも<strong>{@edge.label}</strong>が監督した作品です（Wikipedia の分類から機械的に引いたもの）。
+        </p>
         <p :if={@edge.kind == :costar} class="muted-note">
           どちらも<strong>{@edge.label}</strong>が主演した作品です。
         </p>

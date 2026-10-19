@@ -165,7 +165,7 @@ defmodule Chidori.Relations do
       eyebrow: "DIRECTORS & STARS",
       # **これは手書きの表示例**（芸能人の図と同じ扱い。読めたものに差し替わるまで図は描かない）
       sample?: true,
-      description: "同じ監督の作品を枠で囲み、同じ主演の作品を線で結びます。上から下へ公開年の順です。",
+      description: "同じ監督の作品と同じ主演の作品を、色の違う線で結びます。上から下へ公開年、左右は国の順です。",
       width: @canvas_width,
       height: @canvas_height,
       collection: nil,

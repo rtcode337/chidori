@@ -1,7 +1,7 @@
 defmodule Chidori.Relations.Films do
   @moduledoc """
-  映画の関連図（関連図の画面の「映画のつながり」）。**同じ監督の作品を枠で囲んで
-  近くに置き、同じ主演の作品どうしを線で結びます**。画家・芸能人の図と同じ仕組みで、
+  映画の関連図（関連図の画面の「映画のつながり」）。**同じ監督の作品どうしと、
+  同じ主演の作品どうしを、色の違う線で結びます**。画家・芸能人の図と同じ仕組みで、
   Chiezo に名簿を持たせて育てます。
 
   名簿の元は名作（下の「名簿」）ですが、**新しく公開された作品も入ります** ——
@@ -29,16 +29,18 @@ defmodule Chidori.Relations.Films do
   ## 札・枠・線
 
   - 札は**作品**だけ（俳優は札にしない。札が倍以上になって図が読めなくなる）
-  - **同じ監督の作品は枠で囲み、ひとかたまりに置く**（`clusters`。芸能人の図のグループと
-    同じ組み方で、作品の「監督:<名前>」から組む）。共同監督の作品は、名簿に作品の多いほうの
-    監督の枠に入る
-  - **同じ主演の作品は線で結ぶ**（`shared` の線。公開年の順に隣どうしを結ぶ ——
-    全部の組を結ぶと、作品の多い俳優で線が網になる）
+  - **同じ監督の作品と、同じ主演の作品は、それぞれ線で結ぶ**（`shared` の線。公開年の順に
+    隣どうしを結ぶ —— 全部の組を結ぶと、作品の多い監督や俳優で線が網になる）。線の色で
+    監督と主演を分ける
+  - **監督の枠では囲まない。** 枠は 1 かたまりで 1 つの高さにしか置けず（作品の公開年の
+    中ほど）、作品が何十年にも散らばる監督では、新しい作品が古い作品より上に来て縦の
+    公開年が読めなくなった
   - 色は国（「日本の…映画」「アメリカ合衆国の…映画」のような分類から機械で付ける）
 
   ## 並べ方
 
-  縦は公開年（枠は作品の公開年の中ほど）。区画は「国 × 公開年」で切ります。
+  縦は公開年、横は国の帯（`@country_bands`。合作は先に挙げた帯に入れる）。
+  区画は「国 × 公開年」で切ります。
 
   ## 見た記録
 
@@ -55,7 +57,7 @@ defmodule Chidori.Relations.Films do
   @kind_tag "映画"
   # 色と区画に使う国
   @country_prefix "国"
-  # 枠を組む材料（値は監督の日本語版 Wikipedia の記事名。分類から機械で付ける）
+  # 線を組む材料（値は監督の日本語版 Wikipedia の記事名。分類から機械で付ける）
   @director_prefix "監督"
   # 線を組む材料（値は主演の日本語版 Wikipedia の記事名。AI が書く）
   @star_prefix "主演"
@@ -84,6 +86,19 @@ defmodule Chidori.Relations.Films do
     ロシア 中国 香港 台湾 韓国 インド スウェーデン デンマーク メキシコ カナダ オーストラリア
   )
 
+  # 横の帯（左から）。**合作は先に挙げた帯に入れる**（日本との合作は日本、ハリウッドとの
+  # 合作はアメリカ）。名簿は日本とアメリカで 9 割近くを占め、ほかの国は合わせても 70 本ほど
+  # （ヨーロッパとアジアに分けると帯が 1 列ずつになり、帯の名前が重なって読めない）。
+  # 国の分類を持たない作品（1 割ほど。続編やシリーズ物に多い）は「その他」の帯に入る
+  @country_bands [
+    {"日本", ~w(日本)},
+    {"アメリカ", ~w(アメリカ合衆国 カナダ メキシコ)},
+    {"ほかの国", ~w(
+      イギリス フランス イタリア ドイツ 西ドイツ スペイン ソビエト連邦 ロシア スウェーデン デンマーク
+      中国 香港 台湾 韓国 インド オーストラリア
+    )}
+  ]
+
   # 日本の大手の製作の分類（国の分類を持たない古い邦画がある）
   @japanese_studios ~w(東宝 東映 松竹 日活 大映)
 
@@ -103,7 +118,7 @@ defmodule Chidori.Relations.Films do
   @doc "国のタグの頭（色と区画）。"
   def category_tag, do: @country_prefix
 
-  @doc "監督のタグの頭（枠）。"
+  @doc "監督のタグの頭（線）。"
   def director_tag, do: @director_prefix
 
   @doc "主演のタグの頭（線）。"
@@ -228,8 +243,8 @@ defmodule Chidori.Relations.Films do
   def award_categories, do: @award_categories
 
   @doc """
-  図の読み方（`Chidori.Relations.Graph.from_docs/2`）。**横の帯は持たず、同じ監督の
-  作品を枠で囲み**（`clusters`）、**同じ主演の作品を線で結ぶ**（`shared`）。
+  図の読み方（`Chidori.Relations.Graph.from_docs/2`）。**横は国の帯**、**同じ監督の作品と
+  同じ主演の作品を、それぞれ線で結ぶ**（`shared`。線の種類 `:director` と `:costar`）。
   """
   def graph_spec,
     do: %{
@@ -238,10 +253,10 @@ defmodule Chidori.Relations.Films do
       default_kind: :film,
       style_prefix: @country_prefix,
       band_prefix: @country_prefix,
-      bands: [],
+      bands: @country_bands,
       works?: false,
-      clusters: %{tag_prefix: @director_prefix},
       edge_rules: [
+        %{prefix: @director_prefix, kind: :director, shared: true, undirected: true},
         %{prefix: @star_prefix, kind: :costar, shared: true, undirected: true}
       ]
     }
