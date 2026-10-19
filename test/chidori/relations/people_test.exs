@@ -18,7 +18,7 @@ defmodule Chidori.Relations.PeopleTest do
         doc("甲山", ["芸能人", "種別:お笑い芸人", "年代:1965-", "グループ:〇〇コンビ (お笑いコンビ)", "家族:丙田:配偶者"]),
         doc("乙川", ["芸能人", "種別:お笑い芸人", "年代:1966-", "グループ:〇〇コンビ (お笑いコンビ)"]),
         doc("丙田", ~w(芸能人 種別:俳優 年代:1970- 家族:甲山:配偶者)),
-        # 名簿にいるメンバーが 1 人だけのグループは枠にしない
+        # 名簿にいるメンバーが 1 人だけのグループには線を引かない
         doc("丁野", ~w(芸能人 種別:歌手 年代:1980- グループ:△△バンド)),
         # 図に載せる印の無いもの（画家の名簿など）は出さない
         doc("誰か", ~w(画家 年代:1840-1926))
@@ -44,27 +44,24 @@ defmodule Chidori.Relations.PeopleTest do
       assert Enum.any?(lines, &match?({_, _, :spouse, "配偶者"}, &1))
     end
 
-    test "横の帯は持たず、同じグループの人を枠で囲む", %{graph: graph} do
-      # 種別は色で分かるので、帯に割ると夫婦が左右の端に離れる
-      assert graph.bands == []
+    test "横の帯は持たず、同じグループの人は枠で囲まずに線で結ぶ", %{graph: graph} do
+      # 種別は色で分かるので、帯に割ると夫婦が左右の端に離れる（帯は「その他」の 1 本だけで、画面には出さない）
+      assert [%{band: "その他"}] = graph.bands
+      assert ChidoriWeb.RelationsLive.split_bands(graph) == []
 
-      nodes = Map.new(graph.nodes, &{&1.name, &1})
+      # 枠は 1 つの高さにしか置けず縦の年代が崩れるので、グループも線にする
+      assert graph.clusters == []
 
-      # グループは文書として持たず、人の「グループ:<記事名>」から組む。名前は括弧書きを落とす
-      assert [frame] = graph.clusters
-      assert frame.name == "〇〇コンビ"
-      assert frame.labelled
-      assert Enum.sort(frame.members) == Enum.sort([nodes["甲山"].id, nodes["乙川"].id])
+      names = Map.new(graph.nodes, &{&1.id, &1.name})
 
-      # メンバーは隣り合わせで、枠の中にいる
-      for name <- ["甲山", "乙川"] do
-        node = nodes[name]
-        assert node.x > frame.x and node.x < frame.x + frame.width
-        assert node.y > frame.y and node.y < frame.y + frame.height
-      end
+      lines =
+        for edge <- graph.edges,
+            edge.kind == :group,
+            do: {Enum.sort([names[edge.from], names[edge.to]]), edge.label}
 
-      assert nodes["甲山"].y == nodes["乙川"].y
-      assert abs(nodes["甲山"].seat - nodes["乙川"].seat) == 1
+      # グループは文書として持たず、人の「グループ:<記事名>」から組む。名前は括弧書きを落とす。
+      # 名簿にいるメンバーが 1 人だけのグループには線が無い
+      assert lines == [{["乙川", "甲山"], "〇〇コンビ"}]
     end
 
     test "代表作は持たない", %{graph: graph} do

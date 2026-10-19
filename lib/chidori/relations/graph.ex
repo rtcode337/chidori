@@ -203,9 +203,9 @@ defmodule Chidori.Relations.Graph do
   - `edge_rules` —— 線にするタグ。`from: :named` は名指しされた側から文書の主へ
     （影響元）、`:owner` は文書の主から名指しされた側へ。`undirected` は向きを持たない
     線で、同じ組は 1 本に畳む。`label` は 3 つ目の区切りが無いときの線の字。
-    `shared: true` は**同じ値を持つ文書どうし**を結ぶ（値は札ではなく共通項。映画の主演）
-  - `clusters` —— 枠にする決まり。`%{tag_prefix: …}` は同じ値を持つ文書を囲む（芸能人の
-    グループ）
+    `shared: true` は**同じ値を持つ文書どうし**を結ぶ（値は札ではなく共通項。映画の監督・主演、芸能人のグループ）
+  - `clusters` —— 枠にする決まり。`%{tag_prefix: …}` は同じ値を持つ文書を囲む
+    （いまはどの図も使っていない。枠は 1 つの高さにしか置けず、縦の年代が崩れたため）
   """
   def painters_spec,
     do: %{
@@ -932,7 +932,7 @@ defmodule Chidori.Relations.Graph do
     labelled ++ related(docs, by_name, labelled)
   end
 
-  # **同じ値を持つ文書どうしの線**（`shared: true`。映画の図の「同じ監督」「同じ主演」）。タグの値は
+  # **同じ値を持つ文書どうしの線**（`shared: true`。映画の図の「同じ監督」「同じ主演」、芸能人の図の「同じグループ」）。タグの値は
   # 札ではなく、札どうしをつなぐ共通項なので、名指しされた札を探しても見つからない。
   # **年代の順に隣どうしだけを結ぶ** —— 全部の組を結ぶと、作品の多い俳優で線が網になる
   defp rule_edges(docs, by_name, %{shared: true} = rule) do
@@ -957,6 +957,8 @@ defmodule Chidori.Relations.Graph do
           label: display_name(value),
           kind: rule.kind,
           via: rule.prefix,
+          # 共通項そのもの。札を押したときに、同じ値の作品を鎖ごと立たせる（画面の `pick_of/2`）
+          value: value,
           excerpt: []
         }
       end)

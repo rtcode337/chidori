@@ -351,7 +351,8 @@ defmodule ChidoriWeb.RelationsLive do
           "spouse" => :spouse,
           "duo" => :duo,
           "costar" => :costar,
-          "director" => :director
+          "director" => :director,
+          "group" => :group
         },
         params["kind"],
         :related
@@ -1349,10 +1350,48 @@ defmodule ChidoriWeb.RelationsLive do
 
   def pick_of(relation, name) do
     case Enum.find(relation.nodes, &(&1.name == name)) do
-      nil -> nil
-      node -> %{id: node.id, near: neighbourhood(relation, node.id)}
+      nil ->
+        nil
+
+      node ->
+        # **共通項の線（同じ監督・同じ主演・同じグループ）は鎖ごと立たせる。** 線は隣どうし
+        # しか結ばないので、押した札に触れている線だけでは、2 つ先の同じ俳優の作品が沈む
+        chains =
+          for edge <- relation.edges,
+              node.id in [edge.from, edge.to],
+              value = edge[:value],
+              into: MapSet.new(),
+              do: {edge.via, value}
+
+        near =
+          for edge <- relation.edges,
+              MapSet.member?(chains, chain_of(edge)),
+              id <- [edge.from, edge.to],
+              into: neighbourhood(relation, node.id),
+              do: id
+
+        %{id: node.id, near: near, chains: chains}
     end
   end
+
+  @doc """
+  描く横の帯。**帯が 1 つしか無ければ描かない** —— 横の帯を持たない図（芸能人）は全員が
+  「その他」の 1 本に入るので、帯の名前を出すと意味の無い「その他」が図の上に載る。
+  """
+  def split_bands(relation) do
+    case relation[:bands] || [] do
+      [_only] -> []
+      bands -> bands
+    end
+  end
+
+  @doc "その線を立たせるか（押した札に触れている線と、押した札の共通項の鎖）。"
+  def lit?(nil, _edge), do: false
+
+  def lit?(pick, edge),
+    do: pick.id in [edge.from, edge.to] or MapSet.member?(pick.chains, chain_of(edge))
+
+  defp chain_of(edge), do: {edge[:via], edge[:value]}
 
   @doc """
   選んだ人と、その人に線で繋がっている相手。
@@ -1421,6 +1460,9 @@ defmodule ChidoriWeb.RelationsLive do
         y2: y2,
         kind: edge.kind,
         label: edge.label,
+        # 共通項の線の鎖（札を押したときに鎖ごと立たせる）
+        via: edge[:via],
+        value: edge[:value],
         # 押されたときに誰と誰の線かを引き当てる
         from: edge.from,
         to: edge.to,

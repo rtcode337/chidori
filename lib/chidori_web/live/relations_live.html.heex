@@ -286,7 +286,7 @@
              目盛りの側が伸び縮みする。人が多い年代ほど広がる --%>
         <%!-- 地域の帯。**丸より先に描く**ので、丸も線も帯の上に乗る。
              帯の幅は人数の比なので、広い帯にはそれだけの画家がいる --%>
-        <g :for={band <- shown[:bands] || []} class="relation-band">
+        <g :for={band <- split_bands(shown)} class="relation-band">
           <rect x={band.x} y="0" width={band.width} height={shown.height} />
           <line x1={band.x} y1="0" x2={band.x} y2={shown.height} />
         </g>
@@ -328,7 +328,7 @@
              縦の列がどの地域なのか分からなくなる（年代の札と同じ理由）。
              数は名前の下の行に置く（細い帯が並ぶと、横に続けた字が隣の帯の名前と重なる）--%>
         <g class="band-labels" data-pinned-top>
-          <text :for={band <- shown[:bands] || []} x={band.x + band.width / 2} y="0">
+          <text :for={band <- split_bands(shown)} x={band.x + band.width / 2} y="0">
             {band.band}
             <tspan class="band-count" x={band.x + band.width / 2} dy="1.15em">
               {band.members}{counter_of(@view)}
@@ -350,7 +350,7 @@
             class={[
               "relation-edge",
               to_string(edge.kind),
-              pick && pick.id in [edge.from, edge.to] && "is-lit"
+              lit?(pick, edge) && "is-lit"
             ]}
             marker-end={if edge.kind == :influence, do: "url(#arrow)"}
           />
@@ -376,7 +376,7 @@
             :if={@view != "painters" and edge[:label]}
             x={edge.mid_x}
             y={edge.mid_y}
-            class={["edge-label", pick && pick.id in [edge.from, edge.to] && "is-lit"]}
+            class={["edge-label", lit?(pick, edge) && "is-lit"]}
           >
             {edge.label}
           </text>
@@ -608,27 +608,27 @@
             <strong>縦は公開年</strong>（上から下へ）、 <strong>横は国</strong>です（日本・アメリカ・ほかの国。合作は先に書いた順に当たる帯へ、国の分類が無い作品は「その他」へ）。 <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、 <strong>色は国</strong>です。
           </p>
           <p>
-            <strong>緑の線は同じ監督の作品どうし、橙の線は同じ俳優が主演した作品どうし</strong>で、どちらも公開年の順に隣どうしを結んでいます（線の字が監督・俳優の名前）。
+            <strong>青の線は同じ監督の作品どうし、橙の線は同じ俳優が主演した作品どうし</strong>で、どちらも公開年の順に隣どうしを結んでいます（線の字が監督・俳優の名前）。
             名簿・監督・公開年・国は Wikipedia の分類から機械的に引き、 <strong>主演だけは AI が書いています</strong>（主演の分類は Wikipedia に無いため）。
             薄い線は記事どうしが互いにリンクしている（続編など）というだけの関係です。
           </p>
           <p>
             <strong>名簿は知名度で下を切っています</strong>（主な映画賞の受賞作は知名度に関わらず入れます）。設定の「名簿の広さ」で下げると広がります。
             <strong>どの作品も、どの線も押せます。</strong>
-            作品は 1 回押すと線と線の先が立ち、もう一度押すと詳細が開きます（余白を押すと戻る）。
+            作品は 1 回押すと線と線の先（同じ監督・同じ主演の作品は隣どうしでなくても全部）が立ち、もう一度押すと詳細が開きます（余白を押すと戻る）。
           </p>
         <% else %>
           <p>
-            <strong>縦は年代</strong>です（上から下へ。人は生年。グループはメンバーの生年の中ほど）。 <strong>同じグループ（コンビ・アイドルグループ・バンド）の人は枠で囲み</strong>、名前は枠の左上にあります。 <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、 <strong>色は種別</strong>（俳優・歌手・タレント・お笑いなど）です。写真のある人は札に顔写真が出ます（Wikimedia Commons。押すと出典とライセンス）。
+            <strong>縦は年代</strong>です（上から下へ。人は生年）。 <strong>札の大きさは知られている度合い</strong>（日本語版 Wikipedia の月間閲覧数）、 <strong>色は種別</strong>（俳優・歌手・タレント・お笑いなど）です。写真のある人は札に顔写真が出ます（Wikimedia Commons。押すと出典とライセンス）。
           </p>
           <p>
-            <strong>太い赤の線は夫婦</strong>（元夫婦も）、 <strong>実線は家族</strong>（親子・きょうだい）です。どれも AI が公表されている情報から書いたもので、
+            <strong>太い赤の線は夫婦</strong>（元夫婦も）、 <strong>橙の線は家族</strong>（親子・きょうだい）、 <strong>青の線は同じグループ</strong>（コンビ・アイドルグループ・バンド。生年の順に隣どうしを結び、線の字がグループの名前）です。どれも AI が公表されている情報から書いたもので、
             未成年の家族と、芸能人でない家族は載せていません。
             薄い線は記事どうしが互いにリンクしているというだけの関係で、Wikipedia から機械的に引いたものです。
           </p>
           <p>
             <strong>どの名前も、どの線も押せます。</strong>
-            名前は 1 回押すと線と線の先が立ち、もう一度押すと、もとになった記事・Chiezo に入っているタグが出ます。線を押すと根拠が出ます。
+            名前は 1 回押すと線と線の先（同じグループの人は隣どうしでなくても全員）が立ち、もう一度押すと、もとになった記事・Chiezo に入っているタグが出ます。線を押すと根拠が出ます。
           </p>
         <% end %>
       <% end %>
@@ -888,6 +888,9 @@
           <p :if={@edge.kind == :family} class="edge-reason">
             <strong>{@edge.from.name}と{@edge.to.name}は家族です</strong>（{@edge.label || "家族"}）。AI が公表されている情報から書いています。
           </p>
+          <p :if={@edge.kind == :group} class="edge-reason">
+            <strong>{@edge.from.name}と{@edge.to.name}は、どちらも{@edge.label}のメンバーです。</strong>AI が公表されている情報から書いています。
+          </p>
           <p :if={@edge.kind == :duo} class="edge-reason">
             <strong>{@edge.to.name}は{@edge.from.name}の{@edge.label || "メンバー"}です。</strong>AI が公表されている情報から書いています。
           </p>
@@ -951,7 +954,7 @@
         <p :if={@edge.kind == :costar} class="muted-note">
           どちらも<strong>{@edge.label}</strong>が主演した作品です。
         </p>
-        <%= if @edge.kind in [:spouse, :family, :duo, :costar] do %>
+        <%= if @edge.kind in [:spouse, :family, :duo, :group, :costar] do %>
           <p class="muted-note">
             <strong>AI が書いたものです。</strong> 確かめるには、それぞれの記事を読んでください。
           </p>

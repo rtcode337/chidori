@@ -51,6 +51,18 @@ defmodule Chidori.Relations.FilmsTest do
                ])
     end
 
+    test "札を押すと、同じ主演・同じ監督の作品は隣どうしでなくても全部立つ", %{graph: graph} do
+      ids = Map.new(graph.nodes, &{&1.name, &1.id})
+      pick = ChidoriWeb.RelationsLive.pick_of(graph, "七人の侍")
+
+      # 赤ひげは七人の侍の 2 つ先（三船敏郎・黒澤明の鎖の上で、間に用心棒が挟まる）
+      assert MapSet.member?(pick.near, ids["赤ひげ"])
+      refute MapSet.member?(pick.near, ids["ローマの休日"])
+
+      lit = Enum.filter(graph.edges, &ChidoriWeb.RelationsLive.lit?(pick, &1))
+      assert Enum.any?(lit, &(&1.from == ids["用心棒"] and &1.to == ids["赤ひげ"]))
+    end
+
     test "縦は作品ごとの公開年の順", %{graph: graph} do
       y = Map.new(graph.nodes, &{&1.name, &1.y})
       assert y["赤ひげ"] < y["新作"]
