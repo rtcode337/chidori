@@ -717,6 +717,16 @@ defmodule Chidori.Datasets.GourmetTest do
       end
     end
 
+    test "代表店なしは調べたうえで無いときだけ。終わったものは墓標。ざっと見るは粘らない" do
+      for prompt <- [Gourmet.scan_prompt(), Gourmet.tidy_prompt()] do
+        assert prompt =~ "**代表店なしは、調べたうえで無かったときだけです。**"
+        assert prompt =~ "現在販売は行っていません"
+      end
+
+      assert Gourmet.scan_prompt() =~ "返さずに代表店未定のまま残してください"
+      refute Gourmet.tidy_prompt() =~ "返さずに代表店未定のまま残してください**（粘って"
+    end
+
     test "名前から見分けの補足を落とす" do
       assert Gourmet.dish_name("チェルシー (菓子)", "北海道") == "チェルシー"
       assert Gourmet.dish_name("イタリアン (新潟)（福島県）", "福島県") == "イタリアン"
