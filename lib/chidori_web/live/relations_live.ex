@@ -66,6 +66,9 @@ defmodule ChidoriWeb.RelationsLive do
        # **ほかの絞り込みとは排他**（重ねると、出ていない理由が読めない）
        review_filter: nil,
        focus_sent: nil,
+       # 1 回押した札の名前（その札と線と線の先を目立たせる。もう一度押すと詳細が開く）。
+       # **名前で持つ** —— 図は読み直すたびに id が振り直される（印と同じ理由）
+       picked: nil,
        # 開いている作品の主演のうち、芸能人の図に載っている人（映画の図。押すとその人へ飛ぶ）
        star_people: MapSet.new(),
        # URL の `focus` で名指しされた人。**図がまだ読めていなければ、読めたときに寄る**
@@ -313,14 +316,23 @@ defmodule ChidoriWeb.RelationsLive do
       node == nil ->
         {:noreply, socket}
 
-      # もう一度押したら閉じる
+      # 詳細が開いている札をもう一度押したら閉じる
       detail_name(socket.assigns.detail) == name ->
         {:noreply, assign(socket, detail: nil, artwork: nil, portrait: nil, mark_saved: nil)}
 
-      true ->
+      # 目立たせている札をもう一度押したら詳細を開く
+      socket.assigns.picked == name ->
         {:noreply, open_detail(socket, node)}
+
+      # 1 回目は、その札と線と線の先を目立たせるだけ（トピックの網と同じ押し方）。
+      # いきなり詳細を開くと、図の上でどこと繋がっているかを見る前に覆われる
+      true ->
+        {:noreply, assign(socket, picked: name)}
     end
   end
+
+  # 余白を押したら目立たせるのをやめる（`relation_map.js`）
+  def handle_event("unpick", _params, socket), do: {:noreply, assign(socket, picked: nil)}
 
   # 影響の線を押したら、**何をもって影響元としたか**を出す。
   #
@@ -1327,6 +1339,19 @@ defmodule ChidoriWeb.RelationsLive do
 
   defp overlap?(a, b) do
     a.left < b.right and b.left < a.right and a.top < b.bottom and b.top < a.bottom
+  end
+
+  @doc """
+  目立たせる札（`picked` は札の名前）。`%{id: 札の id, near: 線の先の id の集まり（札を含む）}`。
+  図に出ていない（絞り込みで外れた）札なら nil。
+  """
+  def pick_of(_relation, nil), do: nil
+
+  def pick_of(relation, name) do
+    case Enum.find(relation.nodes, &(&1.name == name)) do
+      nil -> nil
+      node -> %{id: node.id, near: neighbourhood(relation, node.id)}
+    end
   end
 
   @doc """

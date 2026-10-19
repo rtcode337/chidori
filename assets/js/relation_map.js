@@ -1,11 +1,12 @@
 // 関連図の操作。**共通の仕組み**（`./pan_zoom`）に、この図だけの事情を足したものです。
 //
-// 足しているのは 3 つ ——
+// 足しているのは 4 つ ——
 //
 //   ・年代と地域の札を画面の端に留める（図と一緒に流すと、少し引きずっただけで
 //     年表が画面の外へ出て、いま何時代を見ているのか読めなくなる）
 //   ・見ている範囲をサーバーへ知らせる（**サーバーはそこだけを描く**）
 //   ・探して選んだ人へ寄る
+//   ・札を目立たせている間に余白を押したら、目立たせるのをやめる
 import {panZoom} from "./pan_zoom"
 
 // 年代の札を画面のどれだけ内側に置くか（px）と、画面上での字の大きさ（px）
@@ -77,7 +78,14 @@ export default panZoom({
   // 押すたびに全画面へ飛ぶのは邪魔なだけ（ボタンからは PC でも入れる）。
   // 丸を押したときは代表作が開くので邪魔しない
   tapped(ev) {
-    if (touchLike() && !ev.target.closest(".relation-node") && !document.fullscreenElement) {
+    const onNode = ev.target.closest(".relation-node")
+    // 札を目立たせている間の余白は「目立たせるのをやめる」。全画面へは飛ばない
+    // （トピックの網と同じ）。札を押したときはサーバーが決める（1 回目は目立たせ、2 回目は詳細）
+    if (!onNode && !ev.target.closest(".edge-target") && this.el.classList.contains("has-pick")) {
+      this.pushEvent("unpick", {})
+      return
+    }
+    if (touchLike() && !onNode && !document.fullscreenElement) {
       this.fullscreen()
     }
   },

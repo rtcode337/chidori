@@ -462,6 +462,15 @@ main.relations-page > div { padding-top: 0; }
 
 /* 代表作を持つノードは押せる */
 .relation-node.has-work { cursor: pointer; }
+/* 1 回押した札（トピックの網と同じ見せ方）。その札の線と線の先を立たせ、ほかは沈める */
+.relation-canvas.has-pick .relation-edge { opacity: .08; }
+.relation-canvas.has-pick .relation-edge.is-lit { opacity: 1; stroke-width: 3.5; }
+.relation-canvas.has-pick .edge-label { opacity: .1; }
+.relation-canvas.has-pick .edge-label.is-lit { opacity: 1; }
+.relation-canvas.has-pick .relation-node { opacity: .25; }
+.relation-canvas.has-pick .relation-node.is-near,
+.relation-canvas.has-pick .relation-node.is-picked { opacity: 1; }
+.relation-node.is-picked rect { stroke: #4338a8; stroke-width: 4; }
 .relation-node.has-work:hover rect { stroke: #554bc0; stroke-width: 3; }
 
 /* 代表作が入っている印。名前より控えめにして、名前の読みを邪魔しない */

@@ -107,6 +107,12 @@ defmodule ChidoriWeb.RelationsLiveTest do
     assert_receive {:asked, _url}, 2_000
   end
 
+  # 札を開く。**1 回目は目立たせるだけ**で、2 回目で詳細が開く
+  defp open_node(live, name) do
+    live |> element(~s|[phx-value-name="#{name}"]|) |> render_click()
+    live |> element(~s|[phx-value-name="#{name}"]|) |> render_click()
+  end
+
   defp flush do
     receive do
       _message -> flush()
@@ -314,11 +320,26 @@ defmodule ChidoriWeb.RelationsLiveTest do
       :ok
     end
 
+    test "1 回目は札と線の先を目立たせるだけで、もう一度押すと詳細が開く", %{conn: conn} do
+      # いきなり詳細を開くと、どこと繋がっているかを見る前に図が覆われる
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+
+      html = live |> element(~s|[phx-value-name="クロード・モネ"]|) |> render_click()
+      assert html =~ "has-pick"
+      assert html =~ "is-picked"
+      refute html =~ ~s(role="dialog")
+
+      # 余白を押したら（`relation_map.js` が知らせる）目立たせるのをやめる
+      refute render_hook(live, "unpick", %{}) =~ "has-pick"
+
+      assert open_node(live, "クロード・モネ") =~ ~s(role="dialog")
+    end
+
     test "名前を押すと、図に重ねて出す", %{conn: conn} do
       # 図の下に足すと、押した人が画面の外にいることがある
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
 
-      html = live |> element(~s|[phx-value-name="クロード・モネ"]|) |> render_click()
+      html = open_node(live, "クロード・モネ")
 
       assert html =~ ~s(role="dialog")
       assert html =~ ~s(aria-modal="true")
@@ -327,7 +348,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
     test "閉じられる", %{conn: conn} do
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
 
-      live |> element(~s|[phx-value-name="クロード・モネ"]|) |> render_click()
+      open_node(live, "クロード・モネ")
       html = live |> element(~s|[phx-click="close_work"]|) |> render_click()
 
       refute html =~ ~s(role="dialog")
@@ -337,7 +358,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
       # 押した先は同じところ。閉じ方を1つしか用意しないと、行き止まりになる
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
 
-      live |> element(~s|[phx-value-name="クロード・モネ"]|) |> render_click()
+      open_node(live, "クロード・モネ")
       assert render(live) =~ ~s(phx-click-away="close_work")
       assert render(live) =~ ~s(phx-key="Escape")
 
@@ -398,7 +419,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
     test "記事に画像があれば、自画像や写真として出す", %{conn: conn} do
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
 
-      live |> element(~s|[phx-value-name="肖像のある画家"]|) |> render_click()
+      open_node(live, "肖像のある画家")
       html = render_async(live)
 
       assert html =~ ~s(class="portrait")
@@ -410,7 +431,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
     test "画像が無ければ何も出さない", %{conn: conn} do
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
 
-      live |> element(~s|[phx-value-name="肖像の無い画家"]|) |> render_click()
+      open_node(live, "肖像の無い画家")
       refute render_async(live) =~ ~s(class="portrait")
     end
   end
@@ -456,7 +477,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
       # 記事を持たない作品のほうが多い。落とすと、代表作が入っているのに何も見られない
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
 
-      live |> element(~s|[phx-value-name="画像検索の画家"]|) |> render_click()
+      open_node(live, "画像検索の画家")
       html = render_async(live)
 
       assert html =~ "Google 画像検索で見る"

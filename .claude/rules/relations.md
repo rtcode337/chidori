@@ -55,5 +55,6 @@ paths:
 - 代表作の説明と絵は Chiezo の jawiki から引く（`Chidori.Artwork`。絵は Chiezo に縮小版を作らせ `/thumbs/…` から出す。
   Commons 以外は出さない。結果は 1 日覚える）
 - 見た記録は `chidori_data` に 1 ノード 1 件（`Chidori.Relations.Marks`）。収集には書かない
+- 札は 2 回押して開く。1 回目は札・線・線の先を立たせ（`picked`。名前で持つ。`pick_of/2`）、2 回目で詳細。余白で戻す（`unpick`）
 - 図の操作は `assets/js/pan_zoom.js` を関連図・トピックの網・区画の地図・県の地図で共有する。拡大は `viewBox` を動かす（CSS の transform で引き伸ばさない）。
   図ごとの事情だけを `relation_map.js` に足す

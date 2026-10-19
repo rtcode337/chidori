@@ -182,12 +182,14 @@
          **絞るだけでは足りない** —— 位置がもとのままだと、39 人が高さ 2,500 の面に
          散らばって拡大しないと読めず、絞った意味が無い --%>
     <% shown = shown(@relation, assigns) %>
+    <%!-- 1 回押した札。その札・線・線の先を目立たせ、ほかを沈める（もう一度押すと詳細） --%>
+    <% pick = pick_of(shown, @picked) %>
     <%!-- **器の縦横比は図に合わせる。** 画家の図は縦に長い（幅 1,200 に対して高さ
          2,000 超）ので、画面の高さで切った器では拡大しないと下が見えず、全体を
          入れようと縮めると札が小さすぎて 1 枚も描けない。図と同じ比にすれば、
          拡大していない状態で全体が入り、はみ出すぶんはページのスクロールで見られる --%>
     <section
-      class="relation-canvas"
+      class={["relation-canvas", pick && "has-pick"]}
       aria-label={@relation.title}
       id={"relation-canvas-#{@view}"}
       phx-hook="RelationMap"
@@ -337,14 +339,19 @@
              2 万を超える要素になり、引きずるだけで固まる。端の座標は先に
              引き当ててある（`edge_lines/2`）—— ここで探すとノード数 × エッジ数の
              線形探索になる --%>
-        <% drawn = drawn_nodes(shown, @viewport, @focus) %>
+        <%!-- 目立たせている札の線の先は、小さくても描く（探して選んだ人と同じ） --%>
+        <% drawn = drawn_nodes(shown, @viewport, (pick && pick.id) || @focus) %>
         <%= for edge <- edge_lines(shown, drawn) do %>
           <line
             x1={edge.x1}
             y1={edge.y1}
             x2={edge.x2}
             y2={edge.y2}
-            class={"relation-edge #{edge.kind}"}
+            class={[
+              "relation-edge",
+              to_string(edge.kind),
+              pick && pick.id in [edge.from, edge.to] && "is-lit"
+            ]}
             marker-end={if edge.kind == :influence, do: "url(#arrow)"}
           />
           <%!-- **押す的は別に置く。** 線そのものは細いので、そのままでは指でも
@@ -369,7 +376,7 @@
             :if={@view != "painters" and edge[:label]}
             x={edge.mid_x}
             y={edge.mid_y}
-            class="edge-label"
+            class={["edge-label", pick && pick.id in [edge.from, edge.to] && "is-lit"]}
           >
             {edge.label}
           </text>
@@ -387,7 +394,9 @@
               node[:changed?] && "changed",
               node[:unreviewed?] && "unreviewed",
               marked?(@marks, node.name) && "marked",
-              node.id == @focus && "focused"
+              node.id == @focus && "focused",
+              pick && node.id == pick.id && "is-picked",
+              pick && MapSet.member?(pick.near, node.id) && "is-near"
             ]}
             phx-click="show_node"
             phx-value-name={node.name}
@@ -577,7 +586,7 @@
           全部が同じ時刻になるので、比べる先がありません。
         </p>
         <p>
-          <strong>どの名前も押せます。</strong> もとになった記事・Chiezo に入っているタグ・
+          <strong>どの名前も押せます。</strong> 1 回押すとその人と線と線の先が立ち、もう一度押すと、もとになった記事・Chiezo に入っているタグ・
           代表作の絵（最大 3 枚）が出て、その場で <strong>「この画家を詳しく調べて」を Chiezo に頼めます</strong>。
           名前のうしろの <strong>{Chidori.Relations.Graph.work_mark()}</strong> は
           代表作が入っている印です。
@@ -606,6 +615,7 @@
           <p>
             <strong>名簿は知名度で下を切っています</strong>（主な映画賞の受賞作は知名度に関わらず入れます）。設定の「名簿の広さ」で下げると広がります。
             <strong>どの作品も、どの線も押せます。</strong>
+            作品は 1 回押すと線と線の先が立ち、もう一度押すと詳細が開きます（余白を押すと戻る）。
           </p>
         <% else %>
           <p>
@@ -617,7 +627,8 @@
             薄い線は記事どうしが互いにリンクしているというだけの関係で、Wikipedia から機械的に引いたものです。
           </p>
           <p>
-            <strong>どの名前も、どの線も押せます。</strong> もとになった記事・Chiezo に入っているタグと、線の根拠が出ます。
+            <strong>どの名前も、どの線も押せます。</strong>
+            名前は 1 回押すと線と線の先が立ち、もう一度押すと、もとになった記事・Chiezo に入っているタグが出ます。線を押すと根拠が出ます。
           </p>
         <% end %>
       <% end %>
