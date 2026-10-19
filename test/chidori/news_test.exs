@@ -154,10 +154,10 @@ defmodule Chidori.NewsTest do
         %{method: :get, url: "http://chiezo.test:7010/v1/chidori_news/recent?" <> _query} ->
           HttpStub.ok(Jason.encode!(%{"docs" => [recent("地震の続報")]}))
 
-        # 反応の実数（はてブ数）
-        %{method: :get, url: "https://bookmark.hatenaapis.com/count/entries?" <> query} ->
+        # 反応の実数（はてブ数）。**はてなへは出ず、Chiezo が取り次ぐ**
+        %{method: :get, url: "http://chiezo.test:7010/v1/bookmarks?" <> query} ->
           assert query =~ "url=https%3A%2F%2Fexample.com%2F1"
-          HttpStub.ok(~s({"https://example.com/1": 12}))
+          HttpStub.ok(~s({"counts": {"https://example.com/1": 12}}))
 
         %{method: :get, url: url} ->
           assert url =~ "/v1/collect/chidori_news"

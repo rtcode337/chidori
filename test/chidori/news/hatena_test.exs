@@ -4,15 +4,19 @@ defmodule Chidori.News.HatenaTest do
   alias Chidori.HttpStub
   alias Chidori.News.Hatena
 
+  @base "http://chiezo.test:7010"
+
   setup do
     Hatena.clear()
+    System.put_env("CHIEZO_BASE_URL", @base)
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
     :ok
   end
 
-  test "50 本ずつまとめて引き、覚えたものは引き直さない" do
+  test "はてなへは出ず Chiezo に 50 本ずつ聞き、覚えたものは聞き直さない" do
     test_pid = self()
 
-    HttpStub.stub(fn %{url: "https://bookmark.hatenaapis.com/count/entries?" <> query} ->
+    HttpStub.stub(fn %{url: @base <> "/v1/bookmarks?" <> query} ->
       send(test_pid, {:asked, query})
 
       urls =
@@ -20,11 +24,8 @@ defmodule Chidori.News.HatenaTest do
         |> String.split("&")
         |> Enum.map(&URI.decode_www_form(String.replace_prefix(&1, "url=", "")))
 
-      HttpStub.ok(Jason.encode!(Map.new(urls, &{&1, String.length(&1)})))
+      HttpStub.ok(Jason.encode!(%{"counts" => Map.new(urls, &{&1, String.length(&1)})}))
     end)
-
-    Application.put_env(:chidori, :hatena_pause_ms, 0)
-    on_exit(fn -> Application.delete_env(:chidori, :hatena_pause_ms) end)
 
     urls = for i <- 1..60, do: "https://example.com/#{i}"
     counts = Hatena.counts(urls)
@@ -33,7 +34,7 @@ defmodule Chidori.News.HatenaTest do
     assert_received {:asked, _first}
     assert_received {:asked, _second}
 
-    # 2 回目は覚えているぶんで返す（外へ出ない）
+    # 2 回目は覚えているぶんで返す（Chiezo にも聞かない）
     assert Hatena.counts(Enum.take(urls, 3)) == Map.take(counts, Enum.take(urls, 3))
     refute_received {:asked, _}
   end

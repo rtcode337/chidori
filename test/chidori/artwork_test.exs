@@ -11,19 +11,35 @@ defmodule Chidori.ArtworkTest do
     :ok
   end
 
-  # Chiezo の jawiki の 1 件（`doc`）
-  defp jawiki(doc), do: fn _request -> Chidori.HttpStub.ok(Jason.encode!(doc)) end
+  @thumb "/v1/thumbs/" <> String.duplicate("c", 40) <> ".webp"
 
-  test "説明も絵も Chiezo から引く" do
+  # Chiezo の jawiki の 1 件（`doc`）。縮小版を頼まれたら、Commons の絵だけ作る（Chiezo と同じ決まり）
+  defp jawiki(doc) do
+    fn
+      %{method: :post, body: body} ->
+        if Jason.decode!(body)["url"] =~ "upload.wikimedia.org",
+          do: Chidori.HttpStub.ok(Jason.encode!(%{"thumb" => @thumb})),
+          else: {:ok, %{status: 400, body: "{}"}}
+
+      _request ->
+        Chidori.HttpStub.ok(Jason.encode!(doc))
+    end
+  end
+
+  test "説明も絵も Chiezo から引き、絵は Chiezo の縮小版を Chidori から配る" do
     # 取り込みが `page_props` から代表画像を拾って `extra.image` に入れている。
-    # **外へ聞きに行く理由が無い**
+    # **外へ聞きに行く理由が無い**。絵も Chiezo に縮めて持たせ、Wikimedia へは出ない
     test_pid = self()
 
-    Chidori.HttpStub.stub(fn %{url: url} ->
-      if String.contains?(url, "wikipedia.org") do
-        send(test_pid, :went_outside)
-        Chidori.HttpStub.ok("{}")
-      else
+    Chidori.HttpStub.stub(fn
+      %{url: "http://chiezo.test:7010/v1/thumbs", method: :post, body: body} ->
+        send(test_pid, {:thumb, Jason.decode!(body)["url"]})
+        Chidori.HttpStub.ok(Jason.encode!(%{"thumb" => @thumb}))
+
+      %{url: url} ->
+        if not String.starts_with?(url, "http://chiezo.test:7010/"),
+          do: send(test_pid, :went_outside)
+
         Chidori.HttpStub.ok(
           Jason.encode!(%{
             "title" => "印象・日の出",
@@ -33,16 +49,16 @@ defmodule Chidori.ArtworkTest do
             }
           })
         )
-      end
     end)
 
     art = Artwork.lookup("印象・日の出")
 
     assert art.extract == "モネの作品。"
-    # 札に出すだけなので原寸は指さない
-    assert art.image ==
-             "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/Sunrise.jpg/500px-Sunrise.jpg"
+    # 札に出すだけなので原寸は頼まない
+    assert_received {:thumb,
+                     "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/Sunrise.jpg/500px-Sunrise.jpg"}
 
+    assert art.image == "/thumbs/" <> String.duplicate("c", 40) <> ".webp"
     refute_received :went_outside
   end
 
@@ -56,7 +72,8 @@ defmodule Chidori.ArtworkTest do
 
     art = Artwork.lookup("印象・日の出")
 
-    assert art.image == "https://example.org/sunrise.jpg"
+    # Commons 以外の絵は Chiezo が取らないので出さない（画面は画像検索へのリンクにする）
+    assert art.image == nil
     assert art.page =~ "ja.wikipedia.org"
   end
 
@@ -114,15 +131,20 @@ defmodule Chidori.ArtworkTest do
     # 覚えないと押した回数だけ Chiezo を叩く
     test_pid = self()
 
-    Chidori.HttpStub.stub(fn _request ->
+    image = "https://upload.wikimedia.org/wikipedia/commons/5/54/A.jpg"
+    respond = jawiki(%{"extra" => %{"image" => image}})
+
+    Chidori.HttpStub.stub(fn request ->
       send(test_pid, :asked)
-      Chidori.HttpStub.ok(Jason.encode!(%{"extra" => %{"image" => "https://e.test/a.jpg"}}))
+      respond.(request)
     end)
 
-    assert Artwork.lookup("何かの絵").image == "https://e.test/a.jpg"
+    assert Artwork.lookup("何かの絵").image == "/thumbs/" <> String.duplicate("c", 40) <> ".webp"
+    # 記事を引くのと、縮小版を頼むので 2 回
+    assert_received :asked
     assert_received :asked
 
-    assert Artwork.lookup("何かの絵").image == "https://e.test/a.jpg"
+    assert Artwork.lookup("何かの絵").image == "/thumbs/" <> String.duplicate("c", 40) <> ".webp"
     refute_received :asked
   end
 

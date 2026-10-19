@@ -687,6 +687,56 @@ defmodule Chidori.Chiezo do
   end
 
   @doc """
+  **外の絵（Wikimedia の写真）の縮小版を Chiezo に作らせ**、配る場所（`/v1/thumbs/<名前>.webp`）を
+  返します（Chiezo の `POST /v1/thumbs`）。`{:ok, 場所}` か `{:error, 理由}`。
+
+  **Chidori からは Wikimedia へ出ない** —— 外への通信先を Chiezo だけにするため。
+  Chiezo は同じ絵を 1 度しか取らず、2 回目からは置き場の写しの場所を返す。
+  画面では `thumb_path/1` で Chidori の配り口（`/thumbs/…`）に直して使う。
+  """
+  def thumb_of(base, url) when is_binary(url) do
+    case post(base <> "/v1/thumbs", Jason.encode!(%{url: url})) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"thumb" => path}} when is_binary(path) -> {:ok, path}
+          _other -> {:error, :chiezo_unexpected_body}
+        end
+
+      # 取れない絵（無い・絵でない・大きすぎる）と、決めたホストでない絵。どちらも取り直しても同じ
+      {:ok, %{status: status}} when status in [400, 422] ->
+        {:error, :no_image}
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  # はてなブックマーク数を 1 回に聞く URL の数（問い合わせの行の長さを抑える）
+  @bookmark_batch 50
+
+  @doc """
+  URL → はてなブックマーク数（Chiezo の `GET /v1/bookmarks`。Chiezo が 1 時間覚えている）。
+  **Chidori からははてなへ出ない**。引けなかった URL は入らない（0 とは書かない）。
+  """
+  def bookmarks(base, urls) when is_list(urls) do
+    urls
+    |> Enum.chunk_every(@bookmark_batch)
+    |> Enum.reduce(%{}, fn batch, acc ->
+      query = Enum.map_join(batch, "&", &("url=" <> URI.encode_www_form(&1)))
+
+      with {:ok, %{status: 200, body: body}} <- get(base <> "/v1/bookmarks?" <> query),
+           {:ok, %{"counts" => counts}} when is_map(counts) <- Jason.decode(body) do
+        Map.merge(acc, for({url, n} <- counts, is_integer(n), into: %{}, do: {url, n}))
+      else
+        _other -> acc
+      end
+    end)
+  end
+
+  @doc """
   地名の候補（`%{name, title, lat, lon, area, feature}` の並び）。**地図の地名検索と、範囲を描くのに使います**。
 
   地図辞典（`#{@place_source}`）で引き、見出しごとに座標を取り直します ——

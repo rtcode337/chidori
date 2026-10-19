@@ -361,13 +361,21 @@ defmodule ChidoriWeb.RelationsLiveTest do
           String.contains?(url, "/filter?") ->
             Chidori.HttpStub.ok(Jason.encode!(%{"results" => docs, "total" => 2}))
 
+          # 絵は Chiezo に縮めて持たせる（Wikimedia へは出ない）
+          String.ends_with?(url, "/v1/thumbs") ->
+            Chidori.HttpStub.ok(
+              Jason.encode!(%{"thumb" => "/v1/thumbs/" <> String.duplicate("d", 40) <> ".webp"})
+            )
+
           String.contains?(url, "/v1/jawiki/doc") and
               String.contains?(url, URI.encode_www_form("肖像のある画家")) ->
             Chidori.HttpStub.ok(
               Jason.encode!(%{
                 "title" => "肖像のある画家",
                 "opening" => "画家。",
-                "extra" => %{"image" => "https://example.com/self-portrait.jpg"}
+                "extra" => %{
+                  "image" => "https://upload.wikimedia.org/wikipedia/commons/5/54/Self.jpg"
+                }
               })
             )
 
@@ -394,7 +402,9 @@ defmodule ChidoriWeb.RelationsLiveTest do
       html = render_async(live)
 
       assert html =~ ~s(class="portrait")
-      assert html =~ "https://example.com/self-portrait.jpg"
+
+      # 見る人のブラウザには Chidori の配り口を指させる（Wikimedia を直に引かせない）
+      assert html =~ "/thumbs/" <> String.duplicate("d", 40) <> ".webp"
     end
 
     test "画像が無ければ何も出さない", %{conn: conn} do

@@ -108,6 +108,9 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ## 実装上の約束事
 
 - **外への HTTP は `Chidori.Http` だけを通す。** テストで差し替えられなくなるため
+- **サーバーからの通信先は Chiezo だけにする。** 外のサービス（Wikimedia の写真・はてなの件数など）は Chiezo に
+  取り次がせる（`Chiezo.thumb_of/2`・`Chiezo.bookmarks/2`）。例外は外へ届けるのが目的の通知（ntfy・Web Push）だけ。
+  見る人のブラウザにも外の絵を直に引かせない（地理院タイルとリンクの行き先は除く）
 - **巡回の名前は `Chidori.SweepNames` から選ぶ**（新しい名前を作らない。仕事が同じなら同じ名前）
 - **Chiezo とのやり取りで話題に依らない部分は `Chidori.Chiezo` に 1 つだけ置く。**
   話題ごとに違うもの（依頼文・見せ方）は呼ぶ側が持つ

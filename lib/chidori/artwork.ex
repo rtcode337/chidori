@@ -71,8 +71,23 @@ defmodule Chidori.Artwork do
     %{"opening" => opening, "image" => image} = from_chiezo(title)
 
     case image do
-      nil -> nil
-      found -> %{title: title, image: thumb(found), extract: opening, page: page_of(title)}
+      nil ->
+        nil
+
+      found ->
+        %{title: title, image: chiezo_thumb(thumb(found)), extract: opening, page: page_of(title)}
+    end
+  end
+
+  # **絵は Chiezo に縮めて持たせ、Chidori の配り口（`/thumbs/…`）で出す**。見る人のブラウザに
+  # Wikimedia を直に引かせない（外への通信先を Chiezo だけにするため）。Chiezo が取れない絵
+  # （Commons 以外・無い）は出さない —— 画面は画像検索へのリンクにする
+  defp chiezo_thumb(url) do
+    with base when is_binary(base) <- Chiezo.base_url(),
+         {:ok, path} <- Chiezo.thumb_of(base, url) do
+      Chiezo.thumb_path(path)
+    else
+      _none -> nil
     end
   end
 

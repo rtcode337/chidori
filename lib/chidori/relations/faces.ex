@@ -7,9 +7,11 @@ defmodule Chidori.Relations.Faces do
 
   - 見る人のブラウザに Wikimedia を直に引かせない。数千人の図を開くたびに、見る人の
     数だけ写真が引かれることになる
-  - 取りに行くのは**小さな縮小版**（横 120px。Commons の決まった幅で、置き場の
-    写しが当たる）だけ。原寸は引かない
-  - **1 枚ずつ間を空けて**取る（`@interval_ms`）。名乗りを付ける
+  - **Chidori からも Wikimedia へは出ない。** Chiezo に縮小版を作らせ（`POST /v1/thumbs`。
+    Chiezo は同じ絵を 1 度しか取らない）、その写しを受け取る —— 外への通信先を Chiezo だけにする
+  - 頼むのは**小さな縮小版**（横 120px。Commons の決まった幅で、置き場の写しが当たる）だけ。
+    原寸は引かない
+  - **1 枚ずつ間を空けて**頼む（`@interval_ms`）
   - **取れなかったことも残す**（`missing`）。無いものを取りに行き続けない
 
   写真の出どころは記事の画像（Chiezo の jawiki の `extra.image`。名簿を引くときに運ぶ）。
@@ -22,20 +24,18 @@ defmodule Chidori.Relations.Faces do
 
   import Ecto.Query
 
-  alias Chidori.Http
+  alias Chidori.Chiezo
   alias Chidori.Relations.Face
   alias Chidori.Repo
 
   require Logger
 
-  @user_agent "chidori/0.1 (+https://github.com/rtcode337/chidori)"
   # 縮小版の横幅（Commons が受け付ける幅の一覧から。`Chidori.Artwork.thumb/2`）
   @width 120
   # 1 枚取るごとに空ける間（ミリ秒）
   @interval_ms 1_500
   # 1 枚の上限（縮小版はふつう 10KB 前後。大きすぎるものは写真ではない）
   @max_bytes 200_000
-  @timeout 10_000
 
   def start_link(options),
     do: GenServer.start_link(__MODULE__, :ok, name: options[:name] || __MODULE__)
@@ -135,20 +135,29 @@ defmodule Chidori.Relations.Faces do
     end
   end
 
+  # **Wikimedia へは Chidori から出ない**。Chiezo に縮小版を作らせ（`POST /v1/thumbs`）、
+  # その写しを Chiezo から受け取る（外への通信先を Chiezo だけにするため）
   defp download(url) do
     thumb = Chidori.Artwork.thumb(url, @width)
 
-    case Http.get(thumb, headers: [{"user-agent", @user_agent}], timeout: @timeout) do
-      {:ok, %{status: 200, body: body}} when byte_size(body) in 1..@max_bytes ->
-        {:ok, body, content_type(thumb)}
-
-      {:ok, %{status: status}} ->
-        Logger.info("顔写真を取れませんでした（#{status}）: #{thumb}")
+    with base when is_binary(base) <- Chiezo.base_url(),
+         {:ok, path} <- Chiezo.thumb_of(base, thumb),
+         {:ok, %{status: 200, body: body}} when byte_size(body) in 1..@max_bytes <-
+           Chiezo.get(base <> path) do
+      {:ok, body, "image/webp"}
+    else
+      # 取れない写真（無い・絵でない）は、取れなかったとして残す（取りに行き続けない）
+      {:error, :no_image} ->
+        Logger.info("顔写真を取れませんでした: #{thumb}")
         :missing
 
-      {:error, reason} ->
-        # つながらなかったものは残さない（次に図を開いたときに取り直す）
-        Logger.info("顔写真を取りに行けませんでした: #{inspect(reason)}")
+      {:ok, %{status: status}} ->
+        Logger.info("顔写真を Chiezo から受け取れませんでした（#{status}）: #{thumb}")
+        :retry
+
+      # Chiezo につながらない・置いていない：残さない（次に図を開いたときに取り直す）
+      other ->
+        Logger.info("顔写真を取りに行けませんでした: #{inspect(other)}")
         :retry
     end
   end
@@ -168,14 +177,5 @@ defmodule Chidori.Relations.Faces do
   rescue
     error in [Postgrex.Error, DBConnection.ConnectionError] ->
       Logger.warning("顔写真の写しを残せませんでした: #{Exception.message(error)}")
-  end
-
-  defp content_type(url) do
-    case url |> String.downcase() |> Path.extname() do
-      ".png" -> "image/png"
-      ".gif" -> "image/gif"
-      ".webp" -> "image/webp"
-      _other -> "image/jpeg"
-    end
   end
 end

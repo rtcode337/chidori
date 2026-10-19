@@ -28,7 +28,8 @@ paths:
 - 図の構造は Chiezo に持ち込まない（1 画家 = 1 文書 + タグ `画家`・`様式:`・`年代:`・`影響元:<名前>:<説明>`）
 - 図を開くたびに Chiezo へ聞きに行かない（最後に取得した時刻を出し、取り直すかは読む人が決める）。設定は開いたときに読む
 - 芸能人: 夫婦が最優先。公表されている関係だけ、未成年の家族と記事の無い家族は書かせない。グループは名簿に入れず枠で描く。
-  顔写真は Commons のものだけを 1 人 1 回、横 120px の縮小版で取りに行き DB（`face_thumbs`）に写して `/faces/:id` から配る。
+  顔写真は Commons のものだけを 1 人 1 回、横 120px の縮小版を Chiezo に作らせ（`Chiezo.thumb_of/2`。Wikimedia へは出ない）、
+  DB（`face_thumbs`）に写して `/faces/:id` から配る。
   押すと Commons のファイルのページ（出典とライセンス）へのリンクを出す
 - 映画（`Chidori.Relations.Films`・収集 `chidori_films`）: 札は作品だけ。名簿・監督・公開年・国は分類から機械で
   （「〜の監督映画」の `tag_suffix` と主な賞の受賞作の `tag`、知名度で下を切る）、主演だけ AI（`verify_tags` で実在の記事に限る）。
@@ -50,7 +51,8 @@ paths:
   同じ作品の二重足しを避けるため、図の見出しの前方一致と全文検索で似た作品を名指しして見せる
 - 映画の図の見た記録は最新情報の映画と同じ置き場（`movies`）。札の記録は札の名前か `記録:` の見出しで引く（`Films.marks_by_node/2`）。
   図に載っていない記録は「まだ図に無い」として出す
-- 代表作の説明と絵は Chiezo の jawiki から引く（`Chidori.Artwork`。絵は持たず縮小版の URL を指す。結果は 1 日覚える）
+- 代表作の説明と絵は Chiezo の jawiki から引く（`Chidori.Artwork`。絵は Chiezo に縮小版を作らせ `/thumbs/…` から出す。
+  Commons 以外は出さない。結果は 1 日覚える）
 - 見た記録は `chidori_data` に 1 ノード 1 件（`Chidori.Relations.Marks`）。収集には書かない
 - 図の操作は `assets/js/pan_zoom.js` を関連図・トピックの網・区画の地図・県の地図で共有する。拡大は `viewBox` を動かす（CSS の transform で引き伸ばさない）。
   図ごとの事情だけを `relation_map.js` に足す
