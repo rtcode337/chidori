@@ -1,17 +1,19 @@
 // 近くで上映している映画館を Gemini（Google 検索の AI モード）に聞く口（映画の詳細）。
 //
-// **地域の欄に書いてあればその近くを、空なら現在地の近くを聞きます。**
+// **地域の欄に書いてあればその近くを、空なら現在地（取れていれば）の近くを聞きます。**
 // - 地域: `data-region-question` の `{region}` を書いた地域に置き換えて開く
-// - 現在地: 押したときにブラウザから取り、質問文の「いまいる場所」を置き換えて開く。
-//   取れなければ（断られた・時間切れ・https でない）、場所を書かない質問のまま開く ——
+// - 現在地: 「現在地を使う」を押したとき（位置情報を許可済みなら開いたとき）に取っておき、
+//   質問文の「いまいる場所」を置き換える。取れていなければ場所を書かない質問のまま開く ——
 //   AI モードの側でもおおよその場所は分かるので、聞けないよりはよい
 //
-// 書いた地域はブラウザに覚えておき、次に開いたときに入れておく（同じ街で観ることが多い）。
+// **リンクはいつも普通のリンクとして開きます。** 以前は、押したその場で空のタブを開き、
+// 現在地が取れてから行き先を入れていた（押した操作から離れて開くと止められるため）。
+// ところがホーム画面から開いた PWA（iPhone）では、開いたタブにあとから行き先を入れられず、
+// 真っ白なタブが残った。現在地は押す前に取っておき、押したら行き先の決まったリンクを開く。
 //
-// 現在地を待ってから新しいタブを開くと、押した操作から離れるのでブラウザに止められる。
-// **押したその場で空のタブを開き、場所が分かってから行き先を入れます。**
+// 書いた地域はブラウザに覚えておき、次に開いたときに入れておく（同じ街で観ることが多い）。
 
-const TIMEOUT_MS = 6000
+const TIMEOUT_MS = 8000
 const REGION_KEY = "chidori.theaterRegion"
 
 function aiModeUrl(question) {
@@ -33,65 +35,79 @@ export default {
   mounted() {
     this.link = this.el.querySelector("a")
     this.input = this.el.querySelector("input")
+    this.here = this.el.querySelector("button[data-here]")
+    this.status = this.el.querySelector("[data-status]")
+    this.coords = null
     if (!this.link) return
     if (this.input && !this.input.value) this.input.value = storedRegion()
 
-    this.onChange = () => storeRegion(this.input.value.trim())
-    // 欄で Enter を押したら、そのまま聞く
-    this.onKey = event => {
-      if (event.key === "Enter") {
-        event.preventDefault()
-        this.link.click()
-      }
-    }
-
-    this.onClick = event => {
+    // 行き先を、いま分かっていることから組み直す（押す前にいつも決まっている）
+    this.refresh = () => {
       const question = this.el.dataset.question
       if (!question) return
       const region = this.input ? this.input.value.trim() : ""
-
-      if (region) {
-        storeRegion(region)
-        const template = this.el.dataset.regionQuestion
-        if (template) this.link.href = aiModeUrl(template.replace("{region}", region))
-        return  // ふつうのリンクとして開く（押したその場なので止められない）
+      const template = this.el.dataset.regionQuestion
+      if (region && template) {
+        this.link.href = aiModeUrl(template.replace("{region}", region))
+      } else if (this.coords) {
+        this.link.href = aiModeUrl(question.replace("いまいる場所", `現在地（${this.coords}）`))
+      } else {
+        this.link.href = aiModeUrl(question)
       }
+    }
 
-      // 地域で聞いたあとは href が書き換わっているので、場所を書かない質問から組み直す
-      const fallback = aiModeUrl(question)
-      this.link.href = fallback
-      if (!navigator.geolocation) return
-      event.preventDefault()
-      const tab = window.open("", "_blank")
-      if (!tab) {
-        window.location.href = fallback
+    this.locate = () => {
+      if (!navigator.geolocation) {
+        if (this.status) this.status.textContent = "この端末では現在地を取れません"
         return
       }
-      tab.opener = null
-
-      const go = url => { tab.location.href = url }
+      if (this.status) this.status.textContent = "現在地を取っています…"
       navigator.geolocation.getCurrentPosition(
         ({coords}) => {
-          const where = `${coords.latitude.toFixed(4)},${coords.longitude.toFixed(4)}`
-          go(aiModeUrl(question.replace("いまいる場所", `現在地（${where}）`)))
+          this.coords = `${coords.latitude.toFixed(4)},${coords.longitude.toFixed(4)}`
+          if (this.status) this.status.textContent = "現在地で聞きます"
+          this.refresh()
         },
-        () => go(fallback),
+        () => {
+          if (this.status) this.status.textContent = "現在地を取れませんでした（場所を書かずに聞きます）"
+        },
         {timeout: TIMEOUT_MS, maximumAge: 10 * 60 * 1000}
       )
     }
 
-    this.link.addEventListener("click", this.onClick)
+    this.onInput = () => {
+      storeRegion(this.input.value.trim())
+      this.refresh()
+    }
+    // 欄で Enter を押したら、そのまま聞く
+    this.onKey = event => {
+      if (event.key === "Enter") {
+        event.preventDefault()
+        this.refresh()
+        this.link.click()
+      }
+    }
+
     if (this.input) {
-      this.input.addEventListener("change", this.onChange)
+      this.input.addEventListener("input", this.onInput)
       this.input.addEventListener("keydown", this.onKey)
+    }
+    if (this.here) this.here.addEventListener("click", this.locate)
+    this.refresh()
+
+    // **位置情報を許可済みなら、開いたときに取っておく**（聞かれないので押す手間が要らない）
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({name: "geolocation"})
+        .then(state => { if (state.state === "granted") this.locate() })
+        .catch(() => {})
     }
   },
 
   destroyed() {
-    if (this.link) this.link.removeEventListener("click", this.onClick)
     if (this.input) {
-      this.input.removeEventListener("change", this.onChange)
+      this.input.removeEventListener("input", this.onInput)
       this.input.removeEventListener("keydown", this.onKey)
     }
+    if (this.here) this.here.removeEventListener("click", this.locate)
   }
 }

@@ -56,7 +56,9 @@ defmodule ChidoriWeb.HomeLive do
        # （作品を開いたときに読む。枠を移ったら読み直す）
        opened_work: nil,
        work_marks: nil,
-       work_mark_saved: nil
+       work_mark_saved: nil,
+       # 作品を育てる話題（映画・アニメ）の要約の枠に並べる、公開中・放送中の注目作
+       works: nil
      )}
   end
 
@@ -79,7 +81,8 @@ defmodule ChidoriWeb.HomeLive do
        digest_full: %{},
        opened_work: nil,
        work_marks: nil,
-       work_mark_saved: nil
+       work_mark_saved: nil,
+       works: nil
      )
      |> load(panel)}
   end
@@ -96,8 +99,11 @@ defmodule ChidoriWeb.HomeLive do
 
   defp unsubscribe(_panel), do: :ok
 
-  defp load(socket, %{kind: kind, topic: topic}) when kind in [:topic, :interest],
-    do: assign(socket, news: News.current(News.server(topic.collection)))
+  defp load(socket, %{kind: kind, topic: topic}) when kind in [:topic, :interest] do
+    socket
+    |> assign(news: News.current(News.server(topic.collection)))
+    |> load_works(kind, topic)
+  end
 
   defp load(socket, %{kind: :books}) do
     socket = assign(socket, book_marks: Chidori.Datasets.BookMarks.all())
@@ -158,6 +164,47 @@ defmodule ChidoriWeb.HomeLive do
   end
 
   defp load(socket, _panel), do: socket
+
+  # **作品を育てる話題の要約の枠には、公開中（放送中）の注目作も並べる**（映画・アニメ）。
+  # 要約は 1 日 1 本なので、いま観られる作品の顔ぶれは要約だけでは見渡せない。
+  # 注目度が中以上のものだけをタグで引く（最新情報の画面の注目作と同じ）
+  defp load_works(socket, :topic, topic) do
+    base = News.chiezo_base_url()
+
+    if connected?(socket) and Topics.works(topic) != nil and base do
+      tags = Enum.map_join([:high, :mid], ",", &Events.attention_tag/1)
+
+      socket
+      |> assign(works: :loading)
+      |> start_async(:works, fn ->
+        Events.fetch_tagged(base, topic.collection, tags,
+          date_tag: Topics.date_tag(topic),
+          body: true
+        )
+      end)
+    else
+      socket
+    end
+  end
+
+  defp load_works(socket, _kind, _topic), do: socket
+
+  @doc """
+  要約の枠に並べる、始まっている注目作（映画なら公開中、アニメなら放送中）と、その見出し。
+  最新情報の画面の注目作と同じ分け方（`ChidoriWeb.NewsLive.works_groups/3`）の先頭の組。
+  始まっているものが無ければ nil。
+  """
+  def started_works({:ok, entries}, topic) do
+    works = Topics.works(topic)
+    {started, _upcoming} = works.group_labels()
+
+    case NewsLive.works_groups(entries, Jst.today(), works) do
+      [{^started, list} | _rest] -> {started, list}
+      _other -> nil
+    end
+  end
+
+  def started_works(_works, _topic), do: nil
 
   @doc "全画面で行き来する並び（話題の要約なら `:main`、興味トピックの要約なら `:interest`）。"
   def digest_kind(%{kind: :interest}), do: :interest
@@ -224,6 +271,9 @@ defmodule ChidoriWeb.HomeLive do
 
   def handle_async(:events, {:ok, result}, socket), do: {:noreply, assign(socket, events: result)}
 
+  def handle_async(:works, {:ok, result}, socket), do: {:noreply, assign(socket, works: result)}
+  def handle_async(:works, {:exit, _reason}, socket), do: {:noreply, assign(socket, works: nil)}
+
   # 要約から開いた作品（開いている作品の答えだけ受け取る）
   def handle_async({:work, title}, result, socket),
     do: {:noreply, WorkModal.loaded(socket, title, result)}
@@ -270,7 +320,14 @@ defmodule ChidoriWeb.HomeLive do
   # トップページは作品の一覧を持たないので、Chiezo から 1 件引く
   def handle_event("open_work", %{"title" => title}, socket) do
     topic = socket.assigns.panel && socket.assigns.panel[:topic]
-    {:noreply, WorkModal.open(socket, title, topic)}
+
+    entries =
+      case socket.assigns.works do
+        {:ok, list} -> list
+        _other -> []
+      end
+
+    {:noreply, WorkModal.open(socket, title, topic, entries)}
   end
 
   def handle_event("close_work", _params, socket), do: {:noreply, WorkModal.close(socket)}

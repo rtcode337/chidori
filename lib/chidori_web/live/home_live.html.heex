@@ -104,6 +104,42 @@
             まだ興味トピックの要約がありません（{@panel.topic.name}の画面で、トピックの網の札から興味トピックを選ぶと書かれるようになります）。
           </p>
         <% end %>
+        <%!-- 公開中（放送中）の注目作。**要約の下に**（要約は 1 日 1 本で、いま観られる作品の
+           顔ぶれは見渡せない）。押すと詳細が開く（最新情報の画面の注目作と同じ） --%>
+        <% group = if kind == :main, do: started_works(@works, @panel.topic) %>
+        <%= if group do %>
+          <% {label, list} = group %>
+          <section class="event-day-list home-works">
+            <h2 class="news-section-title">{label}の注目作（{length(list)} 本）</h2>
+            <ul>
+              <li
+                :for={entry <- list}
+                class={["event-item", "is-#{entry.attention}", "is-work"]}
+                phx-click="open_work"
+                phx-value-title={entry.title}
+                role="button"
+                tabindex="0"
+              >
+                <img
+                  :if={NewsLive.entry_thumb(entry)}
+                  class="event-thumb"
+                  src={NewsLive.entry_thumb(entry)}
+                  alt=""
+                  loading="lazy"
+                />
+                <div class="event-item-head">
+                  <span :if={entry.attention} class={["event-chip", "is-#{entry.attention}"]}>
+                    注目度 {NewsLive.attention_label(entry.attention)}
+                  </span>
+                  <strong>{entry.title}</strong>
+                </div>
+                <p class="event-item-facts">
+                  {NewsLive.work_facts(entry, Chidori.Topics.works(@panel.topic))}
+                </p>
+              </li>
+            </ul>
+          </section>
+        <% end %>
         <p><a href={~p"/news?view=#{@panel.topic.collection}"}>{@panel.topic.name}の画面へ</a></p>
       </section>
 

@@ -1,0 +1,182 @@
+defmodule ChidoriWeb.TheaterPanel do
+  @moduledoc """
+  映画の画面の「映画館」の欄。近くの映画館を探してお気に入りに入れ（`Chidori.News.Theaters`）、
+  お気に入りの館で、選んだ映画を指定の時刻より後に上映する回を調べる（`Chidori.News.Showtimes`）。
+
+  押したときの動き（`theaters_near` / `theaters_near_place` / `favorite_theater` /
+  `unfavorite_theater` / `ask_showtimes`）は置いた画面（`ChidoriWeb.NewsLive`）が受けます。
+  現在地は `TheaterNearby`（`assets/js/theater_nearby.js`）が取って送ります。
+  """
+
+  use ChidoriWeb, :html
+
+  alias Chidori.Jst
+
+  attr :search, :any, default: nil
+  attr :favorites, :list, default: []
+  attr :showing, :list, default: []
+  attr :backends, :any, default: nil
+  attr :showtimes, :any, default: nil
+  attr :form, :map, default: %{}
+
+  def panel(assigns) do
+    assigns = assign(assigns, favorite_ids: MapSet.new(assigns.favorites, & &1.id))
+
+    ~H"""
+    <section class="event-calendar theater-panel" aria-label="映画館">
+      <h2 class="news-section-title">映画館</h2>
+
+      <%!-- 近くの映画館を探す。**地域の名前か現在地で**（地図辞典の映画館から近い順） --%>
+      <div class="theater-find">
+        <form phx-submit="theaters_near_place" class="theater-find-form">
+          <label>
+            地域
+            <input type="text" name="region" placeholder="例: 新宿" autocomplete="off" required />
+          </label>
+          <button type="submit" phx-disable-with="探しています…">近くの映画館を探す</button>
+        </form>
+        <div id="theater-nearby" phx-hook="TheaterNearby" class="theater-here">
+          <button type="button">現在地の近くを探す</button>
+          <span class="muted-note" data-status></span>
+        </div>
+      </div>
+      <p :if={@search == :loading} class="muted-note">探しています…</p>
+      <p :if={match?({:error, _}, @search)} class="muted-note">{search_error(elem(@search, 1))}</p>
+      <%= if match?({:ok, _}, @search) do %>
+        <% {:ok, found} = @search %>
+        <p class="muted-note">
+          {found.place}から 5km 以内の映画館（{length(found.theaters)} 館。近い順）
+        </p>
+        <ul :if={found.theaters != []} class="theater-list">
+          <li :for={t <- found.theaters}>
+            <span class="theater-name">
+              <a :if={t.website} href={t.website} target="_blank" rel="noopener noreferrer">{t.name}</a>
+              <strong :if={!t.website}>{t.name}</strong>
+              <span class="muted-note">{distance_label(t.distance)}<span :if={t.address}> · {t.address}</span></span>
+            </span>
+            <button
+              :if={!MapSet.member?(@favorite_ids, t.id)}
+              type="button"
+              phx-click="favorite_theater"
+              phx-value-id={t.id}
+            >
+              お気に入りに入れる
+            </button>
+            <span :if={MapSet.member?(@favorite_ids, t.id)} class="seen-badge">お気に入り</span>
+          </li>
+        </ul>
+      <% end %>
+
+      <h3>お気に入りの映画館</h3>
+      <p :if={@favorites == []} class="muted-note">まだありません。上で探してお気に入りに入れてください。</p>
+      <ul :if={@favorites != []} class="theater-list">
+        <li :for={t <- @favorites}>
+          <span class="theater-name">
+            <a :if={t.website} href={t.website} target="_blank" rel="noopener noreferrer">{t.name}</a>
+            <strong :if={!t.website}>{t.name}</strong>
+            <span :if={t.address} class="muted-note">{t.address}</span>
+          </span>
+          <button
+            type="button"
+            phx-click="unfavorite_theater"
+            phx-value-id={t.id}
+            data-confirm={"「#{t.name}」をお気に入りから外します。よろしいですか？"}
+          >
+            外す
+          </button>
+        </li>
+      </ul>
+
+      <%!-- 上映スケジュール。**押したときだけ** AI に web で調べさせる（枠を 1 回使い、数十秒〜数分かかる） --%>
+      <h3>上映スケジュール</h3>
+      <p :if={@favorites == []} class="muted-note">お気に入りの映画館を入れると調べられます。</p>
+      <form :if={@favorites != []} phx-submit="ask_showtimes" class="showtime-form">
+        <label>
+          映画
+          <select name="title" required>
+            <option
+              :for={entry <- @showing}
+              value={entry.title}
+              selected={@form["title"] == entry.title}
+            >
+              {entry.title}
+            </option>
+          </select>
+        </label>
+        <label>
+          日付 <input type="date" name="date" value={@form["date"] || Date.to_iso8601(Jst.today())} />
+        </label>
+        <label>
+          この時刻より後 <input type="time" name="from" value={@form["from"] || now_text()} />
+        </label>
+        <label :if={match?({:ok, [_ | _]}, @backends)}>
+          調べる AI
+          <select name="backend">
+            <option
+              :for={b <- elem(@backends, 1)}
+              value={b.id}
+              selected={@form["backend"] == b.id}
+            >
+              {b.label}
+            </option>
+          </select>
+        </label>
+        <button
+          type="submit"
+          disabled={@showtimes == :loading or not match?({:ok, [_ | _]}, @backends)}
+        >
+          {if @showtimes == :loading, do: "調べています…", else: "お気に入りの館で調べる"}
+        </button>
+      </form>
+      <p :if={@favorites != [] and match?({:ok, []}, @backends)} class="muted-note">
+        web で調べられる AI が Chiezo にありません（Chiezo の AI 設定で、CLI ブリッジの相手を有効にしてください）。
+      </p>
+      <p :if={@favorites != []} class="muted-note">
+        AI が各映画館のサイトで調べます（押すたびに AI を 1 回使い、数十秒〜数分かかります）。
+        上映時刻は変わることがあるので、出どころの頁で確かめてください。
+      </p>
+      <p :if={@showtimes == :loading} class="muted-note">調べています…（数分かかることがあります）</p>
+      <p :if={match?({:error, _}, @showtimes)} class="muted-note">
+        {showtime_error(elem(@showtimes, 1))}
+      </p>
+      <%= if match?({:ok, _}, @showtimes) do %>
+        <% {:ok, result} = @showtimes %>
+        <p class="muted-note">{result.title} / {result.date} {result.from} より後</p>
+        <div :if={result.theaters != []} class="showtime-results">
+          <section :for={t <- result.theaters} class="showtime-theater">
+            <h4>{t.name}</h4>
+            <ul :if={t.found} class="showtime-list">
+              <li :for={s <- t.showings}>
+                <strong>{s.start}</strong><span :if={s.end != ""}>〜{s.end}</span>
+                <span :if={s.format != ""} class="muted-note">{s.format}</span>
+              </li>
+            </ul>
+            <p :if={!t.found} class="muted-note">確かめられませんでした（または、この時刻より後の上映はありません）。</p>
+            <p :if={t.note != ""} class="muted-note">{t.note}</p>
+            <p :if={t.source} class="muted-note">
+              出どころ: <a href={t.source} target="_blank" rel="noopener noreferrer">{t.source}</a>
+            </p>
+          </section>
+        </div>
+        <%!-- 決めた形で返らなかったときは、答えの文をそのまま出す（捨てない） --%>
+        <pre :if={result.theaters == []} class="showtime-raw">{result.raw}</pre>
+      <% end %>
+    </section>
+    """
+  end
+
+  @doc "距離の書き方（1km 未満は m、それ以上は km を小数 1 桁）。"
+  def distance_label(m) when is_integer(m) and m < 1000, do: "#{m}m"
+  def distance_label(m) when is_integer(m), do: "#{Float.round(m / 1000, 1)}km"
+  def distance_label(_m), do: ""
+
+  defp now_text, do: Chidori.Notify.Setting.format(Jst.now_hm())
+
+  defp showtime_error(:busy), do: "いま調べている最中です。終わるまで待ってください。"
+  defp showtime_error(:bad_request), do: "映画・日付・時刻・調べる AI を選んでください。"
+  defp showtime_error(reason), do: "調べられませんでした: " <> ChidoriWeb.Collect.reason_text(reason)
+
+  defp search_error(:no_place), do: "その地域が地名の辞典に見つかりませんでした。"
+  defp search_error(:no_position), do: "現在地を取れませんでした（位置情報の利用を許可してください）。"
+  defp search_error(reason), do: "映画館を探せませんでした: " <> ChidoriWeb.Collect.reason_text(reason)
+end

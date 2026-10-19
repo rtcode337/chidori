@@ -228,8 +228,9 @@ defmodule ChidoriWeb.WorkModal do
       </span>
     </p>
     <%!-- **映画だけ**、近くで上映している映画館を Gemini（Google 検索の AI モード）に聞く。
-         地域を書けばその近く、空なら押したときにブラウザから現在地を取って聞く（`AskNearby`。
-         取れなければ場所を書かずに開く。AI モードの側でもおおよその場所は分かる）。
+         地域を書けばその近く、空なら「現在地を使う」で取った現在地の近くを聞く（`AskNearby`。
+         取れていなければ場所を書かずに開く。AI モードの側でもおおよその場所は分かる）。
+         **リンクは普通のリンクとして開く**（空のタブを開いてから行き先を入れると、PWA では白いまま残る）。
          **公開中か、1 週間以内に公開されるものだけ**（先の作品はまだどこも上映していない） --%>
     <div
       :if={@works == Movies and NewsLive.showing_soon?(@entry)}
@@ -250,6 +251,7 @@ defmodule ChidoriWeb.WorkModal do
           phx-update="ignore"
         />
       </label>
+      <button type="button" data-here>現在地を使う</button>
       <a
         href={NewsLive.theaters_url(@entry.title)}
         target="_blank"
@@ -257,6 +259,7 @@ defmodule ChidoriWeb.WorkModal do
       >
         近くの上映館を Gemini に聞く
       </a>
+      <span class="muted-note" data-status></span>
     </div>
     <div class="event-item-detail">
       <p :for={line <- @works.body_lines(@entry)}>

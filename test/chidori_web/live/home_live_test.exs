@@ -278,4 +278,21 @@ defmodule ChidoriWeb.HomeLiveTest do
     assert books < news and news < tech
     assert html =~ "data-drag-handle"
   end
+
+  describe "作品を育てる話題の要約の枠" do
+    test "始まっている注目作（映画なら公開中）だけを、見出しつきで返す" do
+      topic = Enum.find(Chidori.Topics.list(), &(&1[:works] == Chidori.News.Movies))
+      today = Chidori.Jst.today()
+
+      entries = [
+        %{title: "公開中", date: Date.add(today, -3), attention: :high, tags: []},
+        %{title: "これから", date: Date.add(today, 10), attention: :high, tags: []}
+      ]
+
+      assert {"公開中", [%{title: "公開中"}]} =
+               ChidoriWeb.HomeLive.started_works({:ok, entries}, topic)
+
+      assert ChidoriWeb.HomeLive.started_works(:loading, topic) == nil
+    end
+  end
 end

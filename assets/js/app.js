@@ -43,6 +43,8 @@ import AutoHeight from "./auto_height"
 import PageScroll from "./page_scroll"
 // 映画の札の「近くの上映館を Gemini に聞く」。押したときに現在地を添える
 import AskNearby from "./ask_nearby"
+// 映画の画面の「現在地の近くを探す」（映画館）。押したときに現在地をサーバーへ送る
+import TheaterNearby from "./theater_nearby"
 // 設定の「通知」タブの「この端末に通知を送る」（Web Push の購読）
 import WebPush from "./web_push"
 import topbar from "../vendor/topbar"
@@ -51,7 +53,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, PartitionMap, PrefectureMap, AreaDraw, RelationMap, DownloadLink, DigestSwipe, PanelSwipe, TopicMap, SortableList, ScrollTabs, AutoHeight, PageScroll, AskNearby, WebPush},
+  hooks: {...colocatedHooks, PartitionMap, PrefectureMap, AreaDraw, RelationMap, DownloadLink, DigestSwipe, PanelSwipe, TopicMap, SortableList, ScrollTabs, AutoHeight, PageScroll, AskNearby, TheaterNearby, WebPush},
 })
 
 // Show progress bar on live navigation and form submits

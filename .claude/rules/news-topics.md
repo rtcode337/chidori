@@ -13,11 +13,13 @@ paths:
   - "lib/chidori_web/components/topic_map.ex"
   - "lib/chidori_web/components/ai_digests.ex"
   - "lib/chidori_web/components/work_modal.ex"
+  - "lib/chidori_web/components/theater_panel.ex"
   - "lib/chidori_web/components/top_books.ex"
   - "assets/js/topic_map.js"
   - "assets/js/digest_swipe.js"
   - "assets/js/panel_swipe.js"
   - "assets/js/ask_nearby.js"
+  - "assets/js/theater_nearby.js"
   - "test/chidori/news/**"
   - "test/chidori/themes/**"
   - "test/chidori/news_test.exs"
@@ -38,6 +40,12 @@ paths:
   記事は Chiezo の期限で消えるに任せ、原文の写しは持たない。タブは話題の最後の「お気に入り」（`?view=favorites`。話題は nil にする）
 - 映画・アニメは 1 件 = 1 作品（`works`）。お笑いイベントは整理の回を置かず情報収集の回に寄せる。先の月は `look_ahead` で 1 回 1 区切りずつ、次の区切りは Chiezo のカーソルに覚えさせる
 - 作品の絵は Chiezo が 1 回だけ取って縮めて持つ（`thumbs`）。画面から外のサイトの絵を直に指さない
+- 映画の画面の「映画館」（`ChidoriWeb.TheaterPanel`）: 映画館は店舗辞典（`overture_japan`）の `cinema` のうち `category=cinema` を
+  点の周りの四角で引く（`Chidori.News.Theaters`。AI なし）。お気に入りは `chidori_data` の種類 `theaters`（鍵は店舗辞典の id、住所・サイト・座標は `detail`）。
+  上映時刻は押したときだけ Chiezo の `/v1/ai/complete`（`web: true`。頼める相手は web を持つ相手から画面で選ぶ）に JSON で返させる（`Chidori.News.Showtimes`）。
+  確かめられなかった館は推し量らせず「分からない」。出どころの頁を添える
+- 「近くの上映館を Gemini に聞く」は普通のリンクとして開く（`ask_nearby.js`）。空のタブを開いてから行き先を入れると PWA で白いまま残る
+- トップの映画・アニメの要約の枠には、要約の下に公開中・放送中の注目作を並べる（`HomeLive.started_works/2`）
 - 重要度（AI の印）・話題度（反応の判断）・興味度（選んだ語への近さ）は別の軸。混ぜない。低いものも消さない（並びであってふるい分けではない）
 - 整理はまとめに触らない。まとめは直近の窓ではなくタグで引き直す。出典は見出しで Chiezo から引き直す
 - 重複は見出しではなく URL で確かめさせる。まとめは記事の URL を名乗らない

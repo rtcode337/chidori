@@ -1257,3 +1257,21 @@ a.top-book-cover { display: block; }
 .recipe-steps li { margin: .3rem 0; line-height: 1.7; }
 .recipe-roster { display: flex; flex-wrap: wrap; gap: .4rem .8rem; align-items: end; margin-top: 1rem; padding-top: .8rem; border-top: 1px solid #e8eaf3; }
 .recipe-roster label { display: flex; flex-direction: column; gap: .2rem; font-size: .8rem; color: #5b6275; }
+/* 映画の画面の「映画館」（`ChidoriWeb.TheaterPanel`）。近くの館を探してお気に入りに入れ、お気に入りの館で上映時刻を調べる */
+.theater-panel h3 { margin: 1rem 0 .4rem; font-size: .95rem; color: #332c75; }
+.theater-find { display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; align-items: end; margin: .4rem 0; }
+.theater-find-form, .showtime-form { display: flex; flex-wrap: wrap; gap: .5rem .8rem; align-items: end; }
+.theater-find-form label, .showtime-form label { display: flex; flex-direction: column; gap: .2rem; font-size: .8rem; color: #5b6275; }
+.theater-here { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.theater-list { margin: .4rem 0 0; padding: 0; list-style: none; display: grid; gap: .4rem; }
+.theater-list li { display: flex; justify-content: space-between; align-items: center; gap: .6rem; padding: .45rem .6rem; border: 1px solid #e2e5ef; border-radius: .6rem; background: #fff; }
+.theater-name { display: flex; flex-direction: column; min-width: 0; }
+.theater-name a { color: #4a3fc0; font-weight: 700; }
+.theater-list li button { flex: none; white-space: nowrap; }
+.showtime-results { display: grid; gap: .6rem; margin-top: .6rem; }
+.showtime-theater { padding: .6rem .8rem; border: 1px solid #e2e5ef; border-radius: .6rem; background: #fff; }
+.showtime-theater h4 { margin: 0 0 .3rem; font-size: .9rem; }
+.showtime-theater a { overflow-wrap: anywhere; }
+.showtime-list { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: .3rem .9rem; }
+.showtime-raw { white-space: pre-wrap; font-size: .8rem; }
+.ask-nearby button { padding: .2rem .6rem; font-size: .8rem; }

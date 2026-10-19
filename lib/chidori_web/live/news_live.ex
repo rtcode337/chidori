@@ -29,6 +29,8 @@ defmodule ChidoriWeb.NewsLive do
   alias Chidori.News.Favorites
   alias Chidori.News.Interests
   alias Chidori.News.Movies
+  alias Chidori.News.Showtimes
+  alias Chidori.News.Theaters
   alias Chidori.Notify
   alias Chidori.Notify.Setting
   alias Chidori.Notify.Settings
@@ -93,7 +95,14 @@ defmodule ChidoriWeb.NewsLive do
         cal_places: [],
         # 注目作の一覧（作品を育てる話題だけ。`Chidori.Topics.works/1`）。
         # 読み込み中は `:loading`、読めたら `{:ok, [entry]}`
-        works: nil
+        works: nil,
+        # 映画館（映画の話題だけ。`ChidoriWeb.TheaterPanel`）: 探した結果・お気に入り・
+        # 上映時刻を頼める AI・調べた結果・フォームに入れた値（読み直しで戻らないように覚える）
+        theater_search: nil,
+        theater_favorites: [],
+        showtime_backends: nil,
+        showtimes: nil,
+        showtime_form: %{}
       )
 
     socket =
@@ -152,6 +161,11 @@ defmodule ChidoriWeb.NewsLive do
         cal_day: nil,
         cal_places: [],
         works: nil,
+        theater_search: nil,
+        theater_favorites: if(movies?(topic), do: Theaters.favorites(), else: []),
+        showtime_backends: nil,
+        showtimes: nil,
+        showtime_form: %{},
         # 作品に付けた「見た」印とメモ（作品の見出し → 印。`Chidori.Relations.Marks`）
         work_marks: work_marks(topic),
         work_mark_saved: nil,
@@ -168,7 +182,21 @@ defmodule ChidoriWeb.NewsLive do
      |> load_themes()
      |> load_calendar()
      |> load_works()
+     |> load_showtime_backends()
      |> load_ai_digests()}
+  end
+
+  defp movies?(topic), do: topic != nil and Topics.works(topic) == Movies
+
+  # 上映時刻を頼める AI（映画の話題だけ。web を持つ相手）。押す前に選べるよう、開いたときに読む
+  defp load_showtime_backends(socket) do
+    base = News.chiezo_base_url()
+
+    if connected?(socket) and movies?(socket.assigns.topic) and base do
+      start_async(socket, :showtime_backends, fn -> Showtimes.backends(base) end)
+    else
+      socket
+    end
   end
 
   # **通知を押して来たら、いちばん新しいまとめを全画面で開く。** 通知の本文は要旨だけ
@@ -609,6 +637,102 @@ defmodule ChidoriWeb.NewsLive do
   # 目次の項目から開いたときは、その章から見せる（`section`）
   # **作品を押すと詳細を開く**（`ChidoriWeb.WorkModal`）。探すのは注目作の一覧と
   # カレンダーの両方で、どちらにも無ければ（要約から開いた作品）Chiezo から引く
+  # 映画館を探す（地域の名前で / 現在地で）。地図辞典を読むだけで AI は使わない
+  def handle_event("theaters_near_place", %{"region" => region}, socket) do
+    case {News.chiezo_base_url(), String.trim(region)} do
+      {nil, _} ->
+        {:noreply, assign(socket, theater_search: {:error, :chiezo_not_configured})}
+
+      {_base, ""} ->
+        {:noreply, socket}
+
+      {base, region} ->
+        {:noreply,
+         socket
+         |> assign(theater_search: :loading)
+         |> start_async(:theater_search, fn -> Theaters.near_place(base, region) end)}
+    end
+  end
+
+  def handle_event("theaters_near", %{"lat" => lat, "lon" => lon}, socket)
+      when is_number(lat) and is_number(lon) do
+    case News.chiezo_base_url() do
+      nil ->
+        {:noreply, assign(socket, theater_search: {:error, :chiezo_not_configured})}
+
+      base ->
+        {:noreply,
+         socket
+         |> assign(theater_search: :loading)
+         |> start_async(:theater_search, fn ->
+           with {:ok, theaters} <- Theaters.near(base, lat, lon),
+                do: {:ok, %{place: "現在地", theaters: theaters}}
+         end)}
+    end
+  end
+
+  # 現在地を取れなかった（断られた・時間切れ）
+  def handle_event("theaters_near", _params, socket),
+    do: {:noreply, assign(socket, theater_search: {:error, :no_position})}
+
+  def handle_event("favorite_theater", %{"id" => id}, socket) do
+    with {:ok, %{theaters: theaters}} <- socket.assigns.theater_search,
+         %{} = theater <- Enum.find(theaters, &(&1.id == id)),
+         {:ok, _doc_id} <- Theaters.add(theater) do
+      {:noreply, assign(socket, theater_favorites: Theaters.favorites())}
+    else
+      _other -> {:noreply, put_flash(socket, :error, "お気に入りに入れられませんでした。")}
+    end
+  end
+
+  def handle_event("unfavorite_theater", %{"id" => id}, socket) do
+    case Theaters.remove(id) do
+      :ok -> {:noreply, assign(socket, theater_favorites: Theaters.favorites())}
+      _error -> {:noreply, put_flash(socket, :error, "お気に入りから外せませんでした。")}
+    end
+  end
+
+  # 上映スケジュールを AI に調べさせる。**重ねて押しても 1 本**（押すたびに枠を使う）
+  def handle_event("ask_showtimes", params, socket) do
+    form = Map.take(params, ["title", "date", "from", "backend"])
+    base = News.chiezo_base_url()
+    favorites = socket.assigns.theater_favorites
+
+    with true <- base != nil,
+         title when is_binary(title) and title != "" <- form["title"],
+         {:ok, date} <- Date.from_iso8601(form["date"] || ""),
+         {:ok, from} <- Setting.parse(form["from"] || ""),
+         backend when is_binary(backend) and backend != "" <- form["backend"] do
+      pid = self()
+
+      started =
+        Chidori.SingleFlight.start(:showtimes, fn ->
+          result =
+            with {:ok, found} <- Showtimes.ask(base, backend, title, favorites, date, from) do
+              {:ok,
+               Map.merge(found, %{
+                 title: title,
+                 date: Date.to_iso8601(date),
+                 from: Setting.format(from)
+               })}
+            end
+
+          send(pid, {:showtimes, result})
+        end)
+
+      case started do
+        {:ok, _pid} ->
+          {:noreply, assign(socket, showtimes: :loading, showtime_form: form)}
+
+        {:error, :busy} ->
+          {:noreply, assign(socket, showtimes: {:error, :busy}, showtime_form: form)}
+      end
+    else
+      _invalid ->
+        {:noreply, assign(socket, showtimes: {:error, :bad_request}, showtime_form: form)}
+    end
+  end
+
   def handle_event("open_work", %{"title" => title}, socket) do
     entries =
       Enum.flat_map([socket.assigns.works, socket.assigns.cal_events], fn
@@ -822,6 +946,18 @@ defmodule ChidoriWeb.NewsLive do
   end
 
   # **見ている話題の答えだけ受け取る**（タブを続けて切り替えると、前の話題の答えが後から届く）
+  def handle_async(:theater_search, {:ok, result}, socket),
+    do: {:noreply, assign(socket, theater_search: result)}
+
+  def handle_async(:theater_search, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, theater_search: {:error, :collection_crashed})}
+
+  def handle_async(:showtime_backends, {:ok, result}, socket),
+    do: {:noreply, assign(socket, showtime_backends: result)}
+
+  def handle_async(:showtime_backends, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, showtime_backends: {:error, :collection_crashed})}
+
   def handle_async({:works, collection}, result, socket) do
     if socket.assigns.topic && socket.assigns.topic.collection == collection do
       works =
@@ -906,6 +1042,8 @@ defmodule ChidoriWeb.NewsLive do
   @impl true
   # まとめを作らせている最中の一言。**収集の状態とは別に受ける** ——
   # 状態に混ぜると、届くたびに画面ぜんたいが書き換わる
+  def handle_info({:showtimes, result}, socket), do: {:noreply, assign(socket, showtimes: result)}
+
   def handle_info({:digest_progress, collection, message}, socket) do
     topic = socket.assigns.topic
 
@@ -1596,6 +1734,20 @@ defmodule ChidoriWeb.NewsLive do
   def attention_label(:mid), do: "中"
   def attention_label(:low), do: "低"
   def attention_label(_attention), do: ""
+
+  @doc """
+  上映時刻を調べられる作品（映画館の欄の選択肢）。**公開中か、1 週間以内に公開される注目作**
+  （`showing_soon?/1`。先の作品はまだどこも上映していない）を、注目度の高い順に。
+  """
+  def showing_works({:ok, entries}) do
+    from = Date.add(Jst.today(), -Movies.recent_days())
+
+    entries
+    |> Enum.filter(&(showing_soon?(&1) and Date.compare(&1.date, from) != :lt))
+    |> Enum.sort_by(&{rank(&1.attention), -Date.to_gregorian_days(&1.date)})
+  end
+
+  def showing_works(_works), do: []
 
   @doc """
   注目作の一覧の並び。**公開中（新しい順）とこれから（近い順）に分けます** ——

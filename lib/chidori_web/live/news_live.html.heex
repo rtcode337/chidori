@@ -384,6 +384,18 @@
       <% end %>
     </section>
 
+    <%!-- 映画館（映画の話題だけ）。近くの館を探してお気に入りに入れ、お気に入りの館で上映時刻を調べる。
+         調べる映画は**公開中の注目作**から選ぶ（これからの作品はまだどこも上映していない） --%>
+    <ChidoriWeb.TheaterPanel.panel
+      :if={@topic && Chidori.Topics.works(@topic) == Chidori.News.Movies}
+      search={@theater_search}
+      favorites={@theater_favorites}
+      showing={showing_works(@works)}
+      backends={@showtime_backends}
+      showtimes={@showtimes}
+      form={@showtime_form}
+    />
+
     <%!-- 全画面の要約。**左右のスワイプで前後の要約へ**（`digest_viewer/1`） --%>
     <.digest_viewer
       news={@news}

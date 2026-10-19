@@ -62,6 +62,16 @@ defmodule Chidori.Jst do
     now |> DateTime.add(@offset_seconds, :second) |> DateTime.to_date()
   end
 
+  @doc "曜日（「月曜」…「日曜」）。日付は日本の暦のまま読む。"
+  def weekday_label(%Date{} = date),
+    do: Enum.at(~w(月曜 火曜 水曜 木曜 金曜 土曜 日曜), Date.day_of_week(date) - 1)
+
+  @doc "いまの日本時間の `{時, 分}`。"
+  def now_hm(now \\ DateTime.utc_now()) do
+    jst = DateTime.add(now, @offset_seconds, :second)
+    {jst.hour, jst.minute}
+  end
+
   @doc """
   日本時間の「その日の何時何分」を UTC で返します。
 
