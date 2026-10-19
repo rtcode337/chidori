@@ -318,6 +318,9 @@ defmodule Chidori.Datasets.GourmetTest do
       # 段の中身は同じ文（片方が直したものをもう片方が戻さない）
       assert scan =~ "**料理は 1 回に 20 品まで**"
       assert scan =~ "**1 回に 30 件まで**"
+      # 空欄の段を飛ばさせない（全部でなくて構わない、とは書かない）
+      assert scan =~ "**3 もこの回の主な仕事です。飛ばさないでください。**"
+      refute scan =~ "3 は全部でなくて構いません"
     end
 
     test "画面で選んだ相手を巡回に載せる" do
