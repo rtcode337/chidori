@@ -41,14 +41,17 @@ paths:
   記事は Chiezo の期限で消えるに任せ、原文の写しは持たない。タブは話題の最後の「お気に入り」（`?view=favorites`。話題は nil にする）
 - 映画・アニメは 1 件 = 1 作品（`works`）。お笑いイベントは整理の回を置かず情報収集の回に寄せる。先の月は `look_ahead` で 1 回 1 区切りずつ、次の区切りは Chiezo のカーソルに覚えさせる
 - 作品の絵は Chiezo が 1 回だけ取って縮めて持つ（`thumbs`）。画面から外のサイトの絵を直に指さない
-- 映画の画面の「映画館」（`ChidoriWeb.TheaterPanel`）: 映画館は店舗辞典（`overture_japan`）の `cinema` のうち `category=cinema` を
-  点の周りの四角で引く（`Chidori.News.Theaters`。AI なし）。同じ館の重なり（英語名・旧名・同じサイト）は `dedupe/1` でまとめ、
-  試写室・会社・確からしさ 0.6 未満は出さない。地名は候補を出して選ばせる（`places/2`。駅 → 市区町村 → そのほか）。お気に入りは `chidori_data` の種類 `theaters`（鍵は店舗辞典の id、住所・サイト・座標は `detail`）。
+- 映画の画面の「映画館」（`ChidoriWeb.TheaterPanel`）: 映画館は **AI に web で探させる**（`Chidori.News.TheaterFinder`）。
+  出発地（駅名・地名か現在地）から決めた時間（既定 30 分）以内に**着ける**館を、着くまでの時間が短い順に（直線の距離ではない）。
+  同じ館は 1 つにまとめさせ、営業中の館だけ。AI が挙げた館は店舗辞典（`overture_japan` の `category=cinema`。試写室・会社・
+  確からしさ 0.6 未満を除く。`Theaters.to_theater/1`）と名前（`Theaters.similar_name?/2`。会社の名前だけでは当てない）と
+  市区町村で突き合わせ、合わない館には「辞典で確かめられない」と印を付ける。お気に入りは `chidori_data` の種類 `theaters`
+  （鍵は店舗辞典の id か `ai:<名前>`、住所・サイト・座標・駅は `detail`）。
   上映時刻は押したときだけ Chiezo の `/v1/ai/complete`（`web: true`。頼める相手は web を持つ相手から画面で選ぶ）に JSON で返させる（`Chidori.News.Showtimes`）。
   確かめられなかった館は推し量らせず「分からない」。出どころの頁を添える。答えは館をまたいで上映の始まる順に 1 本に並べる
-  （`TheaterPanel.timeline/1`）。お気に入りの館は最寄り駅で場所を言う（`Theaters.nearest_station/3`。入れるときに引いて残し、
-  前からある館は `fill_stations/1` で足す）。答えは画面に直接送らず `ShowtimeStore` に置いて
-  PubSub で知らせる（調べている最中に画面を移っても、戻ってきた画面が読める）
+  （`TheaterPanel.timeline/1`）。お気に入りの館は最寄り駅で場所を言う（座標があれば `Theaters.nearest_station/3` で徒歩の目安、
+  無ければ AI が書いた駅）。AI に頼んだ答え（映画館を探した答え・上映時刻）は画面に直接送らず `AskStore` に置いて
+  PubSub で知らせる（頼んでいる最中に画面を移っても、戻ってきた画面が読める）
 - 「近くの上映館を Gemini に聞く」は普通のリンクとして開く（`ask_nearby.js`）。空のタブを開いてから行き先を入れると PWA で白いまま残る
 - トップの映画・アニメの要約の枠には、要約の下に公開中・放送中の注目作を並べる（`HomeLive.started_works/2`。見た印も出す）
 - 上映スケジュールを調べる動きは画面どうしで共通（`ChidoriWeb.ShowtimeAsk`）。映画館の欄と、作品の詳細の欄

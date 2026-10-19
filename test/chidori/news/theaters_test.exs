@@ -27,75 +27,7 @@ defmodule Chidori.News.TheatersTest do
     }
   end
 
-  describe "近くの映画館" do
-    test "映画館が主な場所だけを、近い順に（商業施設は外す）" do
-      test_pid = self()
-
-      Chidori.HttpStub.stub(fn %{url: url} ->
-        send(test_pid, {:asked, url |> URI.parse() |> Map.get(:query) |> URI.decode_query()})
-
-        Chidori.HttpStub.ok(
-          Jason.encode!(%{
-            "results" => [
-              cinema("far", "遠い館", 35.70, 139.77),
-              cinema("near", "近い館", 35.6815, 139.7670),
-              cinema("mall", "商業施設", 35.6813, 139.7668, "category=shopping_center")
-            ]
-          })
-        )
-      end)
-
-      assert {:ok, [near, far]} = Theaters.near(@base, 35.6812, 139.7671)
-      assert {near.name, far.name} == {"近い館", "遠い館"}
-      assert near.distance < far.distance
-      assert near.website == "https://example.com/near"
-      assert_received {:asked, %{"tag" => "cinema", "bbox" => _bbox}}
-    end
-
-    test "距離は大円距離（m）" do
-      # 東京駅から有楽町駅のあたりまで、おおよそ 800m
-      assert Theaters.distance(35.6812, 139.7671, 35.6751, 139.7630) in 700..900
-    end
-  end
-
-  describe "同じ館をまとめる" do
-    defp t(name, lat, lon, opts \\ []) do
-      %{
-        id: name,
-        name: name,
-        lat: lat,
-        lon: lon,
-        website: opts[:website],
-        address: nil,
-        confidence: opts[:confidence] || 0.9
-      }
-    end
-
-    test "英語名の写し・同じサイト・名前の重なりは 1 つにし、日本語名でサイトのあるほうを残す" do
-      kept =
-        Theaters.dedupe([
-          t("TOHO Cinemas Shinjuku", 35.6950, 139.7020, website: "http://hlo.tohotheater.jp/x"),
-          t("TOHOシネマズ 新宿", 35.6951, 139.7021, website: "https://www.tohotheater.jp"),
-          t("White Cine Quinto", 35.6610, 139.6985, website: "https://www.cinequinto.com"),
-          t("シネクイント", 35.6615, 139.6990, website: "http://www.cinequinto.com"),
-          t("ポレポレ東中野", 35.7070, 139.6830),
-          t("東中野ポレポレ座", 35.7075, 139.6834)
-        ])
-
-      assert Enum.sort(Enum.map(kept, & &1.name)) ==
-               ["シネクイント", "ポレポレ東中野", "TOHOシネマズ 新宿"] |> Enum.sort()
-    end
-
-    test "同じ建物の別の館（どちらも日本語名で、サイトも名前も違う）はまとめない" do
-      kept =
-        Theaters.dedupe([
-          t("シネマート新宿", 35.6905, 139.7040, website: "http://www.cinemart.co.jp/theater/shinjuku/"),
-          t("角川シネマ新宿", 35.6906, 139.7041, website: "https://ej-anime-t.jp/shinjuku/")
-        ])
-
-      assert length(kept) == 2
-    end
-
+  describe "辞典の映画館" do
     test "試写室と、辞典の確からしさが低い場所は出さず、名前の後ろの英語名と番号は落とす" do
       doc = fn name, confidence ->
         %{
@@ -120,54 +52,113 @@ defmodule Chidori.News.TheatersTest do
     end
   end
 
-  describe "地域の候補" do
-    test "駅 → 市区町村 → そのほかの順に、都道府県を添えて並べる" do
-      Chidori.HttpStub.stub(fn %{url: url} ->
-        uri = URI.parse(url)
-        query = URI.decode_query(uri.query || "")
+  describe "AI に探させた映画館" do
+    alias Chidori.News.TheaterFinder
 
-        cond do
-          String.ends_with?(uri.path, "/search") ->
-            Chidori.HttpStub.ok(
-              Jason.encode!(%{
-                "results" => [%{"title" => "川崎"}, %{"title" => "川崎市"}, %{"title" => "川崎駅前"}]
-              })
-            )
+    @answer """
+    探しました。
+    {"theaters": [
+      {"name": "遠い館", "station": "立川駅", "access": "JR 中央線で 20 分", "minutes": 28,
+       "address": "東京都立川市曙町2-1", "website": "https://example.com/far"},
+      {"name": "TOHOシネマズ新宿", "station": "新宿駅", "access": "徒歩 5 分", "minutes": 5,
+       "address": "東京都新宿区歌舞伎町1-19-1", "website": "https://example.com/toho"},
+      {"name": "TOHO シネマズ 新宿", "station": "新宿駅", "access": "徒歩 5 分", "minutes": 6,
+       "address": "東京都新宿区歌舞伎町1-19-1", "website": null},
+      {"name": "存在しない館", "station": "中野駅", "access": "JR で 1 駅", "minutes": 12,
+       "address": "東京都中野区中野5-1", "website": null}
+    ]}
+    """
 
-          query["title"] == "川崎" ->
-            Chidori.HttpStub.ok(
-              Jason.encode!(%{
-                "title" => "川崎",
-                "extra" => %{
-                  "lat" => 35.9,
-                  "lon" => 139.5,
-                  "area" => "埼玉県",
-                  "feature" => "place=quarter"
+    test "答えを読み、同じ館は 1 つにし、着くまでの時間が短い順に並べる" do
+      assert ["TOHOシネマズ新宿", "存在しない館", "遠い館"] =
+               TheaterFinder.parse(@answer) |> Enum.map(& &1.name)
+
+      assert TheaterFinder.parse("ごめんなさい") == []
+    end
+
+    test "辞典の映画館と名前と住所で突き合わせ、合わない館には印を付ける" do
+      cinemas = [
+        %{
+          id: "ov1",
+          name: "TOHOシネマズ 新宿",
+          address: "歌舞伎町1-19-1 新宿区",
+          website: "https://www.tohotheater.jp",
+          lat: 35.69,
+          lon: 139.70
+        },
+        %{
+          id: "ov2",
+          name: "TOHOシネマズ 府中",
+          address: "東京都府中市宮町1-50",
+          website: nil,
+          lat: 35.67,
+          lon: 139.47
+        }
+      ]
+
+      [toho, missing, _far] =
+        TheaterFinder.parse(@answer) |> Enum.map(&TheaterFinder.match(&1, cinemas))
+
+      assert %{id: "ov1", verified: true, lat: 35.69} = toho
+      assert %{id: "ai:存在しない館", verified: false, lat: nil} = missing
+    end
+
+    test "名前は会社の名前だけでは当てない（TOHO の新宿と府中は別の館）" do
+      alias Chidori.News.Theaters
+      assert Theaters.similar_name?("TOHOシネマズ新宿", "TOHOシネマズ 新宿 (TOHO CINEMAS Shinjuku)")
+      refute Theaters.similar_name?("TOHOシネマズ新宿", "TOHOシネマズ 府中")
+    end
+
+    test "頼む文に、出発地・時間の上限・時間の短い順・同じ館をまとめることを書く" do
+      prompt = TheaterFinder.prompt("新宿駅", 30)
+      assert prompt =~ "出発地: 新宿駅"
+      assert prompt =~ "30 分以内に着ける映画館"
+      assert prompt =~ "着くまでの時間が短い順"
+      assert prompt =~ "同じ映画館は 1 つにまとめて"
+      assert TheaterFinder.prompt({35.68123, 139.76712}, 15) =~ "出発地: 現在地（35.6812,139.7671）"
+    end
+
+    test "web を開いて頼み、辞典で確かめた答えを返す" do
+      TheaterFinder.forget_cinemas()
+      on_exit(&TheaterFinder.forget_cinemas/0)
+      test_pid = self()
+
+      Chidori.HttpStub.stub(fn
+        %{method: :post, url: url, body: body} ->
+          send(test_pid, {:asked, url, Jason.decode!(body)})
+          Chidori.HttpStub.ok(Jason.encode!(%{"content" => @answer}))
+
+        %{method: :get, url: url} ->
+          assert url =~ "/v1/overture_japan/filter?"
+
+          Chidori.HttpStub.ok(
+            Jason.encode!(%{
+              "results" => [
+                %{
+                  "title" => "TOHOシネマズ 新宿 (TOHO CINEMAS Shinjuku)",
+                  "extra" => %{
+                    "overture_id" => "ov1",
+                    "feature" => "category=cinema",
+                    "lat" => 35.69,
+                    "lon" => 139.70,
+                    "address" => "歌舞伎町1-19-1 新宿区",
+                    "confidence" => 0.9
+                  }
                 }
-              })
-            )
-
-          query["title"] == "川崎市" ->
-            Chidori.HttpStub.ok(
-              Jason.encode!(%{
-                "title" => "川崎市",
-                "extra" => %{
-                  "lat" => 35.53,
-                  "lon" => 139.7,
-                  "area" => "神奈川県",
-                  "feature" => "place=city"
-                }
-              })
-            )
-
-          true ->
-            {:ok, %{status: 404, body: "{}"}}
-        end
+              ]
+            })
+          )
       end)
 
-      assert {:ok, [first, second]} = Theaters.places(@base, "川崎")
-      assert first.label == "川崎市（神奈川県）"
-      assert second.label == "川崎（埼玉県）"
+      assert {:ok, %{origin: "新宿駅", minutes: 30, theaters: [toho | _]}} =
+               TheaterFinder.ask(@base, "claude", "新宿駅", 30)
+
+      assert %{id: "ov1", verified: true} = toho
+
+      assert_received {:asked, url,
+                       %{"backend" => "claude", "web" => true, "requested_by" => "chidori"}}
+
+      assert url == @base <> "/v1/ai/complete"
     end
   end
 
@@ -293,18 +284,19 @@ defmodule Chidori.News.TheatersTest do
   end
 
   describe "調べた結果の置き場" do
-    alias Chidori.News.ShowtimeStore
+    alias Chidori.News.AskStore
 
     test "答えは画面ではなく置き場に残り、知らせも届く（調べている最中に画面を移っても読める）" do
       # 置き場はテストどうしで共有なので、空に戻しておく（残すと別のテストの画面が読む）
-      on_exit(fn -> ShowtimeStore.finished(nil) end)
-      Phoenix.PubSub.subscribe(Chidori.PubSub, ShowtimeStore.topic())
+      on_exit(fn -> AskStore.finished(:showtimes, nil) end)
+      Phoenix.PubSub.subscribe(Chidori.PubSub, AskStore.topic(:showtimes))
 
-      ShowtimeStore.started(%{"title" => "サンプル映画"})
+      AskStore.started(:showtimes, %{"title" => "サンプル映画"})
       assert_receive {:showtimes, :loading}
-      assert %{state: :loading, form: %{"title" => "サンプル映画"}} = ShowtimeStore.get()
+      assert %{state: :loading, form: %{"title" => "サンプル映画"}} = AskStore.get(:showtimes)
 
-      ShowtimeStore.finished(
+      AskStore.finished(
+        :showtimes,
         {:ok, %{theaters: [], raw: "", title: "サンプル映画", date: "2026-10-19", from: "18:00"}}
       )
 
@@ -312,7 +304,7 @@ defmodule Chidori.News.TheatersTest do
 
       # 頼んだときのフォームの値は残す（戻ってきた画面に同じ選び方を出す）
       assert %{state: {:ok, %{title: "サンプル映画"}}, form: %{"title" => "サンプル映画"}} =
-               ShowtimeStore.get()
+               AskStore.get(:showtimes)
     end
   end
 
@@ -325,13 +317,34 @@ defmodule Chidori.News.TheatersTest do
           search:
             {:ok,
              %{
-               place: "東京駅",
-               lat: 35.68,
-               lon: 139.76,
-               radius: 5_000,
+               origin: "新宿駅",
+               minutes: 30,
+               raw: "",
                theaters: [
-                 %{id: "t1", name: "サンプル館", address: nil, website: nil, distance: 420},
-                 %{id: "t2", name: "別の館", address: nil, website: nil, distance: 1530}
+                 %{
+                   id: "t1",
+                   name: "サンプル館",
+                   station: "新宿駅",
+                   access: "徒歩 5 分",
+                   minutes: 5,
+                   address: nil,
+                   website: nil,
+                   lat: 35.69,
+                   lon: 139.70,
+                   verified: true
+                 },
+                 %{
+                   id: "ai:別の館",
+                   name: "別の館",
+                   station: "中野駅",
+                   access: "JR で 1 駅",
+                   minutes: 12,
+                   address: nil,
+                   website: nil,
+                   lat: nil,
+                   lon: nil,
+                   verified: false
+                 }
                ]
              }},
           favorites: [%{id: "t1", name: "サンプル館", address: nil, website: nil}],
@@ -357,10 +370,11 @@ defmodule Chidori.News.TheatersTest do
              }}
         )
 
-      assert html =~ "東京駅から 5km 以内の映画館（2 館。近い順。同じ館の重なりはまとめています）"
-      assert html =~ "420m"
-      assert html =~ "1.5km"
-      assert html =~ ~s(phx-value-id="t2")
+      assert html =~ "新宿駅から 30 分以内に着ける映画館（2 館。着くまでの時間が短い順）"
+      assert html =~ "約 5 分"
+      assert html =~ "JR で 1 駅"
+      assert html =~ "辞典で確かめられない"
+      assert html =~ ~s(phx-value-id="ai:別の館")
       assert html =~ "お気に入りの館で調べる"
       assert html =~ "19:30"
       assert html =~ "確かめられませんでした"

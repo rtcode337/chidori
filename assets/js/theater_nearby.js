@@ -1,6 +1,6 @@
-// 映画の画面の「現在地の近くを探す」（`ChidoriWeb.TheaterPanel`）。押したときにブラウザから
-// 現在地を取って、サーバーへ送る（座標は送るだけで、どこにも残さない）。
-// 取れなければ（断られた・時間切れ・https でない）そう送り、画面に理由を出してもらう。
+// 映画の画面の「現在地を使う」（`ChidoriWeb.TheaterPanel`）。押したときにブラウザから
+// 現在地を取って、サーバーへ送る（出発地の欄が空のとき、AI に映画館を探させる出発地になる。
+// 座標はどこにも残さない）。取れなければ（断られた・時間切れ・https でない）そう送る。
 
 const TIMEOUT_MS = 8000
 
@@ -12,7 +12,7 @@ export default {
 
     this.onClick = () => {
       if (!navigator.geolocation) {
-        this.pushEvent("theaters_near", {})
+        this.pushEvent("theater_here", {})
         return
       }
       this.button.disabled = true
@@ -24,11 +24,11 @@ export default {
       navigator.geolocation.getCurrentPosition(
         ({coords}) => {
           done()
-          this.pushEvent("theaters_near", {lat: coords.latitude, lon: coords.longitude})
+          this.pushEvent("theater_here", {lat: coords.latitude, lon: coords.longitude})
         },
         () => {
           done()
-          this.pushEvent("theaters_near", {})
+          this.pushEvent("theater_here", {})
         },
         {timeout: TIMEOUT_MS, maximumAge: 10 * 60 * 1000}
       )

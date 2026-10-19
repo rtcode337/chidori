@@ -394,8 +394,8 @@
     <ChidoriWeb.TheaterPanel.panel
       :if={@topic && Chidori.Topics.works(@topic) == Chidori.News.Movies}
       search={@theater_search}
-      places={@theater_places}
-      radius={@theater_radius}
+      search_form={@theater_form}
+      here={@theater_here}
       favorites={@theater_favorites}
       showing={showing_works(@works)}
       backends={@showtime_backends}

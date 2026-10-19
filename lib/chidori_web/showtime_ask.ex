@@ -1,15 +1,17 @@
 defmodule ChidoriWeb.ShowtimeAsk do
   @moduledoc """
-  上映スケジュールを調べる動きの、画面どうしで共通の部分（映画の画面の「映画館」の欄と、
-  映画の画面・トップ画面で開く作品の詳細）。**画面ごとに書かない** —— 頼み方・答えの
+  上映スケジュールを調べる動きと、映画館を AI に探させる動きの、画面どうしで共通の部分
+  （映画の画面の「映画館」の欄と、映画の画面・トップ画面で開く作品の詳細）。**画面ごとに書かない** —— 頼み方・答えの
   受け取り方が画面ごとに違うと、片方だけ直して食い違う。
 
   置いた画面は次を受けて、ここへ渡します。
   - `handle_event("ask_showtimes", params, socket)` → `ask/2`
   - `handle_info({:showtimes, state}, socket)` → `received/2`
   - `handle_async(:showtime_backends, result, socket)` → `backends_loaded/2`
+  - `handle_event("find_theaters", params, socket)` → `find_theaters/2`（映画の画面だけ）
+  - `handle_info({:theater_search, state}, socket)` → `theaters_received/2`
 
-  答えは押した画面に直接送らず `Chidori.News.ShowtimeStore` に置いて知らせるので、
+  答えは押した画面に直接送らず `Chidori.News.AskStore` に置いて知らせるので、
   調べている最中に画面を移っても、戻ってきた画面・別の画面で読めます。
   """
 
@@ -18,8 +20,9 @@ defmodule ChidoriWeb.ShowtimeAsk do
   require Phoenix.LiveView
 
   alias Chidori.News
-  alias Chidori.News.ShowtimeStore
+  alias Chidori.News.AskStore
   alias Chidori.News.Showtimes
+  alias Chidori.News.TheaterFinder
   alias Chidori.News.Theaters
   alias Chidori.Notify.Setting
 
@@ -29,19 +32,25 @@ defmodule ChidoriWeb.ShowtimeAsk do
   頼める AI を読みに行きます。
   """
   def init(socket, on?) do
-    store = if on?, do: ShowtimeStore.get(), else: %{state: nil, form: %{}}
+    empty = %{state: nil, form: %{}}
+    store = if on?, do: AskStore.get(:showtimes), else: empty
+    found = if on?, do: AskStore.get(:theater_search), else: empty
 
     socket =
       assign(socket,
         theater_favorites: if(on?, do: Theaters.favorites(), else: []),
         showtime_backends: nil,
         showtimes: store.state,
-        showtime_form: store.form
+        showtime_form: store.form,
+        theater_search: found.state,
+        theater_form: found.form
       )
 
     if Phoenix.LiveView.connected?(socket) do
-      Phoenix.PubSub.unsubscribe(Chidori.PubSub, ShowtimeStore.topic())
-      if on?, do: Phoenix.PubSub.subscribe(Chidori.PubSub, ShowtimeStore.topic())
+      for key <- [:showtimes, :theater_search] do
+        Phoenix.PubSub.unsubscribe(Chidori.PubSub, AskStore.topic(key))
+        if on?, do: Phoenix.PubSub.subscribe(Chidori.PubSub, AskStore.topic(key))
+      end
     end
 
     # 前から入っているお気に入りに、最寄り駅を足しておく（次に開いたときから出る。AI は使わない）
@@ -85,6 +94,46 @@ defmodule ChidoriWeb.ShowtimeAsk do
   @doc "答えの知らせが届いた（ほかの画面で頼んだものも届く）。"
   def received(socket, state), do: assign(socket, showtimes: state)
 
+  @doc "映画館を探した答えの知らせが届いた。"
+  def theaters_received(socket, state), do: assign(socket, theater_search: state)
+
+  @doc """
+  映画館を AI に探させます（`Chidori.News.TheaterFinder`）。出発地は駅名・地名の欄、
+  空なら「現在地を使う」で取った現在地（`theater_here`）。**重ねて押しても 1 本**。
+  """
+  def find_theaters(socket, params) do
+    form = Map.take(params, ["region", "minutes", "backend"])
+    base = News.chiezo_base_url()
+
+    origin =
+      case {String.trim(form["region"] || ""), socket.assigns[:theater_here]} do
+        {"", {lat, lon}} -> {lat, lon}
+        {"", _none} -> nil
+        {region, _here} -> region
+      end
+
+    with true <- base != nil,
+         true <- origin != nil,
+         {minutes, ""} <- Integer.parse(form["minutes"] || ""),
+         true <- minutes in TheaterFinder.minutes_choices(),
+         backend when is_binary(backend) and backend != "" <- form["backend"] do
+      started =
+        Chidori.SingleFlight.start(:theater_search, fn ->
+          AskStore.started(:theater_search, form)
+          AskStore.finished(:theater_search, TheaterFinder.ask(base, backend, origin, minutes))
+        end)
+
+      case started do
+        {:ok, _pid} -> assign(socket, theater_search: :loading, theater_form: form)
+        {:error, :busy} -> assign(socket, theater_search: {:error, :busy}, theater_form: form)
+      end
+    else
+      _invalid ->
+        reason = if origin == nil, do: :no_origin, else: :bad_request
+        assign(socket, theater_search: {:error, reason}, theater_form: form)
+    end
+  end
+
   @doc """
   お気に入りの館で調べ始めます。**重ねて押しても 1 本**（押すたびに AI の枠を使う）。
   """
@@ -100,7 +149,7 @@ defmodule ChidoriWeb.ShowtimeAsk do
          backend when is_binary(backend) and backend != "" <- form["backend"] do
       started =
         Chidori.SingleFlight.start(:showtimes, fn ->
-          ShowtimeStore.started(form)
+          AskStore.started(:showtimes, form)
 
           result =
             with {:ok, found} <- Showtimes.ask(base, backend, title, favorites, date, from) do
@@ -114,7 +163,7 @@ defmodule ChidoriWeb.ShowtimeAsk do
                })}
             end
 
-          ShowtimeStore.finished(result)
+          AskStore.finished(:showtimes, result)
         end)
 
       case started do

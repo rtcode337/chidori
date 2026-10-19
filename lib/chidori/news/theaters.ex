@@ -2,32 +2,14 @@ defmodule Chidori.News.Theaters do
   @moduledoc """
   映画館を探してお気に入りに入れるところ（映画の画面の「映画館」）。
 
-  ## 映画館は地図辞典から引く
+  ## 映画館を探すのは AI、ここは辞典の映画館とお気に入り
 
-  **映画館の名簿は持たず、Chiezo の店舗辞典（`overture_japan`）から引きます。**
-  種類 `cinema` の付いた場所のうち、主な種類が映画館のもの（`category=cinema`）だけを
-  使います —— `cinema` は、映画館の入った商業施設や劇場にも付いている（本番で数えると
-  1,294 件のうち映画館が主なものは 983 件。うち 802 件がサイトの URL を持つ。2026-10）。
-  探すのは**点の周りの四角**（`bbox`）と種類のタグの組で、四角の中の店を全部読むことはしない。
-  地域の名前で探すときは、地名の辞典で座標に直してから同じように探します（`Chidori.Chiezo.places/2`）。
-
-  ## 同じ館は 1 つにまとめる
-
-  店舗辞典は複数の出どころを束ねたもので、**同じ館が別の名前で何件も入っている**
-  （英語名と日本語名「TOHO Cinemas Shinjuku」と「TOHOシネマズ 新宿」は 15m、旧名
-  「ワーナー・マイカル・シネマズ浦和美園」と「イオンシネマ 浦和美園」は 14m、同じサイトの
-  「White Cine Quinto」と「シネクイント」は 69m 離れて入っていた）。一方で**同じ建物に入った
-  別の館も近くに並ぶ**（「シネマート新宿」と「角川シネマ新宿」は 19m）ので、距離だけでは
-  決めない。次のどれかなら同じ館とみなす（`same?/2`）:
-
-  - 30m 以内で、片方の名前が英字だけ（英語名で入った写し）
-  - 100m 以内で、サイトのドメインが同じ
-  - 100m 以内で、ありふれた語（シネマ・シアター・劇場…）を除いた名前が 4 文字以上重なる
-
-  残すのはサイトを持ち・名前に日本語があり・辞典の確からしさが高いもの（`keep_score/1`）。
-  **試写室・会社（名前に「株式会社」）と、辞典の確からしさが低いもの（0.6 未満）は出さない**
-  （一般の人が観に行く館ではない・閉じた館や場所違いが多い）。辞典の種類の付け違いはほかにもあり
-  （写真スタジオ・映画の学校が `category=cinema` で入っている）、名前で見分けられないものは残る。
+  映画館を探すのは AI（`Chidori.News.TheaterFinder`。着くまでの時間の短い順に）で、ここが持つのは
+  **辞典の映画館の読み方**（`to_theater/1`。AI が挙げた館を確かめるのに使う）、**名前の比べ方**
+  （`similar_name?/2`）、**最寄り駅**、**お気に入り**です。
+  辞典（`overture_japan`）の `cinema` は映画館の入った商業施設や劇場にも付いているので、
+  映画館が主な場所（`category=cinema`）だけを使い、試写室・会社（名前に「株式会社」）と、
+  辞典の確からしさが低いもの（0.6 未満）は外す。
 
   ## 場所は最寄り駅で言う
 
@@ -49,150 +31,32 @@ defmodule Chidori.News.Theaters do
   alias Chidori.DataStore.MarkRecords
 
   @view "theaters"
-  @source "overture_japan"
-  @cinema_tag "cinema"
   @cinema_feature "category=cinema"
-  # 探す広さ（m）と、並べる数
-  @radius 5_000
-  @max_results 30
+  # 出さない確からしさ（辞典の `confidence`）
+  @min_confidence 0.6
 
   @doc "お気に入りの記録の種類（`MarkRecords` の view）。"
   def view, do: @view
 
-  # 同じ館とみなす距離（m）。英語名の写しは近く、サイトや名前が同じものは少し離れても
-  @latin_copy_within 30
-  @same_within 100
-  # 出さない確からしさ（辞典の `confidence`）
-  @min_confidence 0.6
-  # 探す広さ（m）の選べる値
-  @radius_choices [1_000, 3_000, 5_000, 10_000]
-
-  @doc "探す広さ（m）の選べる値。"
-  def radius_choices, do: @radius_choices
-
-  @doc "既定の探す広さ（m）。"
-  def default_radius, do: @radius
-
   @doc """
-  点の近くの映画館を近い順に（`%{id, name, address, website, lat, lon, distance}`。距離は m）。
-  **同じ館は 1 つにまとめます**（`dedupe/1`）。`{:ok, [theater]}` か `{:error, 理由}`。
+  名前が同じ館を指していそうか（AI が挙げた館と辞典の館を突き合わせる）。大文字小文字・全角半角・
+  空白と記号と、ありふれた語（シネマ・シアター・劇場…）を除いた芯が、同じか、片方に含まれるか、
+  **短いほうの 4 分の 3 以上**重なるとき。重なりを固定の文字数で見ると、会社の名前だけで当たる
+  （「TOHOシネマズ 新宿」と「TOHOシネマズ 府中」は芯の「toho」の 4 文字が重なる）。
   """
-  def near(base, lat, lon, radius \\ @radius) when is_number(lat) and is_number(lon) do
-    dlat = radius / 111_320
-    dlon = radius / (111_320 * max(:math.cos(lat * :math.pi() / 180), 0.01))
-    bbox = Enum.join([lat - dlat, lon - dlon, lat + dlat, lon + dlon], ",")
+  def similar_name?(a, b) when is_binary(a) and is_binary(b) do
+    {x, y} = {name_core(a), name_core(b)}
+    shorter = min(String.length(x), String.length(y))
 
-    query =
-      URI.encode_query(%{
-        "tag" => @cinema_tag,
-        "bbox" => bbox,
-        "limit" => 500,
-        "fields" => "title,extra"
-      })
-
-    case Chiezo.get(base <> "/v1/" <> @source <> "/filter?" <> query) do
-      {:ok, %{status: 200, body: body}} ->
-        case Jason.decode(body) do
-          {:ok, %{"results" => results}} when is_list(results) ->
-            {:ok,
-             results
-             |> Enum.flat_map(&to_theater/1)
-             |> dedupe()
-             |> Enum.map(&Map.put(&1, :distance, distance(lat, lon, &1.lat, &1.lon)))
-             |> Enum.filter(&(&1.distance <= radius))
-             |> Enum.sort_by(& &1.distance)
-             |> Enum.take(@max_results)}
-
-          _other ->
-            {:error, :chiezo_unexpected_body}
-        end
-
-      {:ok, %{status: status}} ->
-        {:error, {:chiezo_status, status}}
-
-      {:error, _reason} ->
-        {:error, :chiezo_unavailable}
-    end
-  end
-
-  @doc """
-  地域の名前（「川崎」）の候補（`%{label, lat, lon}`）。**最初に当たった場所で決めずに選んでもらう**
-  —— 地名の辞典は「川崎」で埼玉県の地区を先に返すことがある。**駅 → 市区町村 → そのほか**
-  の順に、同じ名前と都道府県のものは 1 つにまとめて 8 件まで。見つからなければ空。
-  """
-  def places(base, name) when is_binary(name) do
-    with {:ok, found} <- Chiezo.places(base, String.trim(name)) do
-      {:ok,
-       found
-       |> Enum.map(
-         &%{label: place_label(&1), lat: &1.lat, lon: &1.lon, rank: place_rank(&1.feature)}
-       )
-       |> Enum.sort_by(& &1.rank)
-       |> Enum.uniq_by(& &1.label)
-       |> Enum.take(8)
-       |> Enum.map(&Map.delete(&1, :rank))}
-    end
-  end
-
-  # 「川崎駅（神奈川県）」「川崎市（神奈川県）」の形。種類が分からなければ名前だけ
-  defp place_label(%{name: name, area: area, feature: feature}) do
-    name =
-      if place_rank(feature) == 0 and not String.ends_with?(name, "駅"),
-        do: name <> "駅",
-        else: name
-
-    if is_binary(area) and area != "", do: "#{name}（#{area}）", else: name
-  end
-
-  defp place_rank(feature)
-       when feature in ["railway=station", "public_transport=station", "railway=halt"], do: 0
-
-  defp place_rank("place=" <> kind) when kind in ["city", "town", "village", "suburb"], do: 1
-  defp place_rank(_feature), do: 2
-
-  @doc """
-  同じ館を 1 つにまとめます（`same?/2` で同じとみなした組の、`keep_score/1` の高いほうを残す）。
-  """
-  def dedupe(theaters) do
-    theaters
-    |> Enum.sort_by(&keep_score/1, :desc)
-    |> Enum.reduce([], fn theater, kept ->
-      if Enum.any?(kept, &same?(&1, theater)), do: kept, else: [theater | kept]
-    end)
-    |> Enum.reverse()
-  end
-
-  @doc "同じ館か（距離と、名前・サイトで見る。くわしくは moduledoc）。"
-  def same?(a, b) do
-    d = distance(a.lat, a.lon, b.lat, b.lon)
-
-    (d <= @latin_copy_within and (latin_only?(a.name) or latin_only?(b.name))) or
-      (d <= @same_within and
-         ((domain(a.website) != nil and domain(a.website) == domain(b.website)) or
-            common_length(core(a.name), core(b.name)) >= 4))
-  end
-
-  @doc "残す優先（サイトがある・名前に日本語がある・辞典の確からしさが高い）。"
-  def keep_score(theater) do
-    if(theater.website, do: 2, else: 0) + if(latin_only?(theater.name), do: 0, else: 2) +
-      (theater[:confidence] || 0)
+    x != "" and y != "" and
+      (x == y or String.contains?(x, y) or String.contains?(y, x) or
+         common_length(x, y) >= max(4, ceil(shorter * 0.75)))
   end
 
   defp latin_only?(name), do: not Regex.match?(~r/[\p{Han}\p{Hiragana}\p{Katakana}]/u, name)
 
-  # 「hlo.tohotheater.jp」と「www.tohotheater.jp」を同じに読む（末尾 2 つ。.co.jp などは 3 つ）
-  defp domain(nil), do: nil
-
-  defp domain(url) do
-    with %URI{host: host} when is_binary(host) <- URI.parse(url) do
-      labels = host |> String.downcase() |> String.split(".")
-      take = if Enum.at(labels, -2) in ~w(co or ne ac go ed lg), do: 3, else: 2
-      labels |> Enum.take(-take) |> Enum.join(".")
-    end
-  end
-
-  # 名前の芯（大文字小文字・全角半角を揃え、空白と記号と、ありふれた語を除く）
-  defp core(name) do
+  @doc "名前の芯（大文字小文字・全角半角を揃え、空白と記号と、ありふれた語を除く）。"
+  def name_core(name) do
     name
     |> String.normalize(:nfkc)
     |> String.downcase()
@@ -227,6 +91,8 @@ defmodule Chidori.News.Theaters do
         %{
           id: extra["overture_id"] || name,
           name: display_name(name),
+          # 市区町村（辞典の住所は「新宿3丁目15-15」のように区や市を書かないことがあるので、別に持つ）
+          locality: extra["locality"],
           confidence: confidence,
           address: extra["address"],
           website: Chidori.SafeUrl.href(extra["website"]),
@@ -318,6 +184,8 @@ defmodule Chidori.News.Theaters do
       when is_binary(station) and is_integer(d),
       do: "#{station} 徒歩約 #{max(1, ceil(d / @walk_per_minute))} 分"
 
+  # AI が挙げた館（距離は測っていない）は駅の名前だけ
+  def station_label(%{station: station}) when is_binary(station) and station != "", do: station
   def station_label(_theater), do: nil
 
   @doc """
@@ -352,7 +220,8 @@ defmodule Chidori.News.Theaters do
         lat: detail["lat"],
         lon: detail["lon"],
         station: detail["station"],
-        station_distance: detail["station_distance"]
+        station_distance: detail["station_distance"],
+        access: detail["access"]
       }
     end
     |> Enum.sort_by(& &1.name)
@@ -371,7 +240,7 @@ defmodule Chidori.News.Theaters do
 
     detail =
       theater
-      |> Map.take([:address, :website, :lat, :lon, :station, :station_distance])
+      |> Map.take([:address, :website, :lat, :lon, :station, :station_distance, :access])
       |> Map.reject(fn {_k, v} -> is_nil(v) end)
       |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end)
 

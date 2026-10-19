@@ -1,9 +1,10 @@
 defmodule ChidoriWeb.TheaterPanel do
   @moduledoc """
-  映画の画面の「映画館」の欄。近くの映画館を探してお気に入りに入れ（`Chidori.News.Theaters`）、
-  お気に入りの館で、選んだ映画を指定の時刻より後に上映する回を調べる（`Chidori.News.Showtimes`）。
+  映画の画面の「映画館」の欄。映画館を AI に探させてお気に入りに入れ（`Chidori.News.TheaterFinder`・
+  `Chidori.News.Theaters`）、お気に入りの館で、選んだ映画を指定の時刻より後に上映する回を調べる
+  （`Chidori.News.Showtimes`）。
 
-  押したときの動き（`theaters_near` / `theaters_near_place` / `favorite_theater` /
+  押したときの動き（`find_theaters` / `theater_here` / `favorite_theater` /
   `unfavorite_theater` / `ask_showtimes`）は置いた画面（`ChidoriWeb.NewsLive`）が受けます。
   現在地は `TheaterNearby`（`assets/js/theater_nearby.js`）が取って送ります。
   """
@@ -13,8 +14,8 @@ defmodule ChidoriWeb.TheaterPanel do
   alias Chidori.Jst
 
   attr :search, :any, default: nil
-  attr :places, :list, default: []
-  attr :radius, :integer, default: 5_000
+  attr :search_form, :map, default: %{}
+  attr :here, :any, default: nil
   attr :favorites, :list, default: []
   attr :showing, :list, default: []
   attr :backends, :any, default: nil
@@ -28,64 +29,86 @@ defmodule ChidoriWeb.TheaterPanel do
     <section class="event-calendar theater-panel" aria-label="映画館">
       <h2 class="news-section-title">映画館</h2>
 
-      <%!-- 近くの映画館を探す。**駅名・地名か現在地で**（地図辞典の映画館から近い順）。
-           地名は候補を出して選んでもらう（同じ名前の場所が各地にある） --%>
-      <div class="theater-find">
-        <form
-          id="theater-find"
-          phx-submit="theaters_near_place"
-          phx-change="theater_radius"
-          class="theater-find-form"
-        >
-          <label>
-            駅名・地名
-            <input type="text" name="region" placeholder="例: 新宿駅・川崎" autocomplete="off" />
-          </label>
-          <label>
-            広さ
-            <select name="radius">
-              <option
-                :for={r <- Chidori.News.Theaters.radius_choices()}
-                value={r}
-                selected={r == @radius}
-              >
-                {distance_label(r)} 以内
-              </option>
-            </select>
-          </label>
-          <button type="submit" phx-disable-with="探しています…">探す</button>
-        </form>
-        <div id="theater-nearby" phx-hook="TheaterNearby" class="theater-here">
-          <button type="button">現在地の近くを探す</button>
-          <span class="muted-note" data-status></span>
-        </div>
-      </div>
-      <div :if={@places != []} class="theater-places">
-        <p class="muted-note">どこの近くを探しますか？</p>
-        <button
-          :for={p <- @places}
-          type="button"
-          phx-click="theaters_near_candidate"
-          phx-value-lat={p.lat}
-          phx-value-lon={p.lon}
-          phx-value-label={p.label}
-        >
-          {p.label}
+      <%!-- 映画館を **AI に探させる**。出発地（駅名・地名か現在地）から、決めた時間以内に**着ける**館を、
+           着くまでの時間が短い順に（直線の距離ではなく、隣の駅の館も入る）。同じ館は 1 つにまとめさせ、
+           辞典の映画館と突き合わせて確かめる（`Chidori.News.TheaterFinder`） --%>
+      <form id="theater-find" phx-submit="find_theaters" class="theater-find-form">
+        <label>
+          出発地（駅名・地名）
+          <input
+            type="text"
+            name="region"
+            value={@search_form["region"]}
+            placeholder={if match?({_, _}, @here), do: "空なら現在地", else: "例: 新宿駅・川崎"}
+            autocomplete="off"
+          />
+        </label>
+        <label>
+          着くまで
+          <select name="minutes">
+            <option
+              :for={m <- Chidori.News.TheaterFinder.minutes_choices()}
+              value={m}
+              selected={
+                to_string(m) ==
+                  (@search_form["minutes"] || to_string(Chidori.News.TheaterFinder.default_minutes()))
+              }
+            >
+              {m} 分以内
+            </option>
+          </select>
+        </label>
+        <label :if={match?({:ok, [_ | _]}, @backends)}>
+          探す AI
+          <select name="backend">
+            <option
+              :for={b <- elem(@backends, 1)}
+              value={b.id}
+              selected={@search_form["backend"] == b.id}
+            >
+              {b.label}
+            </option>
+          </select>
+        </label>
+        <button type="submit" disabled={@search == :loading or not match?({:ok, [_ | _]}, @backends)}>
+          {if @search == :loading, do: "探しています…", else: "AI で探す"}
         </button>
+      </form>
+      <div id="theater-nearby" phx-hook="TheaterNearby" class="theater-here">
+        <button type="button">現在地を使う</button>
+        <span class="muted-note" data-status>
+          {case @here do
+            {_, _} -> "現在地を使います（出発地の欄が空のとき）"
+            :unavailable -> "現在地を取れませんでした（位置情報の利用を許可してください）"
+            _ -> ""
+          end}
+        </span>
       </div>
+      <p class="muted-note">
+        押すと AI が web で調べます（AI を 1 回使い、数十秒〜数分かかります。画面を移っても、戻ってくると出ます）。
+      </p>
       <p :if={@search == :loading} class="muted-note">探しています…</p>
       <p :if={match?({:error, _}, @search)} class="muted-note">{search_error(elem(@search, 1))}</p>
       <%= if match?({:ok, _}, @search) do %>
         <% {:ok, found} = @search %>
         <p class="muted-note">
-          {found.place}から {distance_label(found.radius)} 以内の映画館（{length(found.theaters)} 館。近い順。同じ館の重なりはまとめています）
+          {found.origin}から {found.minutes} 分以内に着ける映画館（{length(found.theaters)} 館。着くまでの時間が短い順）
         </p>
         <ul :if={found.theaters != []} class="theater-list">
           <li :for={t <- found.theaters}>
             <span class="theater-name">
               <a :if={t.website} href={t.website} target="_blank" rel="noopener noreferrer">{t.name}</a>
               <strong :if={!t.website}>{t.name}</strong>
-              <span class="muted-note">{distance_label(t.distance)}<span :if={t.address}> · {t.address}</span></span>
+              <span class="muted-note">
+                <strong :if={t.minutes} class="theater-station">約 {t.minutes} 分</strong>
+                <span :if={t.station}>{t.station}</span>
+                <span :if={t.access}>· {t.access}</span>
+              </span>
+              <span class="muted-note">
+                <span :if={t.address}>{t.address}</span>
+                <a :if={map_url(t)} href={map_url(t)} target="_blank" rel="noopener noreferrer">地図</a>
+                <span :if={!t.verified} class="seen-badge">辞典で確かめられない</span>
+              </span>
             </span>
             <button
               :if={!MapSet.member?(@favorite_ids, t.id)}
@@ -98,6 +121,8 @@ defmodule ChidoriWeb.TheaterPanel do
             <span :if={MapSet.member?(@favorite_ids, t.id)} class="seen-badge">お気に入り</span>
           </li>
         </ul>
+        <%!-- 決めた形で返らなかったときは、答えの文をそのまま出す（捨てない） --%>
+        <pre :if={found.theaters == []} class="showtime-raw">{found.raw}</pre>
       <% end %>
 
       <h3>お気に入りの映画館</h3>
@@ -332,7 +357,8 @@ defmodule ChidoriWeb.TheaterPanel do
   defp showtime_error(:bad_request), do: "映画・日付・時刻・調べる AI を選んでください。"
   defp showtime_error(reason), do: "調べられませんでした: " <> ChidoriWeb.Collect.reason_text(reason)
 
-  defp search_error(:no_place), do: "その地域が地名の辞典に見つかりませんでした。"
-  defp search_error(:no_position), do: "現在地を取れませんでした（位置情報の利用を許可してください）。"
+  defp search_error(:no_origin), do: "出発地を書くか、「現在地を使う」を押してください。"
+  defp search_error(:busy), do: "いま探している最中です。終わるまで待ってください。"
+  defp search_error(:bad_request), do: "着くまでの時間と探す AI を選んでください。"
   defp search_error(reason), do: "映画館を探せませんでした: " <> ChidoriWeb.Collect.reason_text(reason)
 end

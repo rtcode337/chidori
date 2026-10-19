@@ -96,12 +96,12 @@ defmodule ChidoriWeb.NewsLive do
         # 注目作の一覧（作品を育てる話題だけ。`Chidori.Topics.works/1`）。
         # 読み込み中は `:loading`、読めたら `{:ok, [entry]}`
         works: nil,
-        # 映画館（映画の話題だけ。`ChidoriWeb.TheaterPanel`）: 探した結果・お気に入り・
-        # 上映時刻を頼める AI・調べた結果・フォームに入れた値（読み直しで戻らないように覚える）
+        # 映画館（映画の話題だけ。`ChidoriWeb.TheaterPanel`）: AI に探させた答え・フォームの値・
+        # 「現在地を使う」で取った現在地・お気に入り・上映時刻を頼める AI・調べた結果
+        # （答えとフォームの値は `ChidoriWeb.ShowtimeAsk` が置き場から読む）
         theater_search: nil,
-        # 地域の名前で探したときの候補（選んでもらう）と、探す広さ（m）
-        theater_places: [],
-        theater_radius: Theaters.default_radius(),
+        theater_form: %{},
+        theater_here: nil,
         theater_favorites: [],
         showtime_backends: nil,
         showtimes: nil,
@@ -164,9 +164,7 @@ defmodule ChidoriWeb.NewsLive do
         cal_day: nil,
         cal_places: [],
         works: nil,
-        theater_search: nil,
-        theater_places: [],
-        theater_radius: Theaters.default_radius(),
+        theater_here: nil,
         # 作品に付けた「見た」印とメモ（作品の見出し → 印。`Chidori.Relations.Marks`）
         work_marks: work_marks(topic),
         work_mark_saved: nil,
@@ -191,8 +189,9 @@ defmodule ChidoriWeb.NewsLive do
 
   defp movies?(topic), do: topic != nil and Topics.works(topic) == Movies
 
-  # お気に入りに入れるときに最寄り駅を 1 回引いて残す（複数の駅の館を見分けるため。AI は使わない）
-  defp with_station(theater) do
+  # お気に入りに入れるときに最寄り駅を 1 回引いて残す（複数の駅の館を見分けるため。AI は使わない）。
+  # 辞典で確かめられた館（座標がある）だけ。AI が挙げただけの館は、AI が書いた駅のまま
+  defp with_station(%{lat: lat, lon: lon} = theater) when is_number(lat) and is_number(lon) do
     with base when is_binary(base) <- News.chiezo_base_url(),
          %{name: name, distance: d} <- Theaters.nearest_station(base, theater.lat, theater.lon) do
       Map.merge(theater, %{station: name, station_distance: d})
@@ -201,35 +200,7 @@ defmodule ChidoriWeb.NewsLive do
     end
   end
 
-  # 探す広さ（m）。選べる値だけ受ける
-  defp assign_radius(socket, %{"radius" => radius}) do
-    case Integer.parse(radius) do
-      {n, ""} ->
-        if n in Theaters.radius_choices(), do: assign(socket, theater_radius: n), else: socket
-
-      _bad ->
-        socket
-    end
-  end
-
-  defp assign_radius(socket, _params), do: socket
-
-  defp search_theaters(socket, lat, lon, place) do
-    case News.chiezo_base_url() do
-      nil ->
-        assign(socket, theater_search: {:error, :chiezo_not_configured})
-
-      base ->
-        radius = socket.assigns.theater_radius
-
-        socket
-        |> assign(theater_search: :loading)
-        |> start_async(:theater_search, fn ->
-          with {:ok, theaters} <- Theaters.near(base, lat, lon, radius),
-               do: {:ok, %{place: place, lat: lat, lon: lon, radius: radius, theaters: theaters}}
-        end)
-    end
-  end
+  defp with_station(theater), do: theater
 
   # **通知を押して来たら、いちばん新しいまとめを全画面で開く。** 通知の本文は要旨だけ
   # なので、押した人が読みたいのはその続き（話題の画面を開いて、まとめを探して押す、
@@ -669,61 +640,17 @@ defmodule ChidoriWeb.NewsLive do
   # 目次の項目から開いたときは、その章から見せる（`section`）
   # **作品を押すと詳細を開く**（`ChidoriWeb.WorkModal`）。探すのは注目作の一覧と
   # カレンダーの両方で、どちらにも無ければ（要約から開いた作品）Chiezo から引く
-  # 映画館を探す（地域の名前で / 現在地で）。地図辞典を読むだけで AI は使わない。
-  # **地域の名前は候補を出して選んでもらう**（最初に当たった場所で決めると、「川崎」で
-  # 埼玉県の地区の近くを探していた）。候補が 1 つならそのまま探す
-  def handle_event("theaters_near_place", %{"region" => region} = params, socket) do
-    socket = assign_radius(socket, params)
+  # 映画館を AI に探させる（`ChidoriWeb.ShowtimeAsk`。答えは置き場から届く）
+  def handle_event("find_theaters", params, socket),
+    do: {:noreply, ShowtimeAsk.find_theaters(socket, params)}
 
-    case {News.chiezo_base_url(), String.trim(region)} do
-      {nil, _} ->
-        {:noreply, assign(socket, theater_search: {:error, :chiezo_not_configured})}
+  # 「現在地を使う」で取った現在地（`TheaterNearby`）。出発地の欄が空のときに使う
+  def handle_event("theater_here", %{"lat" => lat, "lon" => lon}, socket)
+      when is_number(lat) and is_number(lon),
+      do: {:noreply, assign(socket, theater_here: {lat, lon})}
 
-      {_base, ""} ->
-        {:noreply, socket}
-
-      {base, region} ->
-        {:noreply,
-         socket
-         |> assign(theater_search: :loading, theater_places: [])
-         |> start_async(:theater_places, fn -> Theaters.places(base, region) end)}
-    end
-  end
-
-  # 候補から選んだ場所の近くを探す
-  def handle_event(
-        "theaters_near_candidate",
-        %{"lat" => lat, "lon" => lon, "label" => label},
-        socket
-      ) do
-    with {lat, ""} <- Float.parse(lat), {lon, ""} <- Float.parse(lon) do
-      {:noreply, socket |> assign(theater_places: []) |> search_theaters(lat, lon, label)}
-    else
-      _bad -> {:noreply, socket}
-    end
-  end
-
-  # 探す広さを変えたら、いま出している場所でそのまま探し直す
-  def handle_event("theater_radius", params, socket) do
-    socket = assign_radius(socket, params)
-
-    case socket.assigns.theater_search do
-      {:ok, %{place: place, lat: lat, lon: lon}} ->
-        {:noreply, search_theaters(socket, lat, lon, place)}
-
-      _other ->
-        {:noreply, socket}
-    end
-  end
-
-  def handle_event("theaters_near", %{"lat" => lat, "lon" => lon}, socket)
-      when is_number(lat) and is_number(lon) do
-    {:noreply, socket |> assign(theater_places: []) |> search_theaters(lat, lon, "現在地")}
-  end
-
-  # 現在地を取れなかった（断られた・時間切れ）
-  def handle_event("theaters_near", _params, socket),
-    do: {:noreply, assign(socket, theater_search: {:error, :no_position})}
+  def handle_event("theater_here", _params, socket),
+    do: {:noreply, assign(socket, theater_here: :unavailable)}
 
   def handle_event("favorite_theater", %{"id" => id}, socket) do
     with {:ok, %{theaters: theaters}} <- socket.assigns.theater_search,
@@ -959,28 +886,6 @@ defmodule ChidoriWeb.NewsLive do
   end
 
   # **見ている話題の答えだけ受け取る**（タブを続けて切り替えると、前の話題の答えが後から届く）
-  def handle_async(:theater_search, {:ok, result}, socket),
-    do: {:noreply, assign(socket, theater_search: result)}
-
-  # 候補が 1 つならそのまま探し、複数なら選んでもらう
-  def handle_async(:theater_places, {:ok, {:ok, [only]}}, socket),
-    do: {:noreply, search_theaters(socket, only.lat, only.lon, only.label)}
-
-  def handle_async(:theater_places, {:ok, {:ok, []}}, socket),
-    do: {:noreply, assign(socket, theater_search: {:error, :no_place})}
-
-  def handle_async(:theater_places, {:ok, {:ok, places}}, socket),
-    do: {:noreply, assign(socket, theater_search: nil, theater_places: places)}
-
-  def handle_async(:theater_places, {:ok, {:error, reason}}, socket),
-    do: {:noreply, assign(socket, theater_search: {:error, reason})}
-
-  def handle_async(:theater_places, {:exit, _reason}, socket),
-    do: {:noreply, assign(socket, theater_search: {:error, :collection_crashed})}
-
-  def handle_async(:theater_search, {:exit, _reason}, socket),
-    do: {:noreply, assign(socket, theater_search: {:error, :collection_crashed})}
-
   def handle_async(:showtime_backends, result, socket),
     do: {:noreply, ShowtimeAsk.backends_loaded(socket, result)}
 
@@ -1070,6 +975,9 @@ defmodule ChidoriWeb.NewsLive do
   # 状態に混ぜると、届くたびに画面ぜんたいが書き換わる
   def handle_info({:showtimes, state}, socket),
     do: {:noreply, ShowtimeAsk.received(socket, state)}
+
+  def handle_info({:theater_search, state}, socket),
+    do: {:noreply, ShowtimeAsk.theaters_received(socket, state)}
 
   def handle_info({:digest_progress, collection, message}, socket) do
     topic = socket.assigns.topic
