@@ -245,6 +245,12 @@ defmodule Chidori.Datasets.GourmetTest do
       assert first_kind.(["香川県の麺料理", "ご当地うどん"]) == "種類:うどん"
       assert first_kind.(["岩手県の麺料理"]) == "種類:麺類"
       assert first_kind.(["群馬県の農業", "群馬県の食文化"]) == "種類:食材"
+      # 果物は県の農業より先に読む
+      assert first_kind.(["雑柑", "神奈川県の農業", "神奈川県の食文化"]) == "種類:フルーツ"
+      assert first_kind.(["ぶどう品種", "神奈川県の農業"]) == "種類:フルーツ"
+      assert first_kind.(["イチゴの品種", "愛知県の農業"]) == "種類:フルーツ"
+      # 焼きそばは麺類にまとめた
+      assert first_kind.(["静岡県のご当地焼きそば"]) == "種類:麺類"
       # 麺料理にも入っていれば、そちらが先
       assert first_kind.(["長野県の麺料理", "長野県の農業"]) == "種類:麺類"
       assert first_kind.(["三重県の土産菓子"]) == "種類:菓子"
@@ -690,6 +696,18 @@ defmodule Chidori.Datasets.GourmetTest do
       assert Gourmet.rank(["ランク:A"], %{"pageviews_month" => 30}) == "D"
       # 知らない段は読まない
       assert Gourmet.rank(["ランク:S"]) == "E"
+    end
+
+    test "種類は 20 まで。前に付いた焼きそばは麺類として書き出す" do
+      kinds = Gourmet.kinds()
+      assert length(kinds) <= 20
+      assert "フルーツ" in kinds
+      refute "焼きそば" in kinds
+      assert Gourmet.series_of(["種類:焼きそば"]) == "麺類"
+      assert Gourmet.series_of(["種類:フルーツ"]) == "フルーツ"
+      assert Gourmet.series_of([]) == ""
+      # 果物も閲覧数では C まで
+      assert Gourmet.rank(["種類:フルーツ"], %{"pageviews_month" => 17_000}) == "C"
     end
 
     test "名前から見分けの補足を落とす" do
