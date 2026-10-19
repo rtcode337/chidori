@@ -107,7 +107,15 @@ defmodule ChidoriWeb.TheaterPanel do
           <span class="theater-name">
             <a :if={t.website} href={t.website} target="_blank" rel="noopener noreferrer">{t.name}</a>
             <strong :if={!t.website}>{t.name}</strong>
-            <span :if={t.address} class="muted-note">{t.address}</span>
+            <%!-- **どこの館かを最寄り駅で言う**（複数の駅の館をお気に入りにすると、名前だけでは
+                 見分けにくい）。地図は見る人のブラウザで開く --%>
+            <span class="muted-note">
+              <span :if={Chidori.News.Theaters.station_label(t)} class="theater-station">
+                {Chidori.News.Theaters.station_label(t)}
+              </span>
+              <span :if={t.address}>{t.address}</span>
+              <a :if={map_url(t)} href={map_url(t)} target="_blank" rel="noopener noreferrer">地図</a>
+            </span>
           </span>
           <button
             type="button"
@@ -190,23 +198,30 @@ defmodule ChidoriWeb.TheaterPanel do
     <p :if={match?({:error, _}, @state)} class="muted-note">{showtime_error(elem(@state, 1))}</p>
     <%= if match?({:ok, _}, @state) do %>
       <% {:ok, result} = @state %>
+      <% stations = Map.get(result, :stations, %{}) %>
       <p class="muted-note">{result.title} / {result.date} {result.from} より後</p>
-      <div :if={result.theaters != []} class="showtime-results">
-        <section :for={t <- result.theaters} class="showtime-theater">
-          <h4>{t.name}</h4>
-          <ul :if={t.found} class="showtime-list">
-            <li :for={s <- t.showings}>
-              <strong>{s.start}</strong><span :if={s.end != ""}>〜{s.end}</span>
-              <span :if={s.format != ""} class="muted-note">{s.format}</span>
-            </li>
-          </ul>
-          <p :if={!t.found} class="muted-note">確かめられませんでした（または、この時刻より後の上映はありません）。</p>
-          <p :if={t.note != ""} class="muted-note">{t.note}</p>
-          <p :if={t.source} class="muted-note">
-            出どころ: <a href={t.source} target="_blank" rel="noopener noreferrer">{t.source}</a>
-          </p>
-        </section>
-      </div>
+      <%!-- **上映の始まる順に 1 本の表で**（館ごとに分けると、いちばん早い回を探して館を
+           見比べることになる）。どこの館かは最寄り駅で添える --%>
+      <ol :if={timeline(result.theaters) != []} class="showtime-timeline">
+        <li :for={row <- timeline(result.theaters)}>
+          <strong class="showtime-start">{row.start}</strong><span
+            :if={row.end != ""}
+            class="muted-note"
+          >〜{row.end}</span>
+          <span class="showtime-theater-name">{row.theater}</span>
+          <span :if={stations[row.theater]} class="muted-note">{stations[row.theater]}</span>
+          <span :if={row.format != ""} class="seen-badge">{row.format}</span>
+        </li>
+      </ol>
+      <%!-- 確かめられなかった館と、館ごとの補足・出どころ（表の下にまとめる） --%>
+      <ul :if={result.theaters != []} class="showtime-notes">
+        <li :for={t <- result.theaters}>
+          <span>{t.name}</span><span :if={stations[t.name]} class="muted-note">（{stations[t.name]}）</span>:
+          <span :if={!t.found} class="muted-note">確かめられませんでした（または、この時刻より後の上映はありません）。</span>
+          <span :if={t.note != ""} class="muted-note">{t.note}</span>
+          <a :if={t.source} href={t.source} target="_blank" rel="noopener noreferrer">出どころ</a>
+        </li>
+      </ul>
       <%!-- 決めた形で返らなかったときは、答えの文をそのまま出す（捨てない） --%>
       <pre :if={result.theaters == []} class="showtime-raw">{result.raw}</pre>
     <% end %>
@@ -280,6 +295,30 @@ defmodule ChidoriWeb.TheaterPanel do
     </section>
     """
   end
+
+  @doc """
+  館ごとの答えを、上映の始まる順の 1 本の並びに（`%{start, end, format, theater}`）。
+  同じ時刻なら館の名前順。始まりが「HH:MM」でないものは後ろ（並べられない）。
+  """
+  def timeline(theaters) do
+    for t <- theaters, t.found, s <- t.showings do
+      Map.put(s, :theater, t.name)
+    end
+    |> Enum.sort_by(fn row -> {start_key(row.start), row.theater} end)
+  end
+
+  defp start_key(start) do
+    case Chidori.Notify.Setting.parse(start) do
+      {:ok, {h, m}} -> h * 60 + m
+      :error -> 24 * 60 + 1
+    end
+  end
+
+  @doc "地図で館を開く URL（座標が無ければ nil）。見る人のブラウザで開く。"
+  def map_url(%{lat: lat, lon: lon}) when is_number(lat) and is_number(lon),
+    do: "https://www.google.com/maps/search/?api=1&query=#{lat},#{lon}"
+
+  def map_url(_theater), do: nil
 
   @doc "距離の書き方（1km 未満は m、それ以上は km を小数 1 桁）。"
   def distance_label(m) when is_integer(m) and m < 1000, do: "#{m}m"

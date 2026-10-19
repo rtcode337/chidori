@@ -1268,11 +1268,6 @@ a.top-book-cover { display: block; }
 .theater-name { display: flex; flex-direction: column; min-width: 0; }
 .theater-name a { color: #4a3fc0; font-weight: 700; }
 .theater-list li button { flex: none; white-space: nowrap; }
-.showtime-results { display: grid; gap: .6rem; margin-top: .6rem; }
-.showtime-theater { padding: .6rem .8rem; border: 1px solid #e2e5ef; border-radius: .6rem; background: #fff; }
-.showtime-theater h4 { margin: 0 0 .3rem; font-size: .9rem; }
-.showtime-theater a { overflow-wrap: anywhere; }
-.showtime-list { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: .3rem .9rem; }
 .showtime-raw { white-space: pre-wrap; font-size: .8rem; }
 .ask-nearby button { padding: .2rem .6rem; font-size: .8rem; }
 .theater-places { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .5rem 0; }
@@ -1282,3 +1277,11 @@ a.top-book-cover { display: block; }
 .works-group > summary h3 { display: inline; }
 /* 作品の詳細の「上映スケジュール」 */
 .showtime-box { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: .8rem; }
+/* 上映スケジュールの答え（上映の始まる順に 1 本の表） */
+.showtime-timeline { margin: .5rem 0 0; padding: 0; list-style: none; display: grid; gap: .3rem; }
+.showtime-timeline li { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .6rem; padding: .4rem .6rem; border: 1px solid #e2e5ef; border-radius: .6rem; background: #fff; }
+.showtime-start { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.showtime-theater-name { font-weight: 700; }
+.showtime-notes { margin: .6rem 0 0; padding-left: 1.1rem; font-size: .82rem; }
+.showtime-notes a { margin-left: .3rem; }
+.theater-station { margin-right: .5rem; color: #4b5068; font-weight: 700; }

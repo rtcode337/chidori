@@ -191,6 +191,16 @@ defmodule ChidoriWeb.NewsLive do
 
   defp movies?(topic), do: topic != nil and Topics.works(topic) == Movies
 
+  # お気に入りに入れるときに最寄り駅を 1 回引いて残す（複数の駅の館を見分けるため。AI は使わない）
+  defp with_station(theater) do
+    with base when is_binary(base) <- News.chiezo_base_url(),
+         %{name: name, distance: d} <- Theaters.nearest_station(base, theater.lat, theater.lon) do
+      Map.merge(theater, %{station: name, station_distance: d})
+    else
+      _none -> theater
+    end
+  end
+
   # 探す広さ（m）。選べる値だけ受ける
   defp assign_radius(socket, %{"radius" => radius}) do
     case Integer.parse(radius) do
@@ -718,7 +728,7 @@ defmodule ChidoriWeb.NewsLive do
   def handle_event("favorite_theater", %{"id" => id}, socket) do
     with {:ok, %{theaters: theaters}} <- socket.assigns.theater_search,
          %{} = theater <- Enum.find(theaters, &(&1.id == id)),
-         {:ok, _doc_id} <- Theaters.add(theater) do
+         {:ok, _doc_id} <- Theaters.add(with_station(theater)) do
       {:noreply, assign(socket, theater_favorites: Theaters.favorites())}
     else
       _other -> {:noreply, put_flash(socket, :error, "お気に入りに入れられませんでした。")}

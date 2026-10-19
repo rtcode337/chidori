@@ -423,4 +423,75 @@ defmodule Chidori.News.TheatersTest do
       assert box("別の映画", nil, []) =~ "お気に入りの映画館を入れると"
     end
   end
+
+  describe "上映の始まる順と、館の場所" do
+    test "館をまたいで、上映の始まる順に 1 本に並べる（確かめられなかった館は入れない）" do
+      rows =
+        ChidoriWeb.TheaterPanel.timeline([
+          %{
+            name: "B館",
+            found: true,
+            showings: [
+              %{start: "21:00", end: "", format: ""},
+              %{start: "18:30", end: "", format: ""}
+            ]
+          },
+          %{
+            name: "A館",
+            found: true,
+            showings: [
+              %{start: "19:15", end: "", format: "IMAX"},
+              %{start: "9:05", end: "", format: ""}
+            ]
+          },
+          %{name: "C館", found: false, showings: []}
+        ])
+
+      assert Enum.map(rows, &{&1.start, &1.theater}) ==
+               [{"9:05", "A館"}, {"18:30", "B館"}, {"19:15", "A館"}, {"21:00", "B館"}]
+    end
+
+    test "いちばん近い駅を、同じ名前の点のうち最も近いもので測り、徒歩の分で言う" do
+      Chidori.HttpStub.stub(fn _req ->
+        Chidori.HttpStub.ok(
+          Jason.encode!(%{
+            "results" => [
+              %{"title" => "新宿 (node:1)", "extra" => %{"lat" => 35.6905, "lon" => 139.7005}},
+              %{"title" => "新宿三丁目", "extra" => %{"lat" => 35.6920, "lon" => 139.7060}},
+              %{"title" => "遠い駅", "extra" => %{"lat" => 35.75, "lon" => 139.80}}
+            ]
+          })
+        )
+      end)
+
+      assert %{name: "新宿駅", distance: d} = Theaters.nearest_station(@base, 35.6909, 139.7003)
+      assert d < 100
+      assert Theaters.station_label(%{station: "新宿駅", station_distance: 240}) == "新宿駅 徒歩約 3 分"
+      assert Theaters.station_label(%{station: nil, station_distance: nil}) == nil
+    end
+
+    test "前から入っているお気に入りに、最寄り駅を足す" do
+      {:ok, _} = Theaters.add(%{id: "t1", name: "サンプル館", lat: 35.6909, lon: 139.7003})
+
+      Chidori.HttpStub.stub(fn _req ->
+        Chidori.HttpStub.ok(
+          Jason.encode!(%{
+            "results" => [%{"title" => "新宿", "extra" => %{"lat" => 35.6905, "lon" => 139.7005}}]
+          })
+        )
+      end)
+
+      assert Theaters.fill_stations(@base) == 1
+      assert [%{station: "新宿駅"}] = Theaters.favorites()
+      # 足し終えたものには、もう引きに行かない
+      assert Theaters.fill_stations(@base) == 0
+    end
+
+    test "頼む文に、館の最寄り駅も書く（同じ名前の別の館と取り違えないように）" do
+      prompt =
+        Showtimes.prompt("サンプル映画", [%{name: "サンプル館", station: "新宿駅"}], ~D[2026-10-19], {18, 0})
+
+      assert prompt =~ "- サンプル館（最寄り 新宿駅）"
+    end
+  end
 end

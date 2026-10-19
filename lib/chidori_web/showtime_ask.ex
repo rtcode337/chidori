@@ -44,6 +44,13 @@ defmodule ChidoriWeb.ShowtimeAsk do
       if on?, do: Phoenix.PubSub.subscribe(Chidori.PubSub, ShowtimeStore.topic())
     end
 
+    # 前から入っているお気に入りに、最寄り駅を足しておく（次に開いたときから出る。AI は使わない）
+    with true <- on? and Phoenix.LiveView.connected?(socket),
+         true <- Enum.any?(socket.assigns.theater_favorites, &is_nil(&1.station)),
+         base when is_binary(base) <- News.chiezo_base_url() do
+      Task.Supervisor.start_child(Chidori.TaskSupervisor, fn -> Theaters.fill_stations(base) end)
+    end
+
     case {on? and Phoenix.LiveView.connected?(socket), News.chiezo_base_url()} do
       {true, base} when is_binary(base) ->
         Phoenix.LiveView.start_async(socket, :showtime_backends, fn ->
@@ -101,7 +108,9 @@ defmodule ChidoriWeb.ShowtimeAsk do
                Map.merge(found, %{
                  title: title,
                  date: Date.to_iso8601(date),
-                 from: Setting.format(from)
+                 from: Setting.format(from),
+                 # 館の名前 → 最寄り駅の一言（答えの表で、どこの館かを添える）
+                 stations: Map.new(favorites, &{&1.name, Theaters.station_label(&1)})
                })}
             end
 

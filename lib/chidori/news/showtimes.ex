@@ -91,7 +91,11 @@ defmodule Chidori.News.Showtimes do
 
     lines =
       Enum.map_join(theaters, "\n", fn t ->
-        facts = [t[:address], t[:website]] |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join(" / ")
+        facts =
+          [t[:station] && "最寄り #{t[:station]}", t[:address], t[:website]]
+          |> Enum.reject(&(&1 in [nil, ""]))
+          |> Enum.join(" / ")
+
         if facts == "", do: "- #{t.name}", else: "- #{t.name}（#{facts}）"
       end)
 

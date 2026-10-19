@@ -45,7 +45,9 @@ paths:
   点の周りの四角で引く（`Chidori.News.Theaters`。AI なし）。同じ館の重なり（英語名・旧名・同じサイト）は `dedupe/1` でまとめ、
   試写室・会社・確からしさ 0.6 未満は出さない。地名は候補を出して選ばせる（`places/2`。駅 → 市区町村 → そのほか）。お気に入りは `chidori_data` の種類 `theaters`（鍵は店舗辞典の id、住所・サイト・座標は `detail`）。
   上映時刻は押したときだけ Chiezo の `/v1/ai/complete`（`web: true`。頼める相手は web を持つ相手から画面で選ぶ）に JSON で返させる（`Chidori.News.Showtimes`）。
-  確かめられなかった館は推し量らせず「分からない」。出どころの頁を添える。答えは画面に直接送らず `ShowtimeStore` に置いて
+  確かめられなかった館は推し量らせず「分からない」。出どころの頁を添える。答えは館をまたいで上映の始まる順に 1 本に並べる
+  （`TheaterPanel.timeline/1`）。お気に入りの館は最寄り駅で場所を言う（`Theaters.nearest_station/3`。入れるときに引いて残し、
+  前からある館は `fill_stations/1` で足す）。答えは画面に直接送らず `ShowtimeStore` に置いて
   PubSub で知らせる（調べている最中に画面を移っても、戻ってきた画面が読める）
 - 「近くの上映館を Gemini に聞く」は普通のリンクとして開く（`ask_nearby.js`）。空のタブを開いてから行き先を入れると PWA で白いまま残る
 - トップの映画・アニメの要約の枠には、要約の下に公開中・放送中の注目作を並べる（`HomeLive.started_works/2`。見た印も出す）

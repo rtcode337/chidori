@@ -29,6 +29,14 @@ defmodule Chidori.News.Theaters do
   （一般の人が観に行く館ではない・閉じた館や場所違いが多い）。辞典の種類の付け違いはほかにもあり
   （写真スタジオ・映画の学校が `category=cinema` で入っている）、名前で見分けられないものは残る。
 
+  ## 場所は最寄り駅で言う
+
+  お気に入りの館が複数の駅にまたがると、館の名前だけではどこの館か分からない。
+  **地図辞典で館の周りの駅を引き、いちばん近い駅と直線の距離から「新宿駅 徒歩約 3 分」と
+  添えます**（`nearest_station/3`。AI は使わない）。徒歩は不動産の表示と同じ分速 80m で、
+  直線の距離なので「約」を付ける。お気に入りに入れるときに 1 回引いて残し、前から入っている
+  館には、映画の画面を開いたときに足します（`fill_stations/1`）。
+
   ## お気に入りは利用者の置き場に
 
   利用者が書いたことなので、Chiezo の `chidori_data` に 1 館 1 件で置きます
@@ -260,6 +268,76 @@ defmodule Chidori.News.Theaters do
     round(2 * 6_371_000 * :math.asin(:math.sqrt(a)))
   end
 
+  # 最寄り駅を探す広さ（m）。これより遠い駅しか無い館には添えない（遠い駅の名前はかえって迷う）
+  @station_within 1_500
+  # 徒歩の分速（m。不動産の表示と同じ）
+  @walk_per_minute 80
+
+  @doc """
+  いちばん近い駅（`%{name: "新宿駅", distance: m}`）。1,500m 以内に無ければ `:none`。
+  地図辞典は駅を路線や会社ごとに別の点で持つので、同じ名前のうち最も近い点で測る。
+  """
+  def nearest_station(base, lat, lon) when is_number(lat) and is_number(lon) do
+    dlat = @station_within / 111_320
+    dlon = @station_within / (111_320 * max(:math.cos(lat * :math.pi() / 180), 0.01))
+    bbox = Enum.join([lat - dlat, lon - dlon, lat + dlat, lon + dlon], ",")
+
+    query =
+      URI.encode_query(%{
+        "tag" => "railway=station",
+        "bbox" => bbox,
+        "limit" => 200,
+        "fields" => "title,extra"
+      })
+
+    with {:ok, %{status: 200, body: body}} <- Chiezo.get(base <> "/v1/osm_japan/filter?" <> query),
+         {:ok, %{"results" => results}} when is_list(results) <- Jason.decode(body) do
+      results
+      |> Enum.flat_map(fn
+        %{"title" => title, "extra" => %{"lat" => slat, "lon" => slon}}
+        when is_binary(title) and is_number(slat) and is_number(slon) ->
+          name = String.replace(title, ~r/\s*\((?:node|way|relation):\d+\)$/u, "")
+          [%{name: station_name(name), distance: distance(lat, lon, slat, slon)}]
+
+        _other ->
+          []
+      end)
+      |> Enum.filter(&(&1.distance <= @station_within))
+      |> Enum.min_by(& &1.distance, fn -> :none end)
+    else
+      _other -> :none
+    end
+  end
+
+  def nearest_station(_base, _lat, _lon), do: :none
+
+  defp station_name(name), do: if(String.ends_with?(name, "駅"), do: name, else: name <> "駅")
+
+  @doc "最寄り駅の一言（「新宿駅 徒歩約 3 分」）。分からなければ nil。"
+  def station_label(%{station: station, station_distance: d})
+      when is_binary(station) and is_integer(d),
+      do: "#{station} 徒歩約 #{max(1, ceil(d / @walk_per_minute))} 分"
+
+  def station_label(_theater), do: nil
+
+  @doc """
+  最寄り駅をまだ持っていないお気に入りに足します（前から入っている館のため）。
+  足した数を返す。読めなかった館は飛ばす（次に開いたときにまた試す）。
+  """
+  def fill_stations(base) do
+    favorites()
+    |> Enum.filter(&(is_nil(&1.station) and is_number(&1.lat) and is_number(&1.lon)))
+    |> Enum.count(fn theater ->
+      case nearest_station(base, theater.lat, theater.lon) do
+        %{name: name, distance: d} ->
+          match?({:ok, _}, add(Map.merge(theater, %{station: name, station_distance: d})))
+
+        :none ->
+          false
+      end
+    end)
+  end
+
   @doc "お気に入りの映画館（入れた順ではなく名前の順）。"
   def favorites do
     for {id, doc} <- MarkRecords.for_view(@view) do
@@ -272,7 +350,9 @@ defmodule Chidori.News.Theaters do
         address: detail["address"],
         website: Chidori.SafeUrl.href(detail["website"]),
         lat: detail["lat"],
-        lon: detail["lon"]
+        lon: detail["lon"],
+        station: detail["station"],
+        station_distance: detail["station_distance"]
       }
     end
     |> Enum.sort_by(& &1.name)
@@ -291,7 +371,7 @@ defmodule Chidori.News.Theaters do
 
     detail =
       theater
-      |> Map.take([:address, :website, :lat, :lon])
+      |> Map.take([:address, :website, :lat, :lon, :station, :station_distance])
       |> Map.reject(fn {_k, v} -> is_nil(v) end)
       |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end)
 
