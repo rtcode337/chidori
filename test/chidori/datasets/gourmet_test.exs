@@ -275,9 +275,10 @@ defmodule Chidori.Datasets.GourmetTest do
       assert %{only_new: true} = survey
       refute Map.get(tidy, :only_new)
 
-      # 整理と情報収集は、ざっと見るの一周を待つ（名簿に混ざったものを外してから見直す・足す）
-      assert Map.get(survey, :after) == SweepNames.scan()
-      assert Map.get(tidy, :after) == SweepNames.scan()
+      # 整理と情報収集は、ざっと見るが見終えた県から回る（一周は待たない。名簿に混ざったものを
+      # 外してから見直す・足す）
+      assert %{after: "ざっと見る", after_each: true} = survey
+      assert %{after: "ざっと見る", after_each: true} = tidy
 
       # 整理は代表店未定が残る県を見終わりにしない（情報収集は足止めしない）
       assert Map.get(tidy, :hold_tag) == Gourmet.unplaced_tag()
