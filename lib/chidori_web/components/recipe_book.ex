@@ -3,6 +3,8 @@ defmodule ChidoriWeb.RecipeBook do
   レシピ集を読むところ（データ収集の「レシピ」のタブ。`Chidori.Datasets.Recipes`）。
 
   **一覧は写真と料理名だけ、押したら詳細を重ねて開く**（作品の詳細と同じ動き）。
+  **一覧は料理の種類ごとに見出しを立てて並べる**（主菜 → 副菜 → … の語彙の順。`grouped/1`）——
+  名前順に混ぜて並べると、主菜とお菓子と調味料が隣り合って何があるのか読み取れない。
   1 品の本文は材料と手順まであって長いので、一覧に並べると何があるのか見渡せない。
   国・種類・語（料理名と主な食材）で絞れる。
 
@@ -71,21 +73,24 @@ defmodule ChidoriWeb.RecipeBook do
         </label>
       </form>
       <p :if={@recipes != [] and @shown == []} class="muted-note">当てはまる料理はありません。</p>
-      <ul :if={@shown != []} class="recipe-grid">
-        <li :for={recipe <- @shown}>
-          <button
-            type="button"
-            class="recipe-card"
-            phx-click="open_recipe"
-            phx-value-title={recipe.title}
-          >
-            <img :if={recipe.thumb} src={recipe.thumb} alt="" loading="lazy" />
-            <span :if={!recipe.thumb} class="recipe-noimage" aria-hidden="true"></span>
-            <strong>{recipe.title}</strong>
-            <span class="muted-note">{facts(recipe)}</span>
-          </button>
-        </li>
-      </ul>
+      <section :for={{kind, list} <- grouped(@shown)} class="recipe-kind">
+        <h3>{kind} <span class="muted-note">（{length(list)} 品）</span></h3>
+        <ul class="recipe-grid">
+          <li :for={recipe <- list}>
+            <button
+              type="button"
+              class="recipe-card"
+              phx-click="open_recipe"
+              phx-value-title={recipe.title}
+            >
+              <img :if={recipe.thumb} src={recipe.thumb} alt="" loading="lazy" />
+              <span :if={!recipe.thumb} class="recipe-noimage" aria-hidden="true"></span>
+              <strong>{recipe.title}</strong>
+              <span class="muted-note">{facts(recipe)}</span>
+            </button>
+          </li>
+        </ul>
+      </section>
 
       <%!-- 名簿の広さ。**足すだけ**の引き直しなので、下げると広がり、上げても減らない --%>
       <form class="recipe-roster" phx-submit="reroster_recipes">
@@ -231,6 +236,17 @@ defmodule ChidoriWeb.RecipeBook do
     |> Enum.reject(&is_nil/1)
     |> Enum.frequencies()
     |> Enum.sort_by(fn {name, n} -> {-n, name} end)
+  end
+
+  @doc """
+  種類ごとの組（`[{種類, [レシピ]}]`）。並びは語彙の順（主菜 → 副菜 → …）、語彙に無い種類は
+  その後ろに名前順、種類の無いものは「その他」へ入れる。組の中は渡された順のまま。
+  """
+  def grouped(recipes) do
+    groups = Enum.group_by(recipes, &(&1.kind || "その他"))
+    order = Recipes.kinds() ++ (groups |> Map.keys() |> Kernel.--(Recipes.kinds()) |> Enum.sort())
+
+    for kind <- order, list = groups[kind], do: {kind, list}
   end
 
   # 種類は語彙の並び（多い順ではなく、主菜 → 副菜 → … の決めた順）

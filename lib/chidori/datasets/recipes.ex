@@ -97,6 +97,23 @@ defmodule Chidori.Datasets.Recipes do
   @doc "地域のタグの頭。"
   def region_tag, do: @region_tag
 
+  @doc """
+  種類のタグの値を語彙に寄せます。**語彙の「・」で区切った片方だけを書いたもの**（「パン」「菓子」）は
+  その語彙へ —— 依頼文で語彙を「・」でつないで並べていた頃、AI は「麺・パスタ」を「麺」と「パスタ」の
+  2 つと読み、片方だけを書いていた（本番で 18 品中 7 品）。語彙に寄らないものはそのまま、無ければ nil。
+  """
+  def to_kind(nil), do: nil
+
+  def to_kind(value) when is_binary(value) do
+    value = String.trim(value)
+
+    cond do
+      value in @kinds -> value
+      kind = Enum.find(@kinds, &(value in String.split(&1, "・"))) -> kind
+      true -> value
+    end
+  end
+
   @doc "種類のタグの頭。"
   def dish_tag, do: @dish_tag
 
@@ -289,7 +306,7 @@ defmodule Chidori.Datasets.Recipes do
     """
     tags は**いま付いているタグをすべて残したうえで**、次を足してください。
     - "#{@country_tag}:<国>" —— 発祥の国（「イタリア」「日本」「中国」。日本の郷土料理も「日本」）
-    - "#{@dish_tag}:<種類>" —— 次のどれか 1 つ: #{Enum.join(@kinds, "・")}
+    - "#{@dish_tag}:<種類>" —— 次のどれか 1 つを、そのままの字で: #{Enum.map_join(@kinds, "、", &"「#{&1}」")}
     - "#{@ingredient_tag}:<食材>" —— 主な食材を 3 つまで（「卵」「豚肉」「米」）
     - "#{@canon_tag}:あり" か "#{@canon_tag}:なし" —— 正統とされる形に定説（団体の定義・
       広く認められた古典的な作り方）があるか
@@ -403,7 +420,7 @@ defmodule Chidori.Datasets.Recipes do
       title: doc["title"],
       country: tag_value(tags, @country_tag),
       regions: tag_values(tags, @region_tag),
-      kind: tag_value(tags, @dish_tag),
+      kind: tags |> tag_value(@dish_tag) |> to_kind(),
       ingredients_tags: tag_values(tags, @ingredient_tag),
       canon: tag_value(tags, @canon_tag),
       thumb: Chiezo.thumb_path(extra["thumb"]),

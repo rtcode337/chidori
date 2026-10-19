@@ -60,7 +60,7 @@ defmodule Chidori.Datasets.RecipesTest do
         assert prompt =~ "正統とされる形"
         assert prompt =~ "個人のレシピブログ"
         assert prompt =~ "あなたの言葉"
-        assert prompt =~ "主菜・副菜"
+        assert prompt =~ "「主菜」、「副菜」"
         assert prompt =~ "{current}"
       end
     end
@@ -156,6 +156,35 @@ defmodule Chidori.Datasets.RecipesTest do
       assert [%{title: "親子丼"}] = RecipeBook.filtered(all, %{"country" => "日本"})
       assert ["カルボナーラ", "親子丼"] = all |> RecipeBook.filtered(%{"q" => "卵"}) |> Enum.map(& &1.title)
       assert [%{title: "ラタトゥイユ"}] = RecipeBook.filtered(all, %{"kind" => "副菜", "q" => ""})
+    end
+  end
+
+  describe "料理の種類" do
+    test "語彙の片方だけを書いた種類は、その語彙に寄せる" do
+      # 依頼文で語彙を「・」でつないでいた頃、AI は「麺・パスタ」を 2 つと読んで片方だけを書いた
+      assert Recipes.to_kind("パスタ") == "麺・パスタ"
+      assert Recipes.to_kind("パン") == "パン・粉もの"
+      assert Recipes.to_kind("粉もの") == "パン・粉もの"
+      assert Recipes.to_kind("主菜") == "主菜"
+      assert Recipes.to_kind("未知") == "未知"
+      assert Recipes.to_kind(nil) == nil
+    end
+
+    test "依頼文は語彙を 1 つずつ括って並べる" do
+      [sweep | _] = Enum.filter(Recipes.attrs().sweeps, &is_binary(&1[:prompt]))
+      assert sweep.prompt =~ "「麺・パスタ」、"
+    end
+
+    test "一覧は種類ごとに、語彙の順で組にする（種類の無いものは「その他」）" do
+      recipes = [
+        %{title: "プリン", kind: "菓子・デザート"},
+        %{title: "親子丼", kind: "ご飯もの"},
+        %{title: "ハンバーグ", kind: "主菜"},
+        %{title: "謎", kind: nil}
+      ]
+
+      assert [{"主菜", [_]}, {"ご飯もの", [_]}, {"菓子・デザート", [_]}, {"その他", [%{title: "謎"}]}] =
+               RecipeBook.grouped(recipes)
     end
   end
 
