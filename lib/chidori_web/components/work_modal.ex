@@ -155,6 +155,10 @@ defmodule ChidoriWeb.WorkModal do
   attr :marks, :map, default: nil
   attr :saved, :string, default: nil
 
+  # 上映スケジュールを調べる欄の材料（`ChidoriWeb.ShowtimeAsk` が置いたもの。
+  # `%{favorites, backends, state, form}`）。nil なら欄を出さない
+  attr :showtime, :map, default: nil
+
   @doc """
   作品のモーダル。**全画面の要約より手前に出します**（要約から開いたとき、閉じると
   要約に戻る）。閉じるのはボタン・外側を押す・Esc。
@@ -189,6 +193,7 @@ defmodule ChidoriWeb.WorkModal do
           works={@opened.works}
           marks={@marks}
           saved={@saved}
+          showtime={@showtime}
         />
       </section>
     </div>
@@ -199,6 +204,7 @@ defmodule ChidoriWeb.WorkModal do
   attr :works, :atom, default: Movies
   attr :marks, :map, default: nil
   attr :saved, :string, default: nil
+  attr :showtime, :map, default: nil
 
   @doc """
   作品 1 本の中身（事実の 1 行・本文・出典・上映館・見た記録）。
@@ -286,6 +292,16 @@ defmodule ChidoriWeb.WorkModal do
         </li>
       </ol>
     </div>
+    <%!-- 上映スケジュール（映画で、公開中か 1 週間以内に公開されるものだけ）。お気に入りの館で、
+         この作品を指定の時刻より後に上映する回を調べる（映画の画面の「映画館」の欄と同じ動き） --%>
+    <ChidoriWeb.TheaterPanel.showtime_box
+      :if={@showtime != nil and @works == Movies and NewsLive.showing_soon?(@entry)}
+      title={@entry.title}
+      favorites={@showtime.favorites}
+      backends={@showtime.backends}
+      state={@showtime.state}
+      form={@showtime.form}
+    />
     <%!-- 見た記録（関連図の「見た記録」と同じ形）。置き場は Chiezo の chidori_data --%>
     <section :if={@mark} class="seen-mark" aria-label="見た記録">
       <p class="seen-mark-title">見た記録</p>

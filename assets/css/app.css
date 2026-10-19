@@ -1277,3 +1277,8 @@ a.top-book-cover { display: block; }
 .ask-nearby button { padding: .2rem .6rem; font-size: .8rem; }
 .theater-places { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .5rem 0; }
 .theater-places .muted-note { width: 100%; margin: 0; }
+/* 注目作の組（公開中・これから）は畳んで置く。見出しを押すと開く */
+.works-group > summary { cursor: pointer; list-style: revert; }
+.works-group > summary h3 { display: inline; }
+/* 作品の詳細の「上映スケジュール」 */
+.showtime-box { margin-top: 1rem; border-top: 1px solid #e8eaf3; padding-top: .8rem; }

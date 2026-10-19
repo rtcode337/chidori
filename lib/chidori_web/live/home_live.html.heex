@@ -132,6 +132,8 @@
                     注目度 {NewsLive.attention_label(entry.attention)}
                   </span>
                   <strong>{entry.title}</strong>
+                  <%!-- 見た作品は見出しの横に印（最新情報の画面の注目作と同じ） --%>
+                  <span :if={NewsLive.seen_work?(@work_marks, entry.title)} class="seen-badge">見た</span>
                 </div>
                 <p class="event-item-facts">
                   {NewsLive.work_facts(entry, Chidori.Topics.works(@panel.topic))}
@@ -269,6 +271,7 @@
       opened={@opened_work}
       marks={@work_marks}
       saved={@work_mark_saved}
+      showtime={ChidoriWeb.ShowtimeAsk.for_modal(assigns)}
     />
   </div>
 </main>

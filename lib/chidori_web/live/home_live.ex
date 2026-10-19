@@ -84,7 +84,9 @@ defmodule ChidoriWeb.HomeLive do
        work_mark_saved: nil,
        works: nil
      )
-     |> load(panel)}
+     |> load(panel)
+     # 作品の詳細から上映スケジュールを調べられるように（映画の要約の枠だけ。`ChidoriWeb.ShowtimeAsk`）
+     |> ChidoriWeb.ShowtimeAsk.init(movies_panel?(panel))}
   end
 
   defp subscribe(%{kind: kind, topic: topic}) when kind in [:topic, :interest] do
@@ -170,12 +172,14 @@ defmodule ChidoriWeb.HomeLive do
   # 注目度が中以上のものだけをタグで引く（最新情報の画面の注目作と同じ）
   defp load_works(socket, :topic, topic) do
     base = News.chiezo_base_url()
+    works = Topics.works(topic)
 
-    if connected?(socket) and Topics.works(topic) != nil and base do
+    if connected?(socket) and works != nil and base do
       tags = Enum.map_join([:high, :mid], ",", &Events.attention_tag/1)
 
       socket
-      |> assign(works: :loading)
+      # **見た印も読む**（一覧の見出しの横に「見た」を出す。作品の詳細の記録の欄もこれを使う）
+      |> assign(works: :loading, work_marks: work_marks_of(works))
       |> start_async(:works, fn ->
         Events.fetch_tagged(base, topic.collection, tags,
           date_tag: Topics.date_tag(topic),
@@ -188,6 +192,17 @@ defmodule ChidoriWeb.HomeLive do
   end
 
   defp load_works(socket, _kind, _topic), do: socket
+
+  defp work_marks_of(works) do
+    if function_exported?(works, :mark_view, 0),
+      do: Chidori.Relations.Marks.for_view(works.mark_view()),
+      else: nil
+  end
+
+  defp movies_panel?(%{kind: :topic, topic: topic}),
+    do: Topics.works(topic) == Chidori.News.Movies
+
+  defp movies_panel?(_panel), do: false
 
   @doc """
   要約の枠に並べる、始まっている注目作（映画なら公開中、アニメなら放送中）と、その見出し。
@@ -272,6 +287,10 @@ defmodule ChidoriWeb.HomeLive do
   def handle_async(:events, {:ok, result}, socket), do: {:noreply, assign(socket, events: result)}
 
   def handle_async(:works, {:ok, result}, socket), do: {:noreply, assign(socket, works: result)}
+
+  def handle_async(:showtime_backends, result, socket),
+    do: {:noreply, ChidoriWeb.ShowtimeAsk.backends_loaded(socket, result)}
+
   def handle_async(:works, {:exit, _reason}, socket), do: {:noreply, assign(socket, works: nil)}
 
   # 要約から開いた作品（開いている作品の答えだけ受け取る）
@@ -331,6 +350,10 @@ defmodule ChidoriWeb.HomeLive do
   end
 
   def handle_event("close_work", _params, socket), do: {:noreply, WorkModal.close(socket)}
+
+  # 作品の詳細から上映スケジュールを調べる（`ChidoriWeb.ShowtimeAsk`）
+  def handle_event("ask_showtimes", params, socket),
+    do: {:noreply, ChidoriWeb.ShowtimeAsk.ask(socket, params)}
 
   def handle_event("save_work_mark", params, socket) do
     topic = socket.assigns.panel && socket.assigns.panel[:topic]
@@ -431,6 +454,10 @@ defmodule ChidoriWeb.HomeLive do
         {:noreply, socket}
     end
   end
+
+  # 上映スケジュールの答え（ほかの画面で頼んだものも届く）
+  def handle_info({:showtimes, state}, socket),
+    do: {:noreply, ChidoriWeb.ShowtimeAsk.received(socket, state)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
 

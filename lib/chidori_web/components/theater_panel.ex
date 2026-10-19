@@ -173,32 +173,110 @@ defmodule ChidoriWeb.TheaterPanel do
         AI が各映画館のサイトで調べます（押すたびに AI を 1 回使い、数十秒〜数分かかります）。
         上映時刻は変わることがあるので、出どころの頁で確かめてください。
       </p>
-      <p :if={@showtimes == :loading} class="muted-note">調べています…（数分かかることがあります）</p>
-      <p :if={match?({:error, _}, @showtimes)} class="muted-note">
-        {showtime_error(elem(@showtimes, 1))}
+      <.showtime_result state={@showtimes} />
+    </section>
+    """
+  end
+
+  attr :state, :any, default: nil
+
+  @doc """
+  調べた答え（館ごとの表）。映画館の欄と作品の詳細で同じものを出す。
+  `state` は `nil` / `:loading` / `{:ok, 結果}` / `{:error, 理由}`。
+  """
+  def showtime_result(assigns) do
+    ~H"""
+    <p :if={@state == :loading} class="muted-note">調べています…（数分かかることがあります。画面を移っても、戻ってくると出ます）</p>
+    <p :if={match?({:error, _}, @state)} class="muted-note">{showtime_error(elem(@state, 1))}</p>
+    <%= if match?({:ok, _}, @state) do %>
+      <% {:ok, result} = @state %>
+      <p class="muted-note">{result.title} / {result.date} {result.from} より後</p>
+      <div :if={result.theaters != []} class="showtime-results">
+        <section :for={t <- result.theaters} class="showtime-theater">
+          <h4>{t.name}</h4>
+          <ul :if={t.found} class="showtime-list">
+            <li :for={s <- t.showings}>
+              <strong>{s.start}</strong><span :if={s.end != ""}>〜{s.end}</span>
+              <span :if={s.format != ""} class="muted-note">{s.format}</span>
+            </li>
+          </ul>
+          <p :if={!t.found} class="muted-note">確かめられませんでした（または、この時刻より後の上映はありません）。</p>
+          <p :if={t.note != ""} class="muted-note">{t.note}</p>
+          <p :if={t.source} class="muted-note">
+            出どころ: <a href={t.source} target="_blank" rel="noopener noreferrer">{t.source}</a>
+          </p>
+        </section>
+      </div>
+      <%!-- 決めた形で返らなかったときは、答えの文をそのまま出す（捨てない） --%>
+      <pre :if={result.theaters == []} class="showtime-raw">{result.raw}</pre>
+    <% end %>
+    """
+  end
+
+  attr :title, :string, required: true
+  attr :favorites, :list, default: []
+  attr :backends, :any, default: nil
+  attr :state, :any, default: nil
+  attr :form, :map, default: %{}
+
+  @doc """
+  作品の詳細に置く、**その作品の上映スケジュールを調べる欄**（映画を選ぶ欄は無い）。
+  答えはその作品のものだけを出す（ほかの作品を調べた答えは、この作品の詳細には出さない）。
+  """
+  def showtime_box(assigns) do
+    assigns =
+      assign(assigns,
+        mine:
+          case assigns.state do
+            {:ok, %{title: title}} -> title == assigns.title
+            :loading -> assigns.form["title"] == assigns.title
+            {:error, _reason} -> assigns.form["title"] == assigns.title
+            _other -> false
+          end
+      )
+
+    ~H"""
+    <section class="showtime-box" aria-label="上映スケジュール">
+      <p class="seen-mark-title">上映スケジュール</p>
+      <p :if={@favorites == []} class="muted-note">
+        映画の画面の「映画館」でお気に入りの映画館を入れると、ここから調べられます。
+        <.link navigate={~p"/news?view=chidori_movies"}>映画の画面へ</.link>
       </p>
-      <%= if match?({:ok, _}, @showtimes) do %>
-        <% {:ok, result} = @showtimes %>
-        <p class="muted-note">{result.title} / {result.date} {result.from} より後</p>
-        <div :if={result.theaters != []} class="showtime-results">
-          <section :for={t <- result.theaters} class="showtime-theater">
-            <h4>{t.name}</h4>
-            <ul :if={t.found} class="showtime-list">
-              <li :for={s <- t.showings}>
-                <strong>{s.start}</strong><span :if={s.end != ""}>〜{s.end}</span>
-                <span :if={s.format != ""} class="muted-note">{s.format}</span>
-              </li>
-            </ul>
-            <p :if={!t.found} class="muted-note">確かめられませんでした（または、この時刻より後の上映はありません）。</p>
-            <p :if={t.note != ""} class="muted-note">{t.note}</p>
-            <p :if={t.source} class="muted-note">
-              出どころ: <a href={t.source} target="_blank" rel="noopener noreferrer">{t.source}</a>
-            </p>
-          </section>
-        </div>
-        <%!-- 決めた形で返らなかったときは、答えの文をそのまま出す（捨てない） --%>
-        <pre :if={result.theaters == []} class="showtime-raw">{result.raw}</pre>
-      <% end %>
+      <form
+        :if={@favorites != []}
+        id={"showtime-box-#{:erlang.phash2(@title)}"}
+        phx-submit="ask_showtimes"
+        class="showtime-form"
+      >
+        <input type="hidden" name="title" value={@title} />
+        <label>
+          日付
+          <input
+            type="date"
+            name="date"
+            value={(@mine && @form["date"]) || Date.to_iso8601(Jst.today())}
+          />
+        </label>
+        <label>
+          この時刻より後 <input type="time" name="from" value={(@mine && @form["from"]) || now_text()} />
+        </label>
+        <label :if={match?({:ok, [_ | _]}, @backends)}>
+          調べる AI
+          <select name="backend">
+            <option :for={b <- elem(@backends, 1)} value={b.id} selected={@form["backend"] == b.id}>
+              {b.label}
+            </option>
+          </select>
+        </label>
+        <button type="submit" disabled={@state == :loading or not match?({:ok, [_ | _]}, @backends)}>
+          {if @state == :loading, do: "調べています…", else: "お気に入りの館で調べる"}
+        </button>
+      </form>
+      <p :if={@favorites != []} class="muted-note">
+        お気に入りの館（{Enum.map_join(@favorites, "・", & &1.name)}）で、AI が各館のサイトを調べます（押すたびに AI を 1 回使います）。
+      </p>
+      <p :if={@state == :loading and !@mine} class="muted-note">ほかの作品を調べている最中です。終わるまで待ってください。</p>
+      <.showtime_result :if={@mine} state={@state} />
     </section>
     """
   end

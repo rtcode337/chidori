@@ -344,13 +344,18 @@
         >
           注目度が中以上の作品はまだありません（情報収集と整理が回ると並びます）。
         </p>
-        <section
+        <%!-- **既定は畳んでおく**（公開中とこれからで数十本ずつあり、開いたままだと下の
+             映画館の欄や設定まで長くスクロールすることになる）。見出しを押すと開く --%>
+        <details
           :for={
             {label, list} <- works_groups(all, Chidori.Jst.today(), Chidori.Topics.works(@topic))
           }
-          class="event-day-list"
+          id={"works-group-#{:erlang.phash2(label)}"}
+          class="event-day-list works-group"
         >
-          <h3>{label}（{length(list)} 本）</h3>
+          <summary>
+            <h3>{label}（{length(list)} 本）</h3>
+          </summary>
           <ul>
             <%!-- **押すと詳細が開く**（説明・出典・上映館・見た記録。`ChidoriWeb.WorkModal`）。
                  札は見渡すためのものなので、見出しと事実の 1 行だけ --%>
@@ -380,7 +385,7 @@
               <p class="event-item-facts">{work_facts(entry, Chidori.Topics.works(@topic))}</p>
             </li>
           </ul>
-        </section>
+        </details>
       <% end %>
     </section>
 
@@ -741,6 +746,7 @@
     opened={@opened_work}
     marks={@work_marks}
     saved={@work_mark_saved}
+    showtime={ChidoriWeb.ShowtimeAsk.for_modal(assigns)}
   />
 
   <%!-- **記事の詳細**（画家の図と同じくモーダル）。原文へのリンクと、その記事に

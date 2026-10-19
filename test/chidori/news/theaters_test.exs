@@ -379,4 +379,48 @@ defmodule Chidori.News.TheatersTest do
       assert ChidoriWeb.NewsLive.showing_works(:loading) == []
     end
   end
+
+  describe "作品の詳細の上映スケジュール" do
+    import Phoenix.LiveViewTest
+
+    @result {:ok,
+             %{
+               title: "サンプル映画",
+               date: "2026-10-19",
+               from: "18:00",
+               raw: "",
+               theaters: [
+                 %{
+                   name: "サンプル館",
+                   found: true,
+                   showings: [%{start: "19:30", end: "", format: ""}],
+                   source: nil,
+                   note: ""
+                 }
+               ]
+             }}
+
+    defp box(title, state, favorites \\ [%{id: "t1", name: "サンプル館"}]) do
+      render_component(&ChidoriWeb.TheaterPanel.showtime_box/1,
+        title: title,
+        favorites: favorites,
+        backends: {:ok, [%{id: "claude", label: "Claude Code CLI"}]},
+        state: state,
+        form: %{"title" => "サンプル映画"}
+      )
+    end
+
+    test "その作品を調べる欄と、その作品の答えを出す" do
+      html = box("サンプル映画", @result)
+
+      assert html =~ ~s(name="title" value="サンプル映画")
+      assert html =~ "お気に入りの館で調べる"
+      assert html =~ "19:30"
+    end
+
+    test "ほかの作品の答えは出さず、お気に入りが無ければ映画の画面へ案内する" do
+      refute box("別の映画", @result) =~ "19:30"
+      assert box("別の映画", nil, []) =~ "お気に入りの映画館を入れると"
+    end
+  end
 end

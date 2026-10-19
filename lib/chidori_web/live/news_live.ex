@@ -29,8 +29,6 @@ defmodule ChidoriWeb.NewsLive do
   alias Chidori.News.Favorites
   alias Chidori.News.Interests
   alias Chidori.News.Movies
-  alias Chidori.News.ShowtimeStore
-  alias Chidori.News.Showtimes
   alias Chidori.News.Theaters
   alias Chidori.Notify
   alias Chidori.Notify.Setting
@@ -40,6 +38,7 @@ defmodule ChidoriWeb.NewsLive do
   alias Chidori.Relations.Marks
   alias Chidori.Themes
   alias Chidori.Topics
+  alias ChidoriWeb.ShowtimeAsk
   alias ChidoriWeb.WorkModal
 
   # お気に入りのタブの `view`（話題の収集の名前は `chidori_` で始まるので、ぶつからない）
@@ -168,11 +167,6 @@ defmodule ChidoriWeb.NewsLive do
         theater_search: nil,
         theater_places: [],
         theater_radius: Theaters.default_radius(),
-        theater_favorites: if(movies?(topic), do: Theaters.favorites(), else: []),
-        showtime_backends: nil,
-        # 調べている最中か前の結果は、画面ではなく `ShowtimeStore` が持つ（画面を移っても読める）
-        showtimes: if(movies?(topic), do: ShowtimeStore.get().state, else: nil),
-        showtime_form: if(movies?(topic), do: ShowtimeStore.get().form, else: %{}),
         # 作品に付けた「見た」印とメモ（作品の見出し → 印。`Chidori.Relations.Marks`）
         work_marks: work_marks(topic),
         work_mark_saved: nil,
@@ -189,7 +183,9 @@ defmodule ChidoriWeb.NewsLive do
      |> load_themes()
      |> load_calendar()
      |> load_works()
-     |> load_showtime_backends()
+     # 上映スケジュール（お気に入りの館・頼める AI・調べた答え）。映画の話題だけ。
+     # 画面どうしで共通（`ChidoriWeb.ShowtimeAsk`。作品の詳細からも調べられる）
+     |> ShowtimeAsk.init(movies?(topic))
      |> load_ai_digests()}
   end
 
@@ -222,25 +218,6 @@ defmodule ChidoriWeb.NewsLive do
           with {:ok, theaters} <- Theaters.near(base, lat, lon, radius),
                do: {:ok, %{place: place, lat: lat, lon: lon, radius: radius, theaters: theaters}}
         end)
-    end
-  end
-
-  # 上映時刻を頼める AI（映画の話題だけ。web を持つ相手）。押す前に選べるよう、開いたときに読む。
-  # あわせて、調べた結果の知らせを受ける（調べている最中に画面を移って戻ってきても届く）
-  defp load_showtime_backends(socket) do
-    base = News.chiezo_base_url()
-
-    if connected?(socket) do
-      Phoenix.PubSub.unsubscribe(Chidori.PubSub, ShowtimeStore.topic())
-
-      if movies?(socket.assigns.topic),
-        do: Phoenix.PubSub.subscribe(Chidori.PubSub, ShowtimeStore.topic())
-    end
-
-    if connected?(socket) and movies?(socket.assigns.topic) and base do
-      start_async(socket, :showtime_backends, fn -> Showtimes.backends(base) end)
-    else
-      socket
     end
   end
 
@@ -755,48 +732,9 @@ defmodule ChidoriWeb.NewsLive do
     end
   end
 
-  # 上映スケジュールを AI に調べさせる。**重ねて押しても 1 本**（押すたびに枠を使う）
-  def handle_event("ask_showtimes", params, socket) do
-    form = Map.take(params, ["title", "date", "from", "backend"])
-    base = News.chiezo_base_url()
-    favorites = socket.assigns.theater_favorites
-
-    with true <- base != nil,
-         title when is_binary(title) and title != "" <- form["title"],
-         {:ok, date} <- Date.from_iso8601(form["date"] || ""),
-         {:ok, from} <- Setting.parse(form["from"] || ""),
-         backend when is_binary(backend) and backend != "" <- form["backend"] do
-      # **答えは画面に直接送らず `ShowtimeStore` に置く**（そこから知らせが届く）。
-      # 画面を移っても調べる処理は最後まで走るので、戻ってきた画面が読めるように
-      started =
-        Chidori.SingleFlight.start(:showtimes, fn ->
-          ShowtimeStore.started(form)
-
-          result =
-            with {:ok, found} <- Showtimes.ask(base, backend, title, favorites, date, from) do
-              {:ok,
-               Map.merge(found, %{
-                 title: title,
-                 date: Date.to_iso8601(date),
-                 from: Setting.format(from)
-               })}
-            end
-
-          ShowtimeStore.finished(result)
-        end)
-
-      case started do
-        {:ok, _pid} ->
-          {:noreply, assign(socket, showtimes: :loading, showtime_form: form)}
-
-        {:error, :busy} ->
-          {:noreply, assign(socket, showtimes: {:error, :busy}, showtime_form: form)}
-      end
-    else
-      _invalid ->
-        {:noreply, assign(socket, showtimes: {:error, :bad_request}, showtime_form: form)}
-    end
-  end
+  # 上映スケジュールを AI に調べさせる（映画館の欄と作品の詳細から。`ChidoriWeb.ShowtimeAsk`）
+  def handle_event("ask_showtimes", params, socket),
+    do: {:noreply, ShowtimeAsk.ask(socket, params)}
 
   def handle_event("open_work", %{"title" => title}, socket) do
     entries =
@@ -1033,11 +971,8 @@ defmodule ChidoriWeb.NewsLive do
   def handle_async(:theater_search, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, theater_search: {:error, :collection_crashed})}
 
-  def handle_async(:showtime_backends, {:ok, result}, socket),
-    do: {:noreply, assign(socket, showtime_backends: result)}
-
-  def handle_async(:showtime_backends, {:exit, _reason}, socket),
-    do: {:noreply, assign(socket, showtime_backends: {:error, :collection_crashed})}
+  def handle_async(:showtime_backends, result, socket),
+    do: {:noreply, ShowtimeAsk.backends_loaded(socket, result)}
 
   def handle_async({:works, collection}, result, socket) do
     if socket.assigns.topic && socket.assigns.topic.collection == collection do
@@ -1123,7 +1058,8 @@ defmodule ChidoriWeb.NewsLive do
   @impl true
   # まとめを作らせている最中の一言。**収集の状態とは別に受ける** ——
   # 状態に混ぜると、届くたびに画面ぜんたいが書き換わる
-  def handle_info({:showtimes, result}, socket), do: {:noreply, assign(socket, showtimes: result)}
+  def handle_info({:showtimes, state}, socket),
+    do: {:noreply, ShowtimeAsk.received(socket, state)}
 
   def handle_info({:digest_progress, collection, message}, socket) do
     topic = socket.assigns.topic

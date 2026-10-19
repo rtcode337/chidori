@@ -14,6 +14,7 @@ paths:
   - "lib/chidori_web/components/ai_digests.ex"
   - "lib/chidori_web/components/work_modal.ex"
   - "lib/chidori_web/components/theater_panel.ex"
+  - "lib/chidori_web/showtime_ask.ex"
   - "lib/chidori_web/components/top_books.ex"
   - "assets/js/topic_map.js"
   - "assets/js/digest_swipe.js"
@@ -47,7 +48,10 @@ paths:
   確かめられなかった館は推し量らせず「分からない」。出どころの頁を添える。答えは画面に直接送らず `ShowtimeStore` に置いて
   PubSub で知らせる（調べている最中に画面を移っても、戻ってきた画面が読める）
 - 「近くの上映館を Gemini に聞く」は普通のリンクとして開く（`ask_nearby.js`）。空のタブを開いてから行き先を入れると PWA で白いまま残る
-- トップの映画・アニメの要約の枠には、要約の下に公開中・放送中の注目作を並べる（`HomeLive.started_works/2`）
+- トップの映画・アニメの要約の枠には、要約の下に公開中・放送中の注目作を並べる（`HomeLive.started_works/2`。見た印も出す）
+- 上映スケジュールを調べる動きは画面どうしで共通（`ChidoriWeb.ShowtimeAsk`）。映画館の欄と、作品の詳細の欄
+  （`TheaterPanel.showtime_box/1`。その作品だけを調べ、その作品の答えだけを出す）から使う
+- 映画の画面の注目作の組（公開中・これから）は既定で畳む（下の映画館の欄と設定まで遠くなるため）
 - 重要度（AI の印）・話題度（反応の判断）・興味度（選んだ語への近さ）は別の軸。混ぜない。低いものも消さない（並びであってふるい分けではない）
 - 整理はまとめに触らない。まとめは直近の窓ではなくタグで引き直す。出典は見出しで Chiezo から引き直す
 - 重複は見出しではなく URL で確かめさせる。まとめは記事の URL を名乗らない
