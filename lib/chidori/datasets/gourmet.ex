@@ -94,7 +94,13 @@ defmodule Chidori.Datasets.Gourmet do
   # 店の種類のカテゴリか `<県>の飲食店` を持つもの。料理の記事に付いていないことを
   # 本番の名簿の候補で確かめてある（「鰻料理」は うなぎパイ のような料理にも付くので使わない）。
   # 漏れは整理の回が直す（印の付け外しは AI に頼む）
-  @shop_categories ~w(ラーメン店 餃子店 洋菓子店 菓子店 和菓子の店舗・メーカー 日本の外食事業者 うどん・蕎麦屋 寿司屋)
+  @shop_categories ~w(ラーメン店 餃子店 洋菓子店 菓子店 パン店 和菓子の店舗・メーカー 日本の外食事業者 うどん・蕎麦屋 寿司屋)
+
+  # **店の種類のカテゴリだけで入る記事は、市区町村の付いた括り（か県の食文化）も持つものだけ**
+  # （Chiezo の抽出の `tag_pairs`）。店の種類のカテゴリは全国の括りで県が読めない ——
+  # 県の飲食店に入っていない店（六厘舎・壱発ラーメン…）は名簿に入っていなかった。
+  # 県は市区町村の名前から地図辞典で読む（`area_of`）
+  @shop_city_pattern "^(.+?[市区町村](?: \\(.+\\))?)の(?:企業|建築物|食文化)$"
 
   # **組で入れる括り**（`<県>の農業` で、同じ県の `<県>の食文化` にも入っている記事だけ）。
   # 農業のカテゴリは農協・試験場・品種・制度まで抱えるが、食文化にも入っている記事は
@@ -134,7 +140,7 @@ defmodule Chidori.Datasets.Gourmet do
   # ファストフード店）は今までどおり外す
   @excluded_categories ~w(
     日本のファストフード店 アメリカ合衆国のファストフード店
-    日本の製菓業者 日本の食品メーカー 日本の製麺業者 日本の即席麺メーカー
+    日本の即席麺メーカー
     インスタントラーメン インスタントラーメンの商品名 インスタント焼きそば
     日清食品の製品 日清食品のインスタントラーメン 東洋水産
     ガイドブック グルメ番組 ラーメンを題材とした作品 うどんを題材とした作品
@@ -145,7 +151,14 @@ defmodule Chidori.Datasets.Gourmet do
   )
   # 県の名前の付いた、会社・一覧・閉じた施設のカテゴリ（47 県ぶん組み立てる。
   # `<県>の<括り>` と `かつて存在した<県>の企業`）
-  @excluded_kinds ["製菓業者", "一覧", "商業施設 (廃止)"]
+  @excluded_kinds ["一覧", "商業施設 (廃止)"]
+
+  # **会社のカテゴリは、店のカテゴリにも入っていなければ外す**（Chiezo の抽出の
+  # `not_tag_unless`）。看板の店を持つ菓子屋・パン屋・シウマイ屋は会社として記事が立って
+  # いることが多く、まとめて外すと本店ごと落ちた（崎陽軒・喜久家洋菓子舗）。会社か店かは
+  # 整理の回が記事の主語で分ける。県の名前の付いた製菓業者も同じ扱い（47 県ぶん組み立てる）
+  @company_categories ~w(日本の製菓業者 日本の食品メーカー 日本の製麺業者 日本の製パン業者)
+  @company_kinds ["製菓業者"]
   @excluded_closed "かつて存在した"
 
   # 料理の種類（travel-log のシリーズ）。**語彙は Chidori が持つ** —— AI に決めさせると
@@ -184,7 +197,8 @@ defmodule Chidori.Datasets.Gourmet do
       "中国料理店" => "洋食・中華",
       "日本の喫茶店" => "飲み物",
       "名曲喫茶" => "飲み物",
-      "お好み焼店" => "粉もの"
+      "お好み焼店" => "粉もの",
+      "パン店" => "パン"
     },
     {"^(.+の土産菓子|洋菓子店|菓子店|和菓子の店舗・メーカー)$", "菓子"},
     {"^.+の麺料理$", "麺類"},
@@ -354,6 +368,34 @@ defmodule Chidori.Datasets.Gourmet do
   defp roster_kinds, do: @roster_kinds ++ [@shop_kind, @paired_kind]
 
   @doc "名簿から外すカテゴリ（会社・メーカー・商品・作品・店でないもの・閉じた店・一覧）。"
+  @doc "会社のカテゴリ（店のカテゴリにも入っていなければ外す。`extract/0` の `not_tag_unless`）。"
+  def company_categories do
+    @company_categories ++
+      for(prefecture <- @prefectures, kind <- @company_kinds, do: "#{prefecture}の#{kind}")
+  end
+
+  @doc "会社のカテゴリでも外さない、店のカテゴリ（店の種類と、県の飲食店。外食事業者は会社が混ざるので入れない）。"
+  def shop_like_categories do
+    (@shop_categories -- ["日本の外食事業者"]) ++
+      shop_kind_categories() ++
+      for(prefecture <- @prefectures, do: "#{prefecture}の#{@shop_kind}")
+  end
+
+  # 種類の表に並べた店の種類のカテゴリ（焼肉店・料亭・中国料理店…）
+  defp shop_kind_categories do
+    @kind_rules
+    |> Enum.filter(&is_map/1)
+    |> Enum.flat_map(&Map.keys/1)
+    |> Enum.filter(&String.ends_with?(&1, ["店", "料亭", "ステーキハウス", "名曲喫茶"]))
+  end
+
+  @doc """
+  店の種類のカテゴリのうち、**それだけで名簿に入れるもの**（市区町村の括りと組で。`extract/0`）。
+  外食事業者は入れない —— 全国チェーンの会社の記事が本社の市区町村の企業の括りと組になって
+  大量に入る（県の飲食店に入っている外食事業者は、今までどおり県の括りで入る）。
+  """
+  def shop_entry_categories, do: @shop_categories -- ["日本の外食事業者"]
+
   def excluded_categories do
     @excluded_categories ++
       for(prefecture <- @prefectures, kind <- @excluded_kinds, do: "#{prefecture}の#{kind}") ++
@@ -489,8 +531,12 @@ defmodule Chidori.Datasets.Gourmet do
   def extract do
     %{
       source: "jawiki",
-      tag: Enum.join(roster_categories(), ","),
+      tag: Enum.join(roster_categories() ++ shop_entry_categories(), ","),
       not_tag: Enum.join(excluded_categories(), ","),
+      not_tag_unless: %{
+        not_tag: Enum.join(company_categories(), ","),
+        unless: Enum.join(shop_like_categories(), ",")
+      },
       # 記事の冒頭は AI が料理を確かめる材料（travel-log へは写さない。CC BY-SA の
       # 文をそのまま地図に出すと、帰属と継承の条件が付く）
       body: "opening",
@@ -499,7 +545,11 @@ defmodule Chidori.Datasets.Gourmet do
       # 県の食文化にも入っている記事だけ**（ほかの括りは今までどおり）
       tag_pairs: [
         %{pattern: "^(.+?[都道府県])の#{@paired_kind}$", with: "{1}の#{@paired_with}"},
-        %{pattern: "^(?:#{Enum.join(@national_kinds, "|")})$", with_pattern: culture_pattern()}
+        %{pattern: "^(?:#{Enum.join(@national_kinds, "|")})$", with_pattern: culture_pattern()},
+        %{
+          pattern: "^(?:#{Enum.join(shop_entry_categories(), "|")})$",
+          with_pattern: "^(?:.+?[都道府県]の#{@paired_with}|.+?[市区町村](?: \\(.+\\))?の(?:企業|建築物|食文化))$"
+        }
       ],
       tags:
         [
@@ -518,6 +568,18 @@ defmodule Chidori.Datasets.Gourmet do
             format: "#{area_tag()}:{1}",
             map: Map.new(@prefectures, &{&1, &1}),
             fallback: "all"
+          },
+          # **県の括りでも県の食文化でも県が決まらなかった記事は、市区町村の付いた括りから
+          # 読む**（店の種類のカテゴリだけで入った店。市区町村から県は地図辞典で引く `area_of`。
+          # 同じ名前の市が 2 県にあるときは作らない）
+          %{
+            pattern: @shop_city_pattern,
+            format: "#{area_tag()}:{1}",
+            fallback: true,
+            area_of: %{
+              source: "osm_japan",
+              feature: ["place=city", "place=town", "place=village"]
+            }
           },
           # **店の記事は店の 1 件**（店の種類のカテゴリか、県の飲食店に入っている記事）
           %{

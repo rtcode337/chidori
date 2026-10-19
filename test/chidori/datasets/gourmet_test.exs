@@ -50,7 +50,15 @@ defmodule Chidori.Datasets.GourmetTest do
       # 組で入れる全国の括り（県の食文化にも入っている記事だけ）
       assert "日本の郷土料理" in tags
       assert "日本の水産加工品" in tags
-      assert length(tags) == 47 * 9 + length(Gourmet.national_categories())
+
+      # 店の種類のカテゴリも（市区町村の括りと組のときだけ。外食事業者は入れない）
+      assert "ラーメン店" in tags
+      assert "パン店" in tags
+      refute "日本の外食事業者" in tags
+
+      assert length(tags) ==
+               47 * 9 + length(Gourmet.national_categories()) +
+                 length(Gourmet.shop_entry_categories())
 
       # 県が読めない括り・どこにでもある料理が混ざる括り・食べもの以外を抱える括りは入れない
       for wide <- ~w(ご当地グルメ 関東地方のご当地ラーメン 東北地方の駅弁 東京都の食文化 京都府の菓子) do
@@ -60,7 +68,7 @@ defmodule Chidori.Datasets.GourmetTest do
 
     test "全国の括りは、どこかの県の食文化にも入っている記事だけ（県は食文化から読む）" do
       extract = Gourmet.extract()
-      [_farm, %{pattern: pattern, with_pattern: partner}] = extract.tag_pairs
+      [_farm, %{pattern: pattern, with_pattern: partner}, _shops] = extract.tag_pairs
       pattern = Regex.compile!(pattern, "u")
       partner = Regex.compile!(partner, "u")
 
@@ -88,7 +96,7 @@ defmodule Chidori.Datasets.GourmetTest do
 
     test "農業の括りは、同じ県の食文化にも入っている記事だけ（米の品種は外す）" do
       extract = Gourmet.extract()
-      assert [%{pattern: pattern, with: "{1}の食文化"}, _national] = extract.tag_pairs
+      assert [%{pattern: pattern, with: "{1}の食文化"}, _national, _shops] = extract.tag_pairs
       assert [_, "群馬県"] = Regex.run(Regex.compile!(pattern, "u"), "群馬県の農業")
       # 県は農業の括りからも読む
       [_kind, region | _rest] = extract.tags
@@ -103,11 +111,28 @@ defmodule Chidori.Datasets.GourmetTest do
     test "会社・メーカー・商品・作品・店でないもの・閉じた店・一覧の記事は外す" do
       excluded = String.split(Gourmet.extract().not_tag, ",")
 
-      for company <- ~w(日本の製菓業者 東京都の製菓業者 日本の食品メーカー 日本の製麺業者 日本の即席麺メーカー
+      for company <- ~w(日本の即席麺メーカー
                         インスタントラーメンの商品名 日本のファストフード店 ナイトクラブ
                         かつて存在した日本の外食事業者 かつて存在した東京都の企業 北海道の一覧) do
         assert company in excluded
       end
+
+      # 会社のカテゴリは、店のカテゴリにも入っていなければ外す（店なら整理が分ける）
+      %{not_tag: soft, unless: kept} = Gourmet.extract().not_tag_unless
+      soft = String.split(soft, ",")
+      kept = String.split(kept, ",")
+
+      for company <- ~w(日本の製菓業者 東京都の製菓業者 日本の食品メーカー 日本の製麺業者 日本の製パン業者) do
+        assert company in soft
+        refute company in excluded
+      end
+
+      for shop <- ~w(洋菓子店 パン店 神奈川県の飲食店 中国料理店 料亭) do
+        assert shop in kept
+      end
+
+      # 外食事業者は会社を残す理由にしない（全国チェーンの会社が戻ってくる）
+      refute "日本の外食事業者" in kept
 
       # 閉じた施設のカテゴリは名前に空白を含む（カンマで区切るので、そのまま渡る）
       assert "神奈川県の商業施設 (廃止)" in excluded
@@ -120,7 +145,7 @@ defmodule Chidori.Datasets.GourmetTest do
         refute shop in excluded
       end
 
-      [_kind, region, _culture, shop | _kinds] = Gourmet.extract().tags
+      [_kind, region, _culture, _city, shop | _kinds] = Gourmet.extract().tags
       assert shop.format == Gourmet.shop_tag()
       pattern = Regex.compile!(shop.pattern, "u")
 
@@ -163,15 +188,40 @@ defmodule Chidori.Datasets.GourmetTest do
       assert region.format == "地域:{1}"
     end
 
+    test "店の種類のカテゴリだけで入る店は、市区町村の括りと組で入り、県は市区町村から読む" do
+      extract = Gourmet.extract()
+      [_farm, _national, %{pattern: pattern, with_pattern: partner}] = extract.tag_pairs
+      pattern = Regex.compile!(pattern, "u")
+      partner = Regex.compile!(partner, "u")
+
+      assert Regex.match?(pattern, "ラーメン店")
+      refute Regex.match?(pattern, "日本の外食事業者")
+
+      for city <- ~w(八王子市の企業 品川区の建築物 横浜市の食文化 神奈川県の食文化) do
+        assert Regex.match?(partner, city)
+      end
+
+      refute Regex.match?(partner, "関東地方の食文化")
+
+      [_kind, region, culture, city | _rest] = extract.tags
+      assert city.fallback == true
+      assert city.format == region.format
+      assert city.area_of.source == "osm_japan"
+      assert [_, "八王子市"] = Regex.run(Regex.compile!(city.pattern, "u"), "八王子市の企業")
+      assert [_, "森町 (北海道)"] = Regex.run(Regex.compile!(city.pattern, "u"), "森町 (北海道)の企業")
+      # 県の食文化から読む規則が先
+      assert culture.fallback == "all"
+    end
+
     test "2 つの県に入っている記事は県ごとの 1 件に分ける" do
       assert Gourmet.extract().split == %{prefix: "地域:", title: "{title}（{value}）"}
     end
 
     test "種類は細かい括りから 1 つだけ（2 つ目からは前が作っていれば作らない）" do
-      [_kind, _region, _culture, _shop | rules] = Gourmet.extract().tags
+      [_kind, _region, _culture, _city, _shop | rules] = Gourmet.extract().tags
 
       # Chiezo の読み替えは 1 本の指定に 20 個まで
-      assert length(rules) + 4 <= 20
+      assert length(rules) + 5 <= 20
       assert hd(rules)[:fallback] == nil
       assert Enum.all?(tl(rules), &(&1.fallback == true))
 
