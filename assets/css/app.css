@@ -1275,3 +1275,5 @@ a.top-book-cover { display: block; }
 .showtime-list { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: .3rem .9rem; }
 .showtime-raw { white-space: pre-wrap; font-size: .8rem; }
 .ask-nearby button { padding: .2rem .6rem; font-size: .8rem; }
+.theater-places { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .5rem 0; }
+.theater-places .muted-note { width: 100%; margin: 0; }

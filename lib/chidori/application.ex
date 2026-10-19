@@ -26,6 +26,8 @@ defmodule Chidori.Application do
         {Task.Supervisor, name: Chidori.TaskSupervisor},
         # AI を動かす依頼を、同じものは 1 本だけ走らせる札（`Chidori.SingleFlight`）
         Chidori.SingleFlight,
+        # 上映スケジュールを調べている最中か、前に調べた結果（画面を移っても読めるように）
+        Chidori.News.ShowtimeStore,
         # 話題ごとに 1 つずつ収集を持つ。開かれた話題のぶんだけ立てる ——
         # 話題は増えていく前提なので、全部を起動時に立てると、
         # 誰も開いていない話題まで常駐する

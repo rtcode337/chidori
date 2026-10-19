@@ -13,6 +13,8 @@ defmodule ChidoriWeb.TheaterPanel do
   alias Chidori.Jst
 
   attr :search, :any, default: nil
+  attr :places, :list, default: []
+  attr :radius, :integer, default: 5_000
   attr :favorites, :list, default: []
   attr :showing, :list, default: []
   attr :backends, :any, default: nil
@@ -26,26 +28,57 @@ defmodule ChidoriWeb.TheaterPanel do
     <section class="event-calendar theater-panel" aria-label="映画館">
       <h2 class="news-section-title">映画館</h2>
 
-      <%!-- 近くの映画館を探す。**地域の名前か現在地で**（地図辞典の映画館から近い順） --%>
+      <%!-- 近くの映画館を探す。**駅名・地名か現在地で**（地図辞典の映画館から近い順）。
+           地名は候補を出して選んでもらう（同じ名前の場所が各地にある） --%>
       <div class="theater-find">
-        <form phx-submit="theaters_near_place" class="theater-find-form">
+        <form
+          id="theater-find"
+          phx-submit="theaters_near_place"
+          phx-change="theater_radius"
+          class="theater-find-form"
+        >
           <label>
-            地域
-            <input type="text" name="region" placeholder="例: 新宿" autocomplete="off" required />
+            駅名・地名
+            <input type="text" name="region" placeholder="例: 新宿駅・川崎" autocomplete="off" />
           </label>
-          <button type="submit" phx-disable-with="探しています…">近くの映画館を探す</button>
+          <label>
+            広さ
+            <select name="radius">
+              <option
+                :for={r <- Chidori.News.Theaters.radius_choices()}
+                value={r}
+                selected={r == @radius}
+              >
+                {distance_label(r)} 以内
+              </option>
+            </select>
+          </label>
+          <button type="submit" phx-disable-with="探しています…">探す</button>
         </form>
         <div id="theater-nearby" phx-hook="TheaterNearby" class="theater-here">
           <button type="button">現在地の近くを探す</button>
           <span class="muted-note" data-status></span>
         </div>
       </div>
+      <div :if={@places != []} class="theater-places">
+        <p class="muted-note">どこの近くを探しますか？</p>
+        <button
+          :for={p <- @places}
+          type="button"
+          phx-click="theaters_near_candidate"
+          phx-value-lat={p.lat}
+          phx-value-lon={p.lon}
+          phx-value-label={p.label}
+        >
+          {p.label}
+        </button>
+      </div>
       <p :if={@search == :loading} class="muted-note">探しています…</p>
       <p :if={match?({:error, _}, @search)} class="muted-note">{search_error(elem(@search, 1))}</p>
       <%= if match?({:ok, _}, @search) do %>
         <% {:ok, found} = @search %>
         <p class="muted-note">
-          {found.place}から 5km 以内の映画館（{length(found.theaters)} 館。近い順）
+          {found.place}から {distance_label(found.radius)} 以内の映画館（{length(found.theaters)} 館。近い順。同じ館の重なりはまとめています）
         </p>
         <ul :if={found.theaters != []} class="theater-list">
           <li :for={t <- found.theaters}>
@@ -90,7 +123,12 @@ defmodule ChidoriWeb.TheaterPanel do
       <%!-- 上映スケジュール。**押したときだけ** AI に web で調べさせる（枠を 1 回使い、数十秒〜数分かかる） --%>
       <h3>上映スケジュール</h3>
       <p :if={@favorites == []} class="muted-note">お気に入りの映画館を入れると調べられます。</p>
-      <form :if={@favorites != []} phx-submit="ask_showtimes" class="showtime-form">
+      <form
+        :if={@favorites != []}
+        id="showtime-form"
+        phx-submit="ask_showtimes"
+        class="showtime-form"
+      >
         <label>
           映画
           <select name="title" required>
@@ -167,6 +205,7 @@ defmodule ChidoriWeb.TheaterPanel do
 
   @doc "距離の書き方（1km 未満は m、それ以上は km を小数 1 桁）。"
   def distance_label(m) when is_integer(m) and m < 1000, do: "#{m}m"
+  def distance_label(m) when is_integer(m) and rem(m, 1000) == 0, do: "#{div(m, 1000)}km"
   def distance_label(m) when is_integer(m), do: "#{Float.round(m / 1000, 1)}km"
   def distance_label(_m), do: ""
 
