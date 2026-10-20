@@ -15,7 +15,7 @@ import {selectingText} from "./swipe_guard"
 
 const SWIPE = 60
 const RATIO = 1.5
-const SKIP = ".report-table, pre, .relation-tabs, .digest-viewer, iframe"
+const SKIP = ".report-table, pre, .relation-tabs, .home-subtabs, .digest-viewer, iframe"
 
 export default {
   mounted() {

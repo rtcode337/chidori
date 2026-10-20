@@ -5,8 +5,8 @@
     <ChidoriWeb.MainNav.main_nav active={:home} />
 
     <%!-- 大きなタブ（ニュース・イベント・関連図・データ収集）と、その中の枠。**中の枠はタブの形に
-         しない** —— 2 段ともタブにすると、どちらが上の階層なのか読み取れない。中の枠は折り返して
-         全部見せる（横へ送らずに目当てに届く）。押すと大きなタブの最初の枠が開く --%>
+         しない** —— 2 段ともタブにすると、どちらが上の階層なのか読み取れない。中の枠は 1 行に並べ、
+         収まらなければ横へ送る（折り返すと頭の帯が伸びる）。押すと大きなタブの最初の枠が開く --%>
     <% groups = Chidori.Home.grouped(@panels) %>
     <% current =
       @panel && Enum.find(groups, fn {group, _name, _members} -> group == @panel.group end) %>
@@ -28,7 +28,9 @@
     </nav>
     <nav
       :if={current && length(elem(current, 2)) > 1}
+      id="home-subtabs"
       class="home-subtabs"
+      phx-hook="ScrollTabs"
       aria-label={"#{elem(current, 1)}の中の枠"}
     >
       <.link
