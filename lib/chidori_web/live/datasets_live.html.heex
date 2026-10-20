@@ -703,6 +703,26 @@
             backends={@backends}
           />
 
+          <%!-- **情報収集が 1 回に回る区画の数**（範囲ごとの食事処だけ）。重い相手で回すので、
+               区画の数から自動で決めさせず、ここで決める。送ったときに効く --%>
+          <p :if={@dataset[:area]}>
+            <label>
+              情報収集が 1 回に回る区画の数
+              <select name="survey_per_run">
+                <option
+                  :for={n <- Chidori.Datasets.DiningAreas.survey_per_run_choices()}
+                  value={n}
+                  selected={n == (@dataset.area.survey_per_run || 1)}
+                >
+                  {n} 区画
+                </option>
+              </select>
+            </label>
+            <span class="muted-note">
+              1 区画で十分ほどかかります。「収集の設定を更新」で送ったときに効きます。
+            </span>
+          </p>
+
           <p class="muted-note">
             収集の名前は「{@dataset.collection}」です（Chiezo のソース名。<strong>後から変えません</strong>
             —— 変えると、それまで溜めた先を見失います）。
@@ -738,6 +758,17 @@
           </p>
           <p :if={@survey_saved} aria-live="polite">{@survey_saved}</p>
         </form>
+        <%!-- **情報収集を今すぐ 1 回**（区画は Chiezo が選ぶふつうの回。区画を選んで頼むのは区画の画面） --%>
+        <div :if={@dataset[:area] && @state.collection} class="button-row">
+          <button
+            type="button"
+            phx-click="run_survey_now"
+            phx-disable-with="頼んでいます…"
+          >
+            情報収集を今すぐ 1 回走らせる
+          </button>
+          <span :if={@survey_run} class="muted-note" aria-live="polite">{@survey_run}</span>
+        </div>
 
         <p :if={@state.collection && @state.collection.url} class="muted-note">
           <a href={@state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
@@ -1164,7 +1195,12 @@
         <%!-- **何が溜まるのかを、使う側の項目で書く。** ここで「どの項目がどこから
            来るか」が読めないと、足りない項目に気づけない。**読む相手も単位も対象ごとに
            違う**ので、文面は定義の側が持つ --%>
-        <section class="settings-block lined-block" aria-label={"#{@dataset.reader} に渡す中身"}>
+        <%!-- **範囲ごとの食事処には出さない**（どの範囲も同じ中身。食事処の「全体」のタブに 1 つだけ置く） --%>
+        <section
+          :if={!@dataset[:area]}
+          class="settings-block lined-block"
+          aria-label={"#{@dataset.reader} に渡す中身"}
+        >
           <h3>{@dataset.reader} に渡す中身</h3>
           <p>
             {@dataset.unit}で溜まります。{@dataset.reader}は <strong>タグ「{@dataset.module.kind_tag()}」</strong>で拾い、次の項目を読みます。

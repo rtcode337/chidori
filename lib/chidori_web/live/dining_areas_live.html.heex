@@ -391,5 +391,30 @@
         </div>
       </form>
     </section>
+
+    <%!-- **travel-log に渡す中身**（どの範囲も同じ中身なので、範囲のタブではなくここに 1 つだけ） --%>
+    <section class="settings-block lined-block" aria-label="travel-log に渡す中身">
+      <h3>travel-log に渡す中身</h3>
+      <p>
+        どの範囲も 1 店 1 文書で溜まります。travel-log は <strong>タグ「{Chidori.Datasets.Dining.kind_tag()}」</strong>で拾い、次の項目を読みます。
+      </p>
+      <table class="sweep-table">
+        <thead>
+          <tr>
+            <th>項目</th>
+            <th>収集の中身</th>
+            <th>誰が入れるか</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={row <- Chidori.Datasets.Dining.fields()}>
+            <td>{row.field}</td>
+            <td>{row.stored}</td>
+            <td>{row.who}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="muted-note">{Chidori.Datasets.Dining.note()}</p>
+    </section>
   </div>
 </main>

@@ -17,8 +17,6 @@ defmodule ChidoriWeb.DatasetsLive do
 
   use ChidoriWeb, :live_view
 
-  alias Chidori.Datasets.DiningSurveySetting
-
   import ChidoriWeb.Collect
   import ChidoriWeb.CollectPanel
   import ChidoriWeb.PartitionMap
@@ -27,6 +25,8 @@ defmodule ChidoriWeb.DatasetsLive do
   alias Chidori.Chiezo
   alias Chidori.Datasets
   alias Chidori.Datasets.BookMarks
+  alias Chidori.Datasets.DiningAreas
+  alias Chidori.Datasets.DiningSurveySetting
   alias Chidori.Datasets.Requests
   alias Chidori.Datasets.ShelfCache
   alias Chidori.SingleFlight
@@ -170,7 +170,8 @@ defmodule ChidoriWeb.DatasetsLive do
         # 範囲ごとの食事処の、情報収集を起こす時刻（`Chidori.Datasets.DiningSurvey`）。
         # 設定ページの「Chiezo 収集」の表と同じ値（同じ表を読み書きする）
         survey_times: survey_times_of(dataset),
-        survey_saved: nil
+        survey_saved: nil,
+        survey_run: nil
       )
 
     # **本棚のある対象は、開いただけでは Chiezo と話さない。** 本棚は覚え書きを出し、
@@ -202,6 +203,30 @@ defmodule ChidoriWeb.DatasetsLive do
   end
 
   @impl true
+  # **情報収集を今すぐ 1 回走らせる**（範囲ごとの食事処だけ。区画は Chiezo が選ぶふつうの回）。
+  # 押した人の 1 回なので、止めている収集でも走る（`Chiezo.by_hand/1`）
+  def handle_event(
+        "run_survey_now",
+        _params,
+        %{assigns: %{dataset: %{area: _} = dataset}} = socket
+      ) do
+    {:noreply,
+     socket
+     |> assign(survey_run: "頼んでいます…")
+     |> start_async(:run_survey_now, fn ->
+       with {:ok, base} <- Datasets.base_url() do
+         Chiezo.by_hand(fn ->
+           Chiezo.run(base, dataset.collection,
+             sweep: Chidori.Datasets.Dining.survey_sweep(),
+             timeout: 60_000
+           )
+         end)
+       end
+     end)}
+  end
+
+  def handle_event("run_survey_now", _params, socket), do: {:noreply, socket}
+
   # **情報収集を起こす時刻を直す**（範囲ごとの食事処だけ）。Chiezo には送らない ——
   # 時計を持つのは Chidori。設定ページの「Chiezo 収集」の表と同じ値を書き換える
   def handle_event("save_survey_times", %{"times" => times}, socket) do
@@ -220,7 +245,9 @@ defmodule ChidoriWeb.DatasetsLive do
   # **依頼を送って、そのまま読み直す。** 送っただけでは画面が変わらないので、
   # 効いたのかどうかが分かりません
   def handle_event("collect", params, socket) do
-    dataset = socket.assigns.dataset
+    # 範囲ごとの食事処は、情報収集が 1 回に回る区画の数も同じフォームで決める（覚えてから送る）
+    dataset = with_survey_per_run(socket.assigns.dataset, params["survey_per_run"])
+    socket = assign(socket, dataset: dataset)
     choices = merged_picks(socket.assigns.picks, params)
 
     # 同じ収集への送り直しは 1 本だけ（別のタブから押しても重ねない）。読み直しは重なってよい
@@ -652,6 +679,20 @@ defmodule ChidoriWeb.DatasetsLive do
          end
      )}
   end
+
+  def handle_async(:run_survey_now, {:ok, result}, socket) do
+    message =
+      case result do
+        :ok -> "情報収集を 1 回頼みました（区画は Chiezo が選びます）。"
+        {:error, reason} -> "頼めませんでした: #{inspect(reason)}"
+        _other -> "頼めませんでした。"
+      end
+
+    {:noreply, assign(socket, survey_run: message)}
+  end
+
+  def handle_async(:run_survey_now, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, survey_run: "頼めませんでした。")}
 
   def handle_async(:push, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, state: %{crashed(socket.assigns.state) | pushing: false})}
@@ -1440,6 +1481,23 @@ defmodule ChidoriWeb.DatasetsLive do
   end
 
   def derived_extract(_dataset), do: nil
+
+  # 情報収集が 1 回に回る区画の数を覚え、覚えた範囲で対象を作り直す（送る中身に効かせるため）。
+  # 範囲ごとの食事処でなければ、そのまま
+  defp with_survey_per_run(%{area: area, key: key} = dataset, value) when is_binary(value) do
+    case Integer.parse(value) do
+      {n, ""} when n != area.survey_per_run ->
+        case DiningAreas.set_survey_per_run(area, n) do
+          {:ok, _saved} -> Datasets.get(key)
+          {:error, _changeset} -> dataset
+        end
+
+      _same ->
+        dataset
+    end
+  end
+
+  defp with_survey_per_run(dataset, _value), do: dataset
 
   # 範囲ごとの食事処の、情報収集を起こす時刻（ほかの対象では nil = 欄を出さない）
   defp survey_times_of(dataset) do

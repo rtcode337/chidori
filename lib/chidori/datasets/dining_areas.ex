@@ -22,6 +22,8 @@ defmodule Chidori.Datasets.DiningAreas do
     field(:west, :float)
     field(:north, :float)
     field(:east, :float)
+    # 情報収集が 1 回に回る区画の数（`set_survey_per_run/2`）
+    field(:survey_per_run, :integer, default: 1)
 
     timestamps(type: :utc_datetime)
   end
@@ -35,6 +37,23 @@ defmodule Chidori.Datasets.DiningAreas do
     __MODULE__ |> order_by(:id) |> Repo.all()
   rescue
     _error -> []
+  end
+
+  # 情報収集が 1 回に回る区画の数として選べるもの（Chiezo の天井は 5）
+  @survey_per_run_choices 1..5
+
+  @doc "情報収集が 1 回に回る区画の数として選べるもの。"
+  def survey_per_run_choices, do: Enum.to_list(@survey_per_run_choices)
+
+  @doc """
+  情報収集が 1 回に回る区画の数を書き換えます。**重い相手で回すので、区画の数から自動で
+  決めさせず、範囲ごとに人が決める**（区画の多い範囲ほど 1 回が重くなっていた）。
+  """
+  def set_survey_per_run(area, value) do
+    area
+    |> cast(%{survey_per_run: value}, [:survey_per_run])
+    |> validate_inclusion(:survey_per_run, Enum.to_list(@survey_per_run_choices))
+    |> Repo.update()
   end
 
   @doc "1 つの範囲。無ければ nil。"

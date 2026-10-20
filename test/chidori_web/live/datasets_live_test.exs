@@ -186,8 +186,12 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     # どちらが本当の状態なのか読めなくなる
     {:ok, _live, html} = open_live(conn, ~p"/datasets?view=dining-1")
 
-    assert html =~ "travel-log に渡す中身"
     refute html =~ "relation-canvas"
+
+    # 渡す中身はどの範囲も同じなので、範囲のタブではなく「全体」のタブに 1 つだけ出す
+    refute html =~ "travel-log に渡す中身"
+    {:ok, _live, html} = live(conn, ~p"/datasets/areas")
+    assert html =~ "travel-log に渡す中身"
   end
 
   test "Chiezo が未設定なら、その理由を出す", %{conn: conn} do
@@ -307,7 +311,12 @@ defmodule ChidoriWeb.DatasetsLiveTest do
           Chidori.HttpStub.ok(~s({}))
 
         %{method: :post, url: url, body: body} ->
-          send(test_pid, {:posted, url, Jason.decode!(body)})
+          # 区画も相手も上書きしない回は、本文が空で届く
+          send(
+            test_pid,
+            {:posted, url, if(body in [nil, ""], do: %{}, else: Jason.decode!(body))}
+          )
+
           Chidori.HttpStub.ok(~s({}))
 
         %{method: :get, url: _detail} ->
@@ -328,6 +337,32 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       assert html =~ "sweep-table"
       assert html =~ ~s(name="sweep|情報収集|backend")
       assert html =~ "収集の設定を更新"
+    end
+
+    test "情報収集が 1 回に回る区画の数を、範囲ごとに決めて送る", %{conn: conn} do
+      {live, html} = shown(conn)
+      assert html =~ ~s(name="survey_per_run")
+
+      live |> element("#collect-form") |> render_submit(%{"survey_per_run" => "3"})
+      render_async(live)
+
+      assert_receive {:patched, _url, sent}, 2_000
+      survey = Enum.find(sent["sweeps"], &(&1["name"] == "情報収集"))
+      assert survey["partitions_per_run"] == 3
+      assert Chidori.Datasets.get("dining-1").area.survey_per_run == 3
+    end
+
+    test "情報収集を今すぐ 1 回走らせられる（区画は Chiezo が選ぶ）", %{conn: conn} do
+      {live, _html} = shown(conn)
+
+      live |> element(~s|button[phx-click="run_survey_now"]|) |> render_click()
+
+      assert_receive {:posted, url, _sent}, 2_000
+      assert url =~ "/v1/collect/chidori_dining_1/run"
+      assert url =~ URI.encode_query(%{"sweep" => "情報収集"})
+      # 押した人の 1 回（止めている収集でも走る）
+      assert url =~ "manual=true"
+      assert render_async(live) =~ "情報収集を 1 回頼みました"
     end
 
     test "情報収集を起こす時刻を、データ収集の画面でも直せる", %{conn: conn} do

@@ -201,6 +201,14 @@ defmodule Chidori.Datasets.DiningTest do
       assert roster.once
     end
 
+    test "1 回に回る区画の数は範囲ごとに決める（区画の数から自動で決めさせない）" do
+      survey = fn area -> Enum.find(Dining.sweeps(area), &(&1.name == "情報収集")) end
+
+      assert survey.(%{id: 1}).partitions_per_run == 1
+      assert survey.(%{id: 1, survey_per_run: 3}).partitions_per_run == 3
+      refute Map.has_key?(survey.(%{id: 1}), :cover_days)
+    end
+
     test "情報収集は一周しても止めず、Chiezo の時計では回さない", %{sweeps: sweeps} do
       # 閉店も開店も続くので回り続ける。重い相手で回すので、起こすのは Chidori の時計
       survey = Enum.find(sweeps, &(&1.name == "情報収集"))

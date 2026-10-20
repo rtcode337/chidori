@@ -71,12 +71,8 @@ defmodule Chidori.Datasets.Dining do
   # 「見切れた」と出ても名前と座標を眺めただけの回だった。確かめるには 1 件に
   # 10〜30 秒かかるので、1 回の持ち時間（十数分）に収まる 20 件にする
   @area_partition_target 20
-  # 一周の希望の日数。1 回に何区画を見るかはここから決まる（Chiezo は 1 回に 5 区画まで
-  # なので、区画が多い範囲では書いた日数より延びる）
-  @area_survey_days 14
   # 情報収集の間隔（分）。**起こすのは Chidori の時計**（`Chidori.Datasets.DiningSurvey`。
-  # 時刻は設定ページで決める）なので、Chiezo には 1 回に見る区画の数を決めるためだけに書く。
-  # 1 日 2 回起こす前提の 12 時間
+  # 時刻は設定ページで決める）。Chiezo には巡回の間隔として書くだけで、時計では回らない
   @survey_minutes 720
   # travel-log の種別。**範囲が違っても同じ種別に入る**（書き出しは範囲ごと、
   # 読み込み先は 1 つ）
@@ -274,13 +270,7 @@ defmodule Chidori.Datasets.Dining do
       # **溜まったものを誰がどう読むか**は対象ごとに違う（画面の文面になる）
       reader: "travel-log",
       unit: "1 店 1 文書",
-      # **記号で強調しない。** ここは Markdown として描かれないので、
-      # `**` を書くとそのまま画面に出る（規約）
-      note:
-        "座標は AI に書かせません（当てにならないうえ、実行のたびに変わります）。" <>
-          "辞典から運んだ値を下地にして、食い違っているものだけを AI の回に" <>
-          "直させます。座標を持たない 1 件はどの区画にも入らないので、足すときは" <>
-          "必ず座標を入れるよう頼んであります。",
+      note: note(),
       # **割り込みの行き先は情報収集**（「この区画を先に調べて」「この店が違う」）
       survey_sweep: @survey_sweep,
       # **travel-log からの依頼を走らせる巡回**（`Chidori.Datasets.Requests`）
@@ -299,6 +289,17 @@ defmodule Chidori.Datasets.Dining do
 
   @doc "情報収集の巡回の名前（時刻で起こすときに名指しする）。"
   def survey_sweep, do: @survey_sweep
+
+  @doc """
+  渡す中身の補足（食事処の「全体」のタブに出す）。**記号で強調しない** —— ここは
+  Markdown として描かれないので、`**` を書くとそのまま画面に出る（規約）。
+  """
+  def note do
+    "座標は AI に書かせません（当てにならないうえ、実行のたびに変わります）。" <>
+      "辞典から運んだ値を下地にして、食い違っているものだけを AI の回に" <>
+      "直させます。座標を持たない 1 件はどの区画にも入らないので、足すときは" <>
+      "必ず座標を入れるよう頼んであります。"
+  end
 
   @doc """
   travel-log がスポットにするときに読む項目。
@@ -521,17 +522,20 @@ defmodule Chidori.Datasets.Dining do
   **情報収集は一周しても止めない** —— 閉店も開店も続くので、回り続けて追いかける。
   **Chiezo の時計は外し（`by_caller`）、Chidori が決めた時刻に起こします**
   （`Chidori.Datasets.DiningSurvey`）。重い相手で回すので、何時に何回起こすかを
-  Chidori の側で決めて費用を抑えるため。間隔（`interval_minutes`）は 1 日 2 回の
-  12 時間を書いておく —— 1 回に何区画を見るかは、一周の希望の日数とこの間隔から決まる。
+  Chidori の側で決めて費用を抑えるため。
+
+  **1 回に回る区画の数も範囲ごとに決めます**（`partitions_per_run`。範囲の
+  `survey_per_run`、既定 1）。一周の日数から Chiezo に計算させると、区画の多い範囲ほど
+  1 回が重くなる —— 重い相手で回すので、1 回の重さは人が決める。
   """
-  def sweeps(_area) do
+  def sweeps(area) do
     [
       roster_sweep(),
       %{
         name: @survey_sweep,
         prompt: :survey,
         interval_minutes: @survey_minutes,
-        cover_days: @area_survey_days,
+        partitions_per_run: Map.get(area, :survey_per_run) || 1,
         after: @roster_sweep,
         by_caller: true
       }
