@@ -118,7 +118,7 @@ defmodule Chidori.CollectOverview do
                 dining_survey?(sweep, collection["name"]) ->
                   with %DateTime{} = at <-
                          Chidori.Datasets.DiningSurvey.next_at(
-                           Chidori.Datasets.DiningSurveySetting.get()
+                           Chidori.Datasets.DiningSurveySetting.get(collection["name"])
                          ),
                        do: DateTime.to_iso8601(at)
 
@@ -217,7 +217,7 @@ defmodule Chidori.CollectOverview do
     cond do
       dining_survey?(sweep, collection) ->
         case Chidori.Datasets.DiningSurveySetting.times(
-               Chidori.Datasets.DiningSurveySetting.get()
+               Chidori.Datasets.DiningSurveySetting.get(collection)
              ) do
           [] -> "時刻を決めていない（起こさない）"
           times -> "Chidori が起こす（" <> Enum.map_join(times, "・", &Setting.format/1) <> "）"
@@ -249,9 +249,9 @@ defmodule Chidori.CollectOverview do
   """
   def wake(sweep, collection) do
     cond do
-      # 食事処の情報収集（範囲ごとの収集のぜんぶで同じ時刻。`Chidori.Datasets.DiningSurvey`）
+      # 食事処の情報収集（範囲ごとの時刻。`Chidori.Datasets.DiningSurvey`）
       dining_survey?(sweep, collection) ->
-        {:dining_survey, Chidori.Datasets.DiningSurveySetting.get().run_at || ""}
+        {:dining_survey, Chidori.Datasets.DiningSurveySetting.get(collection).run_at || ""}
 
       sweep["on_demand"] ->
         {:digest, Settings.get(collection).digest_at || ""}

@@ -259,9 +259,9 @@ defmodule ChidoriWeb.SettingsLive do
         "carry" ->
           Chidori.Relations.CarrySetting.put(%{"run_at" => times, "batch" => params["batch"]})
 
-        # 食事処の情報収集を起こす時刻（範囲のぜんぶで同じ。`Chidori.Datasets.DiningSurveySetting`）
+        # 食事処の情報収集を起こす時刻（範囲ごと。`Chidori.Datasets.DiningSurveySetting`）
         "dining_survey" ->
-          Chidori.Datasets.DiningSurveySetting.put(%{"run_at" => times})
+          Chidori.Datasets.DiningSurveySetting.put(name, %{"run_at" => times})
 
         _other ->
           {:error, :unknown}

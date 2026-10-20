@@ -10,15 +10,16 @@ defmodule Chidori.Datasets.DiningSurvey do
 
   ## 時計
 
-  **決めた時刻（JST）に起こします**（設定ページの「Chiezo 収集」の表、食事処の
-  「情報収集」の行。`Chidori.Datasets.DiningSurveySetting`）。**時刻を書いていなければ
-  起こしません（既定）** —— 時計は Chidori の中にあるので、本番とテストの 2 つを
-  立てていると同じ回が二重に走る。時刻を書いた Chidori だけが起こす。
+  **範囲ごとに決めた時刻（JST）に起こします**（設定ページの「Chiezo 収集」の表、各範囲の
+  「情報収集」の行。`Chidori.Datasets.DiningSurveySetting`）。1 回十分ほどかかるので、
+  全部の範囲を同じ時刻にすると範囲の数だけ並んで取り込みを占める —— 時刻をずらして書く。
+  **時刻を書いていない範囲は起こしません（既定）** —— 時計は Chidori の中にあるので、
+  本番とテストの 2 つを立てていると同じ回が二重に走る。時刻を書いた Chidori だけが起こす。
 
-  5 分ごとに起きて、予定を過ぎた回があれば範囲ごとに起こします。**過ぎて 30 分までの
-  回だけ拾います**（要約の時計と同じ。夜中に立ち上げた拍子に朝の回が走らないように）。
-  **起こせなかった範囲は、次の予定まで起きるたびに試し直します**（起こし終えた範囲は
-  予定ごとに控えるので、試し直しで同じ範囲を二度起こさない）。**止めた範囲は起こしません**
+  5 分ごとに起きて、予定を過ぎた範囲があれば起こします。**過ぎて 30 分までの回だけ
+  拾います**（要約の時計と同じ。夜中に立ち上げた拍子に朝の回が走らないように）。
+  **起こせなかった範囲は、次の予定まで起きるたびに試し直します**（予定ごとに起こせたかを
+  控えるので、試し直しで同じ範囲を二度起こさない）。**止めた範囲は起こしません**
   （Chiezo が断る。時計は人が押した 1 回ではないので `by_hand` で囲まない）。
   """
 
@@ -57,16 +58,14 @@ defmodule Chidori.Datasets.DiningSurvey do
   def handle_info(_message, state), do: {:noreply, state}
 
   defp maybe_wake(now) do
-    setting = DiningSurveySetting.get()
-    collections = Enum.map(DiningAreas.list(), &Dining.collection/1)
-
-    with {slot, waiting} when waiting != [] <- due(setting, collections, now),
-         base when is_binary(base) <- Chiezo.base_url() do
-      results = Enum.map(waiting, &{&1, wake(base, &1)})
-      done = for {name, result} <- results, result in [:ok, :stopped], do: name
-      DiningSurveySetting.record(slot, done, summary(results))
-    else
-      _nothing -> :ok
+    for area <- DiningAreas.list(),
+        name = Dining.collection(area),
+        setting = DiningSurveySetting.get(name),
+        %DateTime{} = slot <- [due(setting, now)],
+        base = Chiezo.base_url(),
+        is_binary(base) do
+      result = wake(base, name)
+      DiningSurveySetting.record(name, slot, result in [:ok, :stopped], summary(result))
     end
   end
 
@@ -85,30 +84,26 @@ defmodule Chidori.Datasets.DiningSurvey do
     end
   end
 
-  defp summary(results) do
-    count = fn want -> Enum.count(results, fn {_name, result} -> result == want end) end
-    failed = Enum.count(results, fn {_name, result} -> match?({:error, _}, result) end)
-
-    "起こした #{count.(:ok)} 範囲" <>
-      if(count.(:stopped) > 0, do: "・止めてある #{count.(:stopped)} 範囲", else: "") <>
-      if(failed > 0, do: "・起こせなかった #{failed} 範囲（次の起床で試し直します）", else: "")
-  end
+  defp summary(:ok), do: "起こしました"
+  defp summary(:stopped), do: "収集を止めてあるので起こしませんでした"
+  defp summary({:error, reason}), do: "起こせませんでした（次の起床で試し直します）: #{inspect(reason)}"
 
   @doc """
-  起こす番か。`{予定の時刻, まだ起こしていない収集}` か nil。
+  起こす番か。起こすなら予定の時刻、そうでなければ nil。
 
   直近の予定（今以前で最も新しい時刻）を、**まだ受け持っていなければ 30 分まで**拾い、
-  **受け持ったあとは次の予定まで**、起こし終えていない収集を試し直す。
+  **受け持って起こせなかったときは次の予定まで**試し直す。
   """
-  def due(%DiningSurveySetting{} = setting, collections, now) do
+  def due(%DiningSurveySetting{} = setting, now) do
     with %DateTime{} = slot <- last_slot(setting, now) do
       started? = setting.slot_at != nil and DateTime.compare(setting.slot_at, slot) == :eq
-      done = if started?, do: setting.done || [], else: []
-      waiting = Enum.reject(collections, &(&1 in done))
 
-      if started? or DateTime.diff(now, slot, :second) <= @grace_seconds,
-        do: {slot, waiting},
-        else: nil
+      cond do
+        started? and setting.slot_ok -> nil
+        started? -> slot
+        DateTime.diff(now, slot, :second) <= @grace_seconds -> slot
+        true -> nil
+      end
     end
   end
 
