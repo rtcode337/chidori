@@ -162,17 +162,12 @@ main.relations-page > div { padding-top: 0; }
   .relation-tabs::-webkit-scrollbar { display: none; }
   .relation-tabs a { flex: none; padding: .5rem .65rem; font-size: .8rem; }
 }
-/* トップのタブの列と、右端の「…」（全部の枠を縦の一覧から選ぶ）。
-   **「…」は列のスクロールの外に置く** —— 列の中に入れると、横へ送ったときに一緒に隠れる */
-.home-tabs-row { display: flex; align-items: flex-end; margin-top: 1.5rem; border-bottom: 1px solid #d9dcea; }
-.home-tabs-row .relation-tabs { flex: 1; min-width: 0; margin-top: 0; border-bottom: 0; }
-.home-tab-more { position: relative; flex: none; }
-.home-tab-more-button { padding: .5rem .8rem; border: 0; background: none; color: #616a82; font-size: 1rem; font-weight: 700; line-height: 1; cursor: pointer; }
-.home-tab-more-button:hover { color: #28235e; }
-.home-tab-menu { position: absolute; top: 100%; right: 0; z-index: 30; min-width: 12rem; max-height: 75vh; margin: .2rem 0 0; padding: .3rem; overflow-y: auto; list-style: none; border: 1px solid #d9dcea; border-radius: .6rem; background: #fff; box-shadow: 0 8px 24px rgb(40 35 94 / .15); }
-.home-tab-menu button { display: block; width: 100%; padding: .55rem .8rem; border: 0; border-radius: .4rem; background: none; color: #28235e; font-size: .9rem; text-align: left; cursor: pointer; }
-.home-tab-menu button:hover { background: #eceef8; }
-.home-tab-menu button.selected { background: #f0eefc; color: #4a3fc0; font-weight: 700; }
+/* トップの大きなタブの中の枠。**タブの形にしない**（2 段ともタブだと上下の階層が読めない）。
+   丸い札を折り返して並べ、横へ送らずに全部見せる */
+.home-subtabs { display: flex; flex-wrap: wrap; gap: .35rem; margin: .6rem 0 .2rem; }
+.home-subtabs a { padding: .3rem .8rem; border: 1px solid #d9dcea; border-radius: 999px; background: #fff; color: #4b5470; font-size: .82rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.home-subtabs a:hover { border-color: #b9b4ef; color: #28235e; }
+.home-subtabs a.selected { border-color: #6254d6; background: #6254d6; color: #fff; }
 /* 設定欄の開閉。**押せる見出し**として見せる */
 /* 設定欄の見出し。**見出しそのものが開閉の口**なので、見た目は見出しのまま、
    押せることだけ分かるようにする（設定欄のボタンの塗りより強く当てる） */
@@ -1147,14 +1142,11 @@ a.top-book-cover { display: block; }
   .collect-overview { display: block; overflow-x: auto; }
 }
 
-/* つまんで並べ替える一覧（トップページに並べる枠） */
-.sortable-list { display: grid; gap: .4rem; margin: .6rem 0 1rem; padding: 0; list-style: none; }
-.sortable-list li { display: flex; align-items: center; gap: .6rem; padding: .5rem .7rem; border: 1px solid #e3e6f0; border-radius: .6rem; background: white; }
-.sortable-list li.is-dragging { opacity: .85; border-color: #6254d6; box-shadow: 0 6px 16px rgba(40, 35, 94, .18); }
-.sortable-list label { flex: 1; cursor: pointer; }
-/* 取っ手だけ指で掴める（行のほかの場所では普通にスクロールできる） */
-.drag-handle { flex: none; padding: .2rem .45rem; border: 0; border-radius: .4rem; background: #eef0f7; color: #52607a; font-size: 1.1rem; line-height: 1; cursor: grab; touch-action: none; }
-.drag-handle:active { cursor: grabbing; }
+/* トップページに出す枠の一覧（設定ページ）。大きなタブごとに見出しを立てて並べる */
+.home-picks { display: grid; gap: .3rem; margin: .4rem 0 1rem; padding: 0; list-style: none; }
+.home-picks li { display: flex; align-items: center; gap: .6rem; padding: .45rem .7rem; border: 1px solid #e3e6f0; border-radius: .6rem; background: white; }
+.home-picks label { flex: 1; cursor: pointer; }
+.home-picks-group { margin: 1rem 0 0; font-size: .95rem; }
 
 /* 要約の頭のおすすめの絵（映画）。ポスターは縦長なので、横に並べて名前を下に */
 /* 頭の絵は**切らずにそのまま見せる**（縦横の比も元のまま）。ポスターの比（2:3）に揃えて

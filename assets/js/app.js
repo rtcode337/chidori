@@ -36,7 +36,6 @@ import DigestSwipe from "./digest_swipe"
 import PanelSwipe from "./panel_swipe"
 // トピックの網を関連図と同じ操作で動かす
 import TopicMap from "./topic_map"
-import SortableList from "./sortable_list"
 import ScrollTabs from "./scroll_tabs"
 import AutoHeight from "./auto_height"
 // 中身（main）だけをスクロールさせる骨組みで、タブの切り替えと戻る・進むの位置を受け持つ
@@ -53,7 +52,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, PartitionMap, PrefectureMap, AreaDraw, RelationMap, DownloadLink, DigestSwipe, PanelSwipe, TopicMap, SortableList, ScrollTabs, AutoHeight, PageScroll, AskNearby, TheaterNearby, WebPush},
+  hooks: {...colocatedHooks, PartitionMap, PrefectureMap, AreaDraw, RelationMap, DownloadLink, DigestSwipe, PanelSwipe, TopicMap, ScrollTabs, AutoHeight, PageScroll, AskNearby, TheaterNearby, WebPush},
 })
 
 // Show progress bar on live navigation and form submits

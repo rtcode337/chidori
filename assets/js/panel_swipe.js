@@ -1,13 +1,13 @@
 // トップページの枠を、**左右に払って隣のタブへ**移すところ。
 //
-// 左へ払う → 右隣のタブ、右へ払う → 左隣のタブ（カードをめくる向き）。
+// 左へ払う → 次の枠、右へ払う → 前の枠（カードをめくる向き。大きなタブをまたいで決めた順に）。
 // 縦に読んでいる指を取らないよう、**横に大きく動いたときだけ**払ったことにする
 // （`digest_swipe.js` と同じ物差し）。
 //
 // 払わないところ:
 // - 全画面の要約を開いている間（そちらの払いは前後の要約へ動く）
 // - 横に広い表・コード（指で横へずらして読む）
-// - タブの列（横にスクロールさせて選ぶ）と、「…」から開く枠の一覧
+// - タブの列（横にスクロールさせて選ぶ）
 // 関連図は iframe の中なので、そこでの指はこちらに届かない（図を動かす指と取り合わない）。
 // 文字を選ぶ指（長押しから横へ引く）も払いにしない（`swipe_guard.js`）。
 
@@ -15,7 +15,7 @@ import {selectingText} from "./swipe_guard"
 
 const SWIPE = 60
 const RATIO = 1.5
-const SKIP = ".report-table, pre, .relation-tabs, .home-tab-menu, .digest-viewer, iframe"
+const SKIP = ".report-table, pre, .relation-tabs, .digest-viewer, iframe"
 
 export default {
   mounted() {

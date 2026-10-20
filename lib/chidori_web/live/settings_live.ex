@@ -378,14 +378,10 @@ defmodule ChidoriWeb.SettingsLive do
     end
   end
 
-  # **並びは送られてきた順**（チェックした枠の順番の欄で決める）
+  # **選ぶのは出すかどうかだけ**（並びは `Chidori.Home` が決めた順）
   def handle_event("save_home", params, socket) do
     keys =
-      params
-      |> Map.get("panels", %{})
-      |> Enum.filter(fn {_key, value} -> value["on"] == "true" end)
-      |> Enum.sort_by(fn {key, value} -> {order(value["order"]), key} end)
-      |> Enum.map(&elem(&1, 0))
+      for {key, "true"} <- Map.get(params, "panels", %{}), do: key
 
     Home.put(keys)
 
@@ -527,13 +523,6 @@ defmodule ChidoriWeb.SettingsLive do
     end
   end
 
-  defp order(value) do
-    case Integer.parse(to_string(value || "")) do
-      {n, _} -> n
-      :error -> 999
-    end
-  end
-
   @doc "整理の巡回か（自動で回すかを選ぶ口を出す）。"
   def tidy_sweep?(sweep), do: sweep.name == Chidori.SweepNames.tidy()
 
@@ -604,14 +593,4 @@ defmodule ChidoriWeb.SettingsLive do
 
   @doc "待ち行列を読めなかったときの一言。"
   def queue_error_text(_reason), do: "待ち行列を読めませんでした。"
-
-  @doc """
-  並べ替えの一覧に出す順。**並べている枠を並べている順に先に、残りを後ろに**
-  （残りは選べる順のまま）。
-  """
-  def ordered(catalog, keys) do
-    by_key = Map.new(catalog, &{&1.key, &1})
-    picked = keys |> Enum.map(&by_key[&1]) |> Enum.reject(&is_nil/1)
-    picked ++ Enum.reject(catalog, &(&1.key in keys))
-  end
 end

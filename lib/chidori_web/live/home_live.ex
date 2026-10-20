@@ -1,7 +1,8 @@
 defmodule ChidoriWeb.HomeLive do
   @moduledoc """
-  トップページ。**設定ページで選んだ枠をタブで並べ、最初の枠を開いた状態で出します**
-  （`Chidori.Home`）。
+  トップページ。**枠を大きなタブ（ニュース・イベント・関連図・データ収集）にまとめ、
+  大きなタブの中の枠を下の段に並べます**。設定ページで選ぶのは出すかどうかだけで、並びは決めた順
+  （`Chidori.Home`）。最初の枠を開いた状態で出します。
 
   - 書き手ごとの要約 —— 要約を別の収集から読む話題（市況ニュース）。書き手ごとに最新の 1 本
   - 話題の要約 —— その話題のいちばん新しい要約を全文で。**右上のアイコンで全画面に
@@ -11,8 +12,9 @@ defmodule ChidoriWeb.HomeLive do
   - 技術書 —— 本棚の上位の数冊（`ChidoriWeb.TopBooks`）。**押すとその本を勧めている
     記事をたどれる**（札の下に開く）
   - これからの注目イベント —— 注目度が高いもの（話題によっては中も）で、これから 2 か月のもの
+  - レシピ —— レシピ集を種類ごとに（`ChidoriWeb.RecipeBook`。名簿の設定はデータ収集の画面だけ）
 
-  **枠の中を左右に払うと、隣のタブへ移ります**（`PanelSwipe`）。
+  **枠の中を左右に払うと、隣の枠へ移ります**（`PanelSwipe`。大きなタブをまたいで決めた順に）。
   """
 
   use ChidoriWeb, :live_view
@@ -58,7 +60,11 @@ defmodule ChidoriWeb.HomeLive do
        work_marks: nil,
        work_mark_saved: nil,
        # 作品を育てる話題（映画・アニメ）の要約の枠に並べる、公開中・放送中の注目作
-       works: nil
+       works: nil,
+       # レシピ集（`ChidoriWeb.RecipeBook`）と、その絞り込み・開いている 1 品
+       recipes: nil,
+       recipe_filter: %{},
+       recipe_open: nil
      )}
   end
 
@@ -121,6 +127,22 @@ defmodule ChidoriWeb.HomeLive do
           |> start_async(:books, fn -> Bookshelf.list(base) end)
         else
           assign(socket, books: :loading)
+        end
+    end
+  end
+
+  defp load(socket, %{kind: :recipes}) do
+    case News.chiezo_base_url() do
+      nil ->
+        assign(socket, recipes: {:error, :chiezo_not_configured})
+
+      base ->
+        if connected?(socket) do
+          socket
+          |> assign(recipes: :loading, recipe_open: nil)
+          |> start_async(:recipes, fn -> Chidori.Datasets.Recipes.list(base) end)
+        else
+          assign(socket, recipes: :loading)
         end
     end
   end
@@ -307,6 +329,12 @@ defmodule ChidoriWeb.HomeLive do
 
   def handle_async(:events, {:ok, result}, socket), do: {:noreply, assign(socket, events: result)}
 
+  def handle_async(:recipes, {:ok, result}, socket),
+    do: {:noreply, assign(socket, recipes: result)}
+
+  def handle_async(:recipes, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, recipes: {:error, :chiezo_unavailable})}
+
   def handle_async(:works, {:ok, result}, socket), do: {:noreply, assign(socket, works: result)}
 
   def handle_async(:showtime_backends, result, socket),
@@ -424,6 +452,16 @@ defmodule ChidoriWeb.HomeLive do
       next -> {:noreply, push_patch(socket, to: ~p"/?panel=#{next.key}")}
     end
   end
+
+  # レシピ集の絞り込みと詳細（データ収集の画面と同じ動き）
+  def handle_event("filter_recipes", params, socket),
+    do: {:noreply, assign(socket, recipe_filter: Map.take(params, ["country", "kind", "q"]))}
+
+  def handle_event("open_recipe", %{"title" => title}, socket),
+    do: {:noreply, assign(socket, recipe_open: title)}
+
+  def handle_event("close_recipe", _params, socket),
+    do: {:noreply, assign(socket, recipe_open: nil)}
 
   # 本を押すと詳細（`ChidoriWeb.BookModal`）を開く。勧めている記事は開いたときに引く
   def handle_event("open_book", %{"title" => title}, socket) do

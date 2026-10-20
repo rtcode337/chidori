@@ -4,57 +4,42 @@
   <div>
     <ChidoriWeb.MainNav.main_nav active={:home} />
 
-    <%!-- 設定ページで選んだ枠。**最初の枠が開いたときに出る**。
-         **右端の「…」で全部の枠を縦の一覧から選べる** —— 枠が増えると、狭い画面では
-         タブの列を何度も横へ送らないと目当てに届かない --%>
-    <div :if={length(@panels) > 1} class="home-tabs-row">
-      <nav
-        id="home-tabs"
-        class="relation-tabs"
-        phx-hook="ScrollTabs"
-        aria-label="トップページの枠"
+    <%!-- 大きなタブ（ニュース・イベント・関連図・データ収集）と、その中の枠。**中の枠はタブの形に
+         しない** —— 2 段ともタブにすると、どちらが上の階層なのか読み取れない。中の枠は折り返して
+         全部見せる（横へ送らずに目当てに届く）。押すと大きなタブの最初の枠が開く --%>
+    <% groups = Chidori.Home.grouped(@panels) %>
+    <% current =
+      @panel && Enum.find(groups, fn {group, _name, _members} -> group == @panel.group end) %>
+    <nav
+      :if={length(groups) > 1}
+      id="home-tabs"
+      class="relation-tabs"
+      phx-hook="ScrollTabs"
+      aria-label="トップページの大きなタブ"
+    >
+      <.link
+        :for={{group, name, [first | _]} <- groups}
+        patch={~p"/?panel=#{first.key}"}
+        class={if @panel && @panel.group == group, do: "selected"}
+        aria-current={if @panel && @panel.group == group, do: "page"}
       >
-        <.link
-          :for={panel <- @panels}
-          patch={~p"/?panel=#{panel.key}"}
-          class={if @panel && @panel.key == panel.key, do: "selected"}
-          aria-current={if @panel && @panel.key == panel.key, do: "page"}
-        >
-          {panel.name}
-        </.link>
-      </nav>
-      <%!-- 一覧の外を押すと閉じる（「…」は一覧と同じ囲みの中なので、押しても外とみなさない） --%>
-      <div class="home-tab-more" phx-click-away={JS.hide(to: "#home-tab-menu")}>
-        <button
-          type="button"
-          class="home-tab-more-button"
-          aria-label="枠を一覧から選ぶ"
-          aria-haspopup="true"
-          aria-controls="home-tab-menu"
-          phx-click={JS.toggle(to: "#home-tab-menu")}
-        >
-          …
-        </button>
-        <ul
-          id="home-tab-menu"
-          class="home-tab-menu"
-          style="display: none"
-          phx-window-keydown={JS.hide(to: "#home-tab-menu")}
-          phx-key="Escape"
-        >
-          <li :for={panel <- @panels}>
-            <button
-              type="button"
-              class={if @panel && @panel.key == panel.key, do: "selected"}
-              aria-current={if @panel && @panel.key == panel.key, do: "page"}
-              phx-click={JS.hide(to: "#home-tab-menu") |> JS.patch(~p"/?panel=#{panel.key}")}
-            >
-              {panel.name}
-            </button>
-          </li>
-        </ul>
-      </div>
-    </div>
+        {name}
+      </.link>
+    </nav>
+    <nav
+      :if={current && length(elem(current, 2)) > 1}
+      class="home-subtabs"
+      aria-label={"#{elem(current, 1)}の中の枠"}
+    >
+      <.link
+        :for={panel <- elem(current, 2)}
+        patch={~p"/?panel=#{panel.key}"}
+        class={if @panel.key == panel.key, do: "selected"}
+        aria-current={if @panel.key == panel.key, do: "page"}
+      >
+        {panel.short}
+      </.link>
+    </nav>
   </div>
 </div>
 
@@ -246,6 +231,20 @@
           </ul>
         <% end %>
         <p><a href={~p"/news?view=#{@panel.topic.collection}"}>{@panel.name}の画面へ</a></p>
+      </section>
+
+      <%!-- レシピ集（データ収集の画面と同じ部品。名簿の設定はデータ収集の画面だけ） --%>
+      <section :if={@panel && @panel.kind == :recipes} class="home-panel" aria-label={@panel.name}>
+        <p :if={@recipes in [nil, :loading]} class="muted-note">読み込んでいます…</p>
+        <p :if={match?({:error, _}, @recipes)} class="muted-note">レシピ集を読めませんでした。</p>
+        <ChidoriWeb.RecipeBook.book
+          :if={match?({:ok, _}, @recipes)}
+          recipes={elem(@recipes, 1)}
+          filter={@recipe_filter}
+          opened={@recipe_open}
+          roster={false}
+        />
+        <p><a href={~p"/datasets?view=recipes"}>レシピ集の画面へ</a></p>
       </section>
 
       <section :if={@panel && @panel.kind == :books} class="home-panel" aria-label={@panel.name}>

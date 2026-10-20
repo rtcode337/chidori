@@ -1,7 +1,7 @@
 defmodule ChidoriWeb.HomeLiveTest do
   @moduledoc """
-  トップページと、そこに並べる枠の設定。見ているのは、**選んだ枠が選んだ順にタブで
-  並び、最初の枠が開くこと**です。
+  トップページと、そこに並べる枠の設定。見ているのは、**選んだ枠が大きなタブにまとまり、
+  決めた順に並び、最初の枠が開くこと**です。
   """
 
   use ChidoriWeb.ConnCase, async: false
@@ -10,40 +10,38 @@ defmodule ChidoriWeb.HomeLiveTest do
 
   alias Chidori.Home
 
-  test "選んだ枠が選んだ順にタブで並び、最初の枠が開く", %{conn: conn} do
-    Home.put(["books", "topic:chidori_tech", "relations:painters"])
+  test "枠は大きなタブにまとまり、決めた順に並び、最初の枠が開く", %{conn: conn} do
+    # 選んだ順ではなく、決めた順（ニュース → イベント → 関連図 → データ収集）
+    Home.put(["books", "topic:chidori_tech", "relations:painters", "topic:chidori_news"])
 
     {:ok, _live, html} = live(conn, ~p"/")
 
-    [_before, nav | _rest] = String.split(html, ~s(aria-label="トップページの枠"))
+    [_before, nav | _rest] = String.split(html, ~s(aria-label="トップページの大きなタブ"))
     [nav | _rest] = String.split(nav, "</nav>")
 
-    [books, tech, painters] =
-      Enum.map(["技術書", "技術ニュース", "関連図（"], fn label ->
+    [news, relations, datasets] =
+      Enum.map(["ニュース", "関連図", "データ収集"], fn label ->
         nav |> :binary.match(label) |> elem(0)
       end)
 
-    assert books < tech and tech < painters
-    # 最初の枠（技術書）が開いている
-    assert html =~ ~s(aria-label="技術書")
+    assert news < relations and relations < datasets
+    refute nav =~ "イベント"
+
+    # 最初の枠（一般ニュース）が開いている。ニュースの中の枠は短い名前で下の段に並ぶ
+    assert html =~ ~s(aria-label="一般ニュース")
+    [_before, sub | _rest] = String.split(html, ~s(class="home-subtabs"))
+    [sub | _rest] = String.split(sub, "</nav>")
+    assert :binary.match(sub, "一般") < :binary.match(sub, "技術")
   end
 
-  test "右端の「…」の一覧から、どの枠へも移れる", %{conn: conn} do
-    Home.put(["books", "topic:chidori_tech", "relations:painters"])
+  test "大きなタブを押すと、その中の最初の枠が開く（中の枠が 1 つなら下の段は出さない）", %{conn: conn} do
+    Home.put(["topic:chidori_news", "relations:painters"])
 
-    {:ok, live, html} = live(conn, ~p"/")
+    {:ok, live, _html} = live(conn, ~p"/")
 
-    [_before, menu | _rest] = String.split(html, ~s(id="home-tab-menu"))
-    [menu | _rest] = String.split(menu, "</ul>")
-    assert menu =~ "技術書"
-    assert menu =~ "技術ニュース"
-    assert menu =~ "関連図（"
-
-    live
-    |> element("#home-tab-menu button", "技術ニュース")
-    |> render_click()
-
-    assert_patch(live, "/?panel=topic%3Achidori_tech")
+    live |> element("#home-tabs a", "関連図") |> render_click()
+    assert_patch(live, "/?panel=relations%3Apainters")
+    refute render(live) =~ "home-subtabs"
   end
 
   test "関連図は画面ごと埋め込む（頭のメニューは出さない）", %{conn: conn} do
@@ -235,7 +233,8 @@ defmodule ChidoriWeb.HomeLiveTest do
     assert Home.interest_name("映画") == "映画（興味）"
   end
 
-  test "枠の中を左右に払うと隣のタブへ移る（端より先へは回り込まない）", %{conn: conn} do
+  test "枠の中を左右に払うと、決めた順で隣の枠へ移る（大きなタブをまたぐ。端より先へは回り込まない）",
+       %{conn: conn} do
     Home.put(["books", "relations:painters"])
     {:ok, live, _html} = live(conn, ~p"/")
 
@@ -243,40 +242,35 @@ defmodule ChidoriWeb.HomeLiveTest do
     refute_patched(live)
 
     render_hook(live, "panel_step", %{"by" => 1})
-    assert_patch(live, "/?panel=relations%3Apainters")
+    assert_patch(live, "/?panel=books")
 
     render_hook(live, "panel_step", %{"by" => 1})
     refute_patched(live)
   end
 
-  test "設定ページで、並べ替えた順に保存する", %{conn: conn} do
-    # 順番は画面の中で並べ替え、各行の hidden の欄に書き込まれて届く（`SortableList`）
-    {:ok, live, _html} = live(conn, ~p"/settings?tab=home")
+  test "設定ページで選ぶのは出すかどうかだけ（並べ替えはしない）", %{conn: conn} do
+    {:ok, live, html} = live(conn, ~p"/settings?tab=home")
+    refute html =~ "data-drag-handle"
+    # 大きなタブごとに見出しを立てて並べる
+    assert html =~ ~s(id="home-group-news")
 
     render_submit(live, "save_home", %{
       "panels" => %{
-        "topic:chidori_news" => %{"on" => "true", "order" => "2"},
-        "books" => %{"on" => "true", "order" => "1"},
-        "topic:chidori_tech" => %{"on" => "false", "order" => "3"}
+        "books" => "true",
+        "topic:chidori_news" => "true",
+        "topic:chidori_tech" => "false"
       }
     })
 
-    assert Home.selected_keys() == ["books", "topic:chidori_news"]
+    assert Home.selected_keys() == ["topic:chidori_news", "books"]
   end
 
-  test "並べ替えの一覧は、並べている枠を並べている順に先に出す", %{conn: conn} do
-    # つまんで動かす一覧なので、いまの順番がそのまま上から並んでいないと動かしようがない
-    Home.put(["books", "topic:chidori_news"])
+  test "レシピの枠はレシピ集を出す（名簿の設定は出さない）", %{conn: conn} do
+    Home.put(["recipes"])
+    {:ok, _live, html} = live(conn, ~p"/")
 
-    {:ok, _live, html} = live(conn, ~p"/settings?tab=home")
-
-    [_before, list | _rest] = String.split(html, ~s(id="home-panels"))
-
-    [books, news, tech] =
-      Enum.map(["技術書", "一般ニュース", "技術ニュース"], &(list |> :binary.match(&1) |> elem(0)))
-
-    assert books < news and news < tech
-    assert html =~ "data-drag-handle"
+    assert html =~ ~s(aria-label="レシピ")
+    refute html =~ "名簿を引き直す"
   end
 
   describe "作品を育てる話題の要約の枠" do

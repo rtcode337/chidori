@@ -21,6 +21,9 @@ defmodule ChidoriWeb.RecipeBook do
   attr :opened, :string, default: nil
   attr :message, :string, default: nil
 
+  # 名簿の広さの欄を出すか（トップでは出さない。設定はデータ収集の画面で）
+  attr :roster, :boolean, default: true
+
   def book(assigns) do
     assigns =
       assign(assigns,
@@ -93,7 +96,7 @@ defmodule ChidoriWeb.RecipeBook do
       </section>
 
       <%!-- 名簿の広さ。**足すだけ**の引き直しなので、下げると広がり、上げても減らない --%>
-      <form class="recipe-roster" phx-submit="reroster_recipes">
+      <form :if={@roster} class="recipe-roster" phx-submit="reroster_recipes">
         <label>
           名簿の広さ（百科事典の月の閲覧数の下限）
           <select name="min">
