@@ -398,8 +398,11 @@
           </p>
           <%!-- **見た目も上書きさせる ZIP**（`?styles=replace`。1 回きりの道）。ふだんの ZIP は
              travel-log 側で付けたシリーズの見た目を残してもらうので、色の決め方を変えても
-             既にあるシリーズには届かない --%>
+             既にあるシリーズには届かない。**範囲ごとの食事処には出さない** —— travel-log の
+             食事処は範囲で分かれていないので、1 つの範囲で上書きするとほかの範囲の見た目が
+             壊れる（上書きは「全体」のタブの全範囲の ZIP から） --%>
           <a
+            :if={!@dataset[:area]}
             id={"download-restyle-#{@dataset.key}"}
             class="download-link"
             href={~p"/datasets/#{@dataset.key}/travel-log.zip?styles=replace"}
@@ -410,12 +413,13 @@
             ⬇ シリーズの見た目も上書きする ZIP
           </a>
           <span
+            :if={!@dataset[:area]}
             id={"download-status-restyle-#{@dataset.key}"}
             class="download-status"
             role="status"
             phx-update="ignore"
           ></span>
-          <p class="muted-note">
+          <p :if={!@dataset[:area]} class="muted-note">
             ふだんの ZIP は、travel-log に既にあるシリーズの色やアイコンを残します。こちらは
             既にあるシリーズの見た目も Chidori が決めたものに置き換えます（色の決め方を変えたあとに
             1 回だけ使う。travel-log で手で付けた見た目も消えます）。

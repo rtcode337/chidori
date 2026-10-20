@@ -30,7 +30,12 @@ defmodule ChidoriWeb.DatasetsController do
         text(conn, 404, "この収集はスポットとして書き出せません")
 
       true ->
-        case TravelLog.bundle(dataset, style_opts(params)) do
+        # **範囲 1 つぶんの ZIP では見た目を上書きさせない** —— travel-log の食事処は範囲で
+        # 分かれていないので、1 つの範囲のシリーズだけで見た目を置き換えると、ほかの範囲の
+        # シリーズの見た目が壊れる。上書きは全範囲の ZIP（`export_areas`）からだけ
+        opts = if dataset[:area], do: [], else: style_opts(params)
+
+        case TravelLog.bundle(dataset, opts) do
           {:ok, filename, binary, _counts} ->
             send_download(conn, {:binary, binary}, filename: filename)
 

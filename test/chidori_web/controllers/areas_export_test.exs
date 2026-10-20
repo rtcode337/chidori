@@ -93,4 +93,21 @@ defmodule ChidoriWeb.AreasExportTest do
     files = Map.new(files, fn {name, body} -> {to_string(name), body} end)
     assert Jason.decode!(files["dining/settings.json"])["keep_series_styles"] == false
   end
+
+  test "1 つの範囲の ZIP では、?styles=replace を付けてもシリーズの見た目を上書きさせない", %{conn: conn} do
+    # travel-log の食事処は範囲で分かれていないので、1 つの範囲のシリーズだけで見た目を
+    # 置き換えると、ほかの範囲の見た目が壊れる（上書きは全範囲の ZIP からだけ）
+    conn = get(conn, ~p"/datasets/dining-1/travel-log.zip?styles=replace")
+
+    assert conn.status == 200
+    {:ok, files} = :zip.unzip(conn.resp_body, [:memory])
+    files = Map.new(files, fn {name, body} -> {to_string(name), body} end)
+
+    settings =
+      Enum.find_value(files, fn {name, body} ->
+        String.ends_with?(name, "settings.json") && body
+      end)
+
+    assert Jason.decode!(settings)["keep_series_styles"] == true
+  end
 end

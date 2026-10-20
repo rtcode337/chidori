@@ -339,6 +339,14 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       assert html =~ "収集の設定を更新"
     end
 
+    test "範囲のタブには、シリーズの見た目も上書きする ZIP を出さない", %{conn: conn} do
+      # 1 つの範囲で上書きすると、ほかの範囲の見た目が壊れる（上書きは「全体」のタブから）
+      {_live, html} = shown(conn)
+
+      assert html =~ "travel-log 用の ZIP を書き出す"
+      refute html =~ "シリーズの見た目も上書きする ZIP"
+    end
+
     test "情報収集が 1 回に回る区画の数を、範囲ごとに決めて送る", %{conn: conn} do
       {live, html} = shown(conn)
       assert html =~ ~s(name="survey_per_run")
