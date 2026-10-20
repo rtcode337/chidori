@@ -96,10 +96,10 @@ defmodule Chidori.Datasets.Gourmet do
   # 漏れは整理の回が直す（印の付け外しは AI に頼む）
   @shop_categories ~w(ラーメン店 餃子店 洋菓子店 菓子店 パン店 和菓子の店舗・メーカー 日本の外食事業者 うどん・蕎麦屋 寿司屋)
 
-  # **店の種類のカテゴリだけで入る記事は、市区町村の付いた括り（か県の食文化）も持つものだけ**
-  # （Chiezo の抽出の `tag_pairs`）。店の種類のカテゴリは全国の括りで県が読めない ——
-  # 県の飲食店に入っていない店（六厘舎・壱発ラーメン…）は名簿に入っていなかった。
-  # 県は市区町村の名前から地図辞典で読む（`area_of`）
+  # **店の種類のカテゴリだけで入る店の県は、市区町村の付いた括りから読む**（地図辞典で市区町村
+  # から県を引く `area_of`）。店の種類のカテゴリは全国の括りで県が読めない —— 県の飲食店に
+  # 入っていない店（六厘舎・壱発ラーメン…）は名簿に入っていなかった。それでも県が読めない店は
+  # 「不明」の区画に入れ、手入れの回に AI が付け替える（`unknown_region/0`）
   @shop_city_pattern "^(.+?[市区町村](?: \\(.+\\))?)の(?:企業|建築物|食文化)$"
 
   # **組で入れる括り**（`<県>の農業` で、同じ県の `<県>の食文化` にも入っている記事だけ）。
@@ -270,6 +270,9 @@ defmodule Chidori.Datasets.Gourmet do
   @ai_rank_ceiling "B"
   @rank_tag "ランク"
 
+  # 県の分からない 1 件の区画の値（`partition/0`）
+  @unknown_region "不明"
+
   # 住所から座標を引く辞典の出どころのタグ（`出典:` の後ろ）
   @address_source_label "位置参照情報"
 
@@ -413,9 +416,9 @@ defmodule Chidori.Datasets.Gourmet do
   end
 
   @doc """
-  店の種類のカテゴリのうち、**それだけで名簿に入れるもの**（市区町村の括りと組で。`extract/0`）。
-  外食事業者は入れない —— 全国チェーンの会社の記事が本社の市区町村の企業の括りと組になって
-  大量に入る（県の飲食店に入っている外食事業者は、今までどおり県の括りで入る）。
+  店の種類のカテゴリのうち、**それだけで名簿に入れるもの**（県は市区町村の括りから、読めなければ
+  「不明」の区画。`extract/0`）。外食事業者は入れない —— 全国チェーンの会社の記事が大量に入る
+  （県の飲食店に入っている外食事業者は、今までどおり県の括りで入る）。
   """
   def shop_entry_categories, do: @shop_categories -- ["日本の外食事業者"]
 
@@ -569,11 +572,7 @@ defmodule Chidori.Datasets.Gourmet do
       # 県の食文化にも入っている記事だけ**（ほかの括りは今までどおり）
       tag_pairs: [
         %{pattern: "^(.+?[都道府県])の#{@paired_kind}$", with: "{1}の#{@paired_with}"},
-        %{pattern: "^(?:#{Enum.join(@national_kinds, "|")})$", with_pattern: culture_pattern()},
-        %{
-          pattern: "^(?:#{Enum.join(shop_entry_categories(), "|")})$",
-          with_pattern: "^(?:.+?[都道府県]の#{@paired_with}|.+?[市区町村](?: \\(.+\\))?の(?:企業|建築物|食文化))$"
-        }
+        %{pattern: "^(?:#{Enum.join(@national_kinds, "|")})$", with_pattern: culture_pattern()}
       ],
       tags:
         [
@@ -604,6 +603,14 @@ defmodule Chidori.Datasets.Gourmet do
               source: "osm_japan",
               feature: ["place=city", "place=town", "place=village"]
             }
+          },
+          # **それでも県が決まらなかった店は「不明」の区画へ**（`unknown_region/0`）。名簿から
+          # 落とさず、手入れの回に AI が本店の県へ付け替える（記事が全国の括りしか持たない名店
+          # —— 蒙古タンメン中本のような —— が入らなかった）
+          %{
+            pattern: "^(?:#{Enum.join(shop_entry_categories(), "|")})$",
+            format: "#{area_tag()}:#{@unknown_region}",
+            fallback: true
           },
           # **店の記事は店の 1 件**（店の種類のカテゴリか、県の飲食店に入っている記事）
           %{
@@ -639,10 +646,22 @@ defmodule Chidori.Datasets.Gourmet do
     %{pattern: "^(#{names})$", format: "#{genre_tag()}:{1}", map: table}
   end
 
-  @doc "区画の割り方（県 47。並べた順が 1 周目の順）。"
+  @doc """
+  区画の割り方（県 47 と「不明」。並べた順が 1 周目の順）。**県の分からない 1 件の区画**
+  （`unknown_region/0`）を最後に置く —— 店の種類のカテゴリしか持たない店（記事から県も
+  市区町村も読めない）を名簿から落とさず、手入れの回に正しい県へ付け替えさせるため。
+  """
   def partition do
-    %{by: "tag", prefix: "#{area_tag()}:", values: prefecture_order(), target: 5000}
+    %{
+      by: "tag",
+      prefix: "#{area_tag()}:",
+      values: prefecture_order() ++ [@unknown_region],
+      target: 5000
+    }
   end
+
+  @doc "県の分からない 1 件の区画の値（`地域:不明`）。"
+  def unknown_region, do: @unknown_region
 
   @doc """
   代表店の引き当て（Chiezo の `resolve`）。AI は `extra.shop` に手がかりを書き、
@@ -817,6 +836,8 @@ defmodule Chidori.Datasets.Gourmet do
     **上に並んでいるのが、この県のいまの全部です。** 今回の仕事は**まだ並んでいない
     料理（と地元で知られた店）を探して足す**ことだけです（並んでいるものは直せません。
     返しても無視されます）。
+    **受け持つ県が「#{@unknown_region}」の回は、何も足さずに空の items を返してください**
+    （県の分からないものの置き場で、足す先の県がありません）。
     今日は {now} です。
 
     **1. 探す切り口を決める。** 上の料理を「#{genre_tag()}:」のタグで数え、**少ない切り口から**
@@ -1002,6 +1023,12 @@ defmodule Chidori.Datasets.Gourmet do
     {current}
 
     **上に並んでいるのが、この県のいまの全部です。** 今日は {now} です。
+    **受け持つ県が「#{@unknown_region}」の回は**、下の段ではなく次のことだけをしてください:
+    並んでいるのは、記事から県が読めなかった店です。1 件ずつ**本店（発祥の店）のある県**を
+    調べ、タグ "#{area_tag()}:#{@unknown_region}" を "#{area_tag()}:<その県>" に付け替えて返してください
+    （代表店や空欄は、その県の回が決めるので書かなくて構いません）。下の「店の 1 件」の
+    入れない店（全国チェーンそのもの・本店の決まらないチェーン・閉店など）だと確かめたら、
+    理由を書いて墓標にしてください。県が分からないものは返さずに残してください。
     **次の順に進めてください**（上のものほど大事です）。
     """
   end
@@ -1255,7 +1282,8 @@ defmodule Chidori.Datasets.Gourmet do
     - tags: **いま付いているタグは、直すもの以外そのまま残してください**（返した内容で丸ごと
       置き換わるので、書かなかったタグは消えます）
       - "#{kind_tag()}" —— この一覧の目印。**必ず付けてください**
-      - "#{area_tag()}:<県>" —— 受け持ちの県。**変えないでください**
+      - "#{area_tag()}:<県>" —— 受け持ちの県。**変えないでください**（受け持つ県が
+        「#{@unknown_region}」の回だけ、本店のある県に付け替えます）
       - "#{@shop_tag}" —— **店の 1 件だけ**（料理の 1 件には付けない）
       - "#{genre_tag()}:<種類>" —— 1 つだけ、次の語から: #{Enum.join(@kinds, " / ")}
         （果物 —— みかん・梨・ぶどう・いちご・メロンなど —— は "フルーツ"、野菜・米以外の穀物・

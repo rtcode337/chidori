@@ -27,7 +27,10 @@ defmodule Chidori.Datasets.GourmetTest do
 
       assert partition.by == "tag"
       assert partition.prefix == "地域:"
-      assert partition.values == Gourmet.prefecture_order()
+      # 47 県のあとに、県の分からない 1 件の区画
+      assert partition.values == Gourmet.prefecture_order() ++ ["不明"]
+      assert Gourmet.unknown_region() == "不明"
+      assert Gourmet.prefecture_of_key("地域:不明") == nil
       assert Gourmet.partition_key("福井県") == "地域:福井県"
       assert Gourmet.prefecture_of_key("地域:福井県") == "福井県"
       # 語彙に無い値（表記を崩したもの）は県として読まない
@@ -68,7 +71,7 @@ defmodule Chidori.Datasets.GourmetTest do
 
     test "全国の括りは、どこかの県の食文化にも入っている記事だけ（県は食文化から読む）" do
       extract = Gourmet.extract()
-      [_farm, %{pattern: pattern, with_pattern: partner}, _shops] = extract.tag_pairs
+      [_farm, %{pattern: pattern, with_pattern: partner}] = extract.tag_pairs
       pattern = Regex.compile!(pattern, "u")
       partner = Regex.compile!(partner, "u")
 
@@ -96,7 +99,7 @@ defmodule Chidori.Datasets.GourmetTest do
 
     test "農業の括りは、同じ県の食文化にも入っている記事だけ（米の品種は外す）" do
       extract = Gourmet.extract()
-      assert [%{pattern: pattern, with: "{1}の食文化"}, _national, _shops] = extract.tag_pairs
+      assert [%{pattern: pattern, with: "{1}の食文化"}, _national] = extract.tag_pairs
       assert [_, "群馬県"] = Regex.run(Regex.compile!(pattern, "u"), "群馬県の農業")
       # 県は農業の括りからも読む
       [_kind, region | _rest] = extract.tags
@@ -145,7 +148,7 @@ defmodule Chidori.Datasets.GourmetTest do
         refute shop in excluded
       end
 
-      [_kind, region, _culture, _city, shop | _kinds] = Gourmet.extract().tags
+      [_kind, region, _culture, _city, _unknown, shop | _kinds] = Gourmet.extract().tags
       assert shop.format == Gourmet.shop_tag()
       pattern = Regex.compile!(shop.pattern, "u")
 
@@ -188,29 +191,31 @@ defmodule Chidori.Datasets.GourmetTest do
       assert region.format == "地域:{1}"
     end
 
-    test "店の種類のカテゴリだけで入る店は、市区町村の括りと組で入り、県は市区町村から読む" do
+    test "店の種類のカテゴリだけで入る店は、県を市区町村の括りから読み、読めなければ「不明」の区画へ" do
       extract = Gourmet.extract()
-      [_farm, _national, %{pattern: pattern, with_pattern: partner}] = extract.tag_pairs
-      pattern = Regex.compile!(pattern, "u")
-      partner = Regex.compile!(partner, "u")
+      # 組は要らない（県が読めない店も名簿に入れる）
+      assert length(extract.tag_pairs) == 2
 
-      assert Regex.match?(pattern, "ラーメン店")
-      refute Regex.match?(pattern, "日本の外食事業者")
-
-      for city <- ~w(八王子市の企業 品川区の建築物 横浜市の食文化 神奈川県の食文化) do
-        assert Regex.match?(partner, city)
-      end
-
-      refute Regex.match?(partner, "関東地方の食文化")
-
-      [_kind, region, culture, city | _rest] = extract.tags
+      [_kind, region, culture, city, unknown | _rest] = extract.tags
       assert city.fallback == true
       assert city.format == region.format
       assert city.area_of.source == "osm_japan"
       assert [_, "八王子市"] = Regex.run(Regex.compile!(city.pattern, "u"), "八王子市の企業")
       assert [_, "森町 (北海道)"] = Regex.run(Regex.compile!(city.pattern, "u"), "森町 (北海道)の企業")
+      refute Regex.match?(Regex.compile!(city.pattern, "u"), "関東地方の食文化")
       # 県の食文化から読む規則が先
       assert culture.fallback == "all"
+
+      # それでも県が決まらない店は「不明」の区画へ（外食事業者は入れない）
+      assert unknown.format == "地域:不明"
+      assert unknown.fallback == true
+      assert Regex.match?(Regex.compile!(unknown.pattern, "u"), "ラーメン店")
+      refute Regex.match?(Regex.compile!(unknown.pattern, "u"), "日本の外食事業者")
+
+      # 「不明」の回は付け替えるだけ、情報収集は何も足さない
+      assert Gourmet.tidy_prompt() =~ "受け持つ県が「不明」の回は"
+      assert Gourmet.scan_prompt() =~ "受け持つ県が「不明」の回は"
+      assert Gourmet.survey_prompt() =~ "何も足さずに空の items を返してください"
     end
 
     test "2 つの県に入っている記事は県ごとの 1 件に分ける" do
@@ -218,10 +223,10 @@ defmodule Chidori.Datasets.GourmetTest do
     end
 
     test "種類は細かい括りから 1 つだけ（2 つ目からは前が作っていれば作らない）" do
-      [_kind, _region, _culture, _city, _shop | rules] = Gourmet.extract().tags
+      [_kind, _region, _culture, _city, _unknown, _shop | rules] = Gourmet.extract().tags
 
       # Chiezo の読み替えは 1 本の指定に 20 個まで
-      assert length(rules) + 5 <= 20
+      assert length(rules) + 6 <= 20
       assert hd(rules)[:fallback] == nil
       assert Enum.all?(tl(rules), &(&1.fallback == true))
 

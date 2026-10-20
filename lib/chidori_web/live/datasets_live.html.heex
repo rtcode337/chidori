@@ -450,7 +450,7 @@
                   この Chiezo は引き当てられなかったものの口を持っていないので、引き当てできずの数は出していません。
                 <% end %>
                 <%= if progress.unplaced_region > 0 do %>
-                  県の読めない料理・店が {progress.unplaced_region} 件あります（どの区画にも入らず、書き出しもしません）。
+                  県の分からない料理・店が {progress.unplaced_region} 件あります（「不明」の区画に入り、手入れの回が本店の県へ付け替えます。付け替わるまでは書き出しません）。
                 <% end %>
               </p>
           <% end %>
