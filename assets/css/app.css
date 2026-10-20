@@ -1267,6 +1267,11 @@ a.top-book-cover { display: block; }
 .recipe-photo img { width: 100%; object-fit: cover; border-radius: .6rem; }
 .recipe-modal h3 { margin: 1rem 0 .3rem; font-size: .95rem; color: #332c75; }
 .recipe-modal p { line-height: 1.7; }
+/* 材料は箇条書き、作り方は番号付き。**印は明示する** —— Tailwind の素地が ul・ol の印を消すので、
+   書かないと材料と手順がただの行の並びに見える */
+.recipe-ingredients { list-style: disc; padding-left: 1.4rem; line-height: 1.7; }
+.recipe-steps { list-style: decimal; padding-left: 1.6rem; line-height: 1.7; }
+.recipe-steps li + li { margin-top: .35rem; }
 .recipe-ingredients { margin: 0; padding-left: 1.2rem; }
 .recipe-steps { margin: 0; padding-left: 1.4rem; }
 .recipe-steps li { margin: .3rem 0; line-height: 1.7; }
