@@ -3,6 +3,11 @@ defmodule Chidori.Relations.Faces do
   関連図の顔写真。**1 人 1 回だけ**取りに行き、写しを DB（`face_thumbs`）に持って、
   あとは Chidori が配ります（`/faces/:id`）。
 
+  **レシピ集の料理の写真も、ここで取ります**（`Chidori.Datasets.Recipes.with_photos/1`。幅は
+  一覧の札に合わせて 330px）。収集の中で Chiezo がまとめて取りに行くと、1 回の巡回で
+  4〜6 枚取ったところで Wikimedia に「多すぎる」（429）と断られ、残りが何週間も写真なしで
+  残った。ここは 1 枚ずつ間を空け、開いたぶんだけ少しずつ頼むので断られにくい。
+
   **写真の置き場に負荷をかけないための形です。**
 
   - 見る人のブラウザに Wikimedia を直に引かせない。数千人の図を開くたびに、見る人の
@@ -30,11 +35,11 @@ defmodule Chidori.Relations.Faces do
 
   require Logger
 
-  # 縮小版の横幅（Commons が受け付ける幅の一覧から。`Chidori.Artwork.thumb/2`）
+  # 縮小版の横幅（Commons が受け付ける幅の一覧から。`Chidori.Artwork.thumb/2`）。顔写真の既定
   @width 120
   # 1 枚取るごとに空ける間（ミリ秒）
   @interval_ms 1_500
-  # 1 枚の上限（縮小版はふつう 10KB 前後。大きすぎるものは写真ではない）
+  # 1 枚の上限（縮小版はふつう 10〜40KB。大きすぎるものは写真ではない）
   @max_bytes 200_000
 
   def start_link(options),
@@ -45,9 +50,10 @@ defmodule Chidori.Relations.Faces do
 
   @doc """
   写真の URL の並びのうち、**写しがあるもの**を `%{URL => 配る道}` で返し、
-  まだ取りに行っていないものを取りに行く列に並べます。
+  まだ取りに行っていないものを取りに行く列に並べます。`width` は頼む縮小版の横幅
+  （顔写真は 120px。写しは URL ごとに 1 枚なので、同じ写真を別の幅で頼み直すことはない）。
   """
-  def faces(urls) do
+  def faces(urls, width \\ @width) do
     urls = urls |> Enum.filter(&commons?/1) |> Enum.uniq()
 
     known =
@@ -59,7 +65,7 @@ defmodule Chidori.Relations.Faces do
           )
 
     seen = MapSet.new(known, &elem(&1, 0))
-    fetch(Enum.reject(urls, &MapSet.member?(seen, &1)))
+    fetch(Enum.reject(urls, &MapSet.member?(seen, &1)), width)
 
     for {url, id, "ok"} <- known, into: %{}, do: {url, path(id)}
   rescue
@@ -99,19 +105,22 @@ defmodule Chidori.Relations.Faces do
   end
 
   @doc false
-  def fetch([]), do: :ok
+  def fetch(urls, width \\ @width)
+  def fetch([], _width), do: :ok
 
-  def fetch(urls) do
-    if Process.whereis(__MODULE__), do: GenServer.cast(__MODULE__, {:fetch, urls}), else: :ok
+  def fetch(urls, width) do
+    if Process.whereis(__MODULE__),
+      do: GenServer.cast(__MODULE__, {:fetch, urls, width}),
+      else: :ok
   end
 
   @impl true
-  def handle_cast({:fetch, urls}, state) do
+  def handle_cast({:fetch, urls, width}, state) do
     fresh = Enum.reject(urls, &MapSet.member?(state.queued, &1))
 
     state = %{
       state
-      | queue: Enum.reduce(fresh, state.queue, &:queue.in/2),
+      | queue: Enum.reduce(fresh, state.queue, &:queue.in({&1, width}, &2)),
         queued: Enum.reduce(fresh, state.queued, &MapSet.put(&2, &1))
     }
 
@@ -128,8 +137,8 @@ defmodule Chidori.Relations.Faces do
       {:empty, _queue} ->
         state
 
-      {{:value, url}, rest} ->
-        store(url, download(url))
+      {{:value, {url, width}}, rest} ->
+        store(url, download(url, width))
         Process.send_after(self(), :next, @interval_ms)
         %{state | queue: rest, queued: MapSet.delete(state.queued, url), busy?: true}
     end
@@ -137,8 +146,8 @@ defmodule Chidori.Relations.Faces do
 
   # **Wikimedia へは Chidori から出ない**。Chiezo に縮小版を作らせ（`POST /v1/thumbs`）、
   # その写しを Chiezo から受け取る（外への通信先を Chiezo だけにするため）
-  defp download(url) do
-    thumb = Chidori.Artwork.thumb(url, @width)
+  defp download(url, width) do
+    thumb = Chidori.Artwork.thumb(url, width)
 
     with base when is_binary(base) <- Chiezo.base_url(),
          {:ok, path} <- Chiezo.thumb_of(base, thumb),

@@ -398,7 +398,8 @@ defmodule Chidori.Datasets.Recipes do
         got = acc ++ Enum.map(docs, &to_recipe/1)
 
         if docs == [] or length(got) >= total,
-          do: {:ok, got |> Enum.filter(& &1.written?) |> Enum.sort_by(& &1.title)},
+          do:
+            {:ok, got |> Enum.filter(& &1.written?) |> Enum.sort_by(& &1.title) |> with_photos()},
           else: list(base, length(got), got)
 
       # **まだ依頼していない**（Chiezo に収集が無い）なら、空として出す（読めなかったのではない）
@@ -408,6 +409,29 @@ defmodule Chidori.Datasets.Recipes do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # 写真の縮小版の横幅（一覧の札は横 9.5rem ほどなので、高密度の画面でもにじまない幅。
+  # Commons が用意している幅の 1 つ）
+  @photo_width 330
+
+  @doc """
+  収集の中で写真が作れなかった料理に、**Chidori が 1 枚ずつ頼んだ写し**を付けます
+  （`Chidori.Relations.Faces`。顔写真と同じ置き場と取り方）。まだ写しの無い写真はその場で
+  取りに行く列に並べ、次に読んだときから出る。Commons の写真だけ。
+  """
+  def with_photos(recipes) do
+    waiting = for r <- recipes, r.thumb == nil, is_binary(r[:image]), do: r.image
+
+    photos =
+      if waiting == [], do: %{}, else: Chidori.Relations.Faces.faces(waiting, @photo_width)
+
+    Enum.map(recipes, fn r ->
+      case r.thumb == nil && photos[r[:image]] do
+        path when is_binary(path) -> %{r | thumb: path}
+        _none -> r
+      end
+    end)
   end
 
   @doc false
@@ -424,6 +448,7 @@ defmodule Chidori.Datasets.Recipes do
       ingredients_tags: tag_values(tags, @ingredient_tag),
       canon: tag_value(tags, @canon_tag),
       thumb: Chiezo.thumb_path(extra["thumb"]),
+      image: extra["image"],
       image_page: Chidori.Relations.Faces.file_page(extra["image"]),
       url: Chidori.SafeUrl.href(extra["url"]),
       sections: sections,

@@ -35,6 +35,21 @@ defmodule Chidori.Relations.FacesTest do
     assert Faces.faces(["https://upload.wikimedia.org/wikipedia/ja/1/12/Local.jpg"]) == %{}
   end
 
+  test "レシピ集の写真のない料理には、ここの写しを付ける（収集の写しを持つ料理はそのまま）" do
+    face = stored(@photo, "ok", "WEBP")
+
+    recipes = [
+      %{title: "写しを待つ", thumb: nil, image: @photo},
+      %{title: "収集の写し", thumb: "/thumbs/x.webp", image: @photo},
+      %{title: "写真なし", thumb: nil, image: nil}
+    ]
+
+    assert [%{thumb: path}, %{thumb: "/thumbs/x.webp"}, %{thumb: nil}] =
+             Chidori.Datasets.Recipes.with_photos(recipes)
+
+    assert path == Faces.path(face.id)
+  end
+
   test "押したときに出典とライセンスを読める、Commons のファイルのページ" do
     assert Faces.file_page(@photo) == "https://commons.wikimedia.org/wiki/File:Sample_person.jpg"
   end
