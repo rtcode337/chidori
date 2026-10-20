@@ -186,6 +186,8 @@ defmodule ChidoriWeb.Collect do
           # 読み込んだとき —— 間隔を出すと、勝手に動くように読める
           sweep[:by_hand] -> "手で回す"
           sweep[:on_demand] -> "時計なし"
+          # 時計を外した回。間隔を出すと、勝手に動くように読める（起こすのは依頼元）
+          sweep[:by_caller] -> "依頼元が起こす"
           sweep.interval_minutes -> "#{sweep.interval_minutes} 分ごと"
           true -> "—"
         end,

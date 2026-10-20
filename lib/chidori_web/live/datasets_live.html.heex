@@ -718,6 +718,27 @@
           </div>
         </form>
 
+        <%!-- **情報収集を起こす時刻**（範囲ごとの食事処だけ）。Chiezo の時計は外してあり、
+           Chidori がこの時刻に起こす。設定ページの「Chiezo 収集」の表と同じ値。
+           上のフォームの中には置けない（フォームは入れ子にできない） --%>
+        <form
+          :if={@survey_times}
+          id="survey-times-form"
+          class="wake-form"
+          phx-submit="save_survey_times"
+        >
+          <label>
+            情報収集を起こす時刻（日本時間）
+            <input type="text" name="times" value={@survey_times} placeholder="04:00,16:00" />
+          </label>
+          <button type="submit" phx-disable-with="保存しています…">時刻を保存</button>
+          <p class="muted-note">
+            「04:00,16:00」のようにカンマで並べます。空なら起こしません。1 回十分ほどかかるので、
+            ほかの範囲と時刻をずらしてください。
+          </p>
+          <p :if={@survey_saved} aria-live="polite">{@survey_saved}</p>
+        </form>
+
         <p :if={@state.collection && @state.collection.url} class="muted-note">
           <a href={@state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
         </p>

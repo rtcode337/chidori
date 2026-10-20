@@ -330,6 +330,25 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       assert html =~ "収集の設定を更新"
     end
 
+    test "情報収集を起こす時刻を、データ収集の画面でも直せる", %{conn: conn} do
+      # 設定ページの「Chiezo 収集」の表と同じ値（同じ表を読み書きする）
+      {:ok, _} = Chidori.Datasets.DiningSurveySetting.put("chidori_dining_1", %{run_at: "04:00"})
+      {live, html} = shown(conn)
+
+      assert html =~ ~s(id="survey-times-form")
+      assert html =~ ~s(value="04:00")
+      # 時計を外した回に間隔を出さない（勝手に動くように読める）
+      assert html =~ "依頼元が起こす"
+
+      html = live |> form("#survey-times-form", %{times: "4:20, 1620"}) |> render_submit()
+
+      assert html =~ "起こす時刻を保存しました。"
+      assert Chidori.Datasets.DiningSurveySetting.get("chidori_dining_1").run_at == "04:20,16:20"
+
+      html = live |> form("#survey-times-form", %{times: "25:00"}) |> render_submit()
+      assert html =~ "時刻は 24 時間制で書いてください"
+    end
+
     test "機械で引く巡回には相手を選ばせない", %{conn: conn} do
       # 選んでも何も起きない —— その回は AI を呼ばずに返す
       {_live, html} = shown(conn)

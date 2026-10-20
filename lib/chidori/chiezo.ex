@@ -1083,6 +1083,8 @@ defmodule Chidori.Chiezo do
         # 使う AI に渡して、答えのファイルを読み込ませる —— こちらから走らせる道は
         # 無いので、相手も選ばせないし「この区画で 1 回」の相手にもしない
         by_hand: s["by_hand"] == true,
+        # **時計を外した回**（依頼元が名指しで起こす。食事処の情報収集・自動で回さない整理）
+        by_caller: s["by_caller"] == true,
         enabled: s["enabled"] != false,
         next_run_at: s["next_run_at"],
         last_run_at: s["last_run_at"],

@@ -17,6 +17,8 @@ defmodule ChidoriWeb.DatasetsLive do
 
   use ChidoriWeb, :live_view
 
+  alias Chidori.Datasets.DiningSurveySetting
+
   import ChidoriWeb.Collect
   import ChidoriWeb.CollectPanel
   import ChidoriWeb.PartitionMap
@@ -164,7 +166,11 @@ defmodule ChidoriWeb.DatasetsLive do
         live_cursor: nil,
         live_error: nil,
         prefecture_progress: nil,
-        prefecture_map: nil
+        prefecture_map: nil,
+        # 範囲ごとの食事処の、情報収集を起こす時刻（`Chidori.Datasets.DiningSurvey`）。
+        # 設定ページの「Chiezo 収集」の表と同じ値（同じ表を読み書きする）
+        survey_times: survey_times_of(dataset),
+        survey_saved: nil
       )
 
     # **本棚のある対象は、開いただけでは Chiezo と話さない。** 本棚は覚え書きを出し、
@@ -196,6 +202,21 @@ defmodule ChidoriWeb.DatasetsLive do
   end
 
   @impl true
+  # **情報収集を起こす時刻を直す**（範囲ごとの食事処だけ）。Chiezo には送らない ——
+  # 時計を持つのは Chidori。設定ページの「Chiezo 収集」の表と同じ値を書き換える
+  def handle_event("save_survey_times", %{"times" => times}, socket) do
+    dataset = socket.assigns.dataset
+
+    message =
+      case dataset[:area] && DiningSurveySetting.put(dataset.collection, %{"run_at" => times}) do
+        {:ok, _saved} -> "起こす時刻を保存しました。"
+        {:error, %Ecto.Changeset{} = changeset} -> changeset_error(changeset)
+        _other -> "起こす時刻を保存できませんでした。"
+      end
+
+    {:noreply, assign(socket, survey_times: survey_times_of(dataset), survey_saved: message)}
+  end
+
   # **依頼を送って、そのまま読み直す。** 送っただけでは画面が変わらないので、
   # 効いたのかどうかが分かりません
   def handle_event("collect", params, socket) do
@@ -1414,4 +1435,17 @@ defmodule ChidoriWeb.DatasetsLive do
   end
 
   def derived_extract(_dataset), do: nil
+
+  # 範囲ごとの食事処の、情報収集を起こす時刻（ほかの対象では nil = 欄を出さない）
+  defp survey_times_of(dataset) do
+    if dataset[:area], do: DiningSurveySetting.get(dataset.collection).run_at || ""
+  end
+
+  defp changeset_error(changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {message, _opts} -> message end)
+    |> Map.values()
+    |> List.flatten()
+    |> List.first("起こす時刻を保存できませんでした。")
+  end
 end
