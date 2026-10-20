@@ -389,10 +389,13 @@ defmodule Chidori.Datasets.GourmetTest do
       assert tidy =~ "**5. 時間が残っていたら"
       assert scan =~ "{current}"
       # 段の中身は同じ文（片方が直したものをもう片方が戻さない）
+      # 時間の制限が無いことを書き、調べずに返す逃げ道を外す
+      assert scan =~ "この回に時間の制限はありません"
+      refute scan =~ "時間が尽きたら"
       assert scan =~ "**料理は 1 回に 20 品まで**"
       assert scan =~ "**1 回に 30 件まで**"
       # 空欄の段を飛ばさせない（全部でなくて構わない、とは書かない）
-      assert scan =~ "**3 もこの回の主な仕事です。飛ばさないでください。**"
+      assert scan =~ "**2 と 3 がこの回の主な仕事です。飛ばさないでください。"
       refute scan =~ "3 は全部でなくて構いません"
     end
 
