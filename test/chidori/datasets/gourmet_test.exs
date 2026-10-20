@@ -215,6 +215,8 @@ defmodule Chidori.Datasets.GourmetTest do
       # 「不明」の回は付け替えるだけ、情報収集は何も足さない
       assert Gourmet.tidy_prompt() =~ "受け持つ県が「不明」の回は"
       assert Gourmet.scan_prompt() =~ "受け持つ県が「不明」の回は"
+      # 店の 1 件は付け替えるときに代表店も書く（県の回を待たない）
+      assert Gourmet.tidy_prompt() =~ "店の 1 件は、付け替えるときに代表店も書いてください"
       assert Gourmet.survey_prompt() =~ "何も足さずに空の items を返してください"
     end
 
