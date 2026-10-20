@@ -4,7 +4,7 @@ defmodule Chidori.Relations.Faces do
   あとは Chidori が配ります（`/faces/:id`）。
 
   **レシピ集の料理の写真も、ここで取ります**（`Chidori.Datasets.Recipes.with_photos/1`。幅は
-  一覧の札に合わせて 330px）。収集の中で Chiezo がまとめて取りに行くと、1 回の巡回で
+  記事の写真の既定の幅で、作り置きのありそうな 250px）。収集の中で Chiezo がまとめて取りに行くと、1 回の巡回で
   4〜6 枚取ったところで Wikimedia に「多すぎる」（429）と断られ、残りが何週間も写真なしで
   残った。ここは 1 枚ずつ間を空け、開いたぶんだけ少しずつ頼むので断られにくい。
 
@@ -17,6 +17,9 @@ defmodule Chidori.Relations.Faces do
   - 頼むのは**小さな縮小版**（横 120px。Commons の決まった幅で、置き場の写しが当たる）だけ。
     原寸は引かない
   - **1 枚ずつ間を空けて**頼む（`@interval_ms`）
+  - **断られたら頼むのをやめる。** Chiezo が取りに行けなかった（Wikimedia に「多すぎる」と
+    断られた・つながらない）ら、列に残っているぶんを捨て、しばらく（`@pause_ms`）は新しく
+    並べもしない。断られているのに 1.5 秒おきに頼み続け、2 分で 50 回以上断られていた
   - **取れなかったことも残す**（`missing`）。無いものを取りに行き続けない
 
   写真の出どころは記事の画像（Chiezo の jawiki の `extra.image`。名簿を引くときに運ぶ）。
@@ -37,8 +40,11 @@ defmodule Chidori.Relations.Faces do
 
   # 縮小版の横幅（Commons が受け付ける幅の一覧から。`Chidori.Artwork.thumb/2`）。顔写真の既定
   @width 120
-  # 1 枚取るごとに空ける間（ミリ秒）
-  @interval_ms 1_500
+  # 1 枚取るごとに空ける間（ミリ秒）。作り置きの無い縮小版を作らせる頼みは、Wikimedia が
+  # 回線ごとに数えて絞る（続けて頼むと 2 枚目から 429。待てと言われるのは 10 秒）
+  @interval_ms 10_000
+  # 取りに行けなかったら、この間は頼まない（ミリ秒）
+  @pause_ms 30 * 60 * 1000
   # 1 枚の上限（縮小版はふつう 10〜40KB。大きすぎるものは写真ではない）
   @max_bytes 200_000
 
@@ -46,7 +52,8 @@ defmodule Chidori.Relations.Faces do
     do: GenServer.start_link(__MODULE__, :ok, name: options[:name] || __MODULE__)
 
   @impl true
-  def init(:ok), do: {:ok, %{queue: :queue.new(), queued: MapSet.new(), busy?: false}}
+  def init(:ok),
+    do: {:ok, %{queue: :queue.new(), queued: MapSet.new(), busy?: false, paused_until: nil}}
 
   @doc """
   写真の URL の並びのうち、**写しがあるもの**を `%{URL => 配る道}` で返し、
@@ -116,6 +123,18 @@ defmodule Chidori.Relations.Faces do
 
   @impl true
   def handle_cast({:fetch, urls, width}, state) do
+    if paused?(state) do
+      # 断られて休んでいる間は並べない（次に開いたときに並べ直す）
+      {:noreply, state}
+    else
+      {:noreply, enqueue(state, urls, width)}
+    end
+  end
+
+  defp paused?(%{paused_until: nil}), do: false
+  defp paused?(%{paused_until: until}), do: System.monotonic_time(:millisecond) < until
+
+  defp enqueue(state, urls, width) do
     fresh = Enum.reject(urls, &MapSet.member?(state.queued, &1))
 
     state = %{
@@ -124,7 +143,7 @@ defmodule Chidori.Relations.Faces do
         queued: Enum.reduce(fresh, state.queued, &MapSet.put(&2, &1))
     }
 
-    {:noreply, next(state)}
+    next(state)
   end
 
   @impl true
@@ -138,9 +157,25 @@ defmodule Chidori.Relations.Faces do
         state
 
       {{:value, {url, width}}, rest} ->
-        store(url, download(url, width))
-        Process.send_after(self(), :next, @interval_ms)
-        %{state | queue: rest, queued: MapSet.delete(state.queued, url), busy?: true}
+        state = %{state | queue: rest, queued: MapSet.delete(state.queued, url)}
+
+        case download(url, width) do
+          # **取りに行けなかったら、残りを捨てて休む**（断られているのに頼み続けない）
+          :retry ->
+            Logger.info("顔写真の取得を #{div(@pause_ms, 60_000)} 分休みます（Chiezo が取りに行けませんでした）")
+
+            %{
+              state
+              | queue: :queue.new(),
+                queued: MapSet.new(),
+                paused_until: System.monotonic_time(:millisecond) + @pause_ms
+            }
+
+          result ->
+            store(url, result)
+            Process.send_after(self(), :next, @interval_ms)
+            %{state | busy?: true}
+        end
     end
   end
 
@@ -170,8 +205,6 @@ defmodule Chidori.Relations.Faces do
         :retry
     end
   end
-
-  defp store(_url, :retry), do: :ok
 
   defp store(url, result) do
     attrs =

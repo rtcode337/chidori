@@ -50,6 +50,29 @@ defmodule Chidori.Relations.FacesTest do
     assert path == Faces.path(face.id)
   end
 
+  test "Chiezo が取りに行けなかったら、列の残りを捨てて休む（断られているのに頼み続けない）" do
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+    test_pid = self()
+
+    Chidori.HttpStub.stub(fn %{url: url} ->
+      send(test_pid, {:asked, url})
+      {:ok, %{status: 502, body: ~s({"error": "upstream unavailable", "reason": "HTTP 429"})}}
+    end)
+
+    {:ok, pid} = Faces.start_link(name: :faces_pause_test)
+    urls = for n <- 1..3, do: "https://upload.wikimedia.org/wikipedia/commons/a/ab/P#{n}.jpg"
+    GenServer.cast(pid, {:fetch, urls, 120})
+    # 休んでいる間は、新しく並べもしない
+    GenServer.cast(pid, {:fetch, [@photo], 120})
+    _ = :sys.get_state(pid)
+
+    assert_received {:asked, _url}
+    refute_received {:asked, _url}
+    state = :sys.get_state(pid)
+    assert :queue.is_empty(state.queue) and state.paused_until
+  end
+
   test "押したときに出典とライセンスを読める、Commons のファイルのページ" do
     assert Faces.file_page(@photo) == "https://commons.wikimedia.org/wiki/File:Sample_person.jpg"
   end
