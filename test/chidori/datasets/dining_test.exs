@@ -7,7 +7,7 @@ defmodule Chidori.Datasets.DiningTest do
   @area %{id: 3, name: "東京駅", south: 35.67, west: 139.75, north: 35.69, east: 139.78}
 
   # 範囲の収集の依頼文（ざっと見ると整理）
-  defp prompts, do: [Dining.check_prompt(), Dining.tidy_prompt()]
+  defp prompts, do: [Dining.survey_prompt()]
 
   describe "名簿の引き方" do
     setup do
@@ -201,9 +201,11 @@ defmodule Chidori.Datasets.DiningTest do
       assert roster.once
     end
 
-    test "ざっとは一周したら止まる", %{sweeps: sweeps} do
-      # 座標と閉店を一度ずつ見れば用が済む回。止めないと 2 周目が同じことを聞く
-      assert Enum.find(sweeps, &(&1.name == "ざっと見る")).one_lap
+    test "情報収集は一周しても止めず、Chiezo の時計では回さない", %{sweeps: sweeps} do
+      # 閉店も開店も続くので回り続ける。重い相手で回すので、起こすのは Chidori の時計
+      survey = Enum.find(sweeps, &(&1.name == "情報収集"))
+      refute Map.get(survey, :one_lap)
+      assert survey.by_caller
     end
 
     test "1 回の取り込みは、次の予定に追いつかれない", %{sweeps: sweeps} do
@@ -233,26 +235,26 @@ defmodule Chidori.Datasets.DiningTest do
     end
 
     test "巡回の依頼文は、送るときに実物へ入れ替わる" do
-      tidy = Enum.find(Dining.attrs(%{}, @area).sweeps, &(&1.name == "整理"))
+      survey = Enum.find(Dining.attrs(%{}, @area).sweeps, &(&1.name == "情報収集"))
 
-      assert is_binary(tidy.prompt)
-      assert tidy.prompt =~ "足りない店"
+      assert is_binary(survey.prompt)
+      assert survey.prompt =~ "足りない店"
     end
 
     test "画面で選んだ相手を巡回に載せる" do
-      attrs = Dining.attrs(%{"整理" => %{backend: "antigravity", model: nil}}, @area)
-      tidy = Enum.find(attrs.sweeps, &(&1.name == "整理"))
+      attrs = Dining.attrs(%{"情報収集" => %{backend: "antigravity", model: nil}}, @area)
+      survey = Enum.find(attrs.sweeps, &(&1.name == "情報収集"))
 
-      assert tidy.backend == "antigravity"
+      assert survey.backend == "antigravity"
       # 渡していない項目で、巡回が元から持っているものを潰さない
-      refute Map.has_key?(tidy, :model)
+      refute Map.has_key?(survey, :model)
     end
 
     test "「Chiezo の既定にまかせる」は落とさない" do
       # 空文字は意思表示で、落とすと一度決めた相手を外せなくなる
-      attrs = Dining.attrs(%{"ざっと見る" => %{backend: ""}}, @area)
+      attrs = Dining.attrs(%{"情報収集" => %{backend: ""}}, @area)
 
-      assert Enum.find(attrs.sweeps, &(&1.name == "ざっと見る")).backend == ""
+      assert Enum.find(attrs.sweeps, &(&1.name == "情報収集")).backend == ""
     end
   end
 
@@ -288,7 +290,7 @@ defmodule Chidori.Datasets.DiningTest do
 
     test "確かめられなかった座標は触らせない" do
       # 当てずっぽうで座標を書くと、正しかったものが落ちる
-      assert Dining.check_prompt() =~ "確かめられなかった座標は触らない"
+      assert Dining.survey_prompt() =~ "確かめられなかったら触らないで"
     end
 
     test "座標が違うのは、消す理由にしない" do
@@ -329,8 +331,8 @@ defmodule Chidori.Datasets.DiningTest do
       # 名簿は見出しで同じものかを決めているので、同名の別店が 1 件になる
       # （実測で、百科事典の東京の店と、地図辞典の別の県の同名店が
       #  1 件に潰れ、本文と座標が別の店のものになっていた）
-      assert Dining.check_prompt() =~ "1 件に別々の店が混ざっていたら"
-      assert Dining.check_prompt() =~ "新しい見出しで"
+      assert Dining.survey_prompt() =~ "1 件に別々の店が混ざっていたら"
+      assert Dining.survey_prompt() =~ "新しい見出しで"
     end
 
     test "足すものには必ず座標を入れさせる" do
@@ -436,48 +438,41 @@ defmodule Chidori.Datasets.DiningTest do
       assert Enum.all?(attrs.extract, &(&1.bbox == [35.67, 139.75, 35.69, 139.78]))
     end
 
-    test "ざっと見るで早めに一周し、そのあとは整理がゆっくり回る" do
+    test "巡回は機械収集と情報収集の 2 本で、情報収集は名簿のあとに走る" do
       sweeps = Dining.sweeps(@area)
 
-      assert Enum.map(sweeps, & &1.name) == ["機械収集", "ざっと見る", "整理"]
-      scan = Enum.find(sweeps, &(&1.name == "ざっと見る"))
-      tidy = Enum.find(sweeps, &(&1.name == "整理"))
+      assert Enum.map(sweeps, & &1.name) == ["機械収集", "情報収集"]
+      survey = Enum.find(sweeps, &(&1.name == "情報収集"))
 
-      assert scan.after == "機械収集"
-      assert scan.one_lap
-      assert tidy.after == "ざっと見る"
-      # 閉店も開店も続くので、整理は一周しても止めない
-      refute Map.get(tidy, :one_lap)
-      # 整理のほうが遅い（AI の枠の節約）
-      assert tidy.interval_minutes > scan.interval_minutes
-      assert tidy.cover_days > scan.cover_days
-      # ざっと見るは収集の依頼文、整理は自分の依頼文
-      refute Map.has_key?(scan, :prompt)
-      assert tidy.prompt == :tidy
+      assert survey.after == "機械収集"
+      assert survey.prompt == :survey
+      # 足すだけにしない（閉店を墓標にし、座標や空欄も直す 1 本）
+      refute Map.get(survey, :only_new)
     end
 
-    test "割り込みも travel-log からの依頼も整理が引き受ける" do
+    test "割り込みも travel-log からの依頼も情報収集が引き受ける" do
       definition = Dining.definition(@area)
 
-      assert definition.survey_sweep == "整理"
-      assert definition.request_sweep == "整理"
-      assert definition.partition_sweeps == ["ざっと見る", "整理"]
+      assert definition.survey_sweep == "情報収集"
+      assert definition.request_sweep == "情報収集"
+      assert definition.partition_sweeps == ["情報収集"]
     end
 
-    test "ざっと見るは、1 件ずつ営業を確かめさせ、足りない店も足させる" do
-      prompt = Dining.check_prompt()
+    test "情報収集は、1 件ずつ営業を確かめさせ、足りない店も足させる" do
+      prompt = Dining.survey_prompt()
 
       assert prompt =~ "1 件ずつ確かめる"
-      assert prompt =~ "web で確かめて"
-      assert prompt =~ "見つからないだけでは消さないで"
+      assert prompt =~ "web で確かめる"
+      assert prompt =~ "見つからないだけでは消さない"
       assert prompt =~ "足りない店を足す"
-      assert prompt =~ "足すものには必ず座標を入れて"
+      assert prompt =~ "足すものには必ず座標を"
       assert prompt =~ "not_reviewed"
+      # ざっと見るにしか書いていなかった決まりも載せる
+      assert prompt =~ "地域（都道府県）は必ず埋めて"
+      assert prompt =~ "1 件に別々の店が混ざっていたら分けて"
 
       # 申告するのは時間切れの店だけ。情報が見つからなかった店は見たうえで残す
-      # （申告すると地図に出ないまま、次の回も同じく見つからずに残り続ける）
-      assert prompt =~ "時間切れで手を付けられなかった店だけ"
-      assert prompt =~ "情報も閉店の情報も見つからなかった店は、申告しないで"
+      assert prompt =~ "情報も閉店の情報も見つからなかった店は、見たうえで残す店なので"
       assert Dining.attrs(%{}, @area).prompt == prompt
     end
 
@@ -491,7 +486,7 @@ defmodule Chidori.Datasets.DiningTest do
 
     test "営業日と営業時間を、確かめられた店だけ OSM の書き方で埋めさせる" do
       # 朝食営業・ランチ営業・深夜営業の印は、この書き方から機械で読み取る（`OpeningHours`）
-      for prompt <- [Dining.tidy_prompt(), Dining.check_prompt()] do
+      for prompt <- prompts() do
         assert prompt =~ "extra.opening_hours"
         assert prompt =~ "確かめられたときだけ"
         assert prompt =~ "Mo-Fr 11:00-14:30,17:30-22:00; Sa,Su,PH 11:00-21:00; We off"
@@ -501,8 +496,8 @@ defmodule Chidori.Datasets.DiningTest do
                [:lunch]
     end
 
-    test "整理は、報告・まだ目を通していない店・足りない店を先にし、見直しは残りの時間で" do
-      prompt = Dining.tidy_prompt()
+    test "情報収集は、報告・まだ目を通していない店・足りない店を先にし、見直しは残りの時間で" do
+      prompt = Dining.survey_prompt()
       order = fn needle -> prompt |> :binary.match(needle) |> elem(0) end
 
       # travel-log からの報告が第一
@@ -527,8 +522,8 @@ defmodule Chidori.Datasets.DiningTest do
       assert prompt =~ "`checked`"
 
       attrs = Dining.attrs(%{}, @area)
-      assert Enum.find(attrs.sweeps, &(&1.name == "整理")).prompt == prompt
-      assert Dining.prompts(@area) == [{"ざっと見る", Dining.check_prompt()}, {"整理", prompt}]
+      assert Enum.find(attrs.sweeps, &(&1.name == "情報収集")).prompt == prompt
+      assert Dining.prompts(@area) == [{"情報収集", prompt}]
     end
 
     test "範囲で決まるところだけを取り出せる（範囲を直したときに送る）" do

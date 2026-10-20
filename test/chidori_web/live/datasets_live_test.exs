@@ -225,20 +225,17 @@ defmodule ChidoriWeb.DatasetsLiveTest do
         %{
           "key" => "35.0,135.7/35.1,135.8",
           "count" => 120,
-          "visits" => %{"ざっと見る" => "2026-09-20T00:00:00Z"}
+          "visits" => %{"情報収集" => "2026-09-20T00:00:00Z"}
         },
         %{
           "key" => "34.6,135.4/34.8,135.6",
           "count" => 150,
-          "visits" => %{
-            "ざっと見る" => "2026-08-20T00:00:00Z",
-            "整理" => "2026-09-01T00:00:00Z"
-          }
+          "visits" => %{"情報収集" => "2026-09-01T00:00:00Z"}
         },
         %{
           "key" => "43.0,141.3/43.1,141.4",
           "count" => 90,
-          "visits" => %{"整理" => "2026-08-01T00:00:00Z"}
+          "visits" => %{}
         }
       ],
       "sweeps" => [
@@ -248,8 +245,13 @@ defmodule ChidoriWeb.DatasetsLiveTest do
           "use_extract" => true,
           "enabled" => true
         },
-        %{"name" => "ざっと見る", "interval_minutes" => 120, "cover_days" => 3, "enabled" => true},
-        %{"name" => "整理", "interval_minutes" => 720, "cover_days" => 14, "enabled" => true}
+        %{
+          "name" => "情報収集",
+          "interval_minutes" => 720,
+          "cover_days" => 14,
+          "by_caller" => true,
+          "enabled" => true
+        }
       ]
     }
 
@@ -275,7 +277,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
                 %{
                   "at" => "2099-01-01T00:00:00+00:00",
                   "status" => "ok",
-                  "sweep" => "整理",
+                  "sweep" => "情報収集",
                   "scope" => ["35.6,139.7/35.7,139.8"],
                   "added" => 25,
                   "updated" => 1,
@@ -289,7 +291,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
                 %{
                   "at" => "2099-01-01T01:00:00+00:00",
                   "status" => "ok",
-                  "sweep" => "整理",
+                  "sweep" => "情報収集",
                   "scope" => ["35.0,135.7/35.1,135.8"],
                   "added" => 9
                 }
@@ -324,7 +326,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       {_live, html} = shown(conn)
 
       assert html =~ "sweep-table"
-      assert html =~ ~s(name="sweep|ざっと見る|backend")
+      assert html =~ ~s(name="sweep|情報収集|backend")
       assert html =~ "収集の設定を更新"
     end
 
@@ -355,11 +357,11 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     end
 
     test "区画の見出しは「いま回っている巡回が見終わった数 / 総数」", %{conn: conn} do
-      # ざっと見るが一周するまでは、ざっと見るの数（4 区画のうち 2 つ）
+      # 情報収集が見終わった数（4 区画のうち 2 つ）
       {_live, html} = shown(conn)
 
       assert html =~ ~r|区画（<span[^>]*>2 / </span>4）|
-      assert html =~ "「ざっと見る」が見終わった区画の数です"
+      assert html =~ "「情報収集」が見終わった区画の数です"
       assert html =~ "まだ見ていないものが先に表示されます"
       refute html =~ "— まだ見ていないものが先"
     end
@@ -380,7 +382,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       assert Enum.map(sent["extract"], & &1["source"]) ==
                ["jawiki", "osm_japan", "overture_japan"]
 
-      assert length(sent["sweeps"]) == 3
+      assert length(sent["sweeps"]) == 2
     end
 
     test "区画を回る巡回を「どの巡回として」に出す（機械で引く回は出さない）", %{conn: conn} do
@@ -392,8 +394,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
         |> element(~s|.partition-table tbody tr:first-child button|)
         |> render_click()
 
-      assert html =~ ~s(<option value="ざっと見る")
-      assert html =~ ~s(<option value="整理")
+      assert html =~ ~s(<option value="情報収集")
       refute html =~ ~s(<option value="機械収集")
     end
 
@@ -436,23 +437,19 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
       assert html =~ "partition-map"
       # 見終わった区画は色を変える（進み具合は数では読めない）
-      assert html =~ "is-seen"
+      assert html =~ "is-done"
       assert html =~ ~s(phx-value-key="35.6,139.7/35.7,139.8")
     end
 
-    test "色は、どの巡回まで見たかで決まる", %{conn: conn} do
-      # ざっと見るだけが見た区画は薄い黄色、整理まで見た区画は薄い緑。
-      # 何本が見たかで濃さを変えていた頃は、どちらの巡回が済んだのかが読めなかった
+    test "色は、情報収集が見たかで決まる", %{conn: conn} do
+      # 区画を回る巡回は情報収集の 1 本なので、見た区画は薄い緑
       {_live, html} = shown(conn)
 
-      # ざっと見るだけ
-      assert html =~ ~r|<rect[^>]*is-seen[^>]*phx-value-key="35.0,135.7/35.1,135.8"|
-      # 両方
+      assert html =~ ~r|<rect[^>]*is-done[^>]*phx-value-key="35.0,135.7/35.1,135.8"|
       assert html =~ ~r|<rect[^>]*is-done[^>]*phx-value-key="34.6,135.4/34.8,135.6"|
-      # 整理だけ（整理が済んでいれば緑）
-      assert html =~ ~r|<rect[^>]*is-done[^>]*phx-value-key="43.0,141.3/43.1,141.4"|
-      assert html =~ "薄い黄色が「ざっと見る」まで、薄い緑が「整理」まで見終わった区画"
-      assert html =~ "ざっと見る 済み"
+      refute html =~ ~r|<rect[^>]*is-done[^>]*phx-value-key="43.0,141.3/43.1,141.4"|
+      assert html =~ "薄い緑が「情報収集」まで見終わった区画"
+      assert html =~ "情報収集 済み"
     end
 
     test "まだ焼いていない固定があれば、画面を移ってきても「AI を使わずにいま反映する」が出る", %{
@@ -579,14 +576,14 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       # 押しても画面が変わらず「何が起きたのか分からない」になっていた
       live
       |> form(~s|.partition-picked form|, %{
-        "sweep" => "ざっと見る",
+        "sweep" => "情報収集",
         "run|backend" => "antigravity"
       })
       |> render_submit()
 
       assert_receive {:posted, url, sent}, 2_000
       assert url =~ "/run"
-      assert url =~ URI.encode_query(%{"sweep" => "ざっと見る"})
+      assert url =~ URI.encode_query(%{"sweep" => "情報収集"})
       assert sent["partitions"] == ["43.0,141.3/43.1,141.4"]
       assert sent["backend"] == "antigravity"
     end
@@ -642,7 +639,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
       assert_receive {:posted, url, sent}, 2_000
       assert url =~ "/v1/collect/chidori_dining_1/run"
-      assert url =~ URI.encode_query(%{"sweep" => "整理"})
+      assert url =~ URI.encode_query(%{"sweep" => "情報収集"})
       assert sent["partitions"] == ["35.6,139.7/35.7,139.8"]
       note = sent["notes"]["35.6,139.7/35.7,139.8"]
       assert note =~ "閉店している"
@@ -650,7 +647,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       refute note =~ "区画の外"
 
       # 頼み終えた知らせ（裏の処理から届く）を待ってから読む
-      html = wait_for(live, "区画 1 つで整理を頼みました")
+      html = wait_for(live, "区画 1 つで情報収集を頼みました")
 
       # 頼んだ区画の控えは消え、区画の外の 1 件だけが残る
       assert html =~ "控えている依頼（1 件）"
@@ -730,8 +727,8 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       refute sent["notes"][south] =~ "そば屋がある"
       assert sent["notes"][north] =~ "そば屋がある"
 
-      html = wait_for(live, "区画 2 つで整理を頼みました")
-      assert html =~ "区画 2 つで整理を頼みました"
+      html = wait_for(live, "区画 2 つで情報収集を頼みました")
+      assert html =~ "区画 2 つで情報収集を頼みました"
       refute html =~ "控えている依頼（"
 
       # 依頼の結果は区画の鍵で引き当てるので、記録も頼んだ鍵になっている
@@ -780,7 +777,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       assert html =~ ~s(class="run-by-request")
       # 自動の回（Chiezo が選んだ別の区画）も出る
       assert html =~ "足した 9 ・直した 0 ・消した 0"
-      assert html =~ "整理・区画 1 つ"
+      assert html =~ "情報収集・区画 1 つ"
     end
 
     test "座標の無いテキストでは頼まない", %{conn: conn} do
