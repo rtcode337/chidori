@@ -618,9 +618,8 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       end
     end
 
-    test "travel-log からの依頼はすぐには頼まず控え、区画ごとに頼める", %{conn: conn} do
-      {live, _html} = shown(conn)
-
+    test "控えている travel-log からの依頼を、区画ごとに頼める", %{conn: conn} do
+      # 貼るのは「全体」のタブ（範囲ごとに配る）。ここでは配られた控えを区画ごとに頼む
       text = """
       # 修正・追加の依頼(日本の食事処) 3件
 
@@ -629,27 +628,16 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       - [追加] (26.20000,127.68000): 区画の外
       """
 
-      html =
-        live
-        |> form(~s|form[phx-submit="travel_log_request"]|, %{text: text})
-        |> render_submit()
+      {:ok, _} = Chidori.Datasets.Requests.stash(Chidori.Datasets.get("dining-1"), text)
+      {live, html} = shown(conn)
 
-      # **貼っただけでは頼まない**（1 件しか無い区画にも回が走ると枠を使い潰す）
+      # **控えただけでは頼まない**（1 件しか無い区画にも回が走ると枠を使い潰す）
       refute_receive {:posted, _url, _sent}, 300
-      assert html =~ "3 件を控えました"
       assert html =~ "控えている依頼（3 件）"
 
       # 区画ごとに件数の多い順。区画の外は最後に「どの区画にも入らない」として
       assert html =~ "35.6,139.7/35.7,139.8"
       assert html =~ "どの区画にも入らない"
-
-      # 同じ依頼を貼り直しても増えない
-      html =
-        live
-        |> form(~s|form[phx-submit="travel_log_request"]|, %{text: text})
-        |> render_submit()
-
-      assert html =~ "0 件を控えました（3 件は控え済みの依頼と同じなので足していません）"
 
       # **区画を選んで頼む。** ふつうの回として走らせ、その区画の控えだけを補足に載せる
       live
@@ -711,20 +699,18 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       end)
     end
 
-    defp stash_two(live) do
+    defp stash_two do
       text = """
       - [修正] 駅前うどん (35.62000,139.75000): 閉店している
       - [追加] (35.68000,139.76000): そば屋がある
       """
 
-      live
-      |> form(~s|form[phx-submit="travel_log_request"]|, %{text: text})
-      |> render_submit()
+      {:ok, _} = Chidori.Datasets.Requests.stash(Chidori.Datasets.get("dining-1"), text)
     end
 
     test "押した後に区画が割り直されていたら、新しい区画で頼み直す", %{conn: conn} do
+      stash_two()
       {live, _html} = shown(conn)
-      stash_two(live)
 
       # 画面にはまだ前の区画が出ている。押す前に Chiezo で割り直された
       south = "35.6,139.7/35.65,139.8"
@@ -757,8 +743,8 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     end
 
     test "割り直した区画のどれにも入らなければ、頼まずに控えを残す", %{conn: conn} do
+      stash_two()
       {live, _html} = shown(conn)
-      stash_two(live)
 
       resplit([%{"key" => "43.0,141.3/43.1,141.4", "count" => 90, "visits" => %{}}])
 
@@ -799,16 +785,17 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       assert html =~ "情報収集・区画 1 つ"
     end
 
-    test "座標の無いテキストでは頼まない", %{conn: conn} do
-      {live, _html} = shown(conn)
+    test "範囲ごとの画面には、依頼を貼る欄を出さない（全体のタブで貼る）", %{conn: conn} do
+      # travel-log の食事処は範囲で分かれていないので、別の範囲の店が混ざったテキストを
+      # ここに貼ると事故る
+      {live, html} = shown(conn)
 
-      html =
-        live
-        |> form(~s|form[phx-submit="travel_log_request"]|, %{text: "駅前のうどん屋が閉店"})
-        |> render_submit()
+      refute html =~ ~s(phx-submit="travel_log_request")
+      assert html =~ "「全体」のタブで貼ってください"
 
-      assert html =~ "座標が見つかりませんでした"
-      refute_receive {:posted, _url, _sent}, 300
+      # 古い画面から送られても受けない
+      render_submit(live, "travel_log_request", %{"text" => "- [追加] (35.68000,139.76000): 店"})
+      assert Chidori.Datasets.Requests.pending_count(Chidori.Datasets.get("dining-1")) == 0
     end
 
     test "travel-log が読む収集には、割り込みの欄を出さない", %{conn: conn} do

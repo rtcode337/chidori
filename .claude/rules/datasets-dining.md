@@ -56,7 +56,8 @@ paths:
   情報収集は Chiezo の時計を外し（`by_caller`）、Chidori が設定ページかデータ収集の画面（範囲の「Chiezo の収集」）で決めた時刻に起こす（`Chidori.Datasets.DiningSurvey` と
   `DiningSurveySetting`。時刻は範囲ごと（1 回十分ほどかかり、同じ時刻だと範囲の数だけ並んで取り込みを占める）、既定は空 = 起こさない。本番とテストで二重に起こさないため）
 - 座標のずれは消す理由にしない。イートインできる店だけを集める。閉店は墓標で消し、理由を本文に書かせる
-- travel-log からの依頼（`Chidori.Datasets.Requests`）は貼っても即座に頼まず控え（`pending_requests`）、区画ごとにまとめて整理の 1 回で頼む。
+- travel-log からの依頼（`Chidori.Datasets.Requests`）は貼っても即座に頼まず控え（`pending_requests`）、区画ごとにまとめて整理の 1 回で頼む（食事処は情報収集）。
+  食事処は「全体」のタブで貼って座標で範囲に配る（`route/2`）。範囲のタブには貼る欄を出さず、イベントも受けない（別の範囲の店が混ざるため）。
   区画が矩形でない対象（ご当地グルメ）は控えるときに区画の鍵を決めて残す（`partition_key`。対象の `request_partition/1`。
   名前の出てくる依頼は近くの同じ名前の料理の県、追加は座標の県）。前置きは対象が持っていればそれ（`request_preface/0`）。
   補足は区画ごとに分けて渡す。1 回 20 区画まで。「位置確認」「位置修正」の行は AI に渡さず Chiezo の locks で座標を固定する。

@@ -918,7 +918,18 @@
            区画ごとに溜まった件数を見て、「この区画を頼む」で、その区画の回に依頼を補足として
            載せて頼む。**開いた状態で出す** —— この節に来るのはたいてい依頼を貼るためで、
            畳んであると 1 手余計にかかる --%>
-        <details :if={@state.collection && @dataset.reader == "travel-log"} class="ask-more" open>
+        <%!-- **範囲ごとの食事処には出さない。** travel-log の食事処は範囲で分かれていないので、
+             渡すテキストに別の範囲の店が混ざる —— ここに貼ると、範囲の外の店を自分の区画へ
+             振り分けようとして事故る。範囲ごとに配るのは「全体」のタブ --%>
+        <p :if={@state.collection && @dataset[:area]} class="muted-note">
+          travel-log からの依頼は、食事処の「全体」のタブで貼ってください（座標で範囲ごとに配ります）。
+          この範囲に配られた依頼は、下の「控えている依頼」と区画の画面に出ます。
+        </p>
+        <details
+          :if={@state.collection && @dataset.reader == "travel-log" && !@dataset[:area]}
+          class="ask-more"
+          open
+        >
           <summary>travel-log からの依頼</summary>
           <form phx-submit="travel_log_request">
             <p>

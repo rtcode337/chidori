@@ -536,6 +536,11 @@ defmodule ChidoriWeb.DatasetsLive do
   # その場で頼むと、1 件しか依頼の無い区画にも AI の回が 1 回走って枠を使い潰す ——
   # 区画ごとに溜まった件数を見て、「この区画を頼む」で頼む（`send_pending`）。
   # **「位置OK」「位置修正」の行はこれまでどおりその場で固定させる**（AI を使わないので待つ理由が無い）
+  # **範囲ごとの食事処では受けない**（貼る欄も出さない）。travel-log の食事処は範囲で分かれて
+  # いないので、テキストに別の範囲の店が混ざる。配るのは「全体」のタブ（`DiningAreasLive`）
+  def handle_event("travel_log_request", _params, %{assigns: %{dataset: %{area: _}}} = socket),
+    do: {:noreply, socket}
+
   def handle_event("travel_log_request", %{"text" => text}, socket) do
     dataset = socket.assigns.dataset
     confirms = Requests.confirms(text)
