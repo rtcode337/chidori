@@ -382,7 +382,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
     test "情報収集を起こす時刻を、データ収集の画面でも直せる", %{conn: conn} do
       # 設定ページの「Chiezo 収集」の表と同じ値（同じ表を読み書きする）
-      {:ok, _} = Chidori.Datasets.DiningSurveySetting.put("chidori_dining_1", %{run_at: "04:00"})
+      {:ok, _} = Chidori.Datasets.SurveySetting.put("chidori_dining_1", %{run_at: "04:00"})
       {live, html} = shown(conn)
 
       assert html =~ ~s(id="survey-times-form")
@@ -393,7 +393,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       html = live |> form("#survey-times-form", %{times: "4:20, 1620"}) |> render_submit()
 
       assert html =~ "起こす時刻を保存しました。"
-      assert Chidori.Datasets.DiningSurveySetting.get("chidori_dining_1").run_at == "04:20,16:20"
+      assert Chidori.Datasets.SurveySetting.get("chidori_dining_1").run_at == "04:20,16:20"
 
       html = live |> form("#survey-times-form", %{times: "25:00"}) |> render_submit()
       assert html =~ "時刻は 24 時間制で書いてください"

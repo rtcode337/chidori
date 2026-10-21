@@ -114,11 +114,11 @@ defmodule Chidori.CollectOverview do
             last_run_at: sweep["last_run_at"],
             next_run_at:
               cond do
-                # 食事処の情報収集は Chidori の時計が起こす（Chiezo の予定は持たない）
-                dining_survey?(sweep, collection["name"]) ->
+                # 時刻で起こす情報収集は Chidori の時計が起こす（Chiezo の予定は持たない）
+                survey_clock?(sweep, collection["name"]) ->
                   with %DateTime{} = at <-
-                         Chidori.Datasets.DiningSurvey.next_at(
-                           Chidori.Datasets.DiningSurveySetting.get(collection["name"])
+                         Chidori.Datasets.SurveyClock.next_at(
+                           Chidori.Datasets.SurveySetting.get(collection["name"])
                          ),
                        do: DateTime.to_iso8601(at)
 
@@ -215,10 +215,8 @@ defmodule Chidori.CollectOverview do
   """
   def clock(sweep, collection) do
     cond do
-      dining_survey?(sweep, collection) ->
-        case Chidori.Datasets.DiningSurveySetting.times(
-               Chidori.Datasets.DiningSurveySetting.get(collection)
-             ) do
+      survey_clock?(sweep, collection) ->
+        case Chidori.Datasets.SurveySetting.times(Chidori.Datasets.SurveySetting.get(collection)) do
           [] -> "時刻を決めていない（起こさない）"
           times -> "Chidori が起こす（" <> Enum.map_join(times, "・", &Setting.format/1) <> "）"
         end
@@ -249,9 +247,9 @@ defmodule Chidori.CollectOverview do
   """
   def wake(sweep, collection) do
     cond do
-      # 食事処の情報収集（範囲ごとの時刻。`Chidori.Datasets.DiningSurvey`）
-      dining_survey?(sweep, collection) ->
-        {:dining_survey, Chidori.Datasets.DiningSurveySetting.get(collection).run_at || ""}
+      # 時刻で起こす情報収集（収集ごとの時刻。`Chidori.Datasets.SurveyClock`）
+      survey_clock?(sweep, collection) ->
+        {:survey, Chidori.Datasets.SurveySetting.get(collection).run_at || ""}
 
       sweep["on_demand"] ->
         {:digest, Settings.get(collection).digest_at || ""}
@@ -261,10 +259,11 @@ defmodule Chidori.CollectOverview do
     end
   end
 
-  # 食事処の情報収集の巡回か（時計を外し、Chidori が時刻を決めて起こす回）
-  defp dining_survey?(sweep, collection) do
-    sweep["by_caller"] == true and sweep["name"] == Chidori.Datasets.Dining.survey_sweep() and
-      String.starts_with?(collection || "", Chidori.Datasets.Dining.collection(%{id: ""}))
+  # 時刻で起こす情報収集の巡回か（時計を外し、Chidori が時刻を決めて起こす回。
+  # 食事処の範囲ごとの収集・ご当地グルメ・アニメ聖地）
+  defp survey_clock?(sweep, collection) do
+    sweep["by_caller"] == true and sweep["name"] == Chidori.SweepNames.survey() and
+      collection in Chidori.Datasets.SurveyClock.clocked()
   end
 
   defp digest_times(collection) do

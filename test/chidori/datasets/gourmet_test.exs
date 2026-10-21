@@ -108,7 +108,7 @@ defmodule Chidori.Datasets.GourmetTest do
       # 県の飲食店は組を要らない（tag_pairs のどの pattern にも当たらない）
       refute Regex.match?(Regex.compile!(pattern, "u"), "群馬県の飲食店")
       assert "イネの品種" in String.split(extract.not_tag, ",")
-      assert Gourmet.tidy_prompt() =~ "米の品種"
+      assert Gourmet.survey_prompt() =~ "米の品種"
     end
 
     test "会社・メーカー・商品・作品・店でないもの・閉じた店・一覧の記事は外す" do
@@ -213,11 +213,11 @@ defmodule Chidori.Datasets.GourmetTest do
       refute Regex.match?(Regex.compile!(unknown.pattern, "u"), "日本の外食事業者")
 
       # 「不明」の回は付け替えるだけ、情報収集は何も足さない
-      assert Gourmet.tidy_prompt() =~ "受け持つ県が「不明」の回は"
+      assert Gourmet.survey_prompt() =~ "受け持つ県が「不明」の回は"
       assert Gourmet.scan_prompt() =~ "受け持つ県が「不明」の回は"
       # 店の 1 件は付け替えるときに代表店も書く（県の回を待たない）
-      assert Gourmet.tidy_prompt() =~ "店の 1 件は、付け替えるときに代表店も書いてください"
-      assert Gourmet.survey_prompt() =~ "何も足さずに空の items を返してください"
+      assert Gourmet.survey_prompt() =~ "店の 1 件は、付け替えるときに代表店も書いてください"
+      assert Gourmet.survey_prompt() =~ "受け持つ県が「不明」の回は"
     end
 
     test "2 つの県に入っている記事は県ごとの 1 件に分ける" do
@@ -318,42 +318,28 @@ defmodule Chidori.Datasets.GourmetTest do
   end
 
   describe "巡回" do
-    test "機械収集・ざっと見る・整理・情報収集の 4 本をこの順に並べ、名前は SweepNames から選ぶ" do
+    test "機械収集・ざっと見る・情報収集の 3 本をこの順に並べ、名前は SweepNames から選ぶ" do
       sweeps = Gourmet.sweeps()
       names = Enum.map(sweeps, & &1.name)
 
-      # 名簿の確かめと代表店決め（ざっと見る・整理）が先で、料理を足す（情報収集）のはその後
-      assert names == [
-               SweepNames.machine(),
-               SweepNames.scan(),
-               SweepNames.tidy(),
-               SweepNames.survey()
-             ]
-
+      # 整理は無い（整理しつつ足りないものを探すのは情報収集の 1 本）
+      assert names == [SweepNames.machine(), SweepNames.scan(), SweepNames.survey()]
       assert Enum.all?(names, &(&1 in SweepNames.all()))
 
-      [roster, scan, tidy, survey] = sweeps
+      [roster, scan, survey] = sweeps
 
-      # ざっと見るは名簿を待ち、2 時間おきの間隔で一周したら止まる。代表店未定が残る県には戻る
+      # ざっと見るは名簿を待ち、2 時間おきの間隔で一周したら止まる。**足止めしない**（各県を 1 回で通り抜ける）
       assert %{after: "機械収集", one_lap: true, partitions_per_run: 1} = scan
       assert scan.interval_minutes == SweepNames.scan_minutes()
-      assert scan.hold_tag == Gourmet.unplaced_tag()
+      refute Map.has_key?(scan, :hold_tag)
       assert %{use_extract: true, only_new: true} = roster
-      # 1 回に 1 県
-      assert %{partitions_per_run: 1} = survey
-      assert %{partitions_per_run: 1} = tidy
-      # 情報収集は足すだけ（並んでいる料理を薄い中身で上書きしない）
-      assert %{only_new: true} = survey
-      refute Map.get(tidy, :only_new)
 
-      # 整理と情報収集は、ざっと見るが見終えた県から回る（一周は待たない。名簿に混ざったものを
-      # 外してから見直す・足す）
-      assert %{after: "ざっと見る", after_each: true} = survey
-      assert %{after: "ざっと見る", after_each: true} = tidy
-
-      # 整理は代表店未定が残る県を見終わりにしない（情報収集は足止めしない）
-      assert Map.get(tidy, :hold_tag) == Gourmet.unplaced_tag()
-      refute Map.has_key?(survey, :hold_tag)
+      # 情報収集は 1 回に 1 県、直す回（足すだけではない）、ざっと見るが見終えた県から回り、
+      # 代表店未定が残る県には戻る。Chiezo の時計では回さない（Chidori が時刻を決めて起こす）
+      assert %{partitions_per_run: 1, after: "ざっと見る", after_each: true, by_caller: true} = survey
+      refute Map.get(survey, :only_new)
+      assert survey.hold_tag == Gourmet.unplaced_tag()
+      assert Datasets.get("gourmet").survey_clock
     end
 
     test "送る中身に、名簿・区画・引き当て・書式・各巡回の依頼文が入る" do
@@ -369,42 +355,43 @@ defmodule Chidori.Datasets.GourmetTest do
       # 空欄を埋める段のために、空いている脇書きを一覧の 1 行に添えてもらう
       assert attrs.show_blanks == ["shop_reason", "opening_hours"]
       assert Gourmet.scan_prompt() =~ "〔空: shop_reason, opening_hours〕"
-      assert Gourmet.tidy_prompt() =~ "〔空: shop_reason, opening_hours〕"
+      assert Gourmet.survey_prompt() =~ "〔空: shop_reason, opening_hours〕"
 
       prompts = Map.new(attrs.sweeps, &{&1.name, &1[:prompt]})
       assert prompts[SweepNames.survey()] == Gourmet.survey_prompt()
-      assert prompts[SweepNames.tidy()] == Gourmet.tidy_prompt()
       assert prompts[SweepNames.scan()] == Gourmet.scan_prompt()
+      refute Map.has_key?(prompts, SweepNames.tidy())
+      assert attrs.prompt == Gourmet.survey_prompt()
     end
 
-    test "ざっと見るは整理の名簿の確認・代表店・空欄の段だけを、同じ文で頼む" do
+    test "ざっと見るは名簿を一通り確かめ、すぐ分かる代表店だけを決める（段の文は情報収集と同じ）" do
       scan = Gourmet.scan_prompt()
-      tidy = Gourmet.tidy_prompt()
+      tidy = Gourmet.survey_prompt()
 
       assert scan =~ "**1. 名簿から機械で入った料理を確かめる。**"
       assert scan =~ "**2. 代表店の決まっていない料理に、代表店を決める。**"
       assert scan =~ "**3. 空いている項目を埋める。**"
-      # 見直し・名産を足す・報告に答えるのは整理だけ
+      # 見直し・足りない料理を足す・報告に答えるのは情報収集だけ
       refute scan =~ "日の経った料理を見直す。**"
-      refute scan =~ "名簿に無い名産を足す。**"
+      refute scan =~ "まだ並んでいない料理を足す。**"
       refute scan =~ "報告に答える"
       assert tidy =~ "**2. 名簿から機械で入った料理を確かめる。**"
       assert tidy =~ "**5. 時間が残っていたら"
       assert scan =~ "{current}"
       # 段の中身は同じ文（片方が直したものをもう片方が戻さない）
-      # 時間の制限が無いことを書き、調べずに返す逃げ道を外す
-      assert scan =~ "この回に時間の制限はありません"
+      # 名簿は全部見る。代表店はすぐ分かるものだけ（調べ込むのは情報収集）
+      assert scan =~ "1 は名簿の全部を見てください"
+      assert scan =~ "すぐ分かる代表店だけ"
       refute scan =~ "時間が尽きたら"
-      assert scan =~ "**料理は 1 回に 20 品まで**"
-      assert scan =~ "**1 回に 30 件まで**"
-      # 空欄の段を飛ばさせない（全部でなくて構わない、とは書かない）
-      assert scan =~ "**2 と 3 がこの回の主な仕事です。飛ばさないでください。"
-      refute scan =~ "3 は全部でなくて構いません"
+      assert scan =~ "一覧の全部を `not_reviewed` に入れて返さないでください"
+
+      # 情報収集は代表店を粘って調べる（時間の制限が無いことを書いて逃げ道を外す）
+      assert tidy =~ "3 がこの回の主な仕事です。この回に時間の制限はありません"
     end
 
     test "画面で選んだ相手を巡回に載せる" do
-      attrs = Gourmet.attrs(%{"整理" => %{backend: "codex", model: nil}})
-      tidy = Enum.find(attrs.sweeps, &(&1.name == "整理"))
+      attrs = Gourmet.attrs(%{"情報収集" => %{backend: "codex", model: nil}})
+      tidy = Enum.find(attrs.sweeps, &(&1.name == "情報収集"))
 
       assert tidy.backend == "codex"
       refute Map.has_key?(tidy, :model)
@@ -428,8 +415,8 @@ defmodule Chidori.Datasets.GourmetTest do
       end
     end
 
-    test "整理は、機械の名簿を確かめ、代表店を決め、空欄を埋め、古いものから確かめ直す" do
-      prompt = Gourmet.tidy_prompt()
+    test "情報収集は、機械の名簿を確かめ、代表店を決め、空欄を埋め、古いものから確かめ直す" do
+      prompt = Gourmet.survey_prompt()
 
       for needle <- [
             Chidori.Chiezo.unreviewed_tag(),
@@ -447,7 +434,7 @@ defmodule Chidori.Datasets.GourmetTest do
             "extra.no_shop",
             "料理そのものが終わった証拠",
             # 手の空いた回は名簿に無い名産を数品足す（並んでいる見出しでは返さない）
-            "名簿に無い名産",
+            "まだ並んでいない料理",
             "上に並んでいる料理の見出しでは返さないでください",
             # 一般名の食材は、ずば抜けた産地か名物として売り出しているときだけ。名前は土地を頭に
             "一般名の食材",
@@ -458,7 +445,7 @@ defmodule Chidori.Datasets.GourmetTest do
     end
 
     test "一般名の食材の決まりは、どちらの依頼文にも 1 回ずつ書く" do
-      for prompt <- [Gourmet.survey_prompt(), Gourmet.tidy_prompt(), Gourmet.scan_prompt()] do
+      for prompt <- [Gourmet.survey_prompt(), Gourmet.survey_prompt(), Gourmet.scan_prompt()] do
         assert prompt =~ "ずば抜けた産地"
         assert prompt =~ "徳島のスダチ"
         assert length(String.split(prompt, "ずば抜けた産地")) == 2
@@ -482,7 +469,7 @@ defmodule Chidori.Datasets.GourmetTest do
     end
 
     test "代表店の選び方・発祥店・時期・終わったもの・出典・残さない情報源を、どちらの依頼文にも書く" do
-      for prompt <- [Gourmet.survey_prompt(), Gourmet.tidy_prompt(), Gourmet.scan_prompt()] do
+      for prompt <- [Gourmet.survey_prompt(), Gourmet.survey_prompt(), Gourmet.scan_prompt()] do
         assert prompt =~ "代表店:本店"
         assert prompt =~ "代表店:有名店"
         assert prompt =~ "代表店:行きやすい店"
@@ -511,13 +498,13 @@ defmodule Chidori.Datasets.GourmetTest do
 
       assert length(ai_keys) == 10
 
-      for prompt <- [Gourmet.survey_prompt(), Gourmet.tidy_prompt(), Gourmet.scan_prompt()],
+      for prompt <- [Gourmet.survey_prompt(), Gourmet.survey_prompt(), Gourmet.scan_prompt()],
           key <- ai_keys,
           do: assert(prompt =~ "extra.#{key}")
     end
 
     test "代表店の理由は、確かめた事実だけを extra.shop_reason に 1 行（評点や感想は書かせない）" do
-      for prompt <- [Gourmet.survey_prompt(), Gourmet.tidy_prompt(), Gourmet.scan_prompt()] do
+      for prompt <- [Gourmet.survey_prompt(), Gourmet.survey_prompt(), Gourmet.scan_prompt()] do
         assert prompt =~ "その店を選んだ理由を `extra.shop_reason` に 1 行で"
         assert prompt =~ "確かめた頁に書いてある事実だけ"
         assert prompt =~ "口コミの評点や「美味しい」「人気」のような感想は"
@@ -724,20 +711,20 @@ defmodule Chidori.Datasets.GourmetTest do
     end
 
     test "店の 1 件は、消す理由を確かめたときだけ消す（会社の記事でも本店を訪ねられれば残す）" do
-      for prompt <- [Gourmet.scan_prompt(), Gourmet.tidy_prompt(), Gourmet.survey_prompt()] do
+      for prompt <- [Gourmet.scan_prompt(), Gourmet.survey_prompt(), Gourmet.survey_prompt()] do
         assert prompt =~ "**消すのは、消す理由を確かめたときだけ**"
         assert prompt =~ "書いている」だけでは消さないでください"
       end
     end
 
     test "代表店なしは調べたうえで無いときだけ。終わったものは墓標。ざっと見るは粘らない" do
-      for prompt <- [Gourmet.scan_prompt(), Gourmet.tidy_prompt()] do
+      for prompt <- [Gourmet.scan_prompt(), Gourmet.survey_prompt()] do
         assert prompt =~ "**代表店なしは、調べたうえで無かったときだけです。**"
         assert prompt =~ "現在販売は行っていません"
       end
 
       assert Gourmet.scan_prompt() =~ "返さずに代表店未定のまま残してください"
-      refute Gourmet.tidy_prompt() =~ "返さずに代表店未定のまま残してください**（粘って"
+      refute Gourmet.survey_prompt() =~ "返さずに代表店未定のまま残してください**（粘って"
     end
 
     test "名前から見分けの補足を落とす" do
@@ -840,7 +827,7 @@ defmodule Chidori.Datasets.GourmetTest do
     end
 
     test "どちらの依頼文にも、発祥の店の 1 件の名前の決まりを 1 回ずつ書く（料理の 1 件があれば重なりの決まり）" do
-      for prompt <- [Gourmet.survey_prompt(), Gourmet.tidy_prompt(), Gourmet.scan_prompt()] do
+      for prompt <- [Gourmet.survey_prompt(), Gourmet.survey_prompt(), Gourmet.scan_prompt()] do
         assert prompt =~ "料理の発祥の店として知られる店"
         assert prompt =~ "`extra.display_name` に**その料理の名前**"
         assert prompt =~ "名前は**料理名そのまま**"
@@ -860,7 +847,7 @@ defmodule Chidori.Datasets.GourmetTest do
     end
 
     test "どちらの依頼文にも、店の 1 件の決まりと料理との重なりの決め方を 1 回ずつ書く" do
-      for prompt <- [Gourmet.survey_prompt(), Gourmet.tidy_prompt(), Gourmet.scan_prompt()] do
+      for prompt <- [Gourmet.survey_prompt(), Gourmet.survey_prompt(), Gourmet.scan_prompt()] do
         assert prompt =~ ~s(tags に "区分:店")
         assert prompt =~ "地元でも知られていない店"
         assert prompt =~ "本店（発祥の店）が決まらないチェーン"
@@ -888,7 +875,7 @@ defmodule Chidori.Datasets.GourmetTest do
     end
 
     test "整理は店の印を確かめ、2 県に分かれた店は本店の県の 1 件にまとめる" do
-      prompt = Gourmet.tidy_prompt()
+      prompt = Gourmet.survey_prompt()
 
       assert prompt =~ "看板の菓子・料理そのものの記事"
       assert prompt =~ "本店のある県の 1 件だけを残し"

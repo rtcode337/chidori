@@ -718,7 +718,7 @@
           </div>
         </form>
 
-        <%!-- **情報収集を起こす時刻**（範囲ごとの食事処だけ）。Chiezo の時計は外してあり、
+        <%!-- **情報収集を起こす時刻**（時刻で起こす対象だけ。食事処の範囲・ご当地グルメ・アニメ聖地）。Chiezo の時計は外してあり、
            Chidori がこの時刻に起こす。設定ページの「Chiezo 収集」の表と同じ値。
            上のフォームの中には置けない（フォームは入れ子にできない） --%>
         <form
@@ -739,7 +739,7 @@
           <p :if={@survey_saved} aria-live="polite">{@survey_saved}</p>
         </form>
         <%!-- **情報収集を今すぐ 1 回**（区画は Chiezo が選ぶふつうの回。区画を選んで頼むのは区画の画面） --%>
-        <div :if={@dataset[:area] && @state.collection} class="button-row">
+        <div :if={@dataset[:survey_clock] && @state.collection} class="button-row">
           <button
             type="button"
             phx-click="run_survey_now"

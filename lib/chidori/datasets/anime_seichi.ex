@@ -145,6 +145,8 @@ defmodule Chidori.Datasets.AnimeSeichi do
       survey_sweep: @survey_sweep,
       request_sweep: @survey_sweep,
       partition_sweeps: [@survey_sweep],
+      # **情報収集は Chidori が時刻を決めて起こす**（`Chidori.Datasets.SurveyClock`）
+      survey_clock: true,
       export_key: @export_key,
       export_name: @export_name,
       series_order: @kinds
@@ -283,7 +285,9 @@ defmodule Chidori.Datasets.AnimeSeichi do
         interval_minutes: @survey_minutes,
         partitions_per_run: 1,
         after: @roster_sweep,
-        hold_tag: @unplaced_tag
+        hold_tag: @unplaced_tag,
+        # **Chiezo の時計では回さない**（重い回なので、Chidori が時刻を決めて起こす）
+        by_caller: true
       }
     ]
   end

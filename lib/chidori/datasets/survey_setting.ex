@@ -1,10 +1,10 @@
-defmodule Chidori.Datasets.DiningSurveySetting do
+defmodule Chidori.Datasets.SurveySetting do
   @moduledoc """
-  食事処の情報収集を起こす時計（`Chidori.Datasets.DiningSurvey`）の設定と、
-  時計が最後に起こした記録（表 `dining_survey_settings`。**範囲ごとに 1 行**）。
+  食事処の情報収集を起こす時計（`Chidori.Datasets.SurveyClock`）の設定と、
+  時計が最後に起こした記録（表 `dining_survey_settings`。**収集ごとに 1 行**。表の名前は食事処だけが使っていた頃のまま）。
 
-  **時刻は範囲ごとに決めます。** 1 回十分ほどかかる回なので、全部の範囲を同じ時刻に
-  起こすと範囲の数だけ並び、取り込みをその間ずっと占める（6 範囲で 1 時間）。
+  **時刻は収集ごとに決めます。** 1 回十分ほどかかる回なので、全部の収集を同じ時刻に
+  起こすと収集の数だけ並び、取り込みをその間ずっと占める（6 つで 1 時間）。
 
   **起こす時刻は Chidori ごとに決め、既定は空（起こさない）です。** 時計は Chidori の中に
   あるので、本番とテストの 2 つを立てていると、どちらも同じ回を起こします。時刻を書いた
@@ -34,7 +34,7 @@ defmodule Chidori.Datasets.DiningSurveySetting do
     timestamps(type: :utc_datetime)
   end
 
-  @doc "その範囲（Chiezo の収集の名前）の設定と記録（まだ無ければ既定の値）。"
+  @doc "その収集（Chiezo の収集の名前）の設定と記録（まだ無ければ既定の値）。"
   def get(collection) do
     Repo.one(from(s in __MODULE__, where: s.collection == ^collection)) ||
       %__MODULE__{collection: collection}
@@ -47,7 +47,7 @@ defmodule Chidori.Datasets.DiningSurveySetting do
   @doc "起こす時刻（JST の `{時, 分}` を早い順に）。空なら起こさない。"
   def times(%__MODULE__{run_at: text}), do: Setting.times_of(text || "")
 
-  @doc "その範囲の時刻を書き換えます。**読めない時刻は断ります**。"
+  @doc "その収集の時刻を書き換えます。**読めない時刻は断ります**。"
   def put(collection, attrs) do
     collection
     |> get()

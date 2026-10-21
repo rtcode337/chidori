@@ -50,7 +50,7 @@ defmodule Chidori.Datasets.Dining do
   重い相手で回す巡回は情報収集に揃え、1 本で、まだ目を通していない店を確かめる・
   足りない店を足す・空欄を埋める・見直す、までを頼みます（`survey_prompt/0`）。
   **費用が重いので、Chiezo の時計では回さず Chidori が時刻を決めて起こします**
-  （`Chidori.Datasets.DiningSurvey`。時刻は設定ページで決める）。
+  （`Chidori.Datasets.SurveyClock`。時刻は設定ページで決める）。
 
   **情報収集は名簿ができてから走ります**（`after`）—— 名簿が無ければ区画に
   何も並ばず、空の一覧に向かって「この範囲の全部です」と言うことになります。
@@ -71,7 +71,7 @@ defmodule Chidori.Datasets.Dining do
   # 「見切れた」と出ても名前と座標を眺めただけの回だった。確かめるには 1 件に
   # 10〜30 秒かかるので、1 回の持ち時間（十数分）に収まる 20 件にする
   @area_partition_target 20
-  # 情報収集の間隔（分）。**起こすのは Chidori の時計**（`Chidori.Datasets.DiningSurvey`。
+  # 情報収集の間隔（分）。**起こすのは Chidori の時計**（`Chidori.Datasets.SurveyClock`。
   # 時刻は設定ページで決める）。Chiezo には巡回の間隔として書くだけで、時計では回らない
   @survey_minutes 720
   # travel-log の種別。**範囲が違っても同じ種別に入る**（書き出しは範囲ごと、
@@ -277,6 +277,8 @@ defmodule Chidori.Datasets.Dining do
       request_sweep: @survey_sweep,
       # **区画を回る巡回**（1 本）
       partition_sweeps: [@survey_sweep],
+      # **情報収集は Chidori が時刻を決めて起こす**（`Chidori.Datasets.SurveyClock`）
+      survey_clock: true,
       export_key: @area_export_key,
       export_name: "食事処",
       key_prefix: "#{id}-",
@@ -521,7 +523,7 @@ defmodule Chidori.Datasets.Dining do
 
   **情報収集は一周しても止めない** —— 閉店も開店も続くので、回り続けて追いかける。
   **Chiezo の時計は外し（`by_caller`）、Chidori が決めた時刻に起こします**
-  （`Chidori.Datasets.DiningSurvey`）。重い相手で回すので、何時に何回起こすかを
+  （`Chidori.Datasets.SurveyClock`）。重い相手で回すので、何時に何回起こすかを
   Chidori の側で決めて費用を抑えるため。
 
   **1 回に回る区画の数も範囲ごとに決めます**（`partitions_per_run`。範囲の

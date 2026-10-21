@@ -118,7 +118,8 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
     assert html =~ "選んだ区画"
     assert html =~ "この区画で 1 回走らせる"
     assert html =~ ~s(<option value="情報収集")
-    assert html =~ ~s(<option value="整理")
+    assert html =~ ~s(<option value="ざっと見る")
+    refute html =~ ~s(<option value="整理")
 
     live
     |> form(~s|form[phx-submit="run_partition"]|, %{"sweep" => "情報収集"})

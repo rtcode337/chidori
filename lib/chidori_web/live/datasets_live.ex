@@ -26,7 +26,7 @@ defmodule ChidoriWeb.DatasetsLive do
   alias Chidori.Datasets
   alias Chidori.Datasets.BookMarks
   alias Chidori.Datasets.DiningAreas
-  alias Chidori.Datasets.DiningSurveySetting
+  alias Chidori.Datasets.SurveySetting
   alias Chidori.Datasets.Requests
   alias Chidori.Datasets.ShelfCache
   alias Chidori.SingleFlight
@@ -167,7 +167,7 @@ defmodule ChidoriWeb.DatasetsLive do
         live_error: nil,
         prefecture_progress: nil,
         prefecture_map: nil,
-        # 範囲ごとの食事処の、情報収集を起こす時刻（`Chidori.Datasets.DiningSurvey`）。
+        # 範囲ごとの食事処の、情報収集を起こす時刻（`Chidori.Datasets.SurveyClock`）。
         # 設定ページの「Chiezo 収集」の表と同じ値（同じ表を読み書きする）
         survey_times: survey_times_of(dataset),
         survey_saved: nil,
@@ -203,12 +203,12 @@ defmodule ChidoriWeb.DatasetsLive do
   end
 
   @impl true
-  # **情報収集を今すぐ 1 回走らせる**（範囲ごとの食事処だけ。区画は Chiezo が選ぶふつうの回）。
+  # **情報収集を今すぐ 1 回走らせる**（時刻で起こす対象だけ。区画は Chiezo が選ぶふつうの回）。
   # 押した人の 1 回なので、止めている収集でも走る（`Chiezo.by_hand/1`）
   def handle_event(
         "run_survey_now",
         _params,
-        %{assigns: %{dataset: %{area: _} = dataset}} = socket
+        %{assigns: %{dataset: %{survey_clock: true} = dataset}} = socket
       ) do
     {:noreply,
      socket
@@ -227,13 +227,13 @@ defmodule ChidoriWeb.DatasetsLive do
 
   def handle_event("run_survey_now", _params, socket), do: {:noreply, socket}
 
-  # **情報収集を起こす時刻を直す**（範囲ごとの食事処だけ）。Chiezo には送らない ——
+  # **情報収集を起こす時刻を直す**（時刻で起こす対象だけ）。Chiezo には送らない ——
   # 時計を持つのは Chidori。設定ページの「Chiezo 収集」の表と同じ値を書き換える
   def handle_event("save_survey_times", %{"times" => times}, socket) do
     dataset = socket.assigns.dataset
 
     message =
-      case dataset[:area] && DiningSurveySetting.put(dataset.collection, %{"run_at" => times}) do
+      case dataset[:survey_clock] && SurveySetting.put(dataset.collection, %{"run_at" => times}) do
         {:ok, _saved} -> "起こす時刻を保存しました。"
         {:error, %Ecto.Changeset{} = changeset} -> changeset_error(changeset)
         _other -> "起こす時刻を保存できませんでした。"
@@ -1499,9 +1499,9 @@ defmodule ChidoriWeb.DatasetsLive do
 
   defp with_survey_per_run(dataset, _value), do: dataset
 
-  # 範囲ごとの食事処の、情報収集を起こす時刻（ほかの対象では nil = 欄を出さない）
+  # 情報収集を時刻で起こす対象の、起こす時刻（ほかの対象では nil = 欄を出さない）
   defp survey_times_of(dataset) do
-    if dataset[:area], do: DiningSurveySetting.get(dataset.collection).run_at || ""
+    if dataset[:survey_clock], do: SurveySetting.get(dataset.collection).run_at || ""
   end
 
   defp changeset_error(changeset) do
