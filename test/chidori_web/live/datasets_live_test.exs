@@ -194,6 +194,13 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     assert html =~ "travel-log に渡す中身"
   end
 
+  test "アニメ聖地のタブを開ける", %{conn: conn} do
+    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=anime")
+
+    assert html =~ "アニメ聖地"
+    assert html =~ "TV アニメと劇場アニメの舞台になった土地"
+  end
+
   test "Chiezo が未設定なら、その理由を出す", %{conn: conn} do
     {:ok, live, _html} = open_live(conn, ~p"/datasets")
 

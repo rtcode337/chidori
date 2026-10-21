@@ -1937,10 +1937,14 @@ defmodule Chidori.Datasets.Gourmet do
     end
   end
 
-  # 位置参照情報の版（`24.0a`）から整備年（令和 7 年度）。版の頭の数は平成 30 年度が 17 で、
-  # 年に 1 つずつ上がる（読めなければ書かない）
-  defp isj_year(extra) do
-    shop = if is_map(extra["shop"]), do: extra["shop"], else: %{}
+  @doc """
+  位置参照情報の版（`24.0a`）から整備年（「 令和7年度」。読めなければ空）。版の頭の数は
+  平成 30 年度が 17 で、年に 1 つずつ上がる。`clue` は引き当てた場所を持つ脇書きの鍵
+  （ご当地グルメは `shop`）。位置参照情報は加工して使うとき出典と整備年を書く約束
+  （利用約款 第 2 条 3）なので、アニメ聖地の書き出しも使う
+  """
+  def isj_year(extra, clue \\ "shop") do
+    shop = if is_map(extra[clue]), do: extra[clue], else: %{}
 
     case Integer.parse(text(shop["version"])) do
       {major, _rest} when major > 17 -> " 令和#{major - 17}年度"

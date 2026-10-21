@@ -8,7 +8,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
 |---|---|
 | Chiezo | 収集を頼み、溜まったものを読む。依頼文・抽出の指定・区画の割り方・巡回は Chidori が書いて送る |
 | 利用者 | 画面で読み、関心と記録を書く。要約を ntfy・端末（Web Push）で受け取る |
-| travel-log | Chidori が集めさせた食事処とご当地グルメを、travel-log の形の ZIP に直して渡す |
+| travel-log | Chidori が集めさせた食事処・ご当地グルメ・アニメ聖地を、travel-log の形の ZIP に直して渡す |
 | 売買提案のアプリ | Chiezo の収集（市況ニュースの記事・`pta_market` の要約）を読み書きするだけ |
 
 ## 守る線引き
@@ -32,7 +32,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
   Chiezo の読み口が既定で外す。Chidori で選り分け直さない
 - **画面の 3 つの種類は、溜まったものの扱いで分ける。** 最新情報は古いものを捨てていく、関連図は集めたものを
   図で見せる、データ収集は集めたものを分かりやすく見せる（技術書の本棚・Pi-hole・レシピ集）。
-  **食事処とご当地グルメだけは Chidori で一覧にしない** —— 読むのは travel-log で、両方に出すと二重に管理することになる
+  **食事処・ご当地グルメ・アニメ聖地は Chidori で一覧にしない** —— 読むのは travel-log で、両方に出すと二重に管理することになる
 - **利用者が書いたこと（興味トピック・読んだ/見た記録・ニュースのお気に入り・お気に入りの映画館）は Chiezo の置き場 `chidori_data`、**
   その Chidori ごとの設定（トップの並び・通知・控えている依頼）は手元の DB に置く（`Chidori.DataStore`）
 
@@ -51,7 +51,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
 | `news-topics.md` | 最新情報・話題・トピックの網・興味トピック・トップページ | `news*`・`topics.ex`・`themes*`・`home*`・`news_live*`・`home_live*` |
 | `notify-webpush.md` | 要約の段取りと時計・ntfy・Web Push・設定ページ | `digest*`・`notify*`・`ntfy.ex`・`web_push*`・`settings_live*`・`sw.js` |
 | `relations.md` | 関連図（画家・芸能人・映画）・代表作・顔写真・図の操作 | `relations*`・`artwork.ex`・`relations_live*`・`face_controller.ex`・`pan_zoom.js` |
-| `datasets-dining.md` | データ収集（技術書・Pi-hole・レシピ集・ご当地グルメ・食事処）・区画の地図・県の地図・travel-log への書き出しと依頼 | `datasets*`・`geo/**`・`dining_areas_live*`・`partition_map*`・`prefecture_map*`・`gsi_tiles.js` |
+| `datasets-dining.md` | データ収集（技術書・Pi-hole・レシピ集・ご当地グルメ・アニメ聖地・食事処）・区画の地図・県の地図・travel-log への書き出しと依頼 | `datasets*`・`geo/**`・`dining_areas_live*`・`partition_map*`・`prefecture_map*`・`gsi_tiles.js` |
 | `dev-tooling.md` | mix の回し方・テスト・資産の作り直し・移行 | `mix.exs`・`config/**`・`test/support/**`・`assets/css/**`・`priv/repo/**` |
 | `deploy.md` | Dockerfile・compose・CI・単体定義 | `Dockerfile`・`docker-compose*.yml`・`.github/**`・`.env.example`・`release.ex` |
 
@@ -66,7 +66,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
     `themes.ex` / `themes/`（トピックの網）・`home.ex` / `home/`（トップの枠） → `news-topics.md`
   - 要約と通知 —— `digest.ex` / `digest/scheduler.ex`・`notify.ex` / `notify/`・`ntfy.ex`・`web_push.ex` / `web_push/` → `notify-webpush.md`
   - 関連図 —— `relations.ex`・`relations/`（図・区画・芸能人・映画・最新情報からの引き継ぎ・見た記録・顔写真）・`artwork.ex` → `relations.md`
-  - データ収集 —— `datasets.ex`・`datasets/`（技術書・Pi-hole・レシピ集・ご当地グルメ・食事処・範囲・依頼・travel-log 書き出し）・`geo/` → `datasets-dining.md`
+  - データ収集 —— `datasets.ex`・`datasets/`（技術書・Pi-hole・レシピ集・ご当地グルメ・アニメ聖地・食事処・範囲・依頼・travel-log 書き出し）・`geo/` → `datasets-dining.md`
   - 共通の道具 —— `jst.ex`（人に見せる日時）・`safe_url.ex`（外から来た URL）・`repo.ex`・`release.ex`（移行）
 - `lib/chidori_web/` — 画面
   - `live/` —— `home_live`・`news_live`・`relations_live`・`datasets_live`・`dining_areas_live`・`settings_live`・`collect.ex`（収集の枠の道具）

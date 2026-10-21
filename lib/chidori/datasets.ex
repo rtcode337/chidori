@@ -35,7 +35,9 @@ defmodule Chidori.Datasets do
       Books.definition(),
       Pihole.definition(),
       Chidori.Datasets.Recipes.definition(),
-      Gourmet.definition() | Enum.map(DiningAreas.list(), &Dining.definition/1)
+      Gourmet.definition(),
+      Chidori.Datasets.AnimeSeichi.definition()
+      | Enum.map(DiningAreas.list(), &Dining.definition/1)
     ]
 
   @doc """

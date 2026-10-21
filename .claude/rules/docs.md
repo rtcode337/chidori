@@ -14,7 +14,7 @@ paths:
 | `docs/overview.md` | 立ち位置（Chiezo との関係・名前の由来・題材の線引き）・トップと設定の画面・利用者が書いたことの置き場 |
 | `docs/news-and-topics.md` | `/news`（話題・巡回・要約・記事一覧・市況ニュース）、トピックの網と興味トピック、ntfy と端末への通知の動き |
 | `docs/relations.md` | 関連図（画家・芸能人・映画）の育て方・図の操作・見た記録 |
-| `docs/datasets.md` | データ収集（技術書・Pi-hole・ご当地グルメ・食事処）と travel-log への書き出しの対応表 |
+| `docs/datasets.md` | データ収集（技術書・Pi-hole・ご当地グルメ・アニメ聖地・食事処）と travel-log への書き出しの対応表 |
 | `docs/operations.md` | 起動・環境変数・イメージ・単体定義・更新・通知の設定・バックアップ |
 | `docs/development.md` | mix をコンテナで回す・テスト・CI・スタイルと JS・アイコン・ローカルビルド |
 | `docs/basic-design.md`・`docs/technology-selection.md` | 作り始める前の構想。今の実装とは違う（冒頭にその断りがある）。更新しない |

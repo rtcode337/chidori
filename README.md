@@ -12,7 +12,7 @@
 | 最新情報（`/news`） | 話題ごと（一般・技術ニュース、技術・お笑いイベント、映画、アニメ、市況）に、Chiezo が集めた記事・カレンダー・要約を読む |
 | トピック（`/news` の要約の下） | 記事のタグから育った話題の網。興味トピックを選ぶと、記事に興味度が付き、興味の要約が別に届く |
 | 関連図（`/relations`） | 画家の影響関係と年代、芸能人の夫婦・家族・グループ、映画の監督と主演のつながりをネットワーク図で見る |
-| データ収集（`/datasets`） | データを Chiezo に集めさせて見る（技術書の本棚・Pi-hole の通信・各地の料理の正統なレシピ集）。travel-log 向けのご当地グルメ（料理と地元の名店）と食事処も集める |
+| データ収集（`/datasets`） | データを Chiezo に集めさせて見る（技術書の本棚・Pi-hole の通信・各地の料理の正統なレシピ集）。travel-log 向けのご当地グルメ（料理と地元の名店）・アニメ聖地・食事処も集める |
 | 設定（`/settings`） | トップに出す枠、Chiezo に頼んでいる収集の一覧と送り直し、通知先（ntfy・端末） |
 
 各画面の詳しい説明は [全体像](docs/overview.md) から辿れる。
@@ -69,7 +69,7 @@ docker compose pull && docker compose up -d   # 更新。DB の移行は起動�
 | [全体像](docs/overview.md) | Chiezo との関係・名前の由来・題材の線引き・トップと設定の画面・利用者が書いたことの置き場 |
 | [最新情報とトピック](docs/news-and-topics.md) | 話題・巡回・要約・記事一覧・市況ニュース・トピックの網・興味トピック・ntfy と端末への通知 |
 | [関連図](docs/relations.md) | 画家・芸能人・映画の図の育て方・図の操作・見た記録 |
-| [データ収集](docs/datasets.md) | 技術書の本棚・Pi-hole の通信・レシピ集・ご当地グルメと食事処（travel-log 向け）と書き出しの対応表 |
+| [データ収集](docs/datasets.md) | 技術書の本棚・Pi-hole の通信・レシピ集・ご当地グルメ・アニメ聖地・食事処（travel-log 向け）と書き出しの対応表 |
 | [運用](docs/operations.md) | 起動・環境変数・イメージ・単体定義・更新・通知・バックアップ |
 | [開発](docs/development.md) | mix をコンテナで回す・テスト・スタイルと JavaScript・アイコン・ローカルビルド |
 | [基本設計](docs/basic-design.md)・[技術選定](docs/technology-selection.md) | 初期構想（作り始める前の計画で、今の実装とは違う） |
@@ -85,5 +85,5 @@ docker compose pull && docker compose up -d   # 更新。DB の移行は起動�
 | 白地図の海岸線・県の境界（`priv/geo/japan_coast.json`・`japan_prefectures.json`） | [Natural Earth](https://www.naturalearthdata.com/) | パブリックドメイン。リポジトリに含むデータはこの 2 つだけ |
 | 寄ったときの地図 | [地理院タイル](https://maps.gsi.go.jp/development/ichiran.html)（国土地理院） | 見る人のブラウザが直接取る。画面に出典を表示 |
 | 名簿・説明・代表作の絵・閲覧数 | Chiezo が取り込んだ日本語版 Wikipedia・Wikimedia Commons | 本文は CC BY-SA。絵と写真は 1 枚ずつ条件が違う（顔写真には Commons のファイルのページへのリンクを添え、画家と代表作には記事へのリンクを出す） |
-| 食事処・ご当地グルメの代表店の名前・座標など | Chiezo が取り込んだ OpenStreetMap（ODbL）・Overture Maps・Wikipedia | travel-log への書き出しには 1 件ごとに出典を添える |
+| 食事処・ご当地グルメ・アニメ聖地の場所の名前・座標など | Chiezo が取り込んだ OpenStreetMap（ODbL）・Overture Maps・Wikipedia | travel-log への書き出しには 1 件ごとに出典を添える |
 | 技術書の表紙 | [版元ドットコム](https://www.hanmoto.com/) | 見る人のブラウザが直接取る |
