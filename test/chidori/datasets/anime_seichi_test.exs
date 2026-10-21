@@ -66,8 +66,8 @@ defmodule Chidori.Datasets.AnimeSeichiTest do
     test "機械収集 → 情報収集の 2 本で、情報収集は 1 回 1 県・場所の決まらない県には戻る" do
       [roster, survey] = AnimeSeichi.sweeps()
 
+      assert %{use_extract: true, only_new: true, once: true} = roster
       assert roster.name == SweepNames.machine()
-      assert roster.use_extract and roster.only_new and roster.once
       assert survey.name == SweepNames.survey()
       assert survey.after == SweepNames.machine()
       assert survey.partitions_per_run == 1
