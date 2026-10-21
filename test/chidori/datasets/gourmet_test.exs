@@ -302,6 +302,7 @@ defmodule Chidori.Datasets.GourmetTest do
       refute Gourmet.no_shop_tag() == Gourmet.unplaced_tag()
       assert resolve.to_extra == %{opening_hours: "opening_hours"}
       assert resolve.ai_coords == false
+
       # 辞典にも住所にも当たらないときだけ、AI が地図で確かめた座標で置き、印で見分ける
       assert resolve.ai_fallback == %{tag: "出典:AI"}
 
