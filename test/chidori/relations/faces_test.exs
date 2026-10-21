@@ -79,24 +79,28 @@ defmodule Chidori.Relations.FacesTest do
     assert [%{kind: :photo, result: :retry}] = status.recent
   end
 
-  test "技術書の表紙は ISBN で写しを引き、写しの無い本には「表紙なし」の絵を出す" do
+  test "技術書の表紙は ISBN で写しを引き、取れなかった本にだけ「表紙なし」の絵を出す" do
     face = stored("isbn:9784873115658", "ok", "WEBP")
     stored("isbn:9784000000002", "missing")
 
-    assert Faces.covers(["9784873115658", "9784000000002"]) == %{
-             "9784873115658" => Faces.path(face.id)
+    assert Faces.covers(["9784873115658", "9784000000002", "9784000000019"]) == %{
+             "9784873115658" => Faces.path(face.id),
+             "9784000000002" => :missing
            }
 
     books =
       Chidori.Datasets.Bookshelf.with_covers([
         %{isbn: "9784873115658", cover_url: nil},
         %{isbn: "9784000000002", cover_url: nil},
+        %{isbn: "9784000000019", cover_url: nil},
         %{isbn: nil, cover_url: nil}
       ])
 
+    # まだ取りに行っていない本は空の枠（待てば埋まる）
     assert Enum.map(books, & &1.cover_url) == [
              Faces.path(face.id),
              "/images/no-cover.svg",
+             nil,
              "/images/no-cover.svg"
            ]
   end

@@ -1026,8 +1026,9 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
       [_, shelf] = String.split(html, ~s(class="bookshelf"), parts: 2)
 
-      # 表紙はまだ写しが無いので「表紙なし」の絵（取りに行く列に並ぶ）。外の絵を直に指さない
-      assert shelf =~ "/images/no-cover.svg"
+      # 表紙はまだ取りに行っていないので空の枠（取りに行く列に並ぶ。「表紙なし」は取れなかった本だけ）。
+      # 外の絵を直に指さない
+      assert shelf =~ "book-cover is-empty"
       refute shelf =~ "hanmoto.com/bd/img"
       assert shelf =~ "記事 5 本が勧めている"
       assert shelf =~ "定番"

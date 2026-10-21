@@ -77,7 +77,7 @@ defmodule Chidori.Datasets.Bookshelf do
   # 画面に並べるときに読む上限（名簿の上限と揃える）
   @list_limit 400
 
-  # 表紙が取れない本（ISBN が分からない・どこにも無い・まだ取りに行っていない）に出す絵
+  # 表紙が取れない本（ISBN が分からない・取りに行ったがどこにも無かった）に出す絵
   @no_cover "/images/no-cover.svg"
   @book_page_base "https://www.hanmoto.com/bd/isbn/"
 
@@ -481,12 +481,22 @@ defmodule Chidori.Datasets.Bookshelf do
   @doc """
   表紙を付けます。**表紙は Chiezo に 1 冊 1 回だけ取ってこさせ、写しを Chidori が配る**
   （`Chidori.Relations.Faces.covers/1` → Chiezo の `POST /v1/covers`。版元ドットコム）。見る人のブラウザに版元ドットコムの絵を直に引かせていた頃は、外の絵を直に
-  指さない決まりから外れていたうえ、無い本は 404 で枠だけが残っていた。**取れない本には
-  「表紙なし」の絵**（`no_cover/0`）を出す（まだ取りに行っていない本も、取れるまではこれ）。
+  指さない決まりから外れていたうえ、無い本は 404 で枠だけが残っていた。**取れなかった本には
+  「表紙なし」の絵**（`no_cover/0`）を出し、**まだ取りに行っていない本は `nil`（空の枠）**にする
+  —— 同じ絵にすると、待てば埋まる本と埋まらない本の見分けが付かない。
   """
   def with_covers(books) do
     covers = books |> Enum.map(& &1.isbn) |> Enum.reject(&is_nil/1) |> Faces.covers()
-    Enum.map(books, &%{&1 | cover_url: (&1.isbn && covers[&1.isbn]) || @no_cover})
+    Enum.map(books, &%{&1 | cover_url: cover_of(&1.isbn, covers)})
+  end
+
+  defp cover_of(nil, _covers), do: @no_cover
+
+  defp cover_of(isbn, covers) do
+    case covers[isbn] do
+      :missing -> @no_cover
+      path -> path
+    end
   end
 
   @doc "表紙が取れない本に出す絵。"

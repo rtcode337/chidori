@@ -148,8 +148,8 @@ defmodule Chidori.Relations.Faces do
   end
 
   @doc """
-  技術書の ISBN（13 桁）の並びのうち、**表紙の写しがあるもの**を `%{ISBN => 配る道}` で返し、
-  まだ取りに行っていない本を取りに行く列に並べます（見つからなかった本は返さない）。
+  技術書の ISBN（13 桁）の並びのうち、**取りに行ったもの**を `%{ISBN => 配る道 | :missing}` で返し
+  （`:missing` はどこにも無かった本）、まだ取りに行っていない本を取りに行く列に並べます（返さない）。
   """
   def covers(isbns) do
     keys = isbns |> Enum.filter(&is_binary/1) |> Enum.uniq() |> Enum.map(&cover_key/1)
@@ -165,7 +165,9 @@ defmodule Chidori.Relations.Faces do
     seen = MapSet.new(known, &elem(&1, 0))
     fetch(Enum.reject(keys, &MapSet.member?(seen, &1)), :cover)
 
-    for {"isbn:" <> isbn, id, "ok"} <- known, into: %{}, do: {isbn, path(id)}
+    for {"isbn:" <> isbn, id, status} <- known, status in ["ok", "missing"], into: %{} do
+      {isbn, if(status == "ok", do: path(id), else: :missing)}
+    end
   rescue
     error in [Postgrex.Error, DBConnection.ConnectionError] ->
       Logger.warning("表紙の写しを読めませんでした: #{Exception.message(error)}")
