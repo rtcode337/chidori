@@ -19,6 +19,89 @@
 
 <main id="page-scroll" class="relations-page settings-page" phx-hook="PageScroll">
   <div>
+    <%!-- 写真と表紙の取得。**Chidori の列と Chiezo の具合を並べる** —— 頼みが Chidori の列で
+         待っているのか、休んでいるのか、Chiezo へ届いて断られているのかを 1 か所で読むため --%>
+    <section :if={@tab == "photos"} class="settings-panel" aria-label="写真と表紙">
+      <section class="relations-intro">
+        <p>SETTINGS</p>
+        <h1>写真と表紙</h1>
+        <p>
+          関連図の顔写真・レシピの写真・技術書の表紙は、Chidori が 1 枚ずつ Chiezo に頼み、Chiezo が外から取って縮めたものを写して配っています。ここでは、頼みの列の様子と、Chiezo で何が起きているかを並べます（開いたときに読むだけで、自動では読み直しません）。
+        </p>
+      </section>
+      <p class="relation-checked">
+        <button type="button" phx-click="reload_photos">最新の情報を取得</button>
+      </p>
+
+      <h2>Chidori の頼みの列</h2>
+      <p :if={@photo_status == nil} class="muted-note">頼みの列が動いていません。</p>
+      <%= if @photo_status do %>
+        <p :if={@photo_status.paused_until} class="stale">
+          ⚠️ Chiezo が取りに行けなかったので、{Chidori.Jst.format(@photo_status.paused_until)} まで頼みません（その間は列にも並べません）。
+        </p>
+        <p>
+          待っているもの: 写真 {@photo_status.waiting.photo} 枚・表紙 {@photo_status.waiting.cover} 冊
+          <span class="muted-note">（写真は 1 分に 1 枚、表紙は 5 秒に 1 冊）</span>
+        </p>
+      <% end %>
+      <p :if={@photo_counts}>
+        持っている写し: 写真 {@photo_counts.photo["ok"] || 0} 枚（無かった {@photo_counts.photo["missing"] || 0}）・表紙 {@photo_counts.cover[
+          "ok"
+        ] || 0} 冊（無かった {@photo_counts.cover["missing"] || 0}）
+      </p>
+      <%= if @photo_status && @photo_status.recent != [] do %>
+        <h3>直近の結果（Chidori）</h3>
+        <table class="collect-overview">
+          <thead>
+            <tr>
+              <th>時刻</th><th>種類</th><th>対象</th><th>結果</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={entry <- @photo_status.recent}>
+              <td>{Chidori.Jst.format(entry.at)}</td>
+              <td>{if entry.kind == :cover, do: "表紙", else: "写真"}</td>
+              <td>{photo_target(entry.key)}</td>
+              <td class={entry.result == :retry && "stale"}>{photo_result(entry.result)}</td>
+            </tr>
+          </tbody>
+        </table>
+      <% end %>
+
+      <h2>Chiezo での取得</h2>
+      <p :if={@chiezo_thumbs in [nil, :loading]} class="muted-note">読み込んでいます…</p>
+      <p :if={match?({:error, _}, @chiezo_thumbs)} class="muted-note">
+        Chiezo から読めませんでした（外の絵の具合を返す口を持たない版かもしれません）。
+      </p>
+      <%= if match?({:ok, _}, @chiezo_thumbs) do %>
+        <% {:ok, health} = @chiezo_thumbs %>
+        <p class={health["failing_now"] && "stale"}>
+          最後に取れたのは {Chidori.Jst.format(health["last_ok_at"]) || "まだ無し"}<span :if={
+            (health["failing"] || 0) > 0
+          }>・続けて {health["failing"]} 回取れていません（最後は「{health["last_reason"]}」）</span>
+        </p>
+        <p :for={{host, until} <- resting_now(health)} class="stale">
+          ⚠️ {host} に断られたので、{Chidori.Jst.format(until)} まで頼みません（Chiezo が休んでいます）。
+        </p>
+        <h3 :if={(health["recent"] || []) != []}>直近の依頼（Chiezo）</h3>
+        <table :if={(health["recent"] || []) != []} class="collect-overview">
+          <thead>
+            <tr>
+              <th>時刻</th><th>誰の頼み</th><th>絵</th><th>結果</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={entry <- health["recent"]}>
+              <td>{Chidori.Jst.format(entry["at"])}</td>
+              <td>{entry["caller"]}</td>
+              <td title={entry["target"]}>{chiezo_target(entry["target"])}</td>
+              <td class={!entry["ok"] && "stale"}>{entry["result"]}</td>
+            </tr>
+          </tbody>
+        </table>
+      <% end %>
+    </section>
+
     <%!-- Chiezo 収集。**待ち行列が溜まってきたときに見る表** —— 巡回の間隔だけでは、
          ワーカーが何分おきに何本流すのかが読めないので、両方を並べる --%>
     <section :if={@tab == "chiezo"} class="settings-panel" aria-label="Chiezo 収集">

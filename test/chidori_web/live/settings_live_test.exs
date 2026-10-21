@@ -384,6 +384,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
     pace = html |> String.split(~s(id="collect-pace")) |> List.last()
     {scan, tidy} = {:binary.match(pace, "ざっと見る"), :binary.match(pace, "整理")}
     assert elem(scan, 0) < elem(tidy, 0)
+
     # ざっと見るは関連図の 3 本（画家・芸能人・映画）とレシピ集の書く回、ご当地グルメ
     assert pace =~ "Chidori に 5 本・動いている"
   end
@@ -405,5 +406,43 @@ defmodule ChidoriWeb.SettingsLiveTest do
              {:ok, %{paces: [], stopped: [], resumed: [], min_pageviews: nil}}
            ) =~
              "変えたものはありません"
+  end
+
+  test "写真と表紙のタブに、Chiezo の具合と直近の依頼を並べる", %{conn: conn} do
+    HttpStub.stub(fn %{method: :get, url: url} ->
+      if String.ends_with?(url, "/v1/thumbs/health"),
+        do:
+          HttpStub.ok(
+            Jason.encode!(%{
+              "last_ok_at" => "2026-10-21T15:40:09+00:00",
+              "failing" => 1,
+              "last_reason" => "HTTP 429",
+              "resting" => %{
+                "upload.wikimedia.org" => "2099-01-01T00:00:00+00:00",
+                # 期限の過ぎた休みは出さない
+                "img.hanmoto.com" => "2000-01-01T00:00:00+00:00"
+              },
+              "recent" => [
+                %{
+                  "at" => "2026-10-21T15:41:00+00:00",
+                  "caller" => "表紙の依頼",
+                  "target" => "https://www.hanmoto.com/bd/img/9784873115658.jpg",
+                  "result" => "取った",
+                  "ok" => true
+                }
+              ]
+            })
+          ),
+        else: HttpStub.ok("{}")
+    end)
+
+    {:ok, live, _html} = live(conn, ~p"/settings?tab=photos")
+    html = render_async(live)
+
+    assert html =~ "Chidori の頼みの列"
+    assert html =~ "upload.wikimedia.org に断られたので"
+    refute html =~ "img.hanmoto.com に断られたので"
+    assert html =~ "表紙の依頼"
+    assert html =~ "www.hanmoto.com …/9784873115658.jpg"
   end
 end

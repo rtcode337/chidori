@@ -30,7 +30,12 @@ defmodule ChidoriWeb.SettingsLive do
   require Logger
 
   # **トップページを先頭に**（いちばん触る設定。開いたときに出る）
-  @tabs [{"home", "トップページ"}, {"chiezo", "Chiezo 収集"}, {"notify", "通知"}]
+  @tabs [
+    {"home", "トップページ"},
+    {"chiezo", "Chiezo 収集"},
+    {"photos", "写真と表紙"},
+    {"notify", "通知"}
+  ]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -50,7 +55,11 @@ defmodule ChidoriWeb.SettingsLive do
        sent: %{},
        # 「最後に取得」（Chiezo から表を読めた時刻）と、読み直している最中か
        checked_at: nil,
-       reloading: false
+       reloading: false,
+       # 写真と表紙の取得（Chidori の列・持っている写し・Chiezo の具合と直近の依頼）
+       photo_status: nil,
+       photo_counts: nil,
+       chiezo_thumbs: nil
      )}
   end
 
@@ -96,6 +105,30 @@ defmodule ChidoriWeb.SettingsLive do
     )
   end
 
+  # 写真と表紙の取得。**Chidori の列と写しは手元、取れているかと直近の依頼は Chiezo から**
+  # （頼みが Chidori の列で待っているのか、Chiezo へ届いて断られているのかを並べて読めるように）
+  defp load(socket, "photos") do
+    socket =
+      assign(socket,
+        photo_status: Chidori.Relations.Faces.status(),
+        photo_counts: Chidori.Relations.Faces.counts()
+      )
+
+    case News.chiezo_base_url() do
+      nil ->
+        assign(socket, chiezo_thumbs: {:error, :chiezo_not_configured})
+
+      base ->
+        if connected?(socket) do
+          socket
+          |> assign(chiezo_thumbs: :loading)
+          |> start_async(:chiezo_thumbs, fn -> Chidori.Chiezo.thumbs_health(base) end)
+        else
+          assign(socket, chiezo_thumbs: :loading)
+        end
+    end
+  end
+
   defp load(socket, _tab), do: socket
 
   defp ntfy_form(attrs \\ %{}), do: to_form(Destination.change(attrs), as: :ntfy)
@@ -129,6 +162,12 @@ defmodule ChidoriWeb.SettingsLive do
   end
 
   @impl true
+  def handle_async(:chiezo_thumbs, {:ok, result}, socket),
+    do: {:noreply, assign(socket, chiezo_thumbs: result)}
+
+  def handle_async(:chiezo_thumbs, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, chiezo_thumbs: {:error, :chiezo_unavailable})}
+
   def handle_async(:overview, {:ok, result}, socket),
     do: {:noreply, assign(socket, overview: result, reloading: false) |> stamp(result)}
 
@@ -177,6 +216,8 @@ defmodule ChidoriWeb.SettingsLive do
 
   @impl true
   def handle_event("reload", _params, socket), do: {:noreply, load(socket, "chiezo")}
+
+  def handle_event("reload_photos", _params, socket), do: {:noreply, load(socket, "photos")}
 
   # **保存してから送る。** 送れなくても保存は残る（次に「収集の設定を更新」を押した
   # ときにも、この間隔で組んで送られる）
@@ -598,4 +639,37 @@ defmodule ChidoriWeb.SettingsLive do
 
   @doc "待ち行列を読めなかったときの一言。"
   def queue_error_text(_reason), do: "待ち行列を読めませんでした。"
+
+  @doc "取得の結果の言い方（Chidori の列）。"
+  def photo_result(:ok), do: "取れた"
+  def photo_result(:missing), do: "無い"
+  def photo_result(:retry), do: "Chiezo が取りに行けなかった（30 分休む）"
+  def photo_result(other), do: to_string(other)
+
+  @doc "写しの鍵の見せ方（表紙は ISBN、写真はファイル名）。"
+  def photo_target("isbn:" <> isbn), do: "ISBN " <> isbn
+
+  def photo_target(url) when is_binary(url),
+    do: url |> String.split("/") |> List.last() |> URI.decode()
+
+  @doc "Chiezo の依頼の控えの 1 行の絵の見せ方（ホストとファイル名）。"
+  def chiezo_target(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{host: host, path: path} when is_binary(host) and is_binary(path) ->
+        host <> " …/" <> (path |> String.split("/") |> List.last() |> URI.decode())
+
+      _other ->
+        url
+    end
+  end
+
+  def chiezo_target(_url), do: ""
+
+  @doc "Chiezo がいま休んでいる相手（`{相手, 期限}`。期限の過ぎたものは出さない）。"
+  def resting_now(health, now \\ DateTime.utc_now()) do
+    for {host, until} <- health["resting"] || %{},
+        {:ok, at, _offset} <- [DateTime.from_iso8601(to_string(until))],
+        DateTime.compare(at, now) == :gt,
+        do: {host, until}
+  end
 end

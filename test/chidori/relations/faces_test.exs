@@ -71,6 +71,12 @@ defmodule Chidori.Relations.FacesTest do
     refute_received {:asked, _url}
     state = :sys.get_state(pid)
     assert :queue.is_empty(state.queue) and state.paused_until
+
+    # 設定の「写真と表紙」が読む様子: 休みの明ける時刻と、直近の結果
+    status = Faces.status(pid)
+    assert %DateTime{} = status.paused_until
+    assert status.waiting == %{photo: 0, cover: 0}
+    assert [%{kind: :photo, result: :retry}] = status.recent
   end
 
   test "技術書の表紙は ISBN で写しを引き、写しの無い本には「表紙なし」の絵を出す" do
@@ -128,6 +134,14 @@ defmodule Chidori.Relations.FacesTest do
 
     assert state.paused_until
     assert Repo.get_by(Face, source_url: "isbn:9784873115658") == nil
+  end
+
+  test "持っている写しの数は、写真と表紙に分けて数える" do
+    stored(@photo, "ok", "JPEG")
+    stored("isbn:9784873115658", "ok", "WEBP")
+    stored("isbn:9784000000002", "missing")
+
+    assert Faces.counts() == %{photo: %{"ok" => 1}, cover: %{"ok" => 1, "missing" => 1}}
   end
 
   test "押したときに出典とライセンスを読める、Commons のファイルのページ" do

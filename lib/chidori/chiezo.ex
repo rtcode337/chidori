@@ -750,6 +750,26 @@ defmodule Chidori.Chiezo do
     end
   end
 
+  @doc """
+  Chiezo が外の絵を取れているかと、直近の依頼（`GET /v1/thumbs/health`。設定の「写真と表紙」に出す）。
+  `{:ok, 中身}`（`last_ok_at`・`failing`・`last_reason`・`resting`・`recent` など）か `{:error, 理由}`。
+  """
+  def thumbs_health(base) do
+    case get(base <> "/v1/thumbs/health") do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{} = health} -> {:ok, health}
+          _other -> {:error, :chiezo_unexpected_body}
+        end
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
   # はてなブックマーク数を 1 回に聞く URL の数（問い合わせの行の長さを抑える）
   @bookmark_batch 50
 

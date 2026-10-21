@@ -59,8 +59,66 @@ defmodule Chidori.Relations.Faces do
     do: GenServer.start_link(__MODULE__, :ok, name: options[:name] || __MODULE__)
 
   @impl true
-  def init(:ok),
-    do: {:ok, %{queue: :queue.new(), queued: MapSet.new(), busy?: false, paused_until: nil}}
+  def init(:ok) do
+    {:ok,
+     %{
+       queue: :queue.new(),
+       queued: MapSet.new(),
+       busy?: false,
+       paused_until: nil,
+       # 休みが明ける時刻（画面に出す。休んでいるかは `paused_until` で見る）
+       paused_until_at: nil,
+       # 直近の結果（新しい順。`@recent` 件まで。設定の「写真と表紙」に出す）
+       recent: []
+     }}
+  end
+
+  # 直近の結果を残す件数
+  @recent 30
+
+  @doc """
+  取得の列のいまの様子（設定の「写真と表紙」に出す）。`%{waiting: %{photo: 枚数, cover: 冊数},
+  paused_until: 休みが明ける時刻（UTC）か nil, recent: [%{at, kind, key, result}]}`。立っていなければ nil。
+  """
+  def status(server \\ __MODULE__) do
+    GenServer.call(server, :status, 2_000)
+  catch
+    :exit, _reason -> nil
+  end
+
+  @doc """
+  持っている写しの数（`%{photo: %{"ok" => n, "missing" => n}, cover: %{…}}`）。表紙は鍵が `isbn:` で始まるもの。
+  """
+  def counts do
+    Repo.all(
+      from(f in Face,
+        group_by: [fragment("? LIKE 'isbn:%'", f.source_url), f.status],
+        select: {fragment("? LIKE 'isbn:%'", f.source_url), f.status, count(f.id)}
+      )
+    )
+    |> Enum.reduce(%{photo: %{}, cover: %{}}, fn {cover?, status, n}, acc ->
+      put_in(acc, [if(cover?, do: :cover, else: :photo), status], n)
+    end)
+  rescue
+    error in [Postgrex.Error, DBConnection.ConnectionError] ->
+      Logger.warning("写しの数を読めませんでした: #{Exception.message(error)}")
+      %{photo: %{}, cover: %{}}
+  end
+
+  @impl true
+  def handle_call(:status, _from, state) do
+    waiting =
+      state.queue
+      |> :queue.to_list()
+      |> Enum.frequencies_by(fn {_key, kind} -> if kind == :cover, do: :cover, else: :photo end)
+
+    {:reply,
+     %{
+       waiting: Map.merge(%{photo: 0, cover: 0}, waiting),
+       paused_until: if(paused?(state), do: Map.get(state, :paused_until_at)),
+       recent: Map.get(state, :recent, [])
+     }, state}
+  end
 
   @doc """
   写真の URL の並びのうち、**写しがあるもの**を `%{URL => 配る道}` で返し、
@@ -204,22 +262,39 @@ defmodule Chidori.Relations.Faces do
             Logger.info("写真と表紙の取得を #{div(@pause_ms, 60_000)} 分休みます（Chiezo が取りに行けませんでした）")
 
             %{
-              state
+              noted(state, key, kind, :retry)
               | queue: :queue.new(),
                 queued: MapSet.new(),
-                paused_until: System.monotonic_time(:millisecond) + @pause_ms
+                paused_until: System.monotonic_time(:millisecond) + @pause_ms,
+                paused_until_at: DateTime.add(DateTime.utc_now(), @pause_ms, :millisecond)
             }
 
           result ->
             store(key, result)
             Process.send_after(self(), :next, interval(kind))
-            %{state | busy?: true}
+
+            %{
+              noted(state, key, kind, if(result == :missing, do: :missing, else: :ok))
+              | busy?: true
+            }
         end
     end
   end
 
   # **Wikimedia へは Chidori から出ない**。Chiezo に縮小版を作らせ（`POST /v1/thumbs`）、
   # その写しを Chiezo から受け取る（外への通信先を Chiezo だけにするため）
+  # 結果を直近の並びに足す（`status/1` が読む）
+  defp noted(state, key, kind, result) do
+    entry = %{
+      at: DateTime.utc_now(),
+      kind: if(kind == :cover, do: :cover, else: :photo),
+      key: key,
+      result: result
+    }
+
+    %{state | recent: Enum.take([entry | Map.get(state, :recent, [])], @recent)}
+  end
+
   defp interval(:cover), do: @cover_interval_ms
   defp interval(_photo), do: @interval_ms
 
