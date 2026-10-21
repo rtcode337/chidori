@@ -29,7 +29,8 @@ paths:
 
 - データを集めて分かりやすく見せる画面（技術書の本棚・Pi-hole のドメイン・レシピ集は溜まったものをここで読む）。
   食事処とご当地グルメは読むのが travel-log なので、Chidori では一覧にしない（両方に出すと二重に管理することになる）。
-  対象は `Chidori.Datasets.defined/0` に 1 つ書けばタブも依頼も増える。読む画面を持つ対象は定義の `reading`
+  対象は `Chidori.Datasets.defined/0` に 1 つ書けばタブも依頼も増える。タブの並びは `Datasets.tabs/1`（技術書・食事処・ご当地グルメを前に、
+  残りは定義の順。上の段は `DiningTabs.dataset_tabs/1` をデータ収集と食事処の全体の 2 画面で共有）。読む画面を持つ対象は定義の `reading`
   （`Datasets.shelf/1` が `list/1` を呼び、本棚と同じ覚え書きに置く）
 - レシピ集（`Chidori.Datasets.Recipes`・`chidori_recipes`。網羅）: 各地の料理の正統とされる作り方。料理名は AI に考えさせず、
   百科事典の「〜料理」の分類（`tag_suffix`）を月の閲覧数で絞って機械で引く（既定 1,000。画面の「名簿を引き直す」で変える。

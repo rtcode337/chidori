@@ -22,7 +22,8 @@ defmodule Chidori.Datasets do
   alias Chidori.Datasets.Pihole
 
   @doc """
-  Chidori が持っている収集の対象。**この並びがタブの並び**。
+  Chidori が持っている収集の対象。タブはこの順に並ぶが、前に出すもの（技術書・食事処・
+  ご当地グルメ）は `tabs/1` が決める。
 
   **食事処は範囲ごとに 1 つ**（`Chidori.Datasets.DiningAreas`。画面で地図に四角を描いて
   足す）。日本全体を 1 つで回していた頃は、費用がかさみ抜け漏れも多すぎた。
@@ -49,6 +50,24 @@ defmodule Chidori.Datasets do
       nil -> apply(module, fun, args)
       area -> apply(module, fun, args ++ [area])
     end
+  end
+
+  # タブの並びで前に出すもの（`:dining` は範囲ごとの食事処をまとめた 1 つのタブ）。
+  # ここに無いものは、その後ろに定義の順で並ぶ
+  @tab_order ["books", :dining, "gourmet"]
+
+  @doc """
+  データ収集のタブの並び。範囲を持たない対象と、食事処をまとめた `:dining` の並び
+  （範囲ごとのタブは下の段。`ChidoriWeb.DiningTabs`）。**前に出すものは `@tab_order`**、
+  残りは定義の順。
+  """
+  def tabs(datasets \\ defined()) do
+    plain = Enum.reject(datasets, & &1[:area])
+    all = plain ++ [:dining]
+    key = fn tab -> if tab == :dining, do: :dining, else: tab.key end
+    first = for k <- @tab_order, tab = Enum.find(all, &(key.(&1) == k)), do: tab
+
+    first ++ Enum.reject(all, &(&1 in first))
   end
 
   @doc "対象の一覧（定義の順）。"

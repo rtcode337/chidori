@@ -7,22 +7,7 @@
     <%!-- データ収集の画面と同じタブ。**この画面は「食事処」のタブ**として出す
          （別の画面へ飛んだように見えると、戻る口を探すことになる）。範囲ごとのタブは
          その下の段（`ChidoriWeb.DiningTabs`）で、この画面はその「全体」 --%>
-    <nav
-      id="dataset-tabs"
-      class="relation-tabs"
-      phx-hook="ScrollTabs"
-      aria-label="集めるもの"
-    >
-      <.link
-        :for={dataset <- Enum.reject(@datasets, & &1[:area])}
-        navigate={~p"/datasets?view=#{dataset.key}"}
-      >
-        {dataset.name}
-      </.link>
-      <.link patch={~p"/datasets/areas"} class="selected" aria-current="page">
-        食事処
-      </.link>
-    </nav>
+    <ChidoriWeb.DiningTabs.dataset_tabs datasets={@datasets} on_areas={true} />
     <ChidoriWeb.DiningTabs.dining_tabs datasets={@datasets} />
   </div>
 </div>
