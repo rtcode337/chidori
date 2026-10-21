@@ -480,8 +480,7 @@ defmodule Chidori.Datasets.Bookshelf do
 
   @doc """
   表紙を付けます。**表紙は Chiezo に 1 冊 1 回だけ取ってこさせ、写しを Chidori が配る**
-  （`Chidori.Relations.Faces.covers/1` → Chiezo の `POST /v1/covers`。版元ドットコム、海外の本は
-  Open Library も）。見る人のブラウザに版元ドットコムの絵を直に引かせていた頃は、外の絵を直に
+  （`Chidori.Relations.Faces.covers/1` → Chiezo の `POST /v1/covers`。版元ドットコム）。見る人のブラウザに版元ドットコムの絵を直に引かせていた頃は、外の絵を直に
   指さない決まりから外れていたうえ、無い本は 404 で枠だけが残っていた。**取れない本には
   「表紙なし」の絵**（`no_cover/0`）を出す（まだ取りに行っていない本も、取れるまではこれ）。
   """

@@ -13,6 +13,8 @@ defmodule Chidori.Chiezo do
 
   @user_agent "chidori"
   @timeout 15_000
+  # 本の表紙を取らせるときに待つ長さ（Chiezo が外へ取りに行って縮めるぶん）
+  @cover_timeout 60_000
   @connect_timeout 5_000
   # 1 回に引ける上限（Chiezo 側の決まり。これより大きいと 422 で断られる）
   @page_limit 500
@@ -716,11 +718,14 @@ defmodule Chidori.Chiezo do
 
   @doc """
   本の表紙を Chiezo に取ってこさせ、配る場所を受け取ります（`POST /v1/covers`）。取りに行く先
-  （版元ドットコム・Open Library）は Chiezo が ISBN から決める —— **Chidori からはどちらへも出ない**。
+  （版元ドットコム）は Chiezo が ISBN から決める —— **Chidori からは出ない**。
+  **待つのは長めに**（`@cover_timeout`）—— Chiezo は外へ取りに行って縮めてから答えるので、ふつうの
+  問い合わせの 15 秒で切ると、Chiezo が取り終える前にこちらが諦め、「取りに行けなかった」として
+  写真と表紙の取得をまるごと 30 分休んでいた。
   `{:ok, 配る場所}`・`{:error, :no_image}`（どこにも無い。取り直しても同じ）・ほかは取り直せる失敗。
   """
   def cover_of(base, isbn) when is_binary(isbn) do
-    case post(base <> "/v1/covers", Jason.encode!(%{isbn: isbn})) do
+    case post(base <> "/v1/covers", Jason.encode!(%{isbn: isbn}), @cover_timeout) do
       {:ok, %{status: 200, body: body}} ->
         case Jason.decode(body) do
           {:ok, %{"thumb" => path}} when is_binary(path) -> {:ok, path}

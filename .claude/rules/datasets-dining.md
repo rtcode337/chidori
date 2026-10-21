@@ -42,7 +42,7 @@ paths:
   区画は料理名の順に 20 品（`by: "title"`）。巡回は 名簿 → 書く（ざっと見る。一周で止まる）→ 見直す（整理）。
   画面（`ChidoriWeb.RecipeBook`）は書いた料理だけを写真と名前で種類ごとの組に並べ（`grouped/1`。語彙の順）、国・種類・語で絞り、押すと詳細を重ねて開く。
   種類の語彙は依頼文で 1 つずつ「」で括る（「・」でつなぐと「麺・パスタ」を 2 つと読まれる）。片方だけ書かれた値は `to_kind/1` で語彙へ寄せる
-- 技術書の表紙: Chiezo の `POST /v1/covers` に ISBN を渡し（版元ドットコム。Open Library はこの回線からつながらないので使わない。待つのは 60 秒 `@cover_timeout`）、写しは `Relations.Faces.covers/1`
+- 技術書の表紙: Chiezo の `POST /v1/covers` に ISBN を渡し（版元ドットコム。Open Library はつながらない・遅いことがあるので使わない。待つのは 60 秒 `@cover_timeout`）、写しは `Relations.Faces.covers/1`
   （鍵 `isbn:<13 桁>`・5 秒おき）。取れない本は「表紙なし」の絵（`Bookshelf.no_cover/0`）。ブラウザに外の絵を直に引かせない
 - 技術書: 本ではなく勧めている記事を溜める（`chidori_book_posts`）。数は機械が数え、AI は数に触らない（畳む・分野・説明だけ）。
   検索文は回ごとに巡回の相手が考え、控えるのは Chiezo。調べ終えたものは調べ直さない（`{unreviewed}`）
