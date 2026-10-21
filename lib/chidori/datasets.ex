@@ -256,6 +256,25 @@ defmodule Chidori.Datasets do
   end
 
   @doc """
+  空いている欄を埋める 1 回を頼みます（食事処。頼みごとは `Dining.fill_request/3`）。
+  **割り込みとして、店を名指しして走らせます** —— 区画を名指ししないので、情報収集の
+  進み具合にも区画の印にも触りません。相手は `choice`（`backend:` と `model:`、または
+  `worker:`）で、その回だけ選べます。書かなければ情報収集の巡回の設定のまま。
+  """
+  def fill_blanks(
+        %{collection: name, survey_sweep: sweep},
+        %{note: note, titles: titles, prompt: prompt},
+        choice \\ []
+      ) do
+    with {:ok, base} <- base_url() do
+      # 人が押した 1 回（止めている収集でも走らせる。`Chiezo.by_hand/1`）
+      Chiezo.by_hand(fn ->
+        Chiezo.focus(base, name, note, titles, sweep, nil, prompt, choice)
+      end)
+    end
+  end
+
+  @doc """
   Chiezo で頼める相手の一覧。引けなければ空（**選べないだけで、画面は出ます**）。
   """
   def backends do

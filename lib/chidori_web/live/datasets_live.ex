@@ -124,7 +124,16 @@ defmodule ChidoriWeb.DatasetsLive do
        # 県ごとの進み具合（ご当地グルメ。数だけ。設定を開いたときに Chiezo から数える）
        prefecture_progress: nil,
        # 県の地図（数が届いたときに組む）
-       prefecture_map: nil
+       prefecture_map: nil,
+       # 食事処の範囲の、空いている欄のある店（設定を開いたときに Chiezo から数える）と、
+       # 埋めてほしい欄（覚えるのはサーバー側。巡回の表と同じ理由）・頼んだ結果の一言
+       blank_report: nil,
+       fill_fields: Keyword.keys(Chidori.Datasets.Dining.blank_fields()),
+       fill_count: elem(Chidori.Datasets.Dining.fill_counts(), 0),
+       # 空欄を埋める 1 回の相手（空なら情報収集の設定のまま）
+       fill_backend: nil,
+       fill_model: nil,
+       filled: nil
      )
      |> assign(state: empty_state(), derived_state: empty_state())}
   end
@@ -167,6 +176,8 @@ defmodule ChidoriWeb.DatasetsLive do
         live_error: nil,
         prefecture_progress: nil,
         prefecture_map: nil,
+        blank_report: nil,
+        filled: nil,
         # 範囲ごとの食事処の、情報収集を起こす時刻（`Chidori.Datasets.SurveyClock`）。
         # 設定ページの「Chiezo 収集」の表と同じ値（同じ表を読み書きする）
         survey_times: survey_times_of(dataset),
@@ -539,6 +550,51 @@ defmodule ChidoriWeb.DatasetsLive do
     end
   end
 
+  # 埋めてほしい欄と店の数を選び直したら覚える（状態が届いた拍子にフォームが
+  # 描き直されるので）
+  def handle_event("pick_fill", params, socket),
+    do:
+      {:noreply,
+       assign(socket,
+         fill_fields: fill_fields_of(params),
+         fill_count: fill_count_of(params, socket.assigns.fill_count),
+         fill_backend: params["fill|backend"] || socket.assigns.fill_backend,
+         fill_model: params["fill|model"] || socket.assigns.fill_model
+       )}
+
+  # **範囲の、空いている欄のある店を名指しして埋めてもらう**（割り込み。区画に縛らず、
+  # 区画の印も付けない）。店は数えたときのもの —— 頼んだ後で読み直すまで、同じ店を
+  # もう一度頼むことがある
+  def handle_event("fill_blanks", params, socket) do
+    dataset = socket.assigns.dataset
+    fields = fill_fields_of(params)
+    count = fill_count_of(params, socket.assigns.fill_count)
+    flight = {:fill_blanks, dataset.key}
+
+    # 相手は区画を走らせる欄と同じ読み方（ワーカーならモデルを持たせない）
+    choice =
+      %{"run|backend" => params["fill|backend"], "run|model" => params["fill|model"]}
+      |> run_options(socket.assigns.backends)
+      |> Keyword.delete(:sweep)
+
+    with {:ok, report} <- socket.assigns.blank_report,
+         false <- SingleFlight.busy?(flight),
+         {:ok, request} <- Chidori.Datasets.Dining.fill_request(report.shops, fields, count) do
+      {:noreply,
+       socket
+       |> assign(fill_fields: fields, fill_count: count, filled: :sending)
+       |> start_async(:fill_blanks, fn ->
+         {length(request.titles),
+          SingleFlight.run(flight, fn -> Datasets.fill_blanks(dataset, request, choice) end)}
+       end)}
+    else
+      true -> {:noreply, assign(socket, filled: {:error, :busy})}
+      :nothing -> {:noreply, assign(socket, fill_fields: fields, filled: :nothing)}
+      # 数え終わっていない（押せないはずだが、開きっぱなしの画面から届くことがある）
+      _not_counted -> {:noreply, socket}
+    end
+  end
+
   # 相手を選び直したら、そのぶんだけ覚える（モデルの候補は相手ごとに別物なので、
   # 覚えていないと選び直した拍子に前の相手のモデルが出る）
   def handle_event("pick_run", params, socket) do
@@ -780,6 +836,18 @@ defmodule ChidoriWeb.DatasetsLive do
   def handle_async(:ask_book, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, book_asking: false, book_asked: {:error, :collection_crashed})}
 
+  def handle_async(:blank_report, {:ok, result}, socket),
+    do: {:noreply, assign(socket, blank_report: result)}
+
+  def handle_async(:blank_report, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, blank_report: {:error, :collection_crashed})}
+
+  def handle_async(:fill_blanks, {:ok, {count, result}}, socket),
+    do: {:noreply, assign(socket, filled: {count, result})}
+
+  def handle_async(:fill_blanks, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, filled: {:error, :collection_crashed})}
+
   def handle_async(:ask, {:ok, result}, socket),
     do: {:noreply, assign(socket, asking: false, asked: result)}
 
@@ -917,6 +985,7 @@ defmodule ChidoriWeb.DatasetsLive do
     |> load_request_results()
     |> load_recent_runs()
     |> load_prefecture_progress(dataset)
+    |> load_blank_report(dataset)
   end
 
   # **県ごとの進み具合**（区画が県の対象だけ。区画の地図の代わり）。数えるのに収集の
@@ -928,6 +997,16 @@ defmodule ChidoriWeb.DatasetsLive do
   end
 
   defp load_prefecture_progress(socket, _dataset), do: socket
+
+  # **空いている欄のある店**（食事処の範囲だけ）。数えるのに範囲の全件を読むので、
+  # 設定を開いたときと読み直したときだけ（県ごとの進み具合と同じ）
+  defp load_blank_report(socket, %{area: area}) do
+    socket
+    |> assign(blank_report: :loading)
+    |> start_async(:blank_report, fn -> Chidori.Datasets.Dining.blank_report(area) end)
+  end
+
+  defp load_blank_report(socket, _dataset), do: socket
 
   @doc "地名の候補を見分ける一言（地域と種別）。"
   def place_label(place) do
@@ -1041,6 +1120,43 @@ defmodule ChidoriWeb.DatasetsLive do
   defp missed_text(missed) do
     points = Enum.map_join(missed, "、", fn {lat, lon} -> "(#{lat},#{lon})" end)
     "区画の外だった座標: #{points}。"
+  end
+
+  @doc "読めたものの中身（`{:ok, 値}` の値。それ以外は nil）。"
+  def ok_value({:ok, value}), do: value
+  def ok_value(_other), do: nil
+
+  @doc "空欄を埋める 1 回を頼んだ結果の一言（`fill_blanks`）。"
+  def fill_message(:sending), do: "頼んでいます…"
+
+  def fill_message(:nothing),
+    do: "選んだ欄が空いている店はありません（欄を選び直してください）。"
+
+  def fill_message({count, :ok}),
+    do:
+      "#{count} 店の空欄を埋める 1 回を頼みました（情報収集の相手で走ります。区画の印は付きません）。" <>
+        "終わったら「最新の情報を取得」で数え直せます。"
+
+  def fill_message({_count, {:error, reason}}), do: reason_text(reason)
+  def fill_message({:error, reason}), do: reason_text(reason)
+  def fill_message(_filled), do: nil
+
+  # フォームの欄の鍵を、決まった欄（`Dining.blank_fields/0`）にだけ読み替える
+  # （画面から来た文字列で atom を作らない）
+  # 名指しする店の数（読めなければ前の値のまま。上限への丸めは `Dining.fill_request/3`）
+  defp fill_count_of(params, current) do
+    case Integer.parse(to_string(params["count"] || "")) do
+      {count, ""} -> count |> max(1) |> min(elem(Chidori.Datasets.Dining.fill_counts(), 1))
+      _unreadable -> current
+    end
+  end
+
+  defp fill_fields_of(params) do
+    picked = List.wrap(params["fields"])
+
+    for {field, _label} <- Chidori.Datasets.Dining.blank_fields(),
+        Atom.to_string(field) in picked,
+        do: field
   end
 
   @doc "割り込みの届き具合。**断られたことも出します**。"

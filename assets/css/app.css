@@ -1003,6 +1003,10 @@ ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column:
 .partition-pending { margin: .75rem 0; padding-top: .5rem; border-top: 1px solid #ece9f8; }
 .partition-pending h4 { margin: 0 0 .3rem; font-size: .95rem; color: #332c75; }
 .partition-pending pre { white-space: pre-wrap; font-size: .85rem; }
+/* 埋めてほしい欄。狭い画面でも折り返して並ぶように */
+.fill-fields { display: flex; flex-wrap: wrap; gap: .3rem 1rem; margin: 0 0 .5rem; padding: 0; border: 0; }
+.fill-fields legend { padding: 0; margin-bottom: .3rem; font-size: .9rem; }
+.fill-fields label { display: inline-flex; align-items: center; gap: .3rem; font-size: .9rem; }
 .live-blocked { margin-bottom: 1.25rem; }
 .live-blocked h2 { display: flex; align-items: center; gap: .4rem; margin-bottom: .3rem; font-size: 1.05rem; color: #332c75; }
 .live-dot { width: .6rem; height: .6rem; border-radius: 50%; background: #dc2626; animation: live-pulse 1.2s ease-in-out infinite; }

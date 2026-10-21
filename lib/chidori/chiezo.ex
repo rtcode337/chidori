@@ -537,7 +537,7 @@ defmodule Chidori.Chiezo do
   必ず AI に見せられます（区画を渡すだけでは、直してほしい 1 人が差し込みに載る
   保証がない）。
   """
-  def focus(base, name, note, titles, sweep \\ nil, partition \\ nil, prompt \\ nil) do
+  def focus(base, name, note, titles, sweep \\ nil, partition \\ nil, prompt \\ nil, choice \\ []) do
     # **どの巡回として走らせるかを名指しできる。** 相手も考える量も依頼文も
     # 巡回ごとに違うので、名指ししないと「どの設定で走ったのか」が言えない。
     # **区画を名指しすると、その区画に印が付く**（先に見てほしいと頼んだのだから、
@@ -549,6 +549,9 @@ defmodule Chidori.Chiezo do
       # **その回だけの依頼文**。材料（数えたタグなど）を作れるのは Chidori の側なので、
       # 定義の文では渡せない。Chiezo は保存しないので、定時の回は元の文のまま
       |> then(&if(prompt, do: Map.put(&1, :prompt, prompt), else: &1))
+      # **その回だけ頼む相手**（`backend:` と `model:`、または `worker:`）。保存されないので、
+      # 定時の回は巡回の設定のまま
+      |> Map.merge(Map.new(choice))
       |> Jason.encode!()
 
     case post(base <> "/v1/collect/" <> name <> "/focus" <> manual_query("?"), body, @timeout) do

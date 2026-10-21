@@ -74,6 +74,26 @@ defmodule Chidori.Datasets.Dining do
   # 情報収集の間隔（分）。**起こすのは Chidori の時計**（`Chidori.Datasets.SurveyClock`。
   # 時刻は設定ページで決める）。Chiezo には巡回の間隔として書くだけで、時計では回らない
   @survey_minutes 720
+
+  # 空いていたら埋めてもらう欄（`blanks/1`・`fill_request/3`）。情報収集の依頼文の 4 で
+  # 「空いていたら埋める」と頼んでいるもの。並びが画面の並びで、営業時間を先頭に置く
+  # （travel-log の絞り込みの朝食営業・ランチ営業・深夜営業は営業時間から付く）
+  @blank_fields [
+    opening_hours: "営業時間",
+    feature: "特徴",
+    genre: "ジャンル",
+    rank: "ランク",
+    area: "地域",
+    description: "説明",
+    url: "出典の URL"
+  ]
+  # 空欄を埋める 1 回に名指しする店の数。既定は区画の目安と同じ —— 1 件ずつ web で
+  # 確かめるので、情報収集の 1 回（1 区画）と同じ量なら持ち時間に収まる。
+  # 上限は Chiezo の割り込みが名指しを受け取る数（`MAX_FOCUS_TITLES`）
+  @fill_default @area_partition_target
+  @fill_max 50
+  # 一覧の 1 行に「空いている」と添えてもらう脇書きの鍵（`attrs/2` の `show_blanks`）
+  @blank_keys ["opening_hours", "url"]
   # travel-log の種別。**範囲が違っても同じ種別に入る**（書き出しは範囲ごと、
   # 読み込み先は 1 つ）
   @area_export_key "dining"
@@ -563,6 +583,182 @@ defmodule Chidori.Datasets.Dining do
   @doc "名簿の回の名前（範囲を変えたときに走らせ直す）。"
   def roster_sweep_name, do: @roster_sweep
 
+  @doc "空いていたら埋めてもらう欄（鍵 → 画面の名前。並びが画面の並び）。"
+  def blank_fields, do: @blank_fields
+
+  @doc "空欄を埋める 1 回に名指しする店の数の既定と上限（`{既定, 上限}`）。"
+  def fill_counts, do: {@fill_default, @fill_max}
+
+  @doc """
+  1 件の空いている欄（`blank_fields/0` の鍵の並び）。
+
+  特徴は「付いていない = 分からない」の意味（`item_format/0`）なので、1 つも付いて
+  いなければ空とみなします。説明は本文の「所在地: …」の行のほかに何も無ければ空です。
+  """
+  def blanks(doc) do
+    tags = Enum.filter(doc["tags"] || [], &is_binary/1)
+    extra = doc["extra"] || %{}
+    text = doc["body"] || doc["opening"] || ""
+
+    for {field, _label} <- @blank_fields, blank?(field, tags, extra, text), do: field
+  end
+
+  defp blank?(:opening_hours, _tags, extra, _text), do: empty?(extra["opening_hours"])
+  defp blank?(:url, _tags, extra, _text), do: empty?(extra["url"])
+  defp blank?(:feature, tags, _extra, _text), do: not tagged?(tags, feature_tag())
+  defp blank?(:genre, tags, _extra, _text), do: not tagged?(tags, genre_tag())
+  defp blank?(:rank, tags, _extra, _text), do: not tagged?(tags, rank_tag())
+  defp blank?(:area, tags, _extra, _text), do: not tagged?(tags, area_tag())
+  defp blank?(:description, _tags, _extra, text), do: not described?(text)
+
+  defp empty?(value), do: not is_binary(value) or String.trim(value) == ""
+
+  defp tagged?(tags, prefix) do
+    Enum.any?(tags, fn tag ->
+      String.starts_with?(tag, prefix <> ":") and String.trim(tag) != prefix <> ":"
+    end)
+  end
+
+  # 1 行目は「所在地: …」（`item_format/0`）。それ以外の行が 1 つでもあれば紹介がある
+  defp described?(text) do
+    text
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.any?(&(&1 != "" and not String.starts_with?(&1, ["所在地", "住所"])))
+  end
+
+  @doc """
+  範囲の店のうち、空いている欄のある店。`{:ok, %{total: 店の数, shops: [...]}}`。
+
+  **読むのは AI が目を通した店だけ**（Chiezo の読み口は、まだ目を通していない店と
+  消えた店を既定で外す）。目を通していない店は情報収集の 2 で 1 件ずつ確かめるので、
+  ここで頼む相手ではありません。
+  """
+  def blank_report(area) do
+    with {:ok, base} <- Chidori.Datasets.base_url(),
+         {:ok, docs} <- shop_docs(base, collection(area)) do
+      listed = Enum.filter(docs, &(kind_tag() in (&1["tags"] || [])))
+
+      shops =
+        for doc <- listed,
+            (missing = blanks(doc)) != [],
+            do: %{title: doc["title"], missing: missing}
+
+      {:ok, %{total: length(listed), shops: shops}}
+    end
+  end
+
+  # 全ページ。**件数は 1 ページ目が教えてくれる**ので、何周するかはそこで決まる
+  defp shop_docs(base, name, offset \\ 0, acc \\ []) do
+    case Chiezo.spot_docs(base, name, kind_tag(), offset, 500) do
+      {:ok, %{docs: []}} ->
+        {:ok, acc}
+
+      {:ok, %{total: total, docs: docs}} ->
+        got = acc ++ docs
+        if length(got) >= total, do: {:ok, got}, else: shop_docs(base, name, length(got), got)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  欄ごとの空いている店の数（`blank_fields/0` の並び。`[{鍵, 名前, 数}]`）。
+  **空いている店の無い欄は出しません**（0 店の欄を選べても頼むものが無い）。
+  """
+  def blank_counts(shops) do
+    for {field, label} <- @blank_fields,
+        (count = Enum.count(shops, &(field in &1.missing))) > 0,
+        do: {field, label, count}
+  end
+
+  @doc """
+  空欄を埋める 1 回の頼みごと（`Chidori.Datasets.fill_blanks/3` に渡すもの）。
+  `fields` は埋めてほしい欄の鍵、`count` は名指しする店の数（1〜`fill_counts/0` の上限に
+  丸める）。当てはまる店が無ければ `:nothing`。
+
+  **区画に縛らず、範囲の全部から店を名指しします**（Chiezo の割り込みの `titles`）——
+  名指しした店だけが `{current}` に並ぶので、区画で切らなくても AI はほかの店に触れず、
+  1 回の量は数で決まります。区画を渡さないので、情報収集の印も付きません（付くと閉店の
+  見直しや足りない店探しが一周先へ回る）。どの店のどの欄が空かは依頼文に書きます
+  （一覧には脇書きが出ない）。
+
+  **営業時間の無い店を先に**、そのあと空いている欄の多い店から。**同じ並びの中は
+  毎回混ぜます** —— 確かめられなかった欄は空いたまま残るので、決まった順だと
+  続けて押したときに同じ店ばかり頼むことになる。
+  """
+  def fill_request(shops, fields, count) do
+    wanted = for {field, _label} <- @blank_fields, field in fields, do: field
+    count = count |> max(1) |> min(@fill_max)
+
+    picked =
+      shops
+      |> Enum.map(&%{&1 | missing: Enum.filter(&1.missing, fn field -> field in wanted end)})
+      |> Enum.reject(&(&1.missing == []))
+      |> Enum.shuffle()
+      |> Enum.sort_by(&{if(:opening_hours in &1.missing, do: 0, else: 1), -length(&1.missing)})
+      |> Enum.take(count)
+
+    case picked do
+      [] ->
+        :nothing
+
+      _some ->
+        {:ok,
+         %{
+           titles: Enum.map(picked, & &1.title),
+           note: "挙げた #{length(picked)} 店の空いている欄（#{labels(wanted)}）だけを調べて埋めてください。",
+           prompt: fill_prompt(picked)
+         }}
+    end
+  end
+
+  defp labels(fields), do: Enum.map_join(fields, "・", &@blank_fields[&1])
+
+  @doc """
+  空欄を埋める 1 回の依頼文（`fill_request/3`）。**保存しない**（その回だけ Chiezo に渡す）。
+  情報収集の 4 だけを切り出した形で、1 件の形（`item_format/0`）は同じものを使います。
+  """
+  def fill_prompt(shops) do
+    list =
+      Enum.map_join(shops, "\n", fn shop -> "- #{shop.title}: #{labels(shop.missing)}" end)
+
+    """
+    「食事処」の一覧のうち、**下に挙げた店の空いている欄だけ**を埋めてください。
+    travel-log という地図アプリのスポットとして使います。
+
+    **埋めてほしい店と、空いている欄**
+    #{list}
+
+    {current}
+
+    **1 件ずつ調べてください。** 公式サイト・口コミサイト（食べログ・ホットペッパーグルメ・
+    Retty など）の店の頁・地図サービスの店の情報を開き、**確かめられたものだけ**書いて
+    ください。**分からない欄は空けたままにしてください** —— 当てずっぽうで埋めると、
+    正しい情報に見えてしまいます。この回に時間の制限はありません。
+
+    - 営業時間 …… 営業日と営業時間（`extra.opening_hours`）。**地図の絞り込み（朝食営業・
+      ランチ営業・深夜営業）はここから機械で付く**ので、いちばん大事です
+    - 特徴 …… 下の語から、確かめられたものだけ
+    - ジャンル・ランク・地域 …… 下の 1 件の形のとおり。地域は本文の「所在地:」から分かります
+    - 説明 …… body の 2 行目以降に 2〜3 文の紹介。**1 行目の「所在地: …」は残してください**
+    - 出典の URL …… 実際に開いて、その店の頁だと確かめたものだけ
+
+    **挙げた欄のほかは書き換えないでください。** 座標も触らないでください。
+    **返すときは、いま付いているタグと本文を残してください**（返した内容で置き換わります）。
+    調べている途中で閉店が分かった店は、墓標で消して構いません（理由を body に 1 行）。
+    #{eat_in_rule()}
+    #{item_format()}
+
+    **埋めた店・消す店だけを返してください。** 1 つも埋まらなかった店は返さなくて構いません。
+
+    **何を調べたかを、答えの `checked` に 1 行ずつ書いてください**（items と並べて
+    `"checked": ["…", "…"]`）。埋まらなかった欄も、どこを見て見つからなかったかを
+    残してください。例: "◯◯亭: 公式サイトに営業時間あり、特徴は確かめられず"。
+    """
+  end
+
   @doc """
   Chiezo へ送る依頼の中身（作るときも、送り直すときも同じもの）。
   """
@@ -582,6 +778,10 @@ defmodule Chidori.Datasets.Dining do
       # 口コミサイトの番号や、地図辞典に残った古い URL を、書き出すときに落とすため
       # （`Chidori.Datasets.ShopLinks`）
       links: true,
+      # **一覧の 1 行に、空いている脇書きを添えてもらう**（Chiezo の `show_blanks`）。一覧は
+      # 見出し・タグ・本文だけなので、依頼文の 4 で「営業時間が無い店を先に」と頼んでも、
+      # AI にはどの店が空なのか見えない
+      show_blanks: @blank_keys,
       requested_by: "chidori"
     }
     |> Map.merge(shape(area))

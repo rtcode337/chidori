@@ -606,6 +606,9 @@
               </button>
               <button type="button" phx-click="unpick_partition">やめる</button>
             </div>
+            <p :if={ask_message(@asked)} class="muted-note" aria-live="polite">
+              {ask_message(@asked)}
+            </p>
           </form>
         </section>
 
@@ -880,6 +883,111 @@
               <pre>{text}</pre>
             </div>
           </details>
+        </section>
+
+        <%!-- **空いている欄のある店を数え、埋めてもらう**（食事処の範囲だけ）。区画には縛らない ——
+           名指しした店だけが AI の一覧に並ぶので、1 回の量は頼む数で決まる。区画を渡さないので
+           情報収集の印も付かない。区画の一覧のすぐ上に置く（地図で区画を見たあとに読む） --%>
+        <section
+          :if={@dataset[:area]}
+          class="settings-block blank-report"
+          aria-label="空いている欄"
+        >
+          <h3>空いている欄</h3>
+          <%= case @blank_report do %>
+            <% nil -> %>
+              <p class="muted-note">まだ数えていません。</p>
+            <% :loading -> %>
+              <p class="muted-note">Chiezo の収集を数えています…</p>
+            <% {:error, reason} -> %>
+              <p class="muted-note">数えられませんでした。{reason_text(reason)}</p>
+            <% {:ok, %{shops: []} = report} -> %>
+              <p class="muted-note">
+                AI が目を通した {report.total} 店に、空いている欄はありません。
+              </p>
+            <% {:ok, report} -> %>
+              <p class="muted-note">
+                AI が目を通した {report.total} 店のうち、空いている欄のある店は {length(report.shops)} 店です。
+                情報収集も回るたびに埋めますが、ここから先に頼めます。
+              </p>
+              <% {_default, max} = Chidori.Datasets.Dining.fill_counts() %>
+              <form
+                id="fill-blanks-form"
+                phx-submit="fill_blanks"
+                phx-change="pick_fill"
+                class="collect-form"
+              >
+                <fieldset class="fill-fields">
+                  <legend>埋めてほしい欄（数は空いている店）</legend>
+                  <label :for={
+                    {field, label, count} <- Chidori.Datasets.Dining.blank_counts(report.shops)
+                  }>
+                    <input
+                      type="checkbox"
+                      name="fields[]"
+                      value={field}
+                      checked={field in @fill_fields}
+                    />
+                    {label} {count} 店
+                  </label>
+                </fieldset>
+                <% {plain, hands} = by_kind(@backends) %>
+                <% models = models_for(@backends, @fill_backend) %>
+                <p>
+                  <label>
+                    頼む相手<br />
+                    <%!-- 欄の名前を `fill|backend` にしておくと、モデルの入れ替えは
+                       収集の表と同じ台本が引き受ける --%>
+                    <select name="fill|backend">
+                      <option value="">巡回の設定のまま</option>
+                      <option :for={b <- plain} value={b.id} selected={b.id == @fill_backend}>
+                        {b.label}
+                      </option>
+                      <optgroup
+                        :if={hands != []}
+                        label="ワーカー（枠を見て振り替える）"
+                      >
+                        <option :for={b <- hands} value={b.id} selected={b.id == @fill_backend}>
+                          {b.label}
+                        </option>
+                      </optgroup>
+                    </select>
+                  </label>
+                  <label :if={models != []}>
+                    モデル<br />
+                    <select name="fill|model">
+                      <option value="">モデルは相手の既定</option>
+                      <option :for={m <- models} value={m} selected={m == @fill_model}>
+                        {m}
+                      </option>
+                    </select>
+                  </label>
+                </p>
+                <p>
+                  <label>
+                    1 回に頼む店の数（1〜{max}）<br />
+                    <input type="number" name="count" min="1" max={max} value={@fill_count} />
+                  </label>
+                </p>
+                <p class="muted-note">
+                  選んだ欄が空いている店を、営業時間の無い店から順に（同じ順の中は毎回混ぜて）名指しし、選んだ相手（選ばなければ情報収集の相手）に 1 回頼みます。
+                  1 店ずつ web で確かめるので、多いほど 1 回が長くなります（20 店で情報収集の 1 区画ぶん）。
+                  区画の印は付かず、進み具合も次の予定も動きません。確かめられなかった欄は空いたまま残ります。
+                </p>
+                <div class="button-row">
+                  <button
+                    type="submit"
+                    disabled={@filled == :sending}
+                    phx-disable-with="頼んでいます…"
+                  >
+                    空いている欄を埋めてもらう
+                  </button>
+                </div>
+              </form>
+          <% end %>
+          <p :if={fill_message(@filled)} class="muted-note" aria-live="polite">
+            {fill_message(@filled)}
+          </p>
         </section>
 
         <details :if={rows != [] and !@dataset[:prefectures]} class="partition-list">

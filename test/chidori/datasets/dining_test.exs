@@ -266,6 +266,89 @@ defmodule Chidori.Datasets.DiningTest do
     end
   end
 
+  describe "空いている欄" do
+    defp shop(title, tags, extra, opening \\ "所在地: 東京都千代田区") do
+      %{
+        "title" => title,
+        "tags" => ["食事処" | tags],
+        "opening" => opening,
+        "extra" => Map.merge(%{"lat" => 35.68, "lon" => 139.76}, extra)
+      }
+    end
+
+    test "依頼文で埋めると頼んでいる欄のうち、空いているものを返す" do
+      full =
+        shop(
+          "駅前うどん",
+          ["ジャンル:麺類", "地域:東京都", "ランク:C", "特徴:ランチ営業"],
+          %{"opening_hours" => "Mo-Fr 11:00-15:00", "url" => "https://example.com/"},
+          "所在地: 東京都千代田区\n駅前のうどん屋。"
+        )
+
+      assert Dining.blanks(full) == []
+
+      # 所在地の行しか無い本文は、説明が空。空文字の脇書きやタグの頭だけも空
+      bare = shop("そば屋", ["地域:東京都", "ジャンル:"], %{"opening_hours" => " "})
+
+      assert Dining.blanks(bare) ==
+               [:opening_hours, :feature, :genre, :rank, :description, :url]
+    end
+
+    test "営業時間の無い店を先に、空いている欄の多い店から名指しする" do
+      shops = [
+        %{title: "A", missing: [:feature]},
+        %{title: "B", missing: [:feature, :rank, :url]},
+        %{title: "C", missing: [:opening_hours]},
+        %{title: "D", missing: [:url]}
+      ]
+
+      {:ok, request} = Dining.fill_request(shops, [:opening_hours, :feature, :rank], 20)
+
+      # 選んでいない欄（出典の URL）しか空いていない店は頼まない
+      assert request.titles == ["C", "B", "A"]
+      assert request.note =~ "営業時間・特徴・ランク"
+      assert request.prompt =~ "- B: 特徴・ランク\n"
+      # 名指しした店だけが並ぶ差し込み口と、1 件の形
+      assert request.prompt =~ "{current}"
+      assert request.prompt =~ "extra.opening_hours"
+      refute request.prompt =~ "{partition}"
+
+      assert Dining.fill_request(shops, [:area], 20) == :nothing
+    end
+
+    test "名指しする数は頼む数まで（Chiezo が受け取る数で頭打ち）。同じ並びの中は毎回混ぜる" do
+      shops = for n <- 1..80, do: %{title: "店#{n}", missing: [:url]}
+
+      {:ok, request} = Dining.fill_request(shops, [:url], 5)
+      assert length(request.titles) == 5
+
+      {default, max} = Dining.fill_counts()
+      assert default == Dining.area_partition_target()
+      {:ok, request} = Dining.fill_request(shops, [:url], 999)
+      assert length(request.titles) == max
+      {:ok, request} = Dining.fill_request(shops, [:url], 0)
+      assert length(request.titles) == 1
+
+      # 確かめられなかった店が毎回先頭に来ないように
+      picks = for _ <- 1..5, do: elem(Dining.fill_request(shops, [:url], 5), 1).titles
+      assert length(Enum.uniq(picks)) > 1
+    end
+
+    test "欄ごとの数は画面の並びで、空いている店の無い欄は出さない" do
+      shops = [%{missing: [:url, :opening_hours]}, %{missing: [:url]}]
+
+      assert Dining.blank_counts(shops) == [
+               {:opening_hours, "営業時間", 1},
+               {:url, "出典の URL", 2}
+             ]
+    end
+
+    test "一覧の 1 行に、空いている営業時間と出典を添えてもらう" do
+      # 依頼文の 4 で「営業時間が無い店を先に」と頼んでも、一覧には脇書きが出ない
+      assert Dining.attrs(%{}, @area).show_blanks == ["opening_hours", "url"]
+    end
+  end
+
   describe "依頼文" do
     test "消すのは墓標で、理由を書かせる" do
       # 消したものは名前が並ぶだけなので、理由が無いと消し間違いに気づけない

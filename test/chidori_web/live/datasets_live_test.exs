@@ -500,6 +500,84 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       assert html =~ "この区画に控えている依頼はありません"
     end
 
+    test "空いている欄のある店を、頼む数だけ名指しして埋めてもらう（区画は渡さない）", %{conn: conn} do
+      test_pid = self()
+
+      shops = [
+        %{
+          "title" => "駅前うどん",
+          "tags" => ["食事処", "ジャンル:麺類", "地域:東京都", "ランク:C", "特徴:ランチ営業"],
+          "opening" => "所在地: 東京都千代田区\n駅前のうどん屋。",
+          "extra" => %{
+            "lat" => 35.65,
+            "lon" => 139.75,
+            "opening_hours" => "Mo-Fr 11:00-15:00",
+            "url" => "https://example.com/udon"
+          }
+        },
+        %{
+          "title" => "そば屋",
+          # 特徴だけ埋まっている（選んだ欄の空きが少ないので後回しになる）
+          "tags" => ["食事処", "地域:東京都", "特徴:ランチ営業"],
+          "opening" => "所在地: 東京都千代田区",
+          "extra" => %{"lat" => 35.66, "lon" => 139.76}
+        },
+        %{
+          "title" => "遠くの店",
+          "tags" => ["食事処"],
+          "opening" => "",
+          "extra" => %{"lat" => 43.05, "lon" => 141.35}
+        }
+      ]
+
+      Chidori.HttpStub.stub(fn
+        %{method: :get, url: "http://chiezo.test:7010/v1/chidori_dining_1/filter?" <> _query} ->
+          Chidori.HttpStub.ok(Jason.encode!(%{"total" => 3, "results" => shops}))
+
+        %{url: "http://chiezo.test:7010/v1/ai/backends"} ->
+          Chidori.HttpStub.ok(~s({"backends":[{"id":"antigravity","label":"Antigravity"}]}))
+
+        %{method: :get, url: "http://chiezo.test:7010/v1/collect"} ->
+          Chidori.HttpStub.ok(Jason.encode!(%{"collections" => [@collection]}))
+
+        %{method: :post, url: url, body: body} ->
+          send(test_pid, {:posted, url, Jason.decode!(body)})
+          Chidori.HttpStub.ok(~s({}))
+
+        %{method: :get, url: url} ->
+          if String.contains?(url, "/v1/collect/chidori_dining_1"),
+            do: Chidori.HttpStub.ok(Jason.encode!(@collection)),
+            else: Chidori.HttpStub.ok(~s({"backends":[],"sources":[],"changes":[]}))
+      end)
+
+      {live, html} = shown(conn)
+
+      assert html =~ "AI が目を通した 3 店のうち、空いている欄のある店は 2 店です"
+      assert html =~ "営業時間 2 店"
+
+      live
+      |> form("#fill-blanks-form", %{
+        "fields" => ["opening_hours", "feature"],
+        "count" => "1",
+        "fill|backend" => "antigravity"
+      })
+      |> render_submit()
+
+      assert render_async(live) =~ "1 店の空欄を埋める 1 回を頼みました"
+
+      assert_receive {:posted, url, sent}, 2_000
+      assert url =~ "/v1/collect/chidori_dining_1/focus"
+
+      # 区画に縛らない（範囲のどこの店でもよい）。空いている欄の多いほうが先
+      assert sent["titles"] == ["遠くの店"]
+      assert sent["sweep"] == "情報収集"
+      # 区画を渡すと情報収集の印が付き、見直しが一周先へ回る
+      refute Map.has_key?(sent, "partition")
+      assert sent["prompt"] =~ "- 遠くの店: 営業時間・特徴\n"
+      # 選んだ相手はその回だけ（巡回の設定は送り直さない）
+      assert sent["backend"] == "antigravity"
+    end
+
     test "区画は地図にもなる", %{conn: conn} do
       # 「8,185 区画のうち 2 つ見終わり」と数で言われても、どこなのかは読めない
       {_live, html} = shown(conn)
