@@ -275,6 +275,8 @@ defmodule Chidori.Datasets.Gourmet do
 
   # 住所から座標を引く辞典の出どころのタグ（`出典:` の後ろ）
   @address_source_label "位置参照情報"
+  # AI が地図サービスで確かめた座標の出どころの名前（Chiezo の `ai_fallback`。辞典にも住所にも当たらないときだけ）
+  @ai_source_label "AI"
 
   # 提供している店の数の段階（ランクの材料）
   @shop_counts ~w(1 数軒 多数)
@@ -539,8 +541,10 @@ defmodule Chidori.Datasets.Gourmet do
       },
       %{
         field: "（座標の出どころ）",
-        stored: "タグ「出典:OSM」「出典:Overture」「出典:位置参照情報」",
-        who: "Chiezo（引き当てた辞典。辞典ごとにライセンスが違う。店の辞典に無い店は住所から街区の代表点を引く）"
+        stored: "タグ「出典:OSM」「出典:Overture」「出典:位置参照情報」「出典:AI」",
+        who:
+          "Chiezo（引き当てた辞典。辞典ごとにライセンスが違う。店の辞典に無い店は住所から街区の代表点を引き、" <>
+            "それでも決まらなければ AI が地図で確かめた座標で置く）"
       }
     ]
   end
@@ -694,7 +698,10 @@ defmodule Chidori.Datasets.Gourmet do
       # 「代表店まだ」に数える）。代表店なしの印の付いた料理には付けない
       failed_when_missing: true,
       none_tag: @no_shop_tag,
-      ai_coords: false
+      ai_coords: false,
+      # **辞典にも住所にも当たらないときだけ、AI が地図で確かめた座標で置く**（最後の段）。
+      # 辞典の点も間違ううえ、辞典に無い小さな店は辞典では置けない。印で見分ける
+      ai_fallback: %{tag: "出典:#{@ai_source_label}"}
     }
   end
 
@@ -1245,7 +1252,8 @@ defmodule Chidori.Datasets.Gourmet do
       「辞典に同じ名前がありません」で落ちます。どちらの辞典にも無ければ `ref` は書かず、
       **住所を店の公式の頁などで確かめて番地まで正確に**書いてください（店の辞典に無い店は、
       住所から座標を引きます。番地まで合わないと地図に置けません）
-    - **座標（lat / lon）は書かないでください** —— 辞典から機械で引きます（書いても捨てられます）
+    - **座標（lat / lon）は、辞典にも住所にも当たらない店に限って**、地図サービスで確かめた値を
+      書いてください（記憶で書かない）。辞典に当たれば辞典の座標を使います
     - 代表店を書いたら、**その店を選んだ理由を `extra.#{@shop_reason_key}` に 1 行で**書いてください
       （例「1950 年創業で、この料理の発祥とされる店。いまも本店で出している」「県の観光協会が
       この料理の店として紹介している」）。**確かめた頁に書いてある事実だけ**（創業の年・発祥や本店で
@@ -1312,7 +1320,7 @@ defmodule Chidori.Datasets.Gourmet do
         知られているか。A=全国から人が来る、B=その県を代表する、C=その市区町村で知られる、
         D=地元で親しまれている、E=それ以外。**迷ったら下の段に**してください（地図の丸の大きさに
         なります）。記事のある 1 件は記事の閲覧数で機械が決めるので付けません
-      - "出典:OSM" / "出典:Overture" / "出典:#{@address_source_label}" / "#{@unplaced_tag}" / "#{Chiezo.locked_tag()}" は機械が付けます。
+      - "出典:OSM" / "出典:Overture" / "出典:#{@address_source_label}" / "出典:#{@ai_source_label}" / "#{@unplaced_tag}" / "#{Chiezo.locked_tag()}" は機械が付けます。
         **足したり消したりしないでください**
     - extra.shop: 代表店の手がかり（上の「代表店の決め方」）
     - extra.#{@shop_reason_key}: その店を代表店にした理由を 1 行（店の 1 件はその店を入れた理由）。
@@ -1909,6 +1917,10 @@ defmodule Chidori.Datasets.Gourmet do
       # 位置参照情報は加工して使うとき出典と整備年を書く約束（利用約款 第 2 条 3）
       @address_source_label in from ->
         "座標: 代表店の住所の街区（街区レベル位置参照情報 国土交通省#{isj_year(extra)}を加工）"
+
+      # **AI が地図で確かめた座標も、そう書く**（辞典にも住所にも当たらなかった店。Chiezo の `ai_fallback`）
+      @ai_source_label in from ->
+        "座標: 代表店の位置（地図サービスで確かめた位置）"
 
       from == [] ->
         ""

@@ -302,6 +302,8 @@ defmodule Chidori.Datasets.GourmetTest do
       refute Gourmet.no_shop_tag() == Gourmet.unplaced_tag()
       assert resolve.to_extra == %{opening_hours: "opening_hours"}
       assert resolve.ai_coords == false
+      # 辞典にも住所にも当たらないときだけ、AI が地図で確かめた座標で置き、印で見分ける
+      assert resolve.ai_fallback == %{tag: "出典:AI"}
 
       # 店の辞典に無い店は、AI が確かめた住所から街区の代表点を引く（最後の段）
       assert resolve.address == %{source: "address_jp", tag: "出典:位置参照情報"}
@@ -488,7 +490,7 @@ defmodule Chidori.Datasets.GourmetTest do
         assert prompt =~ "終わったもの"
         assert prompt =~ "extra.sources"
         assert prompt =~ "Google マップや食べログ"
-        assert prompt =~ "座標（lat / lon）は書かないでください"
+        assert prompt =~ "辞典にも住所にも当たらない店に限って"
 
         # 料理の県の外でもよい・発祥を争う料理は県ごと（利用者の決めごと）
         assert prompt =~ "県の外でもかまいません"
