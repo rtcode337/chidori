@@ -714,6 +714,37 @@ defmodule Chidori.Chiezo do
     end
   end
 
+  @doc """
+  本の表紙を Chiezo に取ってこさせ、配る場所を受け取ります（`POST /v1/covers`）。取りに行く先
+  （版元ドットコム・Open Library）は Chiezo が ISBN から決める —— **Chidori からはどちらへも出ない**。
+  `{:ok, 配る場所}`・`{:error, :no_image}`（どこにも無い。取り直しても同じ）・ほかは取り直せる失敗。
+  """
+  def cover_of(base, isbn) when is_binary(isbn) do
+    case post(base <> "/v1/covers", Jason.encode!(%{isbn: isbn})) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"thumb" => path}} when is_binary(path) -> {:ok, path}
+          _other -> {:error, :chiezo_unexpected_body}
+        end
+
+      # **どこにも無いと Chiezo が答えたときだけ**「無い」。口そのものが無い（表紙の口を持たない
+      # 古い Chiezo が 404 を返す）のを「無い」と読むと、全部の本に「無い」を残してしまう
+      {:ok, %{status: 404, body: body}} ->
+        if is_binary(body) and String.contains?(body, "no cover"),
+          do: {:error, :no_image},
+          else: {:error, {:chiezo_status, 404}}
+
+      {:ok, %{status: 400}} ->
+        {:error, :no_image}
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
   # はてなブックマーク数を 1 回に聞く URL の数（問い合わせの行の長さを抑える）
   @bookmark_batch 50
 

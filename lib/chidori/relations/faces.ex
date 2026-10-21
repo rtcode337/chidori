@@ -3,6 +3,10 @@ defmodule Chidori.Relations.Faces do
   関連図の顔写真。**1 人 1 回だけ**取りに行き、写しを DB（`face_thumbs`）に持って、
   あとは Chidori が配ります（`/faces/:id`）。
 
+  **技術書の表紙もここで取ります**（`covers/1`。Chiezo の `POST /v1/covers` に ISBN を渡し、
+  取りに行く先は Chiezo が決める）。表紙は Wikimedia の縮小版とは相手が違うので、間は短くてよい
+  （`@cover_interval_ms`）。見つからなかった本は「無い」と残し、画面は「表紙なし」の絵を出す。
+
   **レシピ集の料理の写真も、ここで取ります**（`Chidori.Datasets.Recipes.with_photos/1`。幅は
   記事の代表の写真をプレビューで出すときの幅で、作り置きのありそうな 330px）。収集の中で Chiezo がまとめて取りに行くと、1 回の巡回で
   4〜6 枚取ったところで Wikimedia に「多すぎる」（429）と断られ、残りが何週間も写真なしで
@@ -44,6 +48,8 @@ defmodule Chidori.Relations.Faces do
   # 回線ごとに数えて絞る（1.5 秒おきでも 10 秒おきでも 2 枚目で 429 だった）。断られて 30 分
   # 休むのを繰り返すより、断られにくい速さで続けるほうが早く埋まる（110 枚で 2 時間ほど）
   @interval_ms 60_000
+  # 表紙を 1 冊取るごとに空ける間（ミリ秒。版元ドットコムは作り置きの絵を返すだけ）
+  @cover_interval_ms 5_000
   # 取りに行けなかったら、この間は頼まない（ミリ秒）
   @pause_ms 30 * 60 * 1000
   # 1 枚の上限（縮小版はふつう 10〜40KB。大きすぎるものは写真ではない）
@@ -73,7 +79,7 @@ defmodule Chidori.Relations.Faces do
           )
 
     seen = MapSet.new(known, &elem(&1, 0))
-    fetch(Enum.reject(urls, &MapSet.member?(seen, &1)), width)
+    fetch(Enum.reject(urls, &MapSet.member?(seen, &1)), {:photo, width})
 
     for {url, id, "ok"} <- known, into: %{}, do: {url, path(id)}
   rescue
@@ -82,6 +88,34 @@ defmodule Chidori.Relations.Faces do
       Logger.warning("顔写真の写しを読めませんでした: #{Exception.message(error)}")
       %{}
   end
+
+  @doc """
+  技術書の ISBN（13 桁）の並びのうち、**表紙の写しがあるもの**を `%{ISBN => 配る道}` で返し、
+  まだ取りに行っていない本を取りに行く列に並べます（見つからなかった本は返さない）。
+  """
+  def covers(isbns) do
+    keys = isbns |> Enum.filter(&is_binary/1) |> Enum.uniq() |> Enum.map(&cover_key/1)
+
+    known =
+      if keys == [],
+        do: [],
+        else:
+          Repo.all(
+            from(f in Face, where: f.source_url in ^keys, select: {f.source_url, f.id, f.status})
+          )
+
+    seen = MapSet.new(known, &elem(&1, 0))
+    fetch(Enum.reject(keys, &MapSet.member?(seen, &1)), :cover)
+
+    for {"isbn:" <> isbn, id, "ok"} <- known, into: %{}, do: {isbn, path(id)}
+  rescue
+    error in [Postgrex.Error, DBConnection.ConnectionError] ->
+      Logger.warning("表紙の写しを読めませんでした: #{Exception.message(error)}")
+      %{}
+  end
+
+  # 表紙の写しの鍵（写真の URL と同じ列に、ISBN を頭に付けて持つ）
+  defp cover_key(isbn), do: "isbn:" <> isbn
 
   @doc "写しを配る道。"
   def path(id), do: "/faces/#{id}"
@@ -113,34 +147,38 @@ defmodule Chidori.Relations.Faces do
   end
 
   @doc false
-  def fetch(urls, width \\ @width)
-  def fetch([], _width), do: :ok
+  # `kind` は写真（`{:photo, 横幅}`。鍵は写真の URL）か表紙（`:cover`。鍵は `isbn:<13 桁>`）
+  def fetch(keys, kind \\ {:photo, @width})
+  def fetch([], _kind), do: :ok
 
-  def fetch(urls, width) do
+  def fetch(keys, kind) do
     if Process.whereis(__MODULE__),
-      do: GenServer.cast(__MODULE__, {:fetch, urls, width}),
+      do: GenServer.cast(__MODULE__, {:fetch, keys, kind}),
       else: :ok
   end
 
   @impl true
-  def handle_cast({:fetch, urls, width}, state) do
+  def handle_cast({:fetch, urls, width}, state) when is_integer(width),
+    do: handle_cast({:fetch, urls, {:photo, width}}, state)
+
+  def handle_cast({:fetch, keys, kind}, state) do
     if paused?(state) do
       # 断られて休んでいる間は並べない（次に開いたときに並べ直す）
       {:noreply, state}
     else
-      {:noreply, enqueue(state, urls, width)}
+      {:noreply, enqueue(state, keys, kind)}
     end
   end
 
   defp paused?(%{paused_until: nil}), do: false
   defp paused?(%{paused_until: until}), do: System.monotonic_time(:millisecond) < until
 
-  defp enqueue(state, urls, width) do
-    fresh = Enum.reject(urls, &MapSet.member?(state.queued, &1))
+  defp enqueue(state, keys, kind) do
+    fresh = Enum.reject(keys, &MapSet.member?(state.queued, &1))
 
     state = %{
       state
-      | queue: Enum.reduce(fresh, state.queue, &:queue.in({&1, width}, &2)),
+      | queue: Enum.reduce(fresh, state.queue, &:queue.in({&1, kind}, &2)),
         queued: Enum.reduce(fresh, state.queued, &MapSet.put(&2, &1))
     }
 
@@ -157,13 +195,13 @@ defmodule Chidori.Relations.Faces do
       {:empty, _queue} ->
         state
 
-      {{:value, {url, width}}, rest} ->
-        state = %{state | queue: rest, queued: MapSet.delete(state.queued, url)}
+      {{:value, {key, kind}}, rest} ->
+        state = %{state | queue: rest, queued: MapSet.delete(state.queued, key)}
 
-        case download(url, width) do
+        case download(key, kind) do
           # **取りに行けなかったら、残りを捨てて休む**（断られているのに頼み続けない）
           :retry ->
-            Logger.info("顔写真の取得を #{div(@pause_ms, 60_000)} 分休みます（Chiezo が取りに行けませんでした）")
+            Logger.info("写真と表紙の取得を #{div(@pause_ms, 60_000)} 分休みます（Chiezo が取りに行けませんでした）")
 
             %{
               state
@@ -173,8 +211,8 @@ defmodule Chidori.Relations.Faces do
             }
 
           result ->
-            store(url, result)
-            Process.send_after(self(), :next, @interval_ms)
+            store(key, result)
+            Process.send_after(self(), :next, interval(kind))
             %{state | busy?: true}
         end
     end
@@ -182,7 +220,27 @@ defmodule Chidori.Relations.Faces do
 
   # **Wikimedia へは Chidori から出ない**。Chiezo に縮小版を作らせ（`POST /v1/thumbs`）、
   # その写しを Chiezo から受け取る（外への通信先を Chiezo だけにするため）
-  defp download(url, width) do
+  defp interval(:cover), do: @cover_interval_ms
+  defp interval(_photo), do: @interval_ms
+
+  defp download("isbn:" <> isbn, :cover) do
+    with base when is_binary(base) <- Chiezo.base_url(),
+         {:ok, path} <- Chiezo.cover_of(base, isbn),
+         {:ok, %{status: 200, body: body}} when byte_size(body) in 1..@max_bytes <-
+           Chiezo.get(base <> path) do
+      {:ok, body, "image/webp"}
+    else
+      {:error, :no_image} ->
+        Logger.info("表紙が見つかりませんでした: #{isbn}")
+        :missing
+
+      other ->
+        Logger.info("表紙を取りに行けませんでした: #{inspect(other)}")
+        :retry
+    end
+  end
+
+  defp download(url, {:photo, width}) do
     thumb = Chidori.Artwork.thumb(url, width)
 
     with base when is_binary(base) <- Chiezo.base_url(),

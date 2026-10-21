@@ -86,4 +86,4 @@ docker compose pull && docker compose up -d   # 更新。DB の移行は起動�
 | 寄ったときの地図 | [地理院タイル](https://maps.gsi.go.jp/development/ichiran.html)（国土地理院） | 見る人のブラウザが直接取る。画面に出典を表示 |
 | 名簿・説明・代表作の絵・閲覧数 | Chiezo が取り込んだ日本語版 Wikipedia・Wikimedia Commons | 本文は CC BY-SA。絵と写真は 1 枚ずつ条件が違う（顔写真には Commons のファイルのページへのリンクを添え、画家と代表作には記事へのリンクを出す） |
 | 食事処・ご当地グルメ・アニメ聖地の場所の名前・座標など | Chiezo が取り込んだ OpenStreetMap（ODbL）・Overture Maps・Wikipedia | travel-log への書き出しには 1 件ごとに出典を添える |
-| 技術書の表紙 | [版元ドットコム](https://www.hanmoto.com/) | 見る人のブラウザが直接取る |
+| 技術書の表紙 | [版元ドットコム](https://www.hanmoto.com/)・[Open Library](https://openlibrary.org/)（海外の本） | Chiezo が 1 冊 1 回だけ取り、写しを Chidori が配る。取れない本は「表紙なし」の絵 |

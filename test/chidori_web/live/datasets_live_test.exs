@@ -938,7 +938,10 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       html = render_async(live)
 
       [_, shelf] = String.split(html, ~s(class="bookshelf"), parts: 2)
-      assert shelf =~ "https://www.hanmoto.com/bd/img/9784873115658.jpg"
+
+      # 表紙はまだ写しが無いので「表紙なし」の絵（取りに行く列に並ぶ）。外の絵を直に指さない
+      assert shelf =~ "/images/no-cover.svg"
+      refute shelf =~ "hanmoto.com/bd/img"
       assert shelf =~ "記事 5 本が勧めている"
       assert shelf =~ "定番"
 

@@ -117,18 +117,16 @@ defmodule Chidori.Datasets.BookshelfTest do
       refute book("本:x", %{"docs" => 2}).classic
     end
 
-    test "ISBN から表紙の URL を組み立てる" do
+    test "ISBN を 13 桁に揃えて持つ（表紙は `with_covers/1` が付ける）" do
       b = book("本:リーダブルコード", %{"docs" => 3, "isbn" => "978-4-87311-565-8"})
 
       assert b.oreilly
       assert b.isbn == "9784873115658"
-      assert b.cover_url == "https://www.hanmoto.com/bd/img/9784873115658.jpg"
     end
 
     test "チェックディジットが合わない ISBN は使わない" do
       # AI が書いた番号なので、1 桁違いで別の本の表紙が出るのを止める
-      assert book("本:x", %{"isbn" => "9784873115659"}).cover_url == nil
-      assert book("本:x", %{}).cover_url == nil
+      assert book("本:x", %{"isbn" => "9784873115659"}).isbn == nil
     end
 
     test "10 桁の ISBN は 13 桁に直す" do

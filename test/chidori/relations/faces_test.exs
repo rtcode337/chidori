@@ -73,6 +73,63 @@ defmodule Chidori.Relations.FacesTest do
     assert :queue.is_empty(state.queue) and state.paused_until
   end
 
+  test "技術書の表紙は ISBN で写しを引き、写しの無い本には「表紙なし」の絵を出す" do
+    face = stored("isbn:9784873115658", "ok", "WEBP")
+    stored("isbn:9784000000002", "missing")
+
+    assert Faces.covers(["9784873115658", "9784000000002"]) == %{
+             "9784873115658" => Faces.path(face.id)
+           }
+
+    books =
+      Chidori.Datasets.Bookshelf.with_covers([
+        %{isbn: "9784873115658", cover_url: nil},
+        %{isbn: "9784000000002", cover_url: nil},
+        %{isbn: nil, cover_url: nil}
+      ])
+
+    assert Enum.map(books, & &1.cover_url) == [
+             Faces.path(face.id),
+             "/images/no-cover.svg",
+             "/images/no-cover.svg"
+           ]
+  end
+
+  test "表紙は Chiezo に ISBN を渡して頼む（どこにも無ければ「無い」と残す）" do
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+    test_pid = self()
+
+    Chidori.HttpStub.stub(fn %{url: url, body: body} ->
+      send(test_pid, {:asked, url, body})
+      {:ok, %{status: 404, body: ~s({"error": "no cover"})}}
+    end)
+
+    {:ok, pid} = Faces.start_link(name: :faces_cover_test)
+    GenServer.cast(pid, {:fetch, ["isbn:9784000000002"], :cover})
+    _ = :sys.get_state(pid)
+
+    assert_received {:asked, "http://chiezo.test/v1/covers", body}
+    assert Jason.decode!(body) == %{"isbn" => "9784000000002"}
+    assert Repo.get_by(Face, source_url: "isbn:9784000000002").status == "missing"
+  end
+
+  test "表紙の口を持たない Chiezo の 404 は「無い」と読まず、休む" do
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+
+    Chidori.HttpStub.stub(fn _request ->
+      {:ok, %{status: 404, body: ~s({"detail": "Not Found"})}}
+    end)
+
+    {:ok, pid} = Faces.start_link(name: :faces_old_chiezo_test)
+    GenServer.cast(pid, {:fetch, ["isbn:9784873115658", "isbn:9784000000002"], :cover})
+    state = :sys.get_state(pid)
+
+    assert state.paused_until
+    assert Repo.get_by(Face, source_url: "isbn:9784873115658") == nil
+  end
+
   test "押したときに出典とライセンスを読める、Commons のファイルのページ" do
     assert Faces.file_page(@photo) == "https://commons.wikimedia.org/wiki/File:Sample_person.jpg"
   end

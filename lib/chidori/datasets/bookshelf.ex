@@ -17,6 +17,7 @@ defmodule Chidori.Datasets.Bookshelf do
 
   alias Chidori.Chiezo
   alias Chidori.Datasets.Books
+  alias Chidori.Relations.Faces
   alias Chidori.SweepNames
   alias Chidori.Themes
   alias Chidori.Themes.Search
@@ -76,9 +77,8 @@ defmodule Chidori.Datasets.Bookshelf do
   # 画面に並べるときに読む上限（名簿の上限と揃える）
   @list_limit 400
 
-  # 表紙の置き場。**ISBN から URL が決まる**ので、問い合わせずに組み立てられる
-  # （無い本は 404 が返るので、画面が隠す）
-  @cover_base "https://www.hanmoto.com/bd/img/"
+  # 表紙が取れない本（ISBN が分からない・どこにも無い・まだ取りに行っていない）に出す絵
+  @no_cover "/images/no-cover.svg"
   @book_page_base "https://www.hanmoto.com/bd/isbn/"
 
   # オライリーの本の ISBN の頭（日本の 2 つの出版者記号と、原書の主な出版者記号）。
@@ -422,7 +422,8 @@ defmodule Chidori.Datasets.Bookshelf do
              |> Enum.map(&to_book/1)
              |> Enum.filter(&(&1.docs > 0))
              |> with_interests(near_map(base))
-             |> ranked()}
+             |> ranked()
+             |> with_covers()}
 
           _other ->
             {:error, :chiezo_unexpected_body}
@@ -477,6 +478,21 @@ defmodule Chidori.Datasets.Bookshelf do
     end
   end
 
+  @doc """
+  表紙を付けます。**表紙は Chiezo に 1 冊 1 回だけ取ってこさせ、写しを Chidori が配る**
+  （`Chidori.Relations.Faces.covers/1` → Chiezo の `POST /v1/covers`。版元ドットコム、海外の本は
+  Open Library も）。見る人のブラウザに版元ドットコムの絵を直に引かせていた頃は、外の絵を直に
+  指さない決まりから外れていたうえ、無い本は 404 で枠だけが残っていた。**取れない本には
+  「表紙なし」の絵**（`no_cover/0`）を出す（まだ取りに行っていない本も、取れるまではこれ）。
+  """
+  def with_covers(books) do
+    covers = books |> Enum.map(& &1.isbn) |> Enum.reject(&is_nil/1) |> Faces.covers()
+    Enum.map(books, &%{&1 | cover_url: (&1.isbn && covers[&1.isbn]) || @no_cover})
+  end
+
+  @doc "表紙が取れない本に出す絵。"
+  def no_cover, do: @no_cover
+
   @doc "おすすめ度の高い順に並べます。"
   def ranked(books) do
     Enum.sort_by(books, &{-&1.docs, -&1.recent, invert(&1.last_seen), &1.name})
@@ -515,7 +531,8 @@ defmodule Chidori.Datasets.Bookshelf do
       classic: docs >= @classic_sources,
       isbn: isbn,
       oreilly: oreilly_isbn?(isbn),
-      cover_url: isbn && @cover_base <> isbn <> ".jpg",
+      # 表紙は `with_covers/1` が付ける（Chidori が持つ写しか「表紙なし」の絵）
+      cover_url: nil,
       page_url: isbn && @book_page_base <> isbn
     }
     |> with_store()
