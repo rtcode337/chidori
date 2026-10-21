@@ -17,6 +17,15 @@ defmodule ChidoriWeb.DatasetsLiveTest do
   # 画面を開き、**設定欄も開いて読み終えるまで進める**。設定は開いたときに初めて
   # Chiezo から読むので、設定の中身を見るテストはここを通る
   # 設定を開いた状態にして読み終えるまで待つ（本棚の無い対象は、はじめから開いている）
+  # 届いた POST のうち、URL に `part` を含むものを待つ（ほかの POST は読み捨てる）
+  defp receive_post(part) do
+    receive do
+      {:posted, url, body} -> if url =~ part, do: {url, body}, else: receive_post(part)
+    after
+      2_000 -> flunk("#{part} への POST が届きませんでした")
+    end
+  end
+
   defp open_live(conn, path) do
     {:ok, live, _html} = live(conn, path)
 
@@ -1089,7 +1098,9 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       |> render_submit(%{"title" => "本:リーダブルコード", "note" => "表紙が違う"})
 
       assert render_async(live) =~ "Chiezo に頼みました"
-      assert_receive {:posted, url, body}, 2_000
+
+      # 本棚を開くと表紙の取り寄せ（`POST /v1/covers`）も同じ口へ届くので、割り込みだけを待つ
+      {url, body} = receive_post("/focus")
       assert url =~ "/v1/collect/chidori_books/focus"
       assert body["titles"] == ["本:リーダブルコード"]
       assert body["sweep"] == "整理"
