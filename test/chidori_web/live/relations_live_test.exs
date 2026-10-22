@@ -1048,6 +1048,11 @@ defmodule ChidoriWeb.RelationsLiveTest do
 
         %{url: url} ->
           cond do
+            # 収集の状態に添える件数（消したもの・まだ目を通していないもの）は 1 件だけ読む。
+            # 止めるのは溜まったものの読み出しだけ
+            String.contains?(url, "/filter?") and String.contains?(url, "limit=1&") ->
+              Chidori.HttpStub.ok(~s({"results":[],"total":0}))
+
             String.contains?(url, "/filter?") ->
               send(test_pid, {:reading, self()})
 

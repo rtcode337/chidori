@@ -33,6 +33,22 @@ defmodule ChidoriWeb.CollectTest do
     end
   end
 
+  describe "溜まった数" do
+    test "消したものを含むと添え、消したものを引いた生きている数を別に出す" do
+      c = collection(%{docs: 120, removed_docs: 20, unreviewed_docs: 5})
+
+      assert fact(c, "溜まった数") == {"溜まった数", "120 件（消したもの 20 件を含む）"}
+      assert fact(c, "生きている数") == {"生きている数", "100 件（うち AI がまだ目を通していない 5 件）"}
+    end
+
+    test "数えられなかったら、溜まった数だけ出す" do
+      c = collection(%{docs: 120})
+
+      assert fact(c, "溜まった数") == {"溜まった数", "120 件"}
+      assert fact(c, "生きている数") == nil
+    end
+  end
+
   describe "進み具合" do
     test "依頼文が {cursor} を使う収集では出す" do
       c = collection(%{prompt: "{cursor} 以降のニュースを集めて", cursor: "2026-09-23"})

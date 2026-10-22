@@ -85,7 +85,8 @@ defmodule ChidoriWeb.Collect do
     [
       {"状態", if(c.enabled, do: "有効", else: "止まっている")},
       {"集め方", kind_text(c)},
-      {"溜まった数", "#{c.docs} 件"},
+      {"溜まった数", "#{c.docs} 件#{removed_note(c)}"},
+      living_fact(c),
       partitions_fact(c),
       cursor_fact(c),
       # 集まるものが変わらなかった日でも、**押した結果はここが動く**
@@ -95,6 +96,26 @@ defmodule ChidoriWeb.Collect do
   end
 
   def collection_facts(_state), do: []
+
+  # 溜まった数は Chiezo のソースの件数で、**消したもの（墓標）も含む**。数えられたときだけ添える
+  defp removed_note(%{removed_docs: removed}) when is_integer(removed) and removed > 0,
+    do: "（消したもの #{removed} 件を含む）"
+
+  defp removed_note(_collection), do: ""
+
+  # **生きている数**（溜まった数から消したものを引いたもの）。読む側に出ているのは、このうち
+  # AI が目を通したものだけ（まだのものは読み口が外す）
+  defp living_fact(%{docs: docs, removed_docs: removed} = c) when is_integer(removed) do
+    unreviewed =
+      case Map.get(c, :unreviewed_docs) do
+        count when is_integer(count) and count > 0 -> "（うち AI がまだ目を通していない #{count} 件）"
+        _none -> ""
+      end
+
+    {"生きている数", "#{max(docs - removed, 0)} 件#{unreviewed}"}
+  end
+
+  defp living_fact(_collection), do: nil
 
   @doc """
   集め方の言い方。**収集の種類から出します**。

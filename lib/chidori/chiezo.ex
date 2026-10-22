@@ -964,6 +964,17 @@ defmodule Chidori.Chiezo do
     end
   end
 
+  @doc """
+  その印の付いた文書の数（消したもの・まだ目を通していないものも数える）。読めなければ nil。
+  **1 件だけ読んで件数を受け取る**（`filter` の `total`）。
+  """
+  def tag_count(base, name, tag) do
+    case spot_docs(base, name, tag, 0, 1, include_removed: true) do
+      {:ok, %{total: total}} when is_integer(total) -> total
+      _unreadable -> nil
+    end
+  end
+
   def get(url, opts \\ []) do
     Http.get(
       url,
@@ -1044,6 +1055,9 @@ defmodule Chidori.Chiezo do
              detail
              |> to_map()
              |> Map.put(:docs, docs_count(base, name))
+             # 溜まった数は消したもの（墓標）も数えるので、生きている数を出すのに引く
+             |> Map.put(:removed_docs, tag_count(base, name, removed_tag()))
+             |> Map.put(:unreviewed_docs, tag_count(base, name, unreviewed_tag()))
              |> Map.put(:recent, detail["recent"] || [])}
 
           _ ->
@@ -1098,6 +1112,8 @@ defmodule Chidori.Chiezo do
       # 記録の数で出すと、反映が済んでも消えない
       locks_pending: locks_pending(item),
       docs: 0,
+      removed_docs: nil,
+      unreviewed_docs: nil,
       recent: [],
       requested_by: item["requested_by"] || "",
       url: link(item["url"])
