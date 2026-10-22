@@ -826,15 +826,29 @@ defmodule Chidori.Datasets.GourmetTest do
       assert row["description"] =~ "店: サンプル洋食店（本店・発祥の店）／東京都中央区銀座1丁目"
     end
 
-    test "どちらの依頼文にも、発祥の店の 1 件の名前の決まりを 1 回ずつ書く（料理の 1 件があれば重なりの決まり）" do
-      for prompt <- [Gourmet.survey_prompt(), Gourmet.survey_prompt(), Gourmet.scan_prompt()] do
-        assert prompt =~ "料理の発祥の店として知られる店"
-        assert prompt =~ "`extra.display_name` に**その料理の名前**"
-        assert prompt =~ "名前は**料理名そのまま**"
-        assert prompt =~ "店のある土地を頭に付けて"
-        assert prompt =~ "この決まりではなく次の「料理と店の重なり」に従って"
-        assert length(String.split(prompt, "料理の発祥の店として知られる店**（")) == 2
+    test "どちらの依頼文にも、入れる店は 3 つだけ（発祥の店・名物の店・チェーンの本店）と 1 回ずつ書く" do
+      {why, whys} = Gourmet.shop_whys()
+      assert whys == ["発祥の店", "名物の店", "チェーンの本店"]
+
+      for prompt <- [Gourmet.survey_prompt(), Gourmet.scan_prompt()] do
+        assert prompt =~ "**入れる店は次の 3 つだけです。**"
+        assert prompt =~ ~s(タグ "#{why}:<語>")
+
+        # 発祥の店・名物の店はグルメ名で出す。名物の店は発祥ではないので、いつも土地を頭に
+        assert prompt =~ "1 と 2 は地図にグルメ名で出します。"
+        assert prompt =~ "1 は**料理名そのまま**"
+        assert prompt =~ "**いつも店のある土地を頭に付けます**"
+        # 古い・有名というだけの店は入れない
+        assert prompt =~ "古い・有名というだけで、結び付くご当地グルメを挙げられない店"
+        # 前の決まりで入った店を見直す（印の無い店）
+        assert prompt =~ ~s("#{why}:" の付いていない店の 1 件は、前の決まりで入ったものです)
+        assert prompt =~ "次の「料理と店の重なり」に従って"
+        assert length(String.split(prompt, "**入れる店は次の 3 つだけです。**")) == 2
       end
+
+      # 名簿を確かめる段でも、目を通した印の無い店を見直させる
+      assert Gourmet.survey_prompt() =~ "目を通した印が無くても、"
+      assert Gourmet.survey_prompt() =~ ~s("#{why}:" の付いていない店の 1 件はこの段で見直します)
     end
 
     test "種類の語彙は店のぶん（和食・洋食・中華）を足しても 20 を超えない" do
@@ -867,10 +881,14 @@ defmodule Chidori.Datasets.GourmetTest do
       end
     end
 
-    test "情報収集は記事の無い店を足しすぎない（1 回 2 軒まで・公的な紹介があるものだけ）" do
+    test "情報収集は記事の無い店も抜けていれば足す（数は問わない。3 つのどれかで、公的な紹介があるものだけ）" do
       prompt = Gourmet.survey_prompt()
 
-      assert prompt =~ "1 回 2 軒まで"
+      assert prompt =~ "記事の無い地元の店も、抜けていれば足してください**（数は問いません）"
+      refute prompt =~ "1 回 2 軒まで"
+      # 料理も、抜けていれば数を問わず足す
+      assert prompt =~ "抜けているものは数を問わず足してください"
+      refute prompt =~ "1 回に 5 品まで"
       assert prompt =~ "県・市区町村・観光協会がその土地の名物の店として紹介している"
     end
 
