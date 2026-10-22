@@ -221,7 +221,11 @@
             </thead>
             <%!-- **収集ごとに 1 つのフォーム。** 表の行をフォームで囲めないので、欄は
                  `form` 属性でそのフォームにつなぐ --%>
-            <tbody :for={collection <- overview.collections}>
+            <%!-- **止まっている収集は塊ごと色を付ける**（「止まっています」の一言だけでは並びに埋もれる） --%>
+            <tbody
+              :for={collection <- overview.collections}
+              class={(collection.in_chiezo and !collection.enabled) && "is-stopped"}
+            >
               <% form_id = "send-#{collection.name}" %>
               <tr :for={{sweep, index} <- Enum.with_index(collection.sweeps)}>
                 <td :if={index == 0} rowspan={max(length(collection.sweeps), 1)}>
@@ -238,8 +242,25 @@
                   >Chiezo にまだありません（送ると、止まった状態で作られます）</span>
                   <br :if={collection.in_chiezo and !collection.enabled} /><span
                     :if={collection.in_chiezo and !collection.enabled}
-                    class="muted-note"
+                    class="stopped-mark"
                   >止まっています</span>
+                  <%!-- **止める・動かす**（Chiezo の `POST /v1/collect/{name}/enabled`）。動かすのは
+                       Chiezo の管理画面で chidori に任せたときだけ通る。Chidori の画面に無い収集
+                       （Chidori が依頼していない収集）には出さない --%>
+                  <button
+                    :if={collection.in_chiezo and collection.push}
+                    type="button"
+                    class="collection-switch"
+                    phx-click="switch_collection"
+                    phx-value-collection={collection.name}
+                    phx-value-enabled={to_string(!collection.enabled)}
+                    data-confirm={
+                      !collection.enabled &&
+                        "#{collection.label} を動かします。Chiezo の時計で AI が回り始めます。よろしいですか？"
+                    }
+                  >
+                    {if collection.enabled, do: "止める", else: "動かす"}
+                  </button>
                   <br :if={!collection.push} /><span
                     :if={!collection.push}
                     class="muted-note"

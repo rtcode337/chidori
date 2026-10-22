@@ -446,3 +446,92 @@ defmodule ChidoriWeb.SettingsLiveTest do
     assert html =~ "www.hanmoto.com …/9784873115658.jpg"
   end
 end
+
+defmodule ChidoriWeb.SettingsLiveSwitchTest do
+  @moduledoc """
+  設定ページの「Chiezo 収集」で、Chidori が依頼した収集を止める・動かす。
+  動かすのは Chiezo の管理画面で chidori に任せたときだけ通る（`Chidori.Chiezo.switch/3`）。
+  """
+
+  use ChidoriWeb.ConnCase, async: false
+
+  import Phoenix.LiveViewTest
+
+  alias Chidori.HttpStub
+
+  setup do
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+    :ok
+  end
+
+  defp stub(enabled, answer) do
+    parent = self()
+
+    HttpStub.stub(fn
+      %{method: :get, url: url} ->
+        if String.ends_with?(url, "/v1/collect"),
+          do:
+            HttpStub.ok(
+              Jason.encode!(%{
+                "collections" => [
+                  %{
+                    "name" => "chidori_tech",
+                    "enabled" => enabled,
+                    "sweeps" => [%{"name" => "整理", "interval_minutes" => 720}]
+                  }
+                ]
+              })
+            ),
+          else: HttpStub.ok(~s({"workers":[],"backends":[]}))
+
+      %{method: :post, url: url, body: body} ->
+        send(parent, {:posted, url, Jason.decode!(body)})
+        answer
+    end)
+  end
+
+  test "止まっている収集は塊に色を付け、「動かす」で Chidori の名乗りで動かす", %{conn: conn} do
+    stub(false, HttpStub.ok("{}"))
+    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    html = render_async(live)
+
+    assert html =~ ~s(class="is-stopped")
+    assert html =~ "止まっています"
+
+    live
+    |> element(~s(button.collection-switch[phx-value-collection="chidori_tech"]))
+    |> render_click()
+
+    assert_receive {:posted, "http://chiezo.test/v1/collect/chidori_tech/enabled",
+                    %{"enabled" => true, "requested_by" => "chidori"}}
+
+    assert render_async(live) =~ "動かしました"
+  end
+
+  test "任せていなければ、Chiezo でどうすればよいかを出す", %{conn: conn} do
+    stub(false, {:ok, %{status: 403, body: ~s({"error":"chidori には収集を有効にすることを任せていません"})}})
+    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    render_async(live)
+
+    live
+    |> element(~s(button.collection-switch[phx-value-collection="chidori_tech"]))
+    |> render_click()
+
+    assert render_async(live) =~ "「有効にすることを任せる依頼元」に chidori を入れてください"
+  end
+
+  test "動いている収集には「止める」を出す", %{conn: conn} do
+    stub(true, HttpStub.ok("{}"))
+    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    html = render_async(live)
+
+    refute html =~ ~s(class="is-stopped")
+
+    live
+    |> element(~s(button.collection-switch[phx-value-collection="chidori_tech"]), "止める")
+    |> render_click()
+
+    assert_receive {:posted, _url, %{"enabled" => false}}
+  end
+end

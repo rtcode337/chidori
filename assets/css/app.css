@@ -1097,6 +1097,10 @@ ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column:
 .collect-overview th, .collect-overview td { padding: .4rem .5rem; border-bottom: 1px solid #e3e6f0; text-align: left; vertical-align: top; }
 .collect-overview th { color: #52607a; font-weight: 700; white-space: nowrap; }
 .collect-overview tbody + tbody { border-top: 2px solid #d9dcea; }
+/* 止まっている収集は塊ごと色を付ける（一言だけでは並びに埋もれる） */
+.collect-overview tbody.is-stopped { background: #fdecea; }
+.stopped-mark { display: inline-block; margin-top: .2rem; padding: 0 .45rem; border-radius: .5rem; background: #c0392b; color: #fff; font-size: .75rem; font-weight: 700; }
+.collection-switch { display: block; margin: .3rem 0; }
 .queue-list { margin: 0; padding-left: 1.1rem; }
 .order-input { width: 4rem; }
 

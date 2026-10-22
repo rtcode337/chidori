@@ -989,6 +989,35 @@ defmodule Chidori.Chiezo do
     )
   end
 
+  @doc """
+  **Chidori が依頼した収集を止める・動かす**（Chiezo の `POST /v1/collect/{name}/enabled`）。
+  止めるのはいつでもできる。**動かすのは、Chiezo の管理画面の収集の面で chidori に
+  「有効にすることを任せる」を入れたときだけ**（入れていなければ `{:error, :not_delegated}`）。
+  `:ok`・`{:error, :not_delegated}`・`{:error, :not_ours}`（依頼元が違う）・ほかは届かなかった理由。
+  """
+  def switch(base, name, enabled) when is_binary(name) and is_boolean(enabled) do
+    body = Jason.encode!(%{enabled: enabled, requested_by: "chidori"})
+
+    case post(
+           base <> "/v1/collect/" <> URI.encode(name, &URI.char_unreserved?/1) <> "/enabled",
+           body
+         ) do
+      {:ok, %{status: 200}} ->
+        :ok
+
+      {:ok, %{status: 403, body: body}} ->
+        if is_binary(body) and String.contains?(body, "任せていません"),
+          do: {:error, :not_delegated},
+          else: {:error, :not_ours}
+
+      {:ok, %{status: status}} ->
+        {:error, {:chiezo_status, status}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
   def post(url, body, timeout \\ @timeout) do
     Http.post(url, body,
       headers: [{"user-agent", @user_agent}],

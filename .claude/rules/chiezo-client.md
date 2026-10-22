@@ -36,6 +36,8 @@ Chidori は Chiezo の「集める」層に収集を頼み、溜まったもの�
   `Chidori.SettingsRestore`（Chiezo の収集から間隔・整理を止める収集・知名度の下限を戻す）
 - 表には Chidori の時計が起こす行も並ぶ（要約の回の時刻・映画の図の「最新情報からの引き継ぎ」・食事処の「情報収集」。`CollectOverview.chidori_rows/1` と `wake/2`）。
   時刻は Chidori が持つので、ここで直しても Chiezo へは送らない（引き継ぎの行は相手を選ばせず、送るときも数えない）
+- 設定ページの表で収集を止める・動かす（`Chidori.Chiezo.switch/3` → Chiezo の `POST /v1/collect/{name}/enabled`。名乗りは `chidori`）。
+  動かすのは Chiezo の管理画面で chidori に任せたときだけ通る（403 なら任せ方を出す）。止まっている収集は塊ごと色を付ける（`tbody.is-stopped`）
 - 整理を自動で回さない収集は `by_caller`（Chiezo の巡回の時計だけを外す）。選んだものは表 `tidy_stops` に覚え、送り直すたびに載せる
 - 巡回の名前は `Chidori.SweepNames` から選ぶ。仕事が同じなら同じ名前にし、当てはまらない仕事が出たときだけ足す
 - AI を動かす依頼は `Chidori.SingleFlight` で鍵ごとに 1 本にする（重ねて押されても枠を食わない）
