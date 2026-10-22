@@ -253,20 +253,10 @@
         <p :if={@books in [nil, :loading]} class="muted-note">読み込んでいます…</p>
         <p :if={match?({:error, _}, @books)} class="muted-note">本棚を読めませんでした。</p>
         <%= if match?({:ok, _}, @books) do %>
-          <h2 class="news-section-title">
-            オライリー以外の未読の上位 {ChidoriWeb.TopBooks.count()} 冊
-          </h2>
+          <h2 class="news-section-title">未読の上位 {ChidoriWeb.TopBooks.count()} 冊</h2>
           <ChidoriWeb.TopBooks.top_books
             books={elem(@books, 1)}
             read={ChidoriWeb.BookModal.read_titles(@book_marks)}
-            open_event="open_book"
-          />
-          <%!-- **オライリーの本は別の枠に**（Kindle で読めないので、上の順位とは分けて数える） --%>
-          <h2 class="news-section-title">オライリーの未読の上位 {ChidoriWeb.TopBooks.count()} 冊</h2>
-          <ChidoriWeb.TopBooks.top_books
-            books={elem(@books, 1)}
-            read={ChidoriWeb.BookModal.read_titles(@book_marks)}
-            oreilly
             open_event="open_book"
           />
         <% end %>

@@ -1059,6 +1059,8 @@ ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column:
 .book-detail-cover img { width: 6rem; max-height: none; margin: 0; border-radius: .3rem; }
 .book-detail-cover img.is-missing { visibility: hidden; }
 .book-badge { display: inline-block; margin-left: .3rem; padding: 0 .45rem; border-radius: 999px; background: #332c75; color: #fff; font-size: .7rem; font-weight: 600; vertical-align: middle; }
+/* オライリーの本の印。Kindle で読めない本だと一目で分かるよう、定番の印と色を分ける */
+.book-badge.is-oreilly { background: #b3261e; }
 .book-score { display: block; margin: 0 0 .25rem; color: #332c75; font-size: .85rem; }
 .book-posts { margin: 0 0 .4rem; padding-left: 1.1rem; font-size: .8rem; line-height: 1.5; }
 .book-posts li { margin-bottom: .2rem; overflow-wrap: anywhere; }

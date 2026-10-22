@@ -2,7 +2,7 @@ defmodule ChidoriWeb.TopBooksTest do
   @moduledoc """
   本棚の上位の枠（技術書の画面とトップページ）。見ているのは、**10 冊まで並ぶこと**、
   **順位を書名の左に文字で出すこと**、**表紙を押しても書名と同じく本の頁へ行くこと**、
-  **オライリーの本を別の枠に分けること**、**分けた枠でも総合の順位を添えること**です。
+  **オライリーの本も同じ並びに混ぜて印で見分けること**、**総合の順位を添えること**です。
   """
 
   use ExUnit.Case, async: true
@@ -67,17 +67,15 @@ defmodule ChidoriWeb.TopBooksTest do
     assert html =~ ~r|<div class="top-book-cover\s*">|
   end
 
-  test "オライリーの本は既定の枠から外し、oreilly の枠にだけ並べる（順位はそれぞれで数える）" do
+  test "オライリーの本も同じ並びに混ぜ、札の印で見分ける" do
     books = [book(1, %{oreilly: true}), book(2), book(3, %{oreilly: true})]
 
-    general = render_component(&TopBooks.top_books/1, books: books)
-    refute general =~ "本1"
-    assert general =~ ~r|1位</span>\s*<a[^>]*>\s*本2|
-
-    oreilly = render_component(&TopBooks.top_books/1, books: books, oreilly: true)
-    refute oreilly =~ "本2"
-    assert oreilly =~ ~r|1位</span>\s*<a[^>]*>\s*本1|
-    assert oreilly =~ ~r|2位</span>\s*<a[^>]*>\s*本3|
+    html = render_component(&TopBooks.top_books/1, books: books)
+    assert html =~ ~r|1位</span>\s*<a[^>]*>\s*本1|
+    assert html =~ ~r|2位</span>\s*<a[^>]*>\s*本2|
+    assert html =~ ~r|3位</span>\s*<a[^>]*>\s*本3|
+    # 印はオライリーの本にだけ付く
+    assert length(Regex.scan(~r/book-badge is-oreilly/, html)) == 2
   end
 
   test "買う口のリンクを出し、押しても札を開かない" do
@@ -91,7 +89,7 @@ defmodule ChidoriWeb.TopBooksTest do
              ~r|<a href="https://example.com/kindle"[^>]*onclick="event.stopPropagation\(\)"[^>]*>\s*Kindle で探す|
   end
 
-  test "どちらの枠にも、オライリーも読んだ本も混ぜた本棚ぜんたいでの総合の順位を添える" do
+  test "読んだ本も数えた本棚ぜんたいでの総合の順位を添える" do
     books = [book(1, %{oreilly: true}), book(2), book(3), book(4, %{oreilly: true})]
     read = MapSet.new(["本2"])
 
@@ -100,10 +98,7 @@ defmodule ChidoriWeb.TopBooksTest do
     # 本2 は読んだので枠には出さないが、総合の順位には数える（読むたびに繰り上がらない）
     refute general =~ "本2"
     assert general =~ ~r|本3\s*</a>\s*<span class="top-book-overall">（総合 3位）</span>|
-    assert general =~ ~r|<span class="top-book-rank">1位</span>\s*<a[^>]*>\s*本3|
-
-    oreilly = render_component(&TopBooks.top_books/1, books: books, read: read, oreilly: true)
-    assert oreilly =~ ~r|本1\s*</a>\s*<span class="top-book-overall">（総合 1位）</span>|
-    assert oreilly =~ ~r|本4\s*</a>\s*<span class="top-book-overall">（総合 4位）</span>|
+    assert general =~ ~r|<span class="top-book-rank">2位</span>\s*<a[^>]*>\s*本3|
+    assert general =~ ~r|本4\s*</a>\s*<span class="top-book-overall">（総合 4位）</span>|
   end
 end

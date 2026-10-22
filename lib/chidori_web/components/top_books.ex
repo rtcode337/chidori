@@ -23,20 +23,16 @@ defmodule ChidoriWeb.TopBooks do
   # この枠は次に何を読むかを決めるためのもので、読み終えた本が残ると押し出される
   attr :read, :any, default: MapSet.new()
 
-  # **true ならオライリーの本だけ、false ならオライリー以外だけ**を並べる
-  # （`Chidori.Datasets.Bookshelf.oreilly_isbn?/1`）。順位はそれぞれの枠の中で数える
-  attr :oreilly, :boolean, default: false
-
   # **押すとその本の詳細を開く**（画面が受ける event の名前。`title` を渡す。詳細は
   # `ChidoriWeb.BookModal`）。書名のリンクは本の頁へ行くので、開く口は札そのものに置く
   attr :open_event, :string, default: nil
 
   def top_books(assigns) do
-    all_unread = Enum.reject(assigns.books, &MapSet.member?(assigns.read, &1.title))
-    unread = Enum.filter(all_unread, &(Map.get(&1, :oreilly, false) == assigns.oreilly))
+    # **オライリーの本も同じ並びに混ぜ、札の印で見分ける**（`Chidori.Datasets.Bookshelf.oreilly_isbn?/1`）。
+    # Kindle で読めないので枠を分けていた頃は、2 つの枠の何位どうしが並ぶのかが読めなかった
+    unread = Enum.reject(assigns.books, &MapSet.member?(assigns.read, &1.title))
 
-    # **総合の順位も添える**（オライリーも混ぜ、**読んだ本も数えた**本棚ぜんたいでの順位）。
-    # 枠を分けると、もう一方の枠の何位と並ぶのかが読めなくなる。読んだ本を数えないと、
+    # **総合の順位も添える**（**読んだ本も数えた**本棚ぜんたいでの順位）。読んだ本を数えないと、
     # 1 冊読むたびに下の本の順位が繰り上がり、本そのものの評価が変わったように見える
     overall =
       assigns.books
@@ -111,6 +107,7 @@ defmodule ChidoriWeb.TopBooks do
             <%!-- 総合の順位は書名の後ろに（順位の欄に入れると、書名の書き出しがそろわない） --%>
             <span class="top-book-overall">（総合 {@overall[book.title]}位）</span>
             <span :if={book.classic} class="book-badge">定番</span>
+            <span :if={Map.get(book, :oreilly)} class="book-badge is-oreilly">オライリー</span>
           </p>
           <p class="top-book-score">
             記事 <strong>{book.docs}</strong>
@@ -137,9 +134,7 @@ defmodule ChidoriWeb.TopBooks do
         </div>
       </li>
     </ol>
-    <p :if={@shown == []} class="muted-note">
-      {if @oreilly, do: "まだ本棚にオライリーの本がありません。", else: "まだ本棚に本がありません。"}
-    </p>
+    <p :if={@shown == []} class="muted-note">まだ本棚に本がありません。</p>
     <p :if={@more_href}><a href={@more_href}>本棚をぜんぶ見る</a></p>
     """
   end

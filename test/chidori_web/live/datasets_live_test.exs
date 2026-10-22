@@ -1033,17 +1033,15 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       assert shelf =~ "記事 5 本が勧めている"
       assert shelf =~ "定番"
 
-      # 順は本棚の一覧で見る（上位の枠はオライリーの本を別の枠に分ける）
+      # 順は本棚の一覧で見る
       [_, list] = String.split(shelf, ~s(class="book-list"), parts: 2)
       {first, _} = :binary.match(list, "リーダブルコード")
       {second, _} = :binary.match(list, "入門 監視")
       assert first < second
 
-      # リーダブルコードはオライリーの本なので、上位の枠ではオライリーの枠にだけ出る
+      # リーダブルコードはオライリーの本。上位の枠にも同じ並びで出て、印で見分ける
       [top, _] = String.split(shelf, ~s(class="book-list"), parts: 2)
-      [general, oreilly] = String.split(top, "オライリーの未読の上位", parts: 2)
-      refute general =~ "リーダブルコード"
-      assert oreilly =~ "リーダブルコード"
+      assert top =~ ~r|リーダブルコード\s*</a>.*?book-badge is-oreilly|s
       # 数を持たない本（見出しを書き換えて足されたもの）は並べない
       refute shelf =~ ~s(phx-value-title="リーダブルコード")
     end
@@ -1116,7 +1114,8 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       {:ok, live, html} = open_live(conn, ~p"/datasets?view=books")
       html = render_async(live) || html
 
-      assert html =~ "オライリー以外の未読の上位"
+      assert html =~ "未読の上位"
+      refute html =~ "オライリー以外の未読の上位"
       assert html =~ ~r|<ol[^>]*class="top-books">.*本:リーダブルコード|s
 
       live
@@ -1140,7 +1139,6 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       assert html =~ ~s(class="book-card is-read")
       assert html =~ "読んだ（2026-10-01）"
       # 未読の上位の枠からは外れる
-      # （リーダブルコードはオライリーの本なので、オライリーの枠も含めてどちらにも出ない）
       for [top] <- Regex.scan(~r|<ol[^>]*class="top-books">.*?</ol>|s, html) do
         refute top =~ "本:リーダブルコード"
       end

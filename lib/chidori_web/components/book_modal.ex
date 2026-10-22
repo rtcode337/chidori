@@ -38,6 +38,7 @@ defmodule ChidoriWeb.BookModal do
         <div class="artwork-head">
           <strong id="book-detail-title">
             {@book.name} <span :if={@book.classic} class="book-badge">定番</span>
+            <span :if={Map.get(@book, :oreilly)} class="book-badge is-oreilly">オライリー</span>
           </strong>
           <button type="button" phx-click="close_book">閉じる</button>
         </div>

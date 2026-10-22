@@ -82,7 +82,7 @@ defmodule Chidori.Datasets.Bookshelf do
   @book_page_base "https://www.hanmoto.com/bd/isbn/"
 
   # オライリーの本の ISBN の頭（日本の 2 つの出版者記号と、原書の主な出版者記号）。
-  # **オライリーの本は Kindle で読めない**ので、上位の枠を分ける。**見分けるのは ISBN だけ** ——
+  # **オライリーの本は Kindle で読めない**ので、札に印を付けて買う口を分ける。**見分けるのは ISBN だけ** ——
   # 説明に「O'Reilly」とあっても、他社から出た邦訳の原書名のことがある
   @oreilly_isbn_prefixes [
     "97848731",

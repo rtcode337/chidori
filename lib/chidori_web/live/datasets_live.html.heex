@@ -208,18 +208,10 @@
       <%!-- **上位の数冊を先に**（トップページと同じ枠）。本棚は何百冊にもなるので、
            いま何が勧められているかを一目で見るには長すぎる --%>
       <%!-- **読んだ本は外す**（この枠は次に何を読むかを決めるためのもの） --%>
-      <h2>オライリー以外の未読の上位 {ChidoriWeb.TopBooks.count()} 冊</h2>
-      <%!-- 押すと本棚の詳細と同じもの（勧めている記事つき）が開く --%>
+      <h2>未読の上位 {ChidoriWeb.TopBooks.count()} 冊</h2>
+      <%!-- 押すと本棚の詳細と同じもの（勧めている記事つき）が開く。オライリーの本は札の印で見分ける --%>
       <ChidoriWeb.TopBooks.top_books
         books={all_books}
-        open_event="open_book"
-        read={read_titles(@book_marks)}
-      />
-      <%!-- **オライリーの本は別の枠に**（Kindle で読めないので、上の順位とは分けて数える） --%>
-      <h2>オライリーの未読の上位 {ChidoriWeb.TopBooks.count()} 冊</h2>
-      <ChidoriWeb.TopBooks.top_books
-        books={all_books}
-        oreilly
         open_event="open_book"
         read={read_titles(@book_marks)}
       />
@@ -279,6 +271,7 @@
                 {book.name}
               </button>
               <span :if={book.classic} class="book-badge">定番</span>
+              <span :if={Map.get(book, :oreilly)} class="book-badge is-oreilly">オライリー</span>
               <%!-- **読んだ本は印で分かるように**（本棚には残す。上位の枠からは外す） --%>
               <span
                 :if={book_mark_summary(book_mark_of(@book_marks, book.title))}
