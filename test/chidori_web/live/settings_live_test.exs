@@ -450,7 +450,7 @@ end
 defmodule ChidoriWeb.SettingsLiveSwitchTest do
   @moduledoc """
   設定ページの「Chiezo 収集」で、Chidori が依頼した収集を止める・動かす。
-  動かすのは Chiezo の管理画面で chidori に任せたときだけ通る（`Chidori.Chiezo.switch/3`）。
+  動かすのは Chiezo の管理画面で外部からの有効化を許可したときだけ通る（`Chidori.Chiezo.switch/3`）。
   """
 
   use ChidoriWeb.ConnCase, async: false
@@ -509,8 +509,8 @@ defmodule ChidoriWeb.SettingsLiveSwitchTest do
     assert render_async(live) =~ "動かしました"
   end
 
-  test "任せていなければ、Chiezo でどうすればよいかを出す", %{conn: conn} do
-    stub(false, {:ok, %{status: 403, body: ~s({"error":"chidori には収集を有効にすることを任せていません"})}})
+  test "許可されていなければ、Chiezo でどうすればよいかを出す", %{conn: conn} do
+    stub(false, {:ok, %{status: 403, body: ~s({"error":"外部からの有効化を許可していません"})}})
     {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
     render_async(live)
 
@@ -518,7 +518,7 @@ defmodule ChidoriWeb.SettingsLiveSwitchTest do
     |> element(~s(button.collection-switch[phx-value-collection="chidori_tech"]))
     |> render_click()
 
-    assert render_async(live) =~ "「有効にすることを任せる依頼元」に chidori を入れてください"
+    assert render_async(live) =~ "「外部からの有効化を許可する」を押してください"
   end
 
   test "動いている収集には「止める」を出す", %{conn: conn} do

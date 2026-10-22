@@ -293,7 +293,7 @@ defmodule ChidoriWeb.SettingsLive do
   end
 
   # **収集を止める・動かす**（Chiezo の `POST /v1/collect/{name}/enabled`）。動かすのは Chiezo の
-  # 管理画面で chidori に任せたときだけ通る（`Chidori.Chiezo.switch/3`）。終わったら表を読み直す
+  # 管理画面で外部からの有効化を許可したときだけ通る（`Chidori.Chiezo.switch/3`）。終わったら表を読み直す
   def handle_event("switch_collection", %{"collection" => name, "enabled" => enabled}, socket) do
     case News.chiezo_base_url() do
       base when is_binary(base) ->
@@ -555,8 +555,8 @@ defmodule ChidoriWeb.SettingsLive do
   def switch_text(true, :ok), do: "動かしました（Chiezo の時計で回り始めます）。"
   def switch_text(false, :ok), do: "止めました（時計では走りません。画面から押した 1 回は走ります）。"
 
-  def switch_text(_on?, {:error, :not_delegated}),
-    do: "動かせませんでした。Chiezo の管理画面の収集の面で「有効にすることを任せる依頼元」に chidori を入れてください。"
+  def switch_text(_on?, {:error, :not_allowed}),
+    do: "動かせませんでした。Chiezo の管理画面の収集の面で「外部からの有効化を許可する」を押してください。"
 
   def switch_text(_on?, {:error, :not_ours}), do: "Chidori が依頼した収集ではないので、切り替えられません。"
   def switch_text(_on?, {:error, _reason}), do: "切り替えられませんでした（Chiezo に届きませんでした）。"

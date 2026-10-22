@@ -991,9 +991,9 @@ defmodule Chidori.Chiezo do
 
   @doc """
   **Chidori が依頼した収集を止める・動かす**（Chiezo の `POST /v1/collect/{name}/enabled`）。
-  止めるのはいつでもできる。**動かすのは、Chiezo の管理画面の収集の面で chidori に
-  「有効にすることを任せる」を入れたときだけ**（入れていなければ `{:error, :not_delegated}`）。
-  `:ok`・`{:error, :not_delegated}`・`{:error, :not_ours}`（依頼元が違う）・ほかは届かなかった理由。
+  止めるのはいつでもできる。**動かすのは、Chiezo の管理画面の収集の面で「外部からの有効化を
+  許可する」を押したときだけ**（許可していなければ `{:error, :not_allowed}`）。
+  `:ok`・`{:error, :not_allowed}`・`{:error, :not_ours}`（依頼元が違う）・ほかは届かなかった理由。
   """
   def switch(base, name, enabled) when is_binary(name) and is_boolean(enabled) do
     body = Jason.encode!(%{enabled: enabled, requested_by: "chidori"})
@@ -1006,8 +1006,8 @@ defmodule Chidori.Chiezo do
         :ok
 
       {:ok, %{status: 403, body: body}} ->
-        if is_binary(body) and String.contains?(body, "任せていません"),
-          do: {:error, :not_delegated},
+        if is_binary(body) and String.contains?(body, "許可していません"),
+          do: {:error, :not_allowed},
           else: {:error, :not_ours}
 
       {:ok, %{status: status}} ->

@@ -245,7 +245,7 @@
                     class="stopped-mark"
                   >止まっています</span>
                   <%!-- **止める・動かす**（Chiezo の `POST /v1/collect/{name}/enabled`）。動かすのは
-                       Chiezo の管理画面で chidori に任せたときだけ通る。Chidori の画面に無い収集
+                       Chiezo の管理画面で外部からの有効化を許可したときだけ通る。Chidori の画面に無い収集
                        （Chidori が依頼していない収集）には出さない --%>
                   <button
                     :if={collection.in_chiezo and collection.push}
