@@ -79,6 +79,37 @@ defmodule Chidori.Relations.FacesTest do
     assert [%{kind: :photo, result: :retry}] = status.recent
   end
 
+  test "Chiezo がオフライン版から返した写真のあとは、間を空けずに次を頼む" do
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+    test_pid = self()
+
+    Chidori.HttpStub.stub(fn
+      %{url: "http://chiezo.test/v1/thumbs", body: body} ->
+        send(test_pid, {:asked, Jason.decode!(body)["url"]})
+
+        {:ok,
+         %{
+           status: 200,
+           body: ~s({"thumb": "/v1/thumbs/#{String.duplicate("a", 40)}.webp", "from": "offline"})
+         }}
+
+      %{url: "http://chiezo.test/v1/thumbs/" <> _name} ->
+        {:ok, %{status: 200, body: "WEBP"}}
+    end)
+
+    {:ok, pid} = Faces.start_link(name: :faces_offline_test)
+    urls = for n <- 1..2, do: "https://upload.wikimedia.org/wikipedia/commons/a/ab/Q#{n}.jpg"
+    GenServer.cast(pid, {:fetch, urls, 330})
+
+    # 外へ出た写真なら 1 分空けるところを、1 秒ほどで 2 枚目を頼む
+    assert_receive {:asked, first}, 1_000
+    assert first =~ "Q1.jpg"
+    assert_receive {:asked, second}, 3_000
+    assert second =~ "Q2.jpg"
+    _ = :sys.get_state(pid)
+  end
+
   test "技術書の表紙は ISBN で写しを引き、取れなかった本にだけ「表紙なし」の絵を出す" do
     face = stored("isbn:9784873115658", "ok", "WEBP")
     stored("isbn:9784000000002", "missing")

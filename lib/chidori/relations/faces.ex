@@ -20,7 +20,8 @@ defmodule Chidori.Relations.Faces do
     Chiezo は同じ絵を 1 度しか取らない）、その写しを受け取る —— 外への通信先を Chiezo だけにする
   - 頼むのは**小さな縮小版**（横 120px。Commons の決まった幅で、置き場の写しが当たる）だけ。
     原寸は引かない
-  - **1 枚ずつ間を空けて**頼む（`@interval_ms`）
+  - **1 枚ずつ間を空けて**頼む（`@interval_ms`）。Chiezo が Wikipedia のオフライン版から返した写真
+    （`from` が `offline`）は外へ出ていないので、間を詰めて次を頼む（`@offline_interval_ms`）
   - **断られたら頼むのをやめる。** Chiezo が取りに行けなかった（Wikimedia に「多すぎる」と
     断られた・つながらない）ら、列に残っているぶんを捨て、しばらく（`@pause_ms`）は新しく
     並べもしない。断られているのに 1.5 秒おきに頼み続け、2 分で 50 回以上断られていた
@@ -48,6 +49,8 @@ defmodule Chidori.Relations.Faces do
   # 回線ごとに数えて絞る（1.5 秒おきでも 10 秒おきでも 2 枚目で 429 だった）。断られて 30 分
   # 休むのを繰り返すより、断られにくい速さで続けるほうが早く埋まる（110 枚で 2 時間ほど）
   @interval_ms 60_000
+  # Chiezo が外へ出ずに返した写真（Wikipedia のオフライン版・置き場の写し）のあとに空ける間（ミリ秒）
+  @offline_interval_ms 1_000
   # 表紙を 1 冊取るごとに空ける間（ミリ秒。版元ドットコムは作り置きの絵を返すだけ）
   @cover_interval_ms 5_000
   # 取りに行けなかったら、この間は頼まない（ミリ秒）
@@ -273,7 +276,7 @@ defmodule Chidori.Relations.Faces do
 
           result ->
             store(key, result)
-            Process.send_after(self(), :next, interval(kind))
+            Process.send_after(self(), :next, interval(kind, result))
 
             %{
               noted(state, key, kind, if(result == :missing, do: :missing, else: :ok))
@@ -297,8 +300,13 @@ defmodule Chidori.Relations.Faces do
     %{state | recent: Enum.take([entry | Map.get(state, :recent, [])], @recent)}
   end
 
-  defp interval(:cover), do: @cover_interval_ms
-  defp interval(_photo), do: @interval_ms
+  defp interval(:cover, _result), do: @cover_interval_ms
+
+  # Chiezo が外へ出ずに返した写真（Wikipedia のオフライン版か Chiezo の置き場の写し）なら、間を空けずに次を頼む
+  defp interval(_photo, {:ok, _body, _type, origin}) when origin in ["offline", "cache"],
+    do: @offline_interval_ms
+
+  defp interval(_photo, _result), do: @interval_ms
 
   defp download("isbn:" <> isbn, :cover) do
     with base when is_binary(base) <- Chiezo.base_url(),
@@ -321,10 +329,10 @@ defmodule Chidori.Relations.Faces do
     thumb = Chidori.Artwork.thumb(url, width)
 
     with base when is_binary(base) <- Chiezo.base_url(),
-         {:ok, path} <- Chiezo.thumb_of(base, thumb),
+         {:ok, path, origin} <- Chiezo.thumb_from(base, thumb),
          {:ok, %{status: 200, body: body}} when byte_size(body) in 1..@max_bytes <-
            Chiezo.get(base <> path) do
-      {:ok, body, "image/webp"}
+      {:ok, body, "image/webp", origin}
     else
       # 取れない写真（無い・絵でない）は、取れなかったとして残す（取りに行き続けない）
       {:error, :no_image} ->
@@ -345,8 +353,14 @@ defmodule Chidori.Relations.Faces do
   defp store(url, result) do
     attrs =
       case result do
-        {:ok, body, type} -> %{source_url: url, image: body, content_type: type, status: "ok"}
-        :missing -> %{source_url: url, image: nil, content_type: "", status: "missing"}
+        {:ok, body, type} ->
+          %{source_url: url, image: body, content_type: type, status: "ok"}
+
+        {:ok, body, type, _origin} ->
+          %{source_url: url, image: body, content_type: type, status: "ok"}
+
+        :missing ->
+          %{source_url: url, image: nil, content_type: "", status: "missing"}
       end
 
     %Face{}

@@ -700,11 +700,24 @@ defmodule Chidori.Chiezo do
   画面では `thumb_path/1` で Chidori の配り口（`/thumbs/…`）に直して使う。
   """
   def thumb_of(base, url) when is_binary(url) do
+    with {:ok, path, _origin} <- thumb_from(base, url), do: {:ok, path}
+  end
+
+  @doc """
+  `thumb_of/2` と同じく縮小版を作らせ、**どこから取ったか**も返します（`{:ok, 場所, 出どころ}`）。
+  出どころは Chiezo の `from`（`"cache"` = Chiezo の置き場の写し・`"offline"` = Wikipedia のオフライン版・
+  `"wikimedia"` = 外へ取りに行った。古い Chiezo は返さないので `"wikimedia"` とみなす）。
+  外へ出なかった頼みなら、間を空けずに次を頼める。
+  """
+  def thumb_from(base, url) when is_binary(url) do
     case post(base <> "/v1/thumbs", Jason.encode!(%{url: url})) do
       {:ok, %{status: 200, body: body}} ->
         case Jason.decode(body) do
-          {:ok, %{"thumb" => path}} when is_binary(path) -> {:ok, path}
-          _other -> {:error, :chiezo_unexpected_body}
+          {:ok, %{"thumb" => path} = got} when is_binary(path) ->
+            {:ok, path, Map.get(got, "from", "wikimedia")}
+
+          _other ->
+            {:error, :chiezo_unexpected_body}
         end
 
       # 取れない絵（無い・絵でない・大きすぎる）と、決めたホストでない絵。どちらも取り直しても同じ
