@@ -68,6 +68,20 @@ liveSocket.connect()
 // service worker が受け持っている必要がある。https（か localhost）でないと入らない
 if ("serviceWorker" in navigator && window.isSecureContext) {
   navigator.serviceWorker.register("/sw.js").catch(() => {})
+
+  // 通知を押したとき、service worker から「ここへ移って」と頼まれたら**自分で移る**（sw.js の askToGo）。
+  // iPhone のホーム画面アプリでは service worker の側から画面を移せないことがあり、アプリが
+  // 前に出るだけで前の画面のままだった。行き先は同じサイトの中だけ。同じ画面でも読み直す
+  // （まとめの通知は「いちばん新しいまとめを開く」なので、開き直さないと出ない）
+  navigator.serviceWorker.addEventListener("message", event => {
+    const data = event.data || {}
+    if (data.type !== "chidori:navigate" || typeof data.url !== "string") return
+    const url = new URL(data.url, window.location.origin)
+    if (url.origin !== window.location.origin) return
+    if (event.ports && event.ports[0]) event.ports[0].postMessage({ok: true})
+    window.location.assign(url.href)
+  })
+  navigator.serviceWorker.startMessages()
 }
 
 // expose liveSocket on window for web console debug logs and latency simulation:

@@ -35,6 +35,7 @@ paths:
 - 通知へ流すのはレポート冒頭の要旨だけ。ntfy には URL のまま、画面では見出しのリンクにする
 - 届かなかったものは知らせた扱いにしない。押されたときは知らせ済みでも送る
 - ntfy の宛先（トピックと場所）は全部の通知で 1 つ（表 `ntfy_settings`）。既定の宛先は持たない。場所が空なら `https://ntfy.sh`
+- 通知を押したら、service worker が開いている画面に `chidori:navigate` を送り、画面（`app.js`）が自分で行き先へ移る（返事が無ければ `client.navigate`、だめなら `openWindow`）。iPhone のホーム画面アプリでは `client.navigate` が黙って何もしない
 - 通知を押した先は `/news?view=<収集>&digest=latest`。`PHX_HOST` が `localhost` のままなら ntfy にリンクを添えない
 - Web Push: 送り手の鍵（VAPID）は最初に要ったときに作って DB（`web_push_keys`）に置く。宛先はブラウザの配信元
   （Apple・Google・Mozilla・Microsoft）のホストだけ受け取る。404・410 を返した端末は外す。配信元の本文は画面に出さずログへ。

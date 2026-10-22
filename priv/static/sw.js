@@ -34,6 +34,30 @@ self.addEventListener("push", event => {
   event.waitUntil(self.registration.showNotification(title, options))
 })
 
+// 画面が「移った」と返すのを待つ長さ（ミリ秒）。返事が無ければ、古い画面とみなして別の手で移す
+const ASK_TIMEOUT_MS = 1500
+
+// **開いている画面に、自分で行き先へ移ってもらう**（画面の側は app.js の "chidori:navigate"）。
+// 移ると返事をくれたら true。iPhone のホーム画面アプリでは、こちらから移す `client.navigate` が
+// 失敗も言わずに何もしないことがあり、通知を押してもアプリが前に出るだけで、前に見ていた画面の
+// ままだった。画面の側で `location` を変えるなら、どの端末でも確かに移る
+function askToGo(client, url) {
+  return new Promise(resolve => {
+    const channel = new MessageChannel()
+    const timer = setTimeout(() => resolve(false), ASK_TIMEOUT_MS)
+    channel.port1.onmessage = () => {
+      clearTimeout(timer)
+      resolve(true)
+    }
+    try {
+      client.postMessage({type: "chidori:navigate", url}, [channel.port2])
+    } catch (_error) {
+      clearTimeout(timer)
+      resolve(false)
+    }
+  })
+}
+
 // 押したら、**開いている Chidori があればそれを前に出して行き先へ移す**。
 // 無ければ新しく開く（ホーム画面から入れた端末では、アプリとして開く）
 self.addEventListener("notificationclick", event => {
@@ -45,11 +69,16 @@ self.addEventListener("notificationclick", event => {
     const same = windows.find(client => new URL(client.url).origin === self.location.origin)
 
     if (same) {
-      await same.focus()
+      try {
+        await same.focus()
+      } catch (_error) {
+        // 前に出せなくても、移ってもらうことはできる
+      }
+      if (await askToGo(same, url)) return
+      // 返事をくれない画面（この仕組みを持たない古い画面）は、こちらから移す
       if ("navigate" in same) {
         try {
-          await same.navigate(url)
-          return
+          if (await same.navigate(url)) return
         } catch (_error) {
           // 受け持っていない画面は移せない。新しく開くほうへ倒す
         }

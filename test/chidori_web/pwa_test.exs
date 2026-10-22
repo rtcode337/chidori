@@ -17,6 +17,18 @@ defmodule ChidoriWeb.PwaTest do
     assert %{"start_url" => "/", "display" => "standalone"} = Jason.decode!(manifest.resp_body)
   end
 
+  test "通知を押したら、開いている画面に自分で移ってもらう（iPhone のホーム画面アプリ向け）" do
+    # service worker からは移せないことがあるので、画面に頼み、返事が無ければ別の手で移す
+    sw = File.read!(Application.app_dir(:chidori, "priv/static/sw.js"))
+    assert sw =~ ~s(postMessage({type: "chidori:navigate", url})
+    assert sw =~ "same.navigate(url)"
+    assert sw =~ "openWindow(url)"
+
+    app = File.read!(Path.expand("../../assets/js/app.js", __DIR__))
+    assert app =~ ~s(data.type !== "chidori:navigate")
+    assert app =~ "url.origin !== window.location.origin"
+  end
+
   test "manifest が指すアイコンは、実際に配れる", %{conn: _conn} do
     %{"icons" => icons} =
       :chidori
