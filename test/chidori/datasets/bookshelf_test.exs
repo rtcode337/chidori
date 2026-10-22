@@ -108,13 +108,12 @@ defmodule Chidori.Datasets.BookshelfTest do
       assert Enum.map(books, & &1.name) == ["多い", "同じ数で直近が多い", "少ない"]
     end
 
-    test "見出しの「本:」は外し、分野と定番の印を読む" do
+    test "見出しの「本:」は外し、分野を読む（定番の印は付けない）" do
       b = book("本:リーダブルコード", %{"docs" => 3}, ["技術書", "分野:設計・アーキテクチャ"])
 
       assert b.name == "リーダブルコード"
       assert b.fields == ["設計・アーキテクチャ"]
-      assert b.classic
-      refute book("本:x", %{"docs" => 2}).classic
+      refute Map.has_key?(b, :classic)
     end
 
     test "ISBN を 13 桁に揃えて持つ（表紙は `with_covers/1` が付ける）" do

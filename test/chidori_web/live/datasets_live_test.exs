@@ -1031,7 +1031,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       assert shelf =~ "book-cover is-empty"
       refute shelf =~ "hanmoto.com/bd/img"
       assert shelf =~ "記事 5 本が勧めている"
-      assert shelf =~ "定番"
+      refute shelf =~ ~s(class="book-badge">定番<)
 
       # 順は本棚の一覧で見る
       [_, list] = String.split(shelf, ~s(class="book-list"), parts: 2)

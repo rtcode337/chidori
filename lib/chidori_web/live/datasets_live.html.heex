@@ -229,7 +229,7 @@
         </button>
       </p>
       <p class="muted-note">
-        おすすめ度は<strong>その本を勧めている記事の本数</strong>です（機械が数えたもの）。 {Chidori.Datasets.Bookshelf.classic_sources()} 本以上で「定番」。表紙は
+        おすすめ度は<strong>その本を勧めている記事の本数</strong>です（機械が数えたもの）。表紙は
         <a href="https://www.hanmoto.com/" target="_blank" rel="noreferrer">版元ドットコム</a>
         の書影です。
       </p>
@@ -270,7 +270,6 @@
               >
                 {book.name}
               </button>
-              <span :if={book.classic} class="book-badge">定番</span>
               <span :if={Map.get(book, :oreilly)} class="book-badge is-oreilly">オライリー</span>
               <%!-- **読んだ本は印で分かるように**（本棚には残す。上位の枠からは外す） --%>
               <span

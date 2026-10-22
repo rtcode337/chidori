@@ -106,7 +106,6 @@ defmodule ChidoriWeb.TopBooks do
             <span :if={!book.page_url}>{book.name}</span>
             <%!-- 総合の順位は書名の後ろに（順位の欄に入れると、書名の書き出しがそろわない） --%>
             <span class="top-book-overall">（総合 {@overall[book.title]}位）</span>
-            <span :if={book.classic} class="book-badge">定番</span>
             <span :if={Map.get(book, :oreilly)} class="book-badge is-oreilly">オライリー</span>
           </p>
           <p class="top-book-score">

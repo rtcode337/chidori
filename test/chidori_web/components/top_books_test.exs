@@ -19,7 +19,6 @@ defmodule ChidoriWeb.TopBooksTest do
         near: [],
         cover_url: "https://example.com/cover/#{n}.jpg",
         page_url: "https://example.com/book/#{n}",
-        classic: false,
         docs: 20 - n,
         recent: 0,
         fields: [],

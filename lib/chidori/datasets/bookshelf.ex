@@ -11,8 +11,9 @@ defmodule Chidori.Datasets.Bookshelf do
   「Readable Code」）、分野を付ける、技術書でない語を外す、一言で説明する ——
   どれも数では決まりません。**トピックの網とまったく同じ形**です。
 
-  **定番と候補は数で分けます**（#{3} 本以上で定番）。1 人が絶賛した本と、
-  何十本の記事が挙げてきた本は別物で、そこが「技術者なら読んでいる」の境目です。
+  **画面には記事の数そのものを出し、その数の順に並べます**。1 人が絶賛した本と、
+  何十本の記事が挙げてきた本の違いは数で読めるので、「定番」のような印は付けません
+  （3 本以上に付けていた頃は、上位の本のほとんどに付いて何も見分けなかった）。
   """
 
   alias Chidori.Chiezo
@@ -37,10 +38,6 @@ defmodule Chidori.Datasets.Bookshelf do
   # 話題の語彙を持つ技術ニュースの話題
   @tech_topics "chidori_tech"
 
-  # 定番と候補の印
-  @classic_tag "定番"
-  @candidate_tag "候補"
-
   # ISBN のタグの頭（`ISBN:9784873115658`）。**脇書きと同じ番号をタグにも付ける** ——
   # 整理の回が全冊を見る差し込み口（`{names}`）は見出しとタグしか見せないので、
   # タグに無いと、同じ本を畳むときに版を見分ける手がかりが無い
@@ -55,9 +52,6 @@ defmodule Chidori.Datasets.Bookshelf do
   # 整理に渡す順（`unreviewed_by`）。**勧めている記事の多い本から**調べさせる ——
   # 20 冊ずつしか渡さないので、読む人の目に触れやすい本を先に仕上げる
   @tidy_order "docs"
-
-  # 定番に上げる下限（勧めている記事の数）。**3 は「たまたま」を外せる数**
-  @classic_sources 3
 
   # 名簿に載せる下限。**1 本の記事にしか出てこない本は、まだ本棚に置かない**
   # （記事が増えれば上がってくる）
@@ -118,20 +112,11 @@ defmodule Chidori.Datasets.Bookshelf do
   @doc "話題の語彙を持つ技術ニュースの収集。"
   def tech_topics, do: @tech_topics
 
-  @doc "定番の印。"
-  def classic_tag, do: @classic_tag
-
-  @doc "候補の印。"
-  def candidate_tag, do: @candidate_tag
-
   @doc "ISBN のタグの頭。"
   def isbn_tag, do: @isbn_tag
 
   @doc "整理の 1 回に渡す、まだ調べていない本の数。"
   def tidy_per_run, do: @tidy_per_run
-
-  @doc "定番に上げる下限（勧めている記事の数）。"
-  def classic_sources, do: @classic_sources
 
   @doc "分野の語彙。**Chidori が持ちます** —— AI に決めさせると回ごとに表記が割れます。"
   def fields_of_study do
@@ -272,10 +257,6 @@ defmodule Chidori.Datasets.Bookshelf do
     （A と同じ形）。説明に「技術書ではない」と書いて残すと、本棚に並び続けます。
 
     #{book_checks()}
-
-    **印は数で決まります**（あなたは書かなくて構いません）——
-    「#{@classic_tag}」は #{@classic_sources} 本以上の記事が挙げている本、
-    「#{@candidate_tag}」はそれ未満です。
 
     **迷ったものは触らないでください。** 間違って畳んだ本は、記事の側から
     もう一度上がってくるまで戻りません。
@@ -537,7 +518,6 @@ defmodule Chidori.Datasets.Bookshelf do
       docs: docs,
       recent: counted(extra["docs_recent"]),
       last_seen: to_string(extra["last_seen"] || ""),
-      classic: docs >= @classic_sources,
       isbn: isbn,
       oreilly: oreilly_isbn?(isbn),
       # 表紙は `with_covers/1` が付ける（Chidori が持つ写しか「表紙なし」の絵）
