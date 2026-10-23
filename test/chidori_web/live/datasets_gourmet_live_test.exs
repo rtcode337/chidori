@@ -116,6 +116,9 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
 
     refute_received {:posted, _url, _body}
     assert html =~ "選んだ区画"
+
+    # 代表店まだの料理を理由つきで並べる（数だけでは何が残っているのか読めない）
+    assert html =~ ~r|<summary>代表店まだ（1 件）</summary>|
     assert html =~ "この区画で 1 回走らせる"
     assert html =~ ~s(<option value="情報収集")
     assert html =~ ~s(<option value="ざっと見る")
@@ -169,6 +172,9 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
 
     refute_received {:posted, _url, _body}
     assert html =~ "選んだ区画"
+
+    # 代表店まだの料理を理由つきで並べる（数だけでは何が残っているのか読めない）
+    assert html =~ ~r|<summary>代表店まだ（1 件）</summary>|
     assert html =~ "この区画で 1 回走らせる"
     assert html =~ ~s(<input type="hidden" name="key" value="地域:東京都")
     # 選んだ県の数

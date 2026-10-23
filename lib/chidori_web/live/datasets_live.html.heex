@@ -499,6 +499,26 @@
               <dd>{if picked.by, do: "#{picked.by}（#{picked.seen}）", else: "まだ"}</dd>
             </div>
           </dl>
+          <%!-- **代表店まだ・代表店なしの料理を理由つきで並べる**（ご当地グルメ）。数だけでは、
+             何が残っているのか、情報収集が見たうえで残したのかが読めない --%>
+          <%= if counts = @dataset[:prefectures] && picked_prefecture(@prefecture_progress, picked.key) do %>
+            <details :if={Map.get(counts, :pending_items, []) != []} class="shop-state-list" open>
+              <summary>代表店まだ（{length(counts.pending_items)} 件）</summary>
+              <ul>
+                <li :for={item <- counts.pending_items}>
+                  <strong>{item.title}</strong> <span class="muted-note">{item.reason}</span>
+                </li>
+              </ul>
+            </details>
+            <details :if={Map.get(counts, :no_shop_items, []) != []} class="shop-state-list" open>
+              <summary>代表店なし（{length(counts.no_shop_items)} 件）</summary>
+              <ul>
+                <li :for={item <- counts.no_shop_items}>
+                  <strong>{item.title}</strong> <span class="muted-note">{item.reason}</span>
+                </li>
+              </ul>
+            </details>
+          <% end %>
           <%!-- **この区画に控えている travel-log からの依頼**（下の「控えている依頼」と同じもの）。
              区画を地図で選んだところで、何が溜まっているかを見て、そのまま頼めるように --%>
           <% waiting =

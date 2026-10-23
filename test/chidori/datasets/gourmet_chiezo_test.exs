@@ -47,7 +47,9 @@ defmodule Chidori.Datasets.GourmetChiezoTest do
           Gourmet.shop_tag()
         ]),
         dish(5, "北の麺", "北海道", placed()),
-        dish(7, "店の無い菓子", "東京都", %{}, [Gourmet.no_shop_tag()]),
+        dish(7, "店の無い菓子", "東京都", %{"no_shop" => "家庭で作るお菓子で、売っている店が無い"}, [
+          Gourmet.no_shop_tag()
+        ]),
         %{"doc_id" => 6, "title" => "県の無い料理", "tags" => ["ご当地グルメ", "地域:東京"]}
       ]
 
@@ -58,7 +60,12 @@ defmodule Chidori.Datasets.GourmetChiezoTest do
           page(docs)
 
         %{method: :get, url: "http://chiezo.test/v1/collect/chidori_gourmet/unresolved" <> _} ->
-          HttpStub.ok(Jason.encode!(%{"total" => 1, "unresolved" => [%{"title" => "東京の菓子"}]}))
+          HttpStub.ok(
+            Jason.encode!(%{
+              "total" => 1,
+              "unresolved" => [%{"title" => "東京の菓子", "reason" => "辞典に無い"}]
+            })
+          )
       end)
 
       assert {:ok, progress} = Gourmet.progress()
@@ -74,7 +81,13 @@ defmodule Chidori.Datasets.GourmetChiezoTest do
                # 手がかりなし（東京のそば。AI が見ていなくても数える）と引き当てできず
                pending: 2,
                unresolved: 1,
-               no_shop: 1
+               no_shop: 1,
+               # 県を選んだときに並べる料理（理由つき）
+               pending_items: [
+                 %{title: "東京のそば", reason: "代表店の手がかりがまだ無い（情報収集の回で探す）"},
+                 %{title: "東京の菓子", reason: "辞典に無い"}
+               ],
+               no_shop_items: [%{title: "店の無い菓子", reason: "家庭で作るお菓子で、売っている店が無い"}]
              }
 
       assert %{dishes: 1, placed: 1} = Enum.find(progress.rows, &(&1.prefecture == "北海道"))

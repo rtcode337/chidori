@@ -1320,3 +1320,9 @@ a.top-book-cover { display: block; }
 .showtime-notes { margin: .6rem 0 0; padding-left: 1.1rem; font-size: .82rem; }
 .showtime-notes a { margin-left: .3rem; }
 .theater-station { margin-right: .5rem; color: #4b5068; font-weight: 700; }
+
+/* ご当地グルメの選んだ県の、代表店まだ・代表店なしの料理（理由つき） */
+.shop-state-list { margin: .6rem 0; }
+.shop-state-list > summary { cursor: pointer; font-weight: 700; }
+.shop-state-list ul { margin: .3rem 0 0; padding-left: 1.1rem; font-size: .85rem; line-height: 1.5; }
+.shop-state-list li { margin-bottom: .2rem; overflow-wrap: anywhere; }

@@ -1446,6 +1446,8 @@ defmodule Chidori.Datasets.Gourmet do
         |> Enum.frequencies()
 
       by_region = Enum.group_by(alive, &region_of/1)
+      # 引き当てできなかった理由（Chiezo が控えたもの。見出し → 理由）
+      reasons = Map.new(unresolved.rows, &{&1["title"], &1["reason"]})
 
       rows =
         for prefecture <- prefecture_order() do
@@ -1459,7 +1461,10 @@ defmodule Chidori.Datasets.Gourmet do
             placed: Map.get(states, :placed, 0),
             pending: Map.get(states, :pending, 0),
             unresolved: Map.get(failed, prefecture, 0),
-            no_shop: Map.get(states, :no_shop, 0)
+            no_shop: Map.get(states, :no_shop, 0),
+            # **県を選んだときに並べる、代表店まだ・代表店なしの料理**（理由つき）
+            pending_items: items(by_region, prefecture, :pending, reasons),
+            no_shop_items: items(by_region, prefecture, :no_shop, reasons)
           }
         end
 
@@ -1469,6 +1474,29 @@ defmodule Chidori.Datasets.Gourmet do
          unplaced_region: length(Map.get(by_region, nil, [])),
          unresolved_total: unresolved.total
        }}
+    end
+  end
+
+  # 県の代表店まだ・代表店なしの料理（見出しの順）と、そうなっている理由。
+  # 代表店まだは引き当てできなかった理由（Chiezo の控え）か、手がかりがまだ無いこと、
+  # 代表店なしは AI が書いた理由（`extra.no_shop`）
+  defp items(by_region, prefecture, state, reasons) do
+    by_region
+    |> Map.get(prefecture, [])
+    |> Enum.filter(&(shop_state(&1) == state))
+    |> Enum.map(fn doc ->
+      %{title: doc["title"], reason: item_reason(state, doc, reasons)}
+    end)
+    |> Enum.sort_by(& &1.title)
+  end
+
+  defp item_reason(:pending, doc, reasons),
+    do: reasons[doc["title"]] || "代表店の手がかりがまだ無い（情報収集の回で探す）"
+
+  defp item_reason(:no_shop, doc, _reasons) do
+    case get_in(doc, ["extra", @no_shop_key]) do
+      reason when is_binary(reason) and reason != "" -> reason
+      _other -> "理由が書かれていない"
     end
   end
 
