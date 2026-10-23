@@ -642,11 +642,50 @@ defmodule Chidori.Datasets.Dining do
       shops =
         for doc <- listed,
             (missing = blanks(doc)) != [],
-            do: %{title: doc["title"], missing: missing}
+            do: %{
+              title: doc["title"],
+              missing: missing,
+              lat: coord(doc, "lat"),
+              lon: coord(doc, "lon")
+            }
 
       {:ok, %{total: length(listed), shops: shops}}
     end
   end
+
+  defp coord(doc, key) do
+    case get_in(doc, ["extra", key]) do
+      value when is_number(value) -> value
+      _other -> nil
+    end
+  end
+
+  @doc """
+  区画ごとの、空いている欄のある店の数（`%{区画の鍵 => 店の数}`）。区画の一覧と選んだ区画に出す。
+
+  区画は座標で切ってあるので、店の座標が入る区画で数えます（鍵の四角の西・南の辺は含み、
+  東・北の辺は含まない。境目の上の店を 2 つの区画で数えないため）。座標の無い店は数えません。
+  """
+  def blank_by_partition(%{shops: shops}, keys) do
+    boxes = for key <- keys, box = Chidori.Datasets.Map.box_of(key), do: {key, box}
+
+    shops
+    |> Enum.flat_map(fn
+      %{lat: lat, lon: lon} when is_number(lat) and is_number(lon) ->
+        case Enum.find(boxes, fn {_key, {s, w, n, e}} ->
+               s <= lat and lat < n and w <= lon and lon < e
+             end) do
+          {key, _box} -> [key]
+          nil -> []
+        end
+
+      _shop ->
+        []
+    end)
+    |> Enum.frequencies()
+  end
+
+  def blank_by_partition(_report, _keys), do: %{}
 
   # 全ページ。**件数は 1 ページ目が教えてくれる**ので、何周するかはそこで決まる
   defp shop_docs(base, name, offset \\ 0, acc \\ []) do

@@ -486,6 +486,14 @@
                 <dd>{counts.no_shop} 件</dd>
               </div>
             <% end %>
+            <%!-- **空いている欄のある店**（食事処の範囲だけ。どれか 1 つでも空いている店の数） --%>
+            <div :if={@dataset[:area]}>
+              <dt>空いている欄のある店</dt>
+              <dd>
+                <% blanks = blanks_in(@blank_report, rows) %>
+                {if blanks, do: "#{Map.get(blanks, picked.key, 0)} 店", else: "—"}
+              </dd>
+            </div>
             <div>
               <dt>見終わった巡回</dt>
               <dd>{if picked.by, do: "#{picked.by}（#{picked.seen}）", else: "まだ"}</dd>
@@ -880,12 +888,15 @@
         <%!-- **空いている欄のある店を数え、埋めてもらう**（食事処の範囲だけ）。区画には縛らない ——
            名指しした店だけが AI の一覧に並ぶので、1 回の量は頼む数で決まる。区画を渡さないので
            情報収集の印も付かない。区画の一覧のすぐ上に置く（地図で区画を見たあとに読む） --%>
-        <section
+        <%!-- **既定で畳む**（区画の一覧のすぐ上で場所を取るため。開いて頼む） --%>
+        <details
           :if={@dataset[:area]}
           class="settings-block blank-report"
-          aria-label="空いている欄"
+          aria-label="空いている欄を埋める"
         >
-          <h3>空いている欄</h3>
+          <summary>
+            <h3>空いている欄を埋める</h3>
+          </summary>
           <%= case @blank_report do %>
             <% nil -> %>
               <p class="muted-note">まだ数えていません。</p>
@@ -980,7 +991,7 @@
           <p :if={fill_message(@filled)} class="muted-note" aria-live="polite">
             {fill_message(@filled)}
           </p>
-        </section>
+        </details>
 
         <details :if={rows != [] and !@dataset[:prefectures]} class="partition-list">
           <% progress = partition_progress(rows, @dataset.partition_sweeps) %>
@@ -1001,14 +1012,19 @@
               <tr>
                 <th>区画</th>
                 <th>件数</th>
+                <th :if={@dataset[:area]}>空き欄のある店</th>
                 <th>見終わった巡回</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
+              <% blanks = @dataset[:area] && blanks_in(@blank_report, rows) %>
               <tr :for={row <- Enum.take(rows, shown_partitions())}>
                 <td>{row.key}</td>
                 <td>{row.count}</td>
+                <td :if={@dataset[:area]}>
+                  {if blanks, do: Map.get(blanks, row.key, 0), else: "—"}
+                </td>
                 <td>{if row.by, do: "#{row.by}（#{row.seen}）", else: "まだ"}</td>
                 <td>
                   <button type="button" phx-click="pick_partition" phx-value-key={row.key}>

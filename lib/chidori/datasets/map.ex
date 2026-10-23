@@ -125,6 +125,9 @@ defmodule Chidori.Datasets.Map do
     end
   end
 
+  @doc "区画の鍵（「南,西/北,東」）の四角 `{南, 西, 北, 東}`。数として読めなければ nil。"
+  def box_of(key), do: parse(key)
+
   # 「南,西/北,東」。**数として読めない鍵は落とす**（名前で切った区画がこれに当たる）
   defp parse(key) when is_binary(key) do
     with [south_west, north_east] <- String.split(key, "/", parts: 2),

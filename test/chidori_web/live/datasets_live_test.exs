@@ -563,6 +563,12 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
       assert html =~ "AI が目を通した 3 店のうち、空いている欄のある店は 2 店です"
       assert html =~ "営業時間 2 店"
+      # 「空いている欄を埋める」は既定で畳む
+      assert html =~
+               ~r|<details class="settings-block blank-report"[^>]*>\s*<summary><h3>空いている欄を埋める</h3>|
+
+      # 区画の一覧に、その区画の空いている欄のある店の数（どれか 1 つでも空いている店）
+      assert html =~ ~r|<td>35.6,139.7/35.7,139.8</td>\s*<td>\d+</td>\s*<td>\s*1\s*</td>|
 
       live
       |> form("#fill-blanks-form", %{

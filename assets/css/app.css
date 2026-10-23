@@ -748,6 +748,12 @@ body.digest-open #page-scroll { overflow: hidden; }
 .news-articles > summary h2 { display: inline; }
 .news-articles > summary h2::before { content: "▸ "; color: #554bc0; }
 .news-articles[open] > summary h2::before { content: "▾ "; }
+/* 食事処の「空いている欄を埋める」（既定で畳む。見出しを押して開く） */
+.blank-report > summary { cursor: pointer; list-style: none; }
+.blank-report > summary::-webkit-details-marker { display: none; }
+.blank-report > summary h3 { display: inline; }
+.blank-report > summary h3::before { content: "▸ "; color: #554bc0; }
+.blank-report[open] > summary h3::before { content: "▾ "; }
 .news-articles[open] > summary { margin-bottom: .7rem; }
 
 /* レポート。一覧と同じ見た目にしない —— あちらは 1 件ずつの索引で、こちらは

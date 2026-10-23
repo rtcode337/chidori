@@ -1225,6 +1225,15 @@ defmodule ChidoriWeb.DatasetsLive do
   一覧から探し直さずに済むように、鍵で引いてそのまま返します ——
   地図で押した区画の件数も「見終わったか」も、台帳にしかありません。
   """
+  @doc """
+  区画ごとの、空いている欄のある店の数（`Dining.blank_by_partition/2`）。まだ数えていなければ nil
+  （区画の一覧と選んだ区画に「—」を出す）。
+  """
+  def blanks_in({:ok, report}, rows),
+    do: Chidori.Datasets.Dining.blank_by_partition(report, Enum.map(rows, & &1.key))
+
+  def blanks_in(_report, _rows), do: nil
+
   def picked_row(rows, key) when is_binary(key), do: Enum.find(rows, &(&1.key == key))
   def picked_row(_rows, _key), do: nil
 
