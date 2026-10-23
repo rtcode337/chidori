@@ -121,7 +121,7 @@ defmodule Chidori.Datasets do
   end
 
   @doc """
-  `push/2` が送る設定。**「Chiezo 収集」の表で、Chiezo の今の設定と突き合わせるのにも
+  `push/2` が送る設定。**収集の画面（`/collect`）の表で、Chiezo の今の設定と突き合わせるのにも
   使う** —— 送るものと比べるものを別々に組むと、片方だけ直る。
   """
   def outgoing(dataset, choices \\ %{}), do: call(dataset, :attrs, [choices])
@@ -221,6 +221,16 @@ defmodule Chidori.Datasets do
   end
 
   def shelf(_dataset), do: {:ok, nil}
+
+  @doc """
+  他のアプリが読む対象か（ご当地グルメ・アニメ聖地・食事処。読むのは travel-log）。Chidori で読むものを
+  持たない対象がこれ。収集の画面では「他アプリ用」の段（`/collect/apps`）に分けて置く。
+  """
+  def for_other_app?(dataset), do: not listed?(dataset)
+
+  @doc "その対象の収集の画面の道（他アプリ用は `/collect/apps`、Chidori で読むものは `/collect/datasets`）。"
+  def collect_path(dataset),
+    do: if(for_other_app?(dataset), do: "/collect/apps", else: "/collect/datasets")
 
   @doc "一覧を持つ対象か（本棚、自分に溜まったものの一覧、または読む画面）。"
   def listed?(dataset),

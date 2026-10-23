@@ -25,7 +25,21 @@ defmodule ChidoriWeb.Router do
 
     # 依頼を出す画面。送るのも読み直すのも Chiezo への往復なので、押した人を待たせない
     live "/datasets", DatasetsLive, :index
-    live "/datasets/areas", DiningAreasLive, :index
+
+    # 食事処の「全体」は収集の画面へ移した（範囲・依頼・書き出し。読むのは travel-log）
+    get "/datasets/areas", DatasetsController, :to_collect_areas
+    get "/collect/datasets/areas", DatasetsController, :to_collect_areas
+
+    # **収集の画面**（Chiezo へ頼む口をここに集める）。読む画面と同じ LiveView を、収集の形
+    # （`:collect`）で開く —— 見る画面には集めたものだけを出し、頼むのは Chidori のこの画面だけで済むように
+    live "/collect", SettingsLive, :collect
+    live "/collect/news", NewsLive, :collect
+    live "/collect/relations", RelationsLive, :collect
+    live "/collect/datasets", DatasetsLive, :collect
+
+    # 他のアプリ（travel-log）が読む収集。ご当地グルメ・アニメ聖地・食事処（範囲ごと）
+    live "/collect/apps", DatasetsLive, :collect_apps
+    live "/collect/apps/areas", DiningAreasLive, :index
 
     # 集めたものを travel-log 用の ZIP で渡す。**ファイルを返すだけなので LiveView に
     # 載せない**（押したら降ってくる、以上の状態を持たない）

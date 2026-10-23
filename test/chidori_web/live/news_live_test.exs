@@ -24,15 +24,35 @@ defmodule ChidoriWeb.NewsLiveTest do
 
   test "技術イベントは開催日のカレンダーを出し、要約と通知の設定は出さない", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/news?view=chidori_events")
-
     assert html =~ "開催日のカレンダー"
+
+    {:ok, _live, html} = live(conn, ~p"/collect/news?view=chidori_events")
     refute html =~ "<h3>通知</h3>"
     refute html =~ "<h3>要約</h3>"
 
     {:ok, _live, html} = live(conn, ~p"/news?view=chidori_tech")
     refute html =~ "開催日のカレンダー"
+
+    {:ok, _live, html} = live(conn, ~p"/collect/news?view=chidori_tech")
     assert html =~ "<h3>通知</h3>"
     assert html =~ "<h3>要約</h3>"
+  end
+
+  test "読む画面には集めたものだけを出し、収集の設定は収集の画面に置く", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/news?view=chidori_tech")
+
+    refute html =~ "settings-panel"
+    refute html =~ "<h3>要約</h3>"
+    refute html =~ "Chiezo への依頼文"
+    assert html =~ ~s(href="/collect/news?view=chidori_tech")
+
+    {:ok, _live, html} = live(conn, ~p"/collect/news?view=chidori_tech")
+
+    assert html =~ "settings-panel"
+    # 収集の画面には記事の一覧も要約も出さない
+    refute html =~ "news-articles"
+    refute html =~ "お気に入り"
+    assert html =~ ~s(href="/news?view=chidori_tech")
   end
 
   test "トップページは、何も選んでいなければ一般ニュースの要約", %{conn: conn} do
@@ -55,7 +75,7 @@ defmodule ChidoriWeb.NewsLiveTest do
   test "Chiezo が未設定なら、その旨を出して依頼を押させない", %{conn: conn} do
     System.delete_env("CHIEZO_BASE_URL")
 
-    {:ok, _live, html} = live(conn, ~p"/news")
+    {:ok, _live, html} = live(conn, ~p"/collect/news")
 
     assert html =~ "CHIEZO_BASE_URL"
     # 押す口は枠の中の 1 つだけ（関連図と同じ形）
@@ -77,7 +97,7 @@ defmodule ChidoriWeb.NewsLiveTest do
   end
 
   test "頼んでいる内容が画面から読める", %{conn: conn} do
-    {:ok, _live, html} = live(conn, ~p"/news")
+    {:ok, _live, html} = live(conn, ~p"/collect/news")
 
     assert html =~ "Chiezo への依頼文"
     # まだ依頼していないので、これから送る雛形が出る
@@ -87,7 +107,7 @@ defmodule ChidoriWeb.NewsLiveTest do
 
   test "巡回ごとの依頼文が読める", %{conn: conn} do
     # 回ごとに頼むことが違うので、1 つの文だけを出すと実際と食い違う
-    {:ok, _live, html} = live(conn, ~p"/news")
+    {:ok, _live, html} = live(conn, ~p"/collect/news")
 
     assert html =~ "整理"
     assert html =~ "要約"
@@ -248,8 +268,16 @@ defmodule ChidoriWeb.NewsLiveTest do
       render(live)
     end
 
+    # 収集の画面（/collect/news）で、収集の状態が届くのを待って見る
+    defp shown_collect(conn) do
+      Chidori.News.subscribe("chidori_news")
+      {:ok, live, _html} = live(conn, ~p"/collect/news?view=chidori_news")
+      assert_receive {:news_updated, %{status: :ready}}, 2_000
+      render(live)
+    end
+
     test "巡回ごとに 1 行出て、相手を選んで送れる", %{conn: conn} do
-      html = shown(conn)
+      html = shown_collect(conn)
 
       # **相手も進み具合も巡回ごとに違う**ので、収集に 1 つだけ出すと読めない
       assert html =~ "sweep-table"
@@ -258,12 +286,15 @@ defmodule ChidoriWeb.NewsLiveTest do
 
       # 割り込みは記事の詳細から頼む（設定の欄には置かない）
       refute html =~ "いま頼む（割り込み）"
+
+      # 読む画面には巡回の表を出さない
+      refute shown(conn) =~ "sweep-table"
     end
 
     test "機械で引く巡回には相手を選ばせない", %{conn: conn} do
       # 選んでも何も起きない —— その回は AI を呼ばずに返すので、相手もモデルも
       # 読まれない。**選べるのに効かない欄は「設定したつもり」を作る**
-      html = shown(conn)
+      html = shown_collect(conn)
 
       refute html =~ ~s(name="sweep|機械収集|backend")
       assert html =~ "AI を使いません"
@@ -271,7 +302,7 @@ defmodule ChidoriWeb.NewsLiveTest do
 
     test "収集の状態は、関連図と同じ並びで出す", %{conn: conn} do
       # 画面ごとに書いていた頃は、見出しも並びも食い違っていた
-      html = shown(conn)
+      html = shown_collect(conn)
 
       assert html =~ "状態"
       assert html =~ "集め方"
@@ -358,7 +389,7 @@ defmodule ChidoriWeb.NewsLiveTest do
     test "話題の画面では知らせるかどうかだけを決め、宛先は設定の通知タブにある", %{conn: conn} do
       # **まとめの枠には置かない** —— あれはまとめができるまで出ないので、
       # 設定を確かめたいときにいちばん見たい状態で消えている
-      html = shown(conn)
+      html = shown_collect(conn)
 
       assert html =~ ~s(name="setting[notify]")
       # 宛先は全部の通知で 1 つ（画面ごとに書き写さない）
@@ -375,7 +406,7 @@ defmodule ChidoriWeb.NewsLiveTest do
       on_exit(fn -> System.delete_env("NTFY_BASE_URL") end)
       notify_to("chidori-news")
 
-      html = shown(conn)
+      html = shown_collect(conn)
 
       assert html =~ "http://ntfy.test の「chidori-news」へ送ります"
 
@@ -386,7 +417,7 @@ defmodule ChidoriWeb.NewsLiveTest do
     test "設定は、ページの名前を冠した枠にまとめる", %{conn: conn} do
       # 「設定」とだけ書くと、何の設定なのかがタブを切り替えた後に読めない。
       # 集める設定と知らせる設定は別のものなので、節に分けて見出しを立てる
-      html = shown(conn)
+      html = shown_collect(conn)
 
       assert html =~ "ニュースの設定"
       assert html =~ "settings-panel"
@@ -405,7 +436,7 @@ defmodule ChidoriWeb.NewsLiveTest do
       on_exit(fn -> System.delete_env("NTFY_BASE_URL") end)
       notify_to("chidori-news")
 
-      html = shown(conn)
+      html = shown_collect(conn)
 
       assert html =~ ~s(name="setting[digest_at]")
       assert html =~ "いま作って知らせる"
@@ -418,7 +449,7 @@ defmodule ChidoriWeb.NewsLiveTest do
       Chidori.Notify.Destination.put(%{"topic" => "chidori-news"})
       Chidori.Notify.Settings.put("chidori_news", %{"notify" => "false"})
 
-      html = shown(conn)
+      html = shown_collect(conn)
 
       assert html =~ "要約を作る時刻"
       assert html =~ "いま要約を作る"
@@ -447,7 +478,7 @@ defmodule ChidoriWeb.NewsLiveTest do
         "2026-09-17 07:00 JST — 止まりました。そのときの理由: この収集は Chiezo 側で止まっています。"
       )
 
-      html = shown(conn)
+      html = shown_collect(conn)
 
       assert html =~ "前回の定時の回:"
 
@@ -463,7 +494,7 @@ defmodule ChidoriWeb.NewsLiveTest do
       on_exit(fn -> System.delete_env("NTFY_BASE_URL") end)
 
       Chidori.News.subscribe("chidori_news")
-      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_news")
+      {:ok, live, _html} = live(conn, ~p"/collect/news?view=chidori_news")
       assert_receive {:news_updated, %{status: :ready}}, 2_000
 
       live
@@ -483,7 +514,7 @@ defmodule ChidoriWeb.NewsLiveTest do
     test "書きかけは、収集の状態が届いても消えない", %{conn: conn} do
       # 覚えないと、届いた拍子にフォームが描き直されて書きかけが消える
       Chidori.News.subscribe("chidori_news")
-      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_news")
+      {:ok, live, _html} = live(conn, ~p"/collect/news?view=chidori_news")
       assert_receive {:news_updated, %{status: :ready}}, 2_000
 
       live
@@ -527,13 +558,13 @@ defmodule ChidoriWeb.NewsLiveTest do
     assert html =~ ~p"/relations"
   end
 
-  test "設定ページでは、誰に頼むかを選ばせない", %{conn: conn} do
+  test "収集の一覧の画面では、誰に頼むかを選ばせない", %{conn: conn} do
     # 誰に頼むかは巡回ごとに収集の枠で選ぶ。**別の置き場を残すと、どちらが効くのか
     # 押す前に読めない**（しかも片方は何にも効かない欄になる）。
-    # 設定ページの「Chiezo 収集」は一覧を見るだけ
-    {:ok, _live, html} = live(conn, ~p"/settings?tab=chiezo")
+    # 収集の画面（/collect）の一覧は見るだけ
+    {:ok, _live, html} = live(conn, ~p"/collect")
 
-    assert html =~ "Chiezo 収集"
+    assert html =~ "収集の画面を開く"
     refute html =~ ~s(name="backend")
     refute html =~ "pick_sweep"
   end
@@ -590,6 +621,14 @@ defmodule ChidoriWeb.NewsLiveTest do
       {:ok, live, _html} = live(conn, ~p"/news")
 
       html = live |> element(~s|a[href="/news?view=chidori_tech"]|) |> render_click()
+
+      assert html =~ ~r|<h1[^>]*>\s*技術ニュース\s*</h1>|
+    end
+
+    test "収集の画面でタブを切り替えると、その話題の収集の画面になる", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/collect/news")
+
+      html = live |> element(~s|a[href="/collect/news?view=chidori_tech"]|) |> render_click()
 
       assert html =~ ~r|<h1[^>]*>\s*技術ニュース\s*</h1>|
       # 依頼の本文も話題の関心から作る（話題ごとに文面を持たせない）
@@ -709,7 +748,11 @@ defmodule ChidoriWeb.NewsLiveTest do
     test "収集がまだ無ければ、依頼する口を出す", %{conn: conn} do
       stub_themes([@news_collection], [])
 
-      html = opened(conn)
+      # 依頼する口は収集の画面に置く（読む画面には出さない）
+      refute opened(conn) =~ "トピックの収集"
+
+      {:ok, live, _html} = live(conn, ~p"/collect/news?view=chidori_tech")
+      html = render_async(live, 2_000)
 
       assert html =~ "トピックの収集"
       assert html =~ "まだ Chiezo に収集がありません"
@@ -721,7 +764,7 @@ defmodule ChidoriWeb.NewsLiveTest do
       stub_themes([@news_collection], [])
 
       # （一般ニュースも網を持つようになったので、持たない技術イベントで見る）
-      {:ok, live, _html} = live(conn, ~p"/news?view=chidori_events")
+      {:ok, live, _html} = live(conn, ~p"/collect/news?view=chidori_events")
       html = render_async(live, 2_000)
 
       refute html =~ "トピックの収集"
@@ -916,7 +959,7 @@ defmodule ChidoriWeb.NewsLiveTest do
     topic = Chidori.Topics.get("chidori_tech")
     {:ok, _owner} = Registry.register(Chidori.SingleFlight, Chidori.Digest.flight_key(topic), nil)
 
-    {:ok, live, _html} = live(conn, ~p"/news?view=chidori_tech")
+    {:ok, live, _html} = live(conn, ~p"/collect/news?view=chidori_tech")
     html = live |> element(~s(button[phx-click="digest_now"])) |> render_click()
 
     assert html =~ "同じ依頼がまだ走っています"

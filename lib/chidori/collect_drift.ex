@@ -1,7 +1,7 @@
 defmodule Chidori.CollectDrift do
   @moduledoc """
   Chiezo に置いてある収集の設定が、**Chidori がいま送るはずの設定と違うところ**
-  （設定ページの「Chiezo 収集」の表に出す）。
+  （収集の画面（`/collect`）の表に出す）。
 
   依頼文や絵の拾い方を Chidori で直しても、各画面の「収集の設定を更新」を押すまでは
   Chiezo に届かない。届いていないことは画面のどこにも出ないので、直したつもりの

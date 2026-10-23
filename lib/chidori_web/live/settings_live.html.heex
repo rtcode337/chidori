@@ -2,9 +2,18 @@
 <%!-- 頭のメニューとタブは main の外に置き、画面の上に残す（スクロールするのは main の中だけ。root.html.heex） --%>
 <div class="relations-page page-head">
   <div>
-    <ChidoriWeb.MainNav.main_nav active={:settings} />
+    <ChidoriWeb.MainNav.main_nav active={
+      if @live_action == :collect, do: :collect, else: :settings
+    } />
+    <ChidoriWeb.CollectTabs.collect_tabs :if={@live_action == :collect} current={:list} />
 
-    <nav id="settings-tabs" class="relation-tabs" phx-hook="ScrollTabs" aria-label="設定">
+    <nav
+      :if={@live_action != :collect}
+      id="settings-tabs"
+      class="relation-tabs"
+      phx-hook="ScrollTabs"
+      aria-label="設定"
+    >
       <.link
         :for={{key, label} <- @tabs}
         patch={~p"/settings?tab=#{key}"}
@@ -104,12 +113,13 @@
 
     <%!-- Chiezo 収集。**待ち行列が溜まってきたときに見る表** —— 巡回の間隔だけでは、
          ワーカーが何分おきに何本流すのかが読めないので、両方を並べる --%>
-    <section :if={@tab == "chiezo"} class="settings-panel" aria-label="Chiezo 収集">
+    <section :if={@tab == "chiezo"} class="settings-panel" aria-label="収集">
       <section class="relations-intro">
-        <p>SETTINGS</p>
-        <h1>Chiezo 収集</h1>
+        <p>COLLECT</p>
+        <h1>収集</h1>
         <p>
-          Chidori が Chiezo に頼んでいる収集と、その回り方です。設定そのものは Chiezo にあり、開くたびに読み直します（直すのは各画面か Chiezo の画面から）。
+          Chidori が Chiezo に頼んでいる収集と、その回り方です。設定そのものは Chiezo にあり、開くたびに読み直します。
+          収集ごとの細かい設定・区画・1 回だけ頼む口は、各収集の「収集の画面を開く」から。
         </p>
       </section>
 
@@ -235,7 +245,7 @@
                     :if={collection.screen}
                     href={collection.screen}
                     class="muted-note"
-                  >画面を開く</a>
+                  >収集の画面を開く</a>
                   <br :if={!collection.in_chiezo} /><span
                     :if={!collection.in_chiezo}
                     class="muted-note"

@@ -90,7 +90,7 @@ defmodule ChidoriWeb.RelationsLive do
        # 「見た映画を足す」の結果の一言
        film_added: nil,
        # 引き継ぎの時計の設定と前回の記録・次の予定（映画の図で開いたときに読む。
-       # 時刻と 1 回の数を直すのは設定ページの「Chiezo 収集」）
+       # 時刻と 1 回の数を直すのは収集の画面（`/collect`））
        carry_setting: nil,
        carry_next: nil,
        # 引き継ぎを待っている作品（nil = まだ読んでいない / :loading / 一覧 / {:error, 理由}）。
@@ -169,9 +169,14 @@ defmodule ChidoriWeb.RelationsLive do
       if Relations.current(view)[:checked_at] == nil, do: Relations.refresh(view)
     end
 
+    # **収集の画面**（`/collect/relations`）か、図を見る画面か。収集の画面は設定を開いた形で出す
+    collect_mode = socket.assigns.live_action == :collect
+
     socket =
       assign(socket,
         view: view,
+        collect_mode: collect_mode,
+        base_path: if(collect_mode, do: "/collect/relations", else: "/relations"),
         # トップページに埋め込まれているか（頭のメニューとタブと設定を出さない）
         embed: params["embed"] == "1",
         relation: Relations.current(view),
@@ -189,6 +194,12 @@ defmodule ChidoriWeb.RelationsLive do
       # 印は図ごとに別。切り替えたら引き直す
       |> with_marks(Marks.for_view(mark_view(view)))
       |> load_carry()
+
+    # 収集の画面は設定を開いた形で出す（開いたときに Chiezo から読む）
+    socket =
+      if collect_mode and connected?(socket),
+        do: socket |> assign(settings_open: true) |> load_settings(),
+        else: socket
 
     {:noreply, apply_pending_focus(socket)}
   end

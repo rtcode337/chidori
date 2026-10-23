@@ -17,6 +17,9 @@ paths:
 
 詳しい説明と理由（実測値つき）は `docs/relations.md`。
 
+- **図を見る画面（`/relations`）と収集の画面（`/collect/relations`）は同じ `RelationsLive`**（`@collect_mode`）。収集の設定・名簿の広さ・区画・消えたもの・依頼文・
+  映画の「最新情報からの引き継ぎ」は収集の画面。詳細の「区画を先に見て」「詳しく調べて」と「見た映画を足す」は図を見る画面に残す（見ている 1 件から頼む口）
+
 - 画家の図（収集は網羅）と芸能人の図（`Chidori.Relations.People`・収集 `chidori_people`）は同じ仕組み。図の読み方の違いは
   `Graph.from_docs/2` に渡す仕様に寄せてあり、画家の図はその既定
 - 名簿・年代・様式は AI に書かせない。Chidori が条件を言葉で書き、Chiezo が抽出の指定にして jawiki から機械的に引く。
@@ -46,7 +49,7 @@ paths:
   3 回頼んでも載らない作品は時計から外す（枠の頭を占め続けないように）。画面からは「いま頼む」（時計と同じ並びで上から
   1 回の数まで。押した 1 回なので止めた収集でも走り、時計の記録は動かさない）と、外した作品の「この作品を頼む」で頼める。
   時刻（JST。既定は空 = その Chidori からは頼まない。本番とテストの二重を避けるため）・1 回の数と、前回いつ何を頼んで
-  どうなったかは表 `film_carry_settings`（`Chidori.Relations.CarrySetting`）。時刻は設定ページの「Chiezo 収集」の表の
+  どうなったかは表 `film_carry_settings`（`Chidori.Relations.CarrySetting`）。時刻は収集の画面（`/collect`）の表の
   映画の図の行（`CollectOverview.chidori_rows/1`。Chiezo へは送らない行）で直す。過ぎて 30 分までの回を拾い、
   済まなかった回は次の予定まで試し直す。時計の回は画面から足した 1 回と別に数える（`clock_at`）。
   映画の図には前回と次の予定を出し、待っている作品は押したときだけ Chiezo に聞く。

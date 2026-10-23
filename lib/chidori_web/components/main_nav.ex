@@ -16,6 +16,8 @@ defmodule ChidoriWeb.MainNav do
     {:news, "最新情報", "/news"},
     {:relations, "関連図", "/relations"},
     {:datasets, "データ収集", "/datasets"},
+    # 収集の画面（Chiezo へ頼む口をまとめた所）。読む画面とは分ける
+    {:collect, "収集", "/collect"},
     {:settings, "設定", "/settings"}
   ]
 

@@ -24,7 +24,7 @@ defmodule Chidori.Relations.FilmCarry do
 
   ## 時計
 
-  **決めた時刻（JST）に頼みます**（設定ページの「Chiezo 収集」の表、映画の図の
+  **決めた時刻（JST）に頼みます**（収集の画面（`/collect`）の表、映画の図の
   「最新情報からの引き継ぎ」の行。`Chidori.Relations.CarrySetting`）。**時刻を書いて
   いなければ頼みません（既定）** —— 時計は Chidori の中にあるので、本番とテストの 2 つを
   立てていると同じ割り込みが二重に出る。時刻を書いた Chidori だけが頼む。

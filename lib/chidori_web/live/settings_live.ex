@@ -3,12 +3,15 @@ defmodule ChidoriWeb.SettingsLive do
   設定ページ。**タブで仕事を分けます**。
 
   - トップページ —— トップに並べる枠と、その順（`Chidori.Home`）
-  - Chiezo 収集 —— Chidori が Chiezo に頼んでいる収集の一覧（巡回の間隔・相手・
-    前回・次回）と、ワーカーと取り込みの待ち行列。**待ち行列が溜まってきたときに、
-    何がどれだけの間隔で回っているかを 1 枚で読むため**（`Chidori.CollectOverview`）。
-    **収集ごとに、巡回の相手と整理を自動で回すかを選んで送れる**
+  - 写真と表紙 —— 顔写真・レシピの写真・技術書の表紙を取る様子
   - 通知 —— まとめの知らせ先（ntfy の宛先と、通知を受け取る端末。`Chidori.WebPush`）と、
     知らせる話題
+
+  **収集の画面（`/collect`）も同じ LiveView**（`live_action` が `:collect`）。Chidori が Chiezo に
+  頼んでいる収集の一覧（巡回の間隔・相手・前回・次回）と、ワーカーと取り込みの待ち行列。
+  **待ち行列が溜まってきたときに、何がどれだけの間隔で回っているかを 1 枚で読むため**
+  （`Chidori.CollectOverview`）。収集ごとに、巡回の相手と整理を自動で回すかを選んで送れる。
+  もとは設定ページの「Chiezo 収集」のタブだった
   """
 
   use ChidoriWeb, :live_view
@@ -29,10 +32,10 @@ defmodule ChidoriWeb.SettingsLive do
 
   require Logger
 
-  # **トップページを先頭に**（いちばん触る設定。開いたときに出る）
+  # **トップページを先頭に**（いちばん触る設定。開いたときに出る）。
+  # **Chiezo 収集の表は収集の画面（`/collect`）へ移した** —— 同じ LiveView を収集の形で開く
   @tabs [
     {"home", "トップページ"},
-    {"chiezo", "Chiezo 収集"},
     {"photos", "写真と表紙"},
     {"notify", "通知"}
   ]
@@ -65,12 +68,31 @@ defmodule ChidoriWeb.SettingsLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    tab = if params["tab"] in Enum.map(@tabs, &elem(&1, 0)), do: params["tab"], else: "home"
+    cond do
+      # 収集の画面（`/collect`）は、収集の表だけを出す
+      socket.assigns.live_action == :collect ->
+        {:noreply,
+         socket
+         |> assign(
+           tab: "chiezo",
+           page_title: "収集",
+           catalog: Home.catalog(),
+           home_keys: Home.selected_keys()
+         )
+         |> load("chiezo")}
 
-    {:noreply,
-     socket
-     |> assign(tab: tab, catalog: Home.catalog(), home_keys: Home.selected_keys())
-     |> load(tab)}
+      # 前の「設定 › Chiezo 収集」へのリンクは、収集の画面へ送る
+      params["tab"] == "chiezo" ->
+        {:noreply, push_navigate(socket, to: ~p"/collect", replace: true)}
+
+      true ->
+        tab = if params["tab"] in Enum.map(@tabs, &elem(&1, 0)), do: params["tab"], else: "home"
+
+        {:noreply,
+         socket
+         |> assign(tab: tab, catalog: Home.catalog(), home_keys: Home.selected_keys())
+         |> load(tab)}
+    end
   end
 
   # **開くたびに読み直す**（Chiezo の側は勝手に進む。写しは持たない）

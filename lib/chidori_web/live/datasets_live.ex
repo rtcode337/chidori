@@ -142,11 +142,45 @@ defmodule ChidoriWeb.DatasetsLive do
   def handle_params(params, _uri, socket) do
     key = Datasets.valid_key(params["view"])
     dataset = Datasets.get(key)
+    action = socket.assigns.live_action
+
+    # **収集の画面**（`/collect/datasets`・他アプリ用 `/collect/apps`）か、読む画面（`/datasets`）か
+    collect_mode = action in [:collect, :collect_apps]
+
+    # 開いた道が、その対象の置き場（読む画面・データ収集・他アプリ用）と合っているか
+    right? =
+      case action do
+        :collect_apps -> Datasets.for_other_app?(dataset)
+        _other -> Datasets.listed?(dataset)
+      end
+
+    cond do
+      # 他アプリ用を対象を名指しせずに開いたら、食事処の「全体」へ（他アプリ用の先頭のタブ）
+      action == :collect_apps and params["view"] in [nil, ""] ->
+        {:noreply, push_navigate(socket, to: ~p"/collect/apps/areas", replace: true)}
+
+      # 読むものを持たない対象（ご当地グルメ・アニメ聖地・食事処。読むのは travel-log）は他アプリ用の
+      # 収集の画面、Chidori で読む対象は読む画面かデータ収集の収集の画面へ送る
+      not right? ->
+        to =
+          if collect_mode or Datasets.for_other_app?(dataset),
+            do: "#{Datasets.collect_path(dataset)}?view=#{key}",
+            else: "/datasets?view=#{key}"
+
+        {:noreply, push_navigate(socket, to: to, replace: true)}
+
+      true ->
+        show(socket, key, dataset, collect_mode)
+    end
+  end
+
+  defp show(socket, key, dataset, collect_mode) do
     cached = if Datasets.listed?(dataset), do: ShelfCache.get(key)
 
     socket =
       socket
       |> assign(view: key, dataset: dataset, picks: %{}, asked: nil, picked: nil)
+      |> assign(collect_mode: collect_mode, for_other_app: Datasets.for_other_app?(dataset))
       |> assign(
         state: empty_state(),
         derived_state: empty_state(),
@@ -155,7 +189,8 @@ defmodule ChidoriWeb.DatasetsLive do
         shelf: cached && cached.shelf,
         shelf_checked_at: cached && cached.checked_at,
         # 対象を切り替えたら、設定は対象ごとの既定に戻す（別の収集のもの）
-        settings_open: open_settings?(dataset),
+        # 収集の画面は設定を開いた形で出す
+        settings_open: collect_mode,
         book_marks: if(dataset[:derived], do: BookMarks.all(), else: %{}),
         book_mark_saved: nil,
         opened_domain: nil,
@@ -179,7 +214,7 @@ defmodule ChidoriWeb.DatasetsLive do
         blank_report: nil,
         filled: nil,
         # 範囲ごとの食事処の、情報収集を起こす時刻（`Chidori.Datasets.SurveyClock`）。
-        # 設定ページの「Chiezo 収集」の表と同じ値（同じ表を読み書きする）
+        # 収集の画面（`/collect`）の表と同じ値（同じ表を読み書きする）
         survey_times: survey_times_of(dataset),
         survey_saved: nil,
         survey_run: nil
@@ -190,17 +225,19 @@ defmodule ChidoriWeb.DatasetsLive do
     # （関連図の図と同じ）。本棚の無い対象は設定を開いて出すので、ここで読む
     {:noreply,
      cond do
-       not connected?(socket) -> socket
-       socket.assigns.settings_open -> load_settings(socket)
-       Datasets.listed?(dataset) && cached == nil -> read_shelf(socket, dataset)
-       true -> socket
+       not connected?(socket) ->
+         socket
+
+       socket.assigns.settings_open ->
+         load_settings(socket)
+
+       (not collect_mode and Datasets.listed?(dataset)) && cached == nil ->
+         read_shelf(socket, dataset)
+
+       true ->
+         socket
      end}
   end
-
-  # 設定を開いた状態で出すか。**本棚を持たない対象（食事処の範囲）は開いて出す** ——
-  # 本棚が無いので、この画面で見るものは設定（区画の地図・巡回・依頼）しか無い。
-  # 畳んでおくと、開くたびに 1 手余計にかかる
-  defp open_settings?(dataset), do: not Datasets.listed?(dataset)
 
   # 設定欄を開く・閉じる。**開いたときに Chiezo から読む** —— 設定は見たいときだけ
   # 見るもので、本棚を見に来るたびに収集の状態・巡回・相手の一覧まで運ぶ理由が無い。
@@ -239,7 +276,7 @@ defmodule ChidoriWeb.DatasetsLive do
   def handle_event("run_survey_now", _params, socket), do: {:noreply, socket}
 
   # **情報収集を起こす時刻を直す**（時刻で起こす対象だけ）。Chiezo には送らない ——
-  # 時計を持つのは Chidori。設定ページの「Chiezo 収集」の表と同じ値を書き換える
+  # 時計を持つのは Chidori。収集の画面（`/collect`）の表と同じ値を書き換える
   def handle_event("save_survey_times", %{"times" => times}, socket) do
     dataset = socket.assigns.dataset
 

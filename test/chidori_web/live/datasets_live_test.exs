@@ -14,9 +14,6 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     :ok
   end
 
-  # 画面を開き、**設定欄も開いて読み終えるまで進める**。設定は開いたときに初めて
-  # Chiezo から読むので、設定の中身を見るテストはここを通る
-  # 設定を開いた状態にして読み終えるまで待つ（本棚の無い対象は、はじめから開いている）
   # 届いた POST のうち、URL に `part` を含むものを待つ（ほかの POST は読み捨てる）
   defp receive_post(part) do
     receive do
@@ -26,32 +23,118 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     end
   end
 
+  # 収集の画面（/collect/datasets）を開き、設定を読み終えるまで進める。
+  # 収集の画面は設定欄を開いた形で出すので、設定の中身を見るテストはここを通る
   defp open_live(conn, path) do
     {:ok, live, _html} = live(conn, path)
-
-    unless has_element?(live, "#chiezo-settings"),
-      do: live |> element("#settings-toggle") |> render_click()
-
+    assert has_element?(live, "#chiezo-settings")
     {:ok, live, render_async(live)}
   end
 
-  test "食事処の範囲の画面は、設定を開いた状態で出す（技術書は本棚が主役なので畳む）", %{conn: conn} do
+  # 読む画面（/datasets）を開き、溜まったものが届くまで進める
+  defp open_read(conn, path) do
+    {:ok, live, _html} = live(conn, path)
+    {:ok, live, render_async(live)}
+  end
+
+  test "収集の画面は設定を開いた状態で出し、読む画面（技術書の本棚）には設定を出さない", %{conn: conn} do
     Chidori.AreaFixture.area!()
 
-    {:ok, _live, html} = live(conn, ~p"/datasets?view=dining-1")
+    {:ok, _live, html} = live(conn, ~p"/collect/apps?view=dining-1")
     assert html =~ ~s(aria-expanded="true")
     assert html =~ ~s(id="chiezo-settings")
 
+    {:ok, _live, html} = live(conn, ~p"/collect/datasets?view=books")
+    assert html =~ ~s(id="chiezo-settings")
+    refute html =~ ~s(class="bookshelf")
+
     {:ok, _live, html} = live(conn, ~p"/datasets?view=books")
-    assert html =~ ~s(aria-expanded="false")
+    refute html =~ ~s(id="settings-toggle")
     refute html =~ ~s(id="chiezo-settings")
+    assert html =~ ~s(href="/collect/datasets?view=books")
   end
 
-  test "データ収集のページを表示する（既定は技術書）", %{conn: conn} do
-    {:ok, _live, html} = open_live(conn, ~p"/datasets")
+  test "読むものを持たない対象を読む画面で開くと、収集の画面へ送る", %{conn: conn} do
+    Chidori.AreaFixture.area!()
+
+    for view <- ["dining-1", "anime"] do
+      to = "/collect/apps?view=#{view}"
+      assert {:error, {:live_redirect, %{to: ^to}}} = live(conn, "/datasets?view=#{view}")
+    end
+  end
+
+  test "レシピ集の名簿を引き直す口は、収集の画面にだけ置く", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/collect/datasets?view=recipes")
+    assert html =~ "名簿を引き直す"
+
+    {:ok, _live, html} = live(conn, ~p"/datasets?view=recipes")
+    refute html =~ "名簿を引き直す"
+  end
+
+  test "収集の画面では、頭のメニューの「収集」を選んだ状態にする", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/collect/datasets")
+    assert html =~ ~r|class="active" href="/collect"|
+
+    {:ok, _live, html} = live(conn, ~p"/datasets")
+    assert html =~ ~r|class="active" href="/datasets"|
+  end
+
+  test "タブは画面ごとに分ける（読む画面と収集のデータ収集は Chidori で読む対象、他アプリ用はそれ以外）", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/datasets")
+    [_, tabs] = String.split(html, ~s(id="dataset-tabs"), parts: 2)
+    [tabs, _] = String.split(tabs, "</nav>", parts: 2)
+
+    assert tabs =~ ~s(href="/datasets?view=books")
+    assert tabs =~ ~s(href="/datasets?view=recipes")
+    refute tabs =~ "view=anime"
+    refute tabs =~ "食事処"
+
+    {:ok, _live, html} = live(conn, ~p"/collect/datasets")
+    [_, tabs] = String.split(html, ~s(id="dataset-tabs"), parts: 2)
+    [tabs, _] = String.split(tabs, "</nav>", parts: 2)
+
+    assert tabs =~ ~s(href="/collect/datasets?view=books")
+    assert tabs =~ ~s(href="/collect/datasets?view=recipes")
+    refute tabs =~ "view=anime"
+    refute tabs =~ "view=gourmet"
+    refute tabs =~ "食事処"
+
+    {:ok, _live, html} = live(conn, ~p"/collect/apps?view=anime")
+    [_, tabs] = String.split(html, ~s(id="dataset-tabs"), parts: 2)
+    [tabs, _] = String.split(tabs, "</nav>", parts: 2)
+
+    assert tabs =~ ~s(href="/collect/apps?view=anime")
+    assert tabs =~ ~s(href="/collect/apps?view=gourmet")
+    assert tabs =~ ~s(href="/collect/apps/areas")
+    refute tabs =~ "view=books"
+  end
+
+  test "他アプリ用の対象をデータ収集の道で開くと、他アプリ用へ送る（逆も同じ）", %{conn: conn} do
+    assert {:error, {:live_redirect, %{to: "/collect/apps?view=anime"}}} =
+             live(conn, "/collect/datasets?view=anime")
+
+    assert {:error, {:live_redirect, %{to: "/collect/datasets?view=books"}}} =
+             live(conn, "/collect/apps?view=books")
+
+    # 他アプリ用を対象なしで開くと、食事処の範囲の一覧へ
+    assert {:error, {:live_redirect, %{to: "/collect/apps/areas"}}} = live(conn, "/collect/apps")
+  end
+
+  test "他アプリ用の画面では、収集の頭の段の「他アプリ用」を選んだ状態にする", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/collect/apps?view=gourmet")
+    [picked] = Regex.run(~r|<a[^>]*href="/collect/apps"[^>]*>|, html)
+    assert picked =~ ~s(class="selected")
+
+    {:ok, _live, html} = live(conn, ~p"/collect/datasets?view=books")
+    [picked] = Regex.run(~r|<a[^>]*href="/collect/datasets"[^>]*>|, html)
+    assert picked =~ ~s(class="selected")
+  end
+
+  test "データ収集の収集の画面を表示する（既定は技術書）", %{conn: conn} do
+    {:ok, _live, html} = open_live(conn, ~p"/collect/datasets")
     assert html =~ "定番の技術書の設定"
 
-    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=dining-1")
+    {:ok, _live, html} = open_live(conn, ~p"/collect/apps?view=dining-1")
     assert html =~ "テスト範囲の食事処"
 
     # 集めるのは Chiezo で、どこに残り誰が読むのかを、設定の頭で読めること
@@ -159,7 +242,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
   test "travel-log 用の書き出しを、リンクと分かる形で出す", %{conn: conn} do
     # ブラウザから Chiezo を直接読ませない代わりの道。押すと降ってくるだけなので、
     # リンクと分かる見た目のまま、周りの注記より一段強く出す
-    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=dining-1")
+    {:ok, _live, html} = open_live(conn, ~p"/collect/apps?view=dining-1")
 
     assert html =~ ~p"/datasets/dining-1/travel-log.zip"
     assert html =~ "download-link"
@@ -176,7 +259,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
   test "技術書の画面も開ける（抽出の指定と区画を持たない対象）", %{conn: conn} do
     # 技術書は記事を溜めてからタグで数えるので、辞典から引く指定も区画も持たない。
     # 持つ前提で描いていて、開くと落ちていた
-    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=books")
+    {:ok, _live, html} = open_live(conn, ~p"/collect/datasets?view=books")
 
     assert html =~ "Chiezo への依頼文"
     refute html =~ "抽出の指定（辞典から機械的に引く条件）"
@@ -185,39 +268,42 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
   test "知らない種類は先頭の集めものに丸める", %{conn: conn} do
     # `?view=` は人が触れるところなので、書き換えられても画面が壊れない
-    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=%2E%2E%2F")
+    {:ok, _live, html} = open_live(conn, ~p"/collect/datasets?view=%2E%2E%2F")
 
     assert html =~ "定番の技術書の設定"
+
+    {:ok, _live, html} = live(conn, ~p"/datasets?view=%2E%2E%2F")
+    assert html =~ ~s(href="/collect/datasets?view=books")
   end
 
   test "溜まったものは、この画面には出さない", %{conn: conn} do
     # 読むのは travel-log。同じものを 2 つの画面で見せると、
     # どちらが本当の状態なのか読めなくなる
-    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=dining-1")
+    {:ok, _live, html} = open_live(conn, ~p"/collect/apps?view=dining-1")
 
     refute html =~ "relation-canvas"
 
     # 渡す中身はどの範囲も同じなので、範囲のタブではなく「全体」のタブに 1 つだけ出す
     refute html =~ "travel-log に渡す中身"
-    {:ok, _live, html} = live(conn, ~p"/datasets/areas")
+    {:ok, _live, html} = live(conn, ~p"/collect/apps/areas")
     assert html =~ "travel-log に渡す中身"
   end
 
   test "アニメ聖地のタブを開ける", %{conn: conn} do
-    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=anime")
+    {:ok, _live, html} = open_live(conn, ~p"/collect/apps?view=anime")
 
     assert html =~ "アニメ聖地"
     assert html =~ "TV アニメと劇場アニメの舞台になった土地"
   end
 
   test "Chiezo が未設定なら、その理由を出す", %{conn: conn} do
-    {:ok, live, _html} = open_live(conn, ~p"/datasets")
+    {:ok, live, _html} = open_live(conn, ~p"/collect/datasets")
 
     assert render_async(live) =~ "CHIEZO_BASE_URL"
   end
 
   test "押しただけでは AI が動かないことを、押す前に読める", %{conn: conn} do
-    {:ok, _live, html} = open_live(conn, ~p"/datasets")
+    {:ok, _live, html} = open_live(conn, ~p"/collect/datasets")
 
     assert html =~ "収集を依頼する"
     assert html =~ "止まった状態"
@@ -225,7 +311,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
   test "機械で引くところと AI が書くところの線引きが読める", %{conn: conn} do
     # どちらが入れた値かが読めないと、地図辞典の間違いを AI のせいにしてしまう
-    {:ok, _live, html} = open_live(conn, ~p"/datasets?view=dining-1")
+    {:ok, _live, html} = open_live(conn, ~p"/collect/apps?view=dining-1")
 
     assert html =~ "抽出の指定"
     assert html =~ "overture_japan"
@@ -343,7 +429,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     end
 
     defp shown(conn) do
-      {:ok, live, _html} = open_live(conn, ~p"/datasets?view=dining-1")
+      {:ok, live, _html} = open_live(conn, ~p"/collect/apps?view=dining-1")
       {live, render_async(live)}
     end
 
@@ -1027,7 +1113,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     end
 
     test "本棚の本を、表紙つきでおすすめ度の高い順に並べる", %{conn: conn} do
-      {:ok, live, _html} = open_live(conn, ~p"/datasets?view=books")
+      {:ok, live, _html} = open_read(conn, ~p"/datasets?view=books")
       html = render_async(live)
 
       [_, shelf] = String.split(html, ~s(class="bookshelf"), parts: 2)
@@ -1050,13 +1136,17 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       assert top =~ ~r|リーダブルコード\s*</a>.*?book-badge is-oreilly|s
       # 数を持たない本（見出しを書き換えて足されたもの）は並べない
       refute shelf =~ ~s(phx-value-title="リーダブルコード")
+
+      # 読む画面には収集の設定を出さない（収集の画面で直す）
+      refute html =~ "収集の設定を更新"
+      refute html =~ "Chiezo への依頼文"
     end
 
     test "興味トピックに近い本を強調し、絞り込める", %{conn: conn} do
       Chidori.News.Interests.toggle("chidori_tech", "設計・アーキテクチャ")
       Chidori.News.Interests.toggle("chidori_tech", "監視")
 
-      {:ok, live, _html} = open_live(conn, ~p"/datasets?view=books")
+      {:ok, live, _html} = open_read(conn, ~p"/datasets?view=books")
       html = render_async(live)
 
       assert html =~ "★ 興味: 監視"
@@ -1070,7 +1160,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     end
 
     test "本を押すと詳細が開き、勧めている記事へのリンクが出る", %{conn: conn} do
-      {:ok, live, _html} = open_live(conn, ~p"/datasets?view=books")
+      {:ok, live, _html} = open_read(conn, ~p"/datasets?view=books")
       render_async(live)
 
       refute render(live) =~ "https://example.com/a"
@@ -1091,7 +1181,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
     test "詳細から、その本だけを本棚の整理の回に調べ直してもらえる", %{conn: conn} do
       # 「いま頼む」はどの収集に頼むのか読めなかった。本を見ながら、その本について頼む
-      {:ok, live, _html} = open_live(conn, ~p"/datasets?view=books")
+      {:ok, live, _html} = open_read(conn, ~p"/datasets?view=books")
       render_async(live)
 
       live
@@ -1117,7 +1207,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     end
 
     test "読んだ印を付けると、本棚で分かり、未読の上位の枠から外れる", %{conn: conn} do
-      {:ok, live, html} = open_live(conn, ~p"/datasets?view=books")
+      {:ok, live, html} = open_read(conn, ~p"/datasets?view=books")
       html = render_async(live) || html
 
       assert html =~ "未読の上位"
@@ -1152,7 +1242,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
     test "印もメモも空にして保存すると、記録ごと消える", %{conn: conn} do
       {:ok, _mark} = Chidori.Datasets.BookMarks.put("本:リーダブルコード", %{"read" => true})
-      {:ok, live, _html} = open_live(conn, ~p"/datasets?view=books")
+      {:ok, live, _html} = open_read(conn, ~p"/datasets?view=books")
       render_async(live)
 
       live
@@ -1168,7 +1258,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     end
 
     test "「いま頼む」の欄は出さず、依頼文は収集ごとの節に出す", %{conn: conn} do
-      {:ok, live, _html} = open_live(conn, ~p"/datasets?view=books")
+      {:ok, live, _html} = open_live(conn, ~p"/collect/datasets?view=books")
       html = render_async(live)
 
       refute html =~ "いま頼む（割り込み）"
@@ -1182,7 +1272,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     end
 
     test "巡回ごとに相手を選んで送れる", %{conn: conn} do
-      {:ok, live, _html} = open_live(conn, ~p"/datasets?view=books")
+      {:ok, live, _html} = open_live(conn, ~p"/collect/datasets?view=books")
       html = render_async(live)
 
       [_, shelf] = String.split(html, "本棚（定番の技術書）", parts: 2)

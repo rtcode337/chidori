@@ -16,7 +16,7 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
   end
 
   test "描いた四角が範囲の欄に入る", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/datasets/areas")
+    {:ok, live, _html} = live(conn, ~p"/collect/apps/areas")
 
     html =
       render_hook(live, "drawn", %{
@@ -33,7 +33,7 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
   end
 
   test "名前を付けて作ると、その範囲の画面へ移る", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/datasets/areas")
+    {:ok, live, _html} = live(conn, ~p"/collect/apps/areas")
 
     render_hook(live, "drawn", %{
       "south" => 35.67,
@@ -50,11 +50,11 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
     [area] = DiningAreas.list()
     assert area.name == "東京駅"
     assert {:error, {:live_redirect, %{to: to}}} = result
-    assert to == "/datasets?view=dining-#{area.id}"
+    assert to == "/collect/apps?view=dining-#{area.id}"
   end
 
   test "広すぎる範囲は断る（日本全体と同じことになる）", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/datasets/areas")
+    {:ok, live, _html} = live(conn, ~p"/collect/apps/areas")
 
     render_hook(live, "drawn", %{
       "south" => 34.0,
@@ -69,45 +69,66 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
     assert DiningAreas.list() == []
   end
 
-  test "作った範囲はデータ収集のタブに並べず、食事処のタブ 1 つにまとめる", %{conn: conn} do
-    # 並べると、範囲を足すたびに技術書や Pi-hole のタブが押し出される
+  test "作った範囲は他アプリ用のタブに並べず、食事処のタブ 1 つにまとめる", %{conn: conn} do
+    # 並べると、範囲を足すたびにご当地グルメやアニメ聖地のタブが押し出される
+    Chidori.AreaFixture.area!()
+
+    {:ok, _live, html} = live(conn, ~p"/collect/apps?view=gourmet")
+    [_, tabs] = String.split(html, ~s(id="dataset-tabs"), parts: 2)
+    [tabs, _] = String.split(tabs, "</nav>", parts: 2)
+
+    refute tabs =~ "view=dining-1"
+    refute html =~ ~s(id="dining-tabs")
+    assert tabs =~ ~r|href="/collect/apps/areas"[^>]*>\s*食事処\s*<|
+
+    # データ収集（Chidori で読むもの）には食事処を出さない
+    {:ok, _live, html} = live(conn, ~p"/collect/datasets")
+    refute html =~ ~s(href="/collect/apps/areas")
+  end
+
+  test "読む画面のデータ収集には、食事処のタブも範囲のタブも出さない（読むのは travel-log）", %{conn: conn} do
     Chidori.AreaFixture.area!()
 
     {:ok, _live, html} = live(conn, ~p"/datasets")
 
-    refute html =~ ~s(href="/datasets?view=dining-1")
+    refute html =~ ~s(href="/collect/apps/areas")
+    refute html =~ ~s(view=dining-1)
     refute html =~ ~s(id="dining-tabs")
-    assert html =~ ~r|href="/datasets/areas"[^>]*>\s*食事処\s*<|
+  end
+
+  test "前の範囲の一覧の URL は、収集の画面へ送る", %{conn: conn} do
+    assert conn |> get("/datasets/areas") |> redirected_to() == "/collect/apps/areas"
+    assert conn |> get("/collect/datasets/areas") |> redirected_to() == "/collect/apps/areas"
   end
 
   test "範囲を開いているときは、食事処のタブと、その下の段の範囲のタブを選んだ状態にする", %{conn: conn} do
     Chidori.AreaFixture.area!()
 
-    {:ok, _live, html} = live(conn, ~p"/datasets?view=dining-1")
+    {:ok, _live, html} = live(conn, ~p"/collect/apps?view=dining-1")
 
-    assert html =~ ~r|href="/datasets/areas"[^>]*class="selected"[^>]*>\s*食事処|
+    assert html =~ ~r|href="/collect/apps/areas"[^>]*class="selected"[^>]*>\s*食事処|
     assert html =~ ~s(id="dining-tabs")
-    assert html =~ ~r|href="/datasets\?view=dining-1"[^>]*class="selected"[^>]*>\s*テスト範囲|
+    assert html =~ ~r|href="/collect/apps\?view=dining-1"[^>]*class="selected"[^>]*>\s*テスト範囲|
     # 「全体」へもタブから戻れる
-    assert html =~ ~r|href="/datasets/areas"[^>]*>\s*全体\s*<|
+    assert html =~ ~r|href="/collect/apps/areas"[^>]*>\s*全体\s*<|
   end
 
   test "範囲の一覧の画面は、食事処の中の「全体」のタブとして出る", %{conn: conn} do
     Chidori.AreaFixture.area!()
 
-    {:ok, _live, html} = live(conn, ~p"/datasets/areas")
+    {:ok, _live, html} = live(conn, ~p"/collect/apps/areas")
 
     assert html =~ ~s(id="dataset-tabs")
     assert html =~ ~r|class="selected"[^>]*>\s*食事処|
-    assert html =~ ~r|href="/datasets/areas"[^>]*class="selected"[^>]*>\s*全体|
+    assert html =~ ~r|href="/collect/apps/areas"[^>]*class="selected"[^>]*>\s*全体|
     # 範囲は下の段のタブ（と「作った範囲」の名前の欄）から開く
-    assert html =~ ~r|href="/datasets\?view=dining-1"[^>]*>\s*テスト範囲|
+    assert html =~ ~r|href="/collect/apps\?view=dining-1"[^>]*>\s*テスト範囲|
   end
 
   test "作った範囲は、地図に名前の札つきで出る", %{conn: conn} do
     Chidori.AreaFixture.area!()
 
-    {:ok, _live, html} = live(conn, ~p"/datasets/areas")
+    {:ok, _live, html} = live(conn, ~p"/collect/apps/areas")
 
     assert html =~ ~s(class="area-rect")
     assert html =~ ~r|class="area-label"[^>]*data-pin|
@@ -154,7 +175,7 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
     end
 
     test "押すと四角が欄に入り、地図がその範囲へ寄る", %{conn: conn, area: area} do
-      {:ok, live, _html} = live(conn, ~p"/datasets/areas")
+      {:ok, live, _html} = live(conn, ~p"/collect/apps/areas")
 
       html = live |> element(~s|button[phx-click="edit_area"]|) |> render_click()
 
@@ -171,7 +192,7 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
       conn: conn,
       area: area
     } do
-      {:ok, live, _html} = live(conn, ~p"/datasets/areas")
+      {:ok, live, _html} = live(conn, ~p"/collect/apps/areas")
       live |> element(~s|button[phx-click="edit_area"]|) |> render_click()
 
       live
@@ -193,7 +214,7 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
     end
 
     test "名前だけ直したときは走らせ直さない", %{conn: conn, area: area} do
-      {:ok, live, _html} = live(conn, ~p"/datasets/areas")
+      {:ok, live, _html} = live(conn, ~p"/collect/apps/areas")
       live |> element(~s|button[phx-click="edit_area"]|) |> render_click()
 
       html =
@@ -227,7 +248,7 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
         east: 135.6
       })
 
-      {:ok, live, _html} = live(conn, ~p"/datasets/areas")
+      {:ok, live, _html} = live(conn, ~p"/collect/apps/areas")
 
       text = """
       - [修正] 東京駅の店 (35.6812,139.7671): 閉店している
@@ -258,7 +279,7 @@ defmodule ChidoriWeb.DiningAreasLiveTest do
         east: 139.78
       })
 
-      {:ok, _live, html} = live(conn, ~p"/datasets/areas")
+      {:ok, _live, html} = live(conn, ~p"/collect/apps/areas")
       assert html =~ ~p"/datasets/areas/travel-log.zip"
     end
   end

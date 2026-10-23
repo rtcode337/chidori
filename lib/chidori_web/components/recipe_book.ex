@@ -21,9 +21,6 @@ defmodule ChidoriWeb.RecipeBook do
   attr :opened, :string, default: nil
   attr :message, :string, default: nil
 
-  # 名簿の広さの欄を出すか（トップでは出さない。設定はデータ収集の画面で）
-  attr :roster, :boolean, default: true
-
   def book(assigns) do
     assigns =
       assign(assigns,
@@ -39,7 +36,7 @@ defmodule ChidoriWeb.RecipeBook do
         レシピ集 <span class="muted-note">（{length(@recipes)} 品）</span>
       </h2>
       <p :if={@recipes == []} class="muted-note">
-        まだありません。下の設定から依頼して有効にすると、名簿の回が百科事典から料理を引き、書く回が 1 品ずつレシピを書いていきます（書き終えた料理から並びます）。
+        まだありません。収集の画面から依頼して有効にすると、名簿の回が百科事典から料理を引き、書く回が 1 品ずつレシピを書いていきます（書き終えた料理から並びます）。
       </p>
       <form :if={@recipes != []} class="recipe-filters" phx-change="filter_recipes">
         <label>
@@ -95,29 +92,38 @@ defmodule ChidoriWeb.RecipeBook do
         </ul>
       </section>
 
-      <%!-- 名簿の広さ。**足すだけ**の引き直しなので、下げると広がり、上げても減らない --%>
-      <form :if={@roster} class="recipe-roster" phx-submit="reroster_recipes">
-        <label>
-          名簿の広さ（百科事典の月の閲覧数の下限）
-          <select name="min">
-            <option
-              :for={n <- Recipes.pageview_choices()}
-              value={n}
-              selected={n == Recipes.min_pageviews()}
-            >
-              月 {Integer.to_string(n)} 以上
-            </option>
-          </select>
-        </label>
-        <button type="submit" phx-disable-with="引き直しています…">名簿を引き直す</button>
-        <span class="muted-note">
-          AI を使わずに名簿だけ引き直します（足すだけなので、下限を上げても名簿からは消えません）。足した料理は書く回が順に書きます。
-        </span>
-        <span :if={@message} class="muted-note">{@message}</span>
-      </form>
-
       <.recipe_modal :if={@recipe} recipe={@recipe} />
     </section>
+    """
+  end
+
+  attr :message, :string, default: nil
+
+  @doc """
+  名簿の広さ（収集の画面に置く。読む画面のレシピ集からは外した —— 頼む口は収集の画面に集める）。
+  """
+  def roster_form(assigns) do
+    ~H"""
+    <%!-- 名簿の広さ。**足すだけ**の引き直しなので、下げると広がり、上げても減らない --%>
+    <form class="recipe-roster" phx-submit="reroster_recipes">
+      <label>
+        名簿の広さ（百科事典の月の閲覧数の下限）
+        <select name="min">
+          <option
+            :for={n <- Recipes.pageview_choices()}
+            value={n}
+            selected={n == Recipes.min_pageviews()}
+          >
+            月 {Integer.to_string(n)} 以上
+          </option>
+        </select>
+      </label>
+      <button type="submit" phx-disable-with="引き直しています…">名簿を引き直す</button>
+      <span class="muted-note">
+        AI を使わずに名簿だけ引き直します（足すだけなので、下限を上げても名簿からは消えません）。足した料理は書く回が順に書きます。
+      </span>
+      <span :if={@message} class="muted-note">{@message}</span>
+    </form>
     """
   end
 

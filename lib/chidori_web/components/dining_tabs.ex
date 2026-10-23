@@ -9,6 +9,11 @@ defmodule ChidoriWeb.DiningTabs do
 
   「全体」は範囲の一覧・地図・全範囲の ZIP の画面（`ChidoriWeb.DiningAreasLive`）、
   範囲のタブはその範囲の収集の画面（`ChidoriWeb.DatasetsLive` の `view`）を開く。
+
+  **食事処の段は収集の画面の「他アプリ用」にだけある**（食事処は Chidori で一覧にしない。読むのは travel-log）。
+  上の段は `mode` で並べるものを変える —— 読む画面（`:read`。`/datasets`）と収集の画面のデータ収集
+  （`:collect`。`/collect/datasets`）は Chidori で読む対象だけ（`Datasets.listed?/1`）、他アプリ用
+  （`:apps`。`/collect/apps`）は他のアプリが読む対象と食事処（`Datasets.for_other_app?/1`）。
   """
 
   use Phoenix.Component
@@ -34,7 +39,7 @@ defmodule ChidoriWeb.DiningTabs do
       aria-label="食事処の範囲"
     >
       <.link
-        navigate={~p"/datasets/areas"}
+        navigate={~p"/collect/apps/areas"}
         class={if @current == nil, do: "selected"}
         aria-current={if @current == nil, do: "page"}
       >
@@ -42,7 +47,7 @@ defmodule ChidoriWeb.DiningTabs do
       </.link>
       <.link
         :for={area <- @areas}
-        navigate={~p"/datasets?view=#{area.key}"}
+        navigate={~p"/collect/apps?view=#{area.key}"}
         class={if @current == area.key, do: "selected"}
         aria-current={if @current == area.key, do: "page"}
       >
@@ -61,6 +66,9 @@ defmodule ChidoriWeb.DiningTabs do
   # 食事処の「全体」の画面にいるか（その画面ではタブの行き先と選んだ印が変わる）
   attr :on_areas, :boolean, default: false
 
+  # どの画面の段か（`:read` = 読む画面 / `:collect` = 収集の画面のデータ収集 / `:apps` = 他アプリ用）
+  attr :mode, :atom, default: :read
+
   @doc """
   データ収集のタブ（上の段）。並びは `Chidori.Datasets.tabs/1`。食事処は範囲がいくつあっても
   1 つのタブで、範囲を開いているときも「全体」の画面にいるときも、このタブを選んだ印で出す。
@@ -68,9 +76,21 @@ defmodule ChidoriWeb.DiningTabs do
   並びを変えるのに 2 か所を直すことになった）。
   """
   def dataset_tabs(assigns) do
+    tabs = Chidori.Datasets.tabs(assigns.datasets)
+
     assigns =
       assign(assigns,
-        tabs: Chidori.Datasets.tabs(assigns.datasets),
+        tabs:
+          if(assigns.mode == :apps,
+            do: Enum.filter(tabs, &(&1 == :dining or Chidori.Datasets.for_other_app?(&1))),
+            else: Enum.filter(tabs, &(&1 != :dining and Chidori.Datasets.listed?(&1)))
+          ),
+        base:
+          case assigns.mode do
+            :read -> "/datasets"
+            :collect -> "/collect/datasets"
+            :apps -> "/collect/apps"
+          end,
         dining?:
           assigns.on_areas or
             Enum.any?(assigns.datasets, &(&1[:area] && &1.key == assigns.current))
@@ -82,7 +102,7 @@ defmodule ChidoriWeb.DiningTabs do
         <%= if tab == :dining do %>
           <.link
             :if={@on_areas}
-            patch={~p"/datasets/areas"}
+            patch={~p"/collect/apps/areas"}
             class="selected"
             aria-current="page"
           >
@@ -90,17 +110,17 @@ defmodule ChidoriWeb.DiningTabs do
           </.link>
           <.link
             :if={!@on_areas}
-            navigate={~p"/datasets/areas"}
+            navigate={~p"/collect/apps/areas"}
             class={if @dining?, do: "selected"}
             aria-current={if @dining?, do: "page"}
           >
             食事処
           </.link>
         <% else %>
-          <.link :if={@on_areas} navigate={~p"/datasets?view=#{tab.key}"}>{tab.name}</.link>
+          <.link :if={@on_areas} navigate={"#{@base}?view=#{tab.key}"}>{tab.name}</.link>
           <.link
             :if={!@on_areas}
-            patch={~p"/datasets?view=#{tab.key}"}
+            patch={"#{@base}?view=#{tab.key}"}
             class={if @current == tab.key, do: "selected"}
             aria-current={if @current == tab.key, do: "page"}
           >

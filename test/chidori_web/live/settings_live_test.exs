@@ -59,7 +59,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
   end
 
   test "Chiezo の設定が Chidori の定義と違う収集に、違う項目を出す", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    {:ok, live, _html} = live(conn, ~p"/collect")
     html = render_async(live)
 
     # Chiezo の技術ニュースには整理の回しか無い（Chidori の定義には見出しの回もある）
@@ -70,14 +70,14 @@ defmodule ChidoriWeb.SettingsLiveTest do
   end
 
   test "いまの間隔が選ばれて出る", %{conn: conn} do
-    {:ok, _live, html} = live(conn, ~p"/settings?tab=chiezo")
+    {:ok, _live, html} = live(conn, ~p"/collect")
 
     assert html =~ "巡回の間隔"
     assert html =~ ~r/<option[^>]*value="720"[^>]*selected/
   end
 
   test "保存すると、その間隔を Chiezo に送る", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    {:ok, live, _html} = live(conn, ~p"/collect")
 
     live
     |> form("#collect-pace", pace: %{tidy: "1440", scan: "120"})
@@ -94,12 +94,27 @@ defmodule ChidoriWeb.SettingsLiveTest do
 
     [_before, tabs | _rest] = String.split(html, ~s(aria-label="設定"))
     [tabs | _rest] = String.split(tabs, "</nav>")
-    assert :binary.match(tabs, "トップページ") < :binary.match(tabs, "Chiezo 収集")
+    assert :binary.match(tabs, "トップページ") < :binary.match(tabs, "通知")
+
+    # Chiezo 収集の表は収集の画面（/collect）へ移した。設定のタブには置かない
+    refute tabs =~ "Chiezo 収集"
     assert html =~ ~r/class="selected"[^>]*>\s*トップページ/
   end
 
+  test "前の「Chiezo 収集」のタブを開くと、収集の画面へ送る", %{conn: conn} do
+    assert {:error, {:live_redirect, %{to: "/collect"}}} = live(conn, ~p"/settings?tab=chiezo")
+  end
+
+  test "収集の画面は収集の表だけを出し、設定のタブは出さない", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/collect")
+
+    assert html =~ "巡回の間隔"
+    refute html =~ ~s(aria-label="設定")
+    assert html =~ ~r|class="active" href="/collect"|
+  end
+
   test "収集は Chidori の画面の並びで、Chiezo にまだ無いものも並ぶ", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    {:ok, live, _html} = live(conn, ~p"/collect")
     html = render_async(live)
 
     [tech, tech_topics, painters, old] =
@@ -124,7 +139,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
   end
 
   test "画面の収集は、その画面と同じ設定を丸ごと送る（選んだ相手と整理の止め方を載せる）", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    {:ok, live, _html} = live(conn, ~p"/collect")
     html = render_async(live)
 
     # 整理は押しボタンではなくチェックボックス
@@ -152,7 +167,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
   end
 
   test "画面に無い収集は、選び直した相手だけを送る", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    {:ok, live, _html} = live(conn, ~p"/collect")
     render_async(live)
 
     live
@@ -170,7 +185,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
   end
 
   test "最後に取得した時刻を出し、「最新の情報を取得」で読み直す", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    {:ok, live, _html} = live(conn, ~p"/collect")
     html = render_async(live)
 
     assert html =~ "最後に取得:"
@@ -355,7 +370,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
           else: HttpStub.ok(~s({"workers":[],"backends":[]}))
     end)
 
-    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    {:ok, live, _html} = live(conn, ~p"/collect")
     html = render_async(live)
 
     assert html =~ "Chidori が起こす（07:00）"
@@ -378,7 +393,7 @@ defmodule ChidoriWeb.SettingsLiveTest do
   end
 
   test "巡回の間隔はざっと見るが先で、それぞれ何本あって何本動いているかを出す", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    {:ok, live, _html} = live(conn, ~p"/collect")
     html = render_async(live)
 
     pace = html |> String.split(~s(id="collect-pace")) |> List.last()
@@ -493,7 +508,7 @@ defmodule ChidoriWeb.SettingsLiveSwitchTest do
 
   test "止まっている収集は塊に色を付け、「動かす」で Chidori の名乗りで動かす", %{conn: conn} do
     stub(false, HttpStub.ok("{}"))
-    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    {:ok, live, _html} = live(conn, ~p"/collect")
     html = render_async(live)
 
     assert html =~ ~s(class="is-stopped")
@@ -511,7 +526,7 @@ defmodule ChidoriWeb.SettingsLiveSwitchTest do
 
   test "許可されていなければ、Chiezo でどうすればよいかを出す", %{conn: conn} do
     stub(false, {:ok, %{status: 403, body: ~s({"error":"外部からの有効化を許可していません"})}})
-    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    {:ok, live, _html} = live(conn, ~p"/collect")
     render_async(live)
 
     live
@@ -523,7 +538,7 @@ defmodule ChidoriWeb.SettingsLiveSwitchTest do
 
   test "動いている収集には「止める」を出す", %{conn: conn} do
     stub(true, HttpStub.ok("{}"))
-    {:ok, live, _html} = live(conn, ~p"/settings?tab=chiezo")
+    {:ok, live, _html} = live(conn, ~p"/collect")
     html = render_async(live)
 
     refute html =~ ~s(class="is-stopped")
@@ -533,5 +548,32 @@ defmodule ChidoriWeb.SettingsLiveSwitchTest do
     |> render_click()
 
     assert_receive {:posted, _url, %{"enabled" => false}}
+  end
+end
+
+defmodule ChidoriWeb.CollectTabsTest do
+  @moduledoc "収集の画面の頭の段（一覧・最新情報・関連図・データ収集・他アプリ用）。頭のメニューの「収集」から直接たどれる。"
+
+  use ChidoriWeb.ConnCase, async: true
+
+  import Phoenix.LiveViewTest
+
+  test "どの段へも行け、開いている段に印が付く" do
+    html = render_component(&ChidoriWeb.CollectTabs.collect_tabs/1, current: :relations)
+
+    for path <- [
+          "/collect",
+          "/collect/news",
+          "/collect/relations",
+          "/collect/datasets",
+          "/collect/apps"
+        ] do
+      assert html =~ ~s(href="#{path}")
+    end
+
+    [picked] = Regex.run(~r|<a[^>]*href="/collect/relations"[^>]*>|, html)
+    assert picked =~ ~s(class="selected") and picked =~ ~s(aria-current="page")
+    [other] = Regex.run(~r|<a[^>]*href="/collect/news"[^>]*>|, html)
+    refute other =~ "selected"
   end
 end

@@ -212,7 +212,17 @@ defmodule Chidori.Datasets.RecipesTest do
       assert html =~ "火から下ろしてから卵液と和える。"
       assert html =~ "料理学校の解説"
       assert html =~ "https://commons.wikimedia.org/wiki/File:Sample.jpg"
+
+      # 名簿を引き直す口は収集の画面に置く（読むレシピ集には出さない）
+      refute html =~ "名簿を引き直す"
+    end
+
+    test "名簿を引き直す口は、収集の画面に置く部品として出す" do
+      html = render_component(&RecipeBook.roster_form/1, message: "名簿を引き直しました")
+
       assert html =~ "名簿を引き直す"
+      assert html =~ ~s(phx-submit="reroster_recipes")
+      assert html =~ "名簿を引き直しました"
     end
   end
 end

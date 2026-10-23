@@ -3,15 +3,33 @@
 <%!-- 頭のメニューとタブは main の外に置き、画面の上に残す（スクロールするのは main の中だけ。root.html.heex） --%>
 <div class="relations-page page-head">
   <div>
-    <ChidoriWeb.MainNav.main_nav active={:datasets} />
+    <ChidoriWeb.MainNav.main_nav active={if @collect_mode, do: :collect, else: :datasets} />
+    <ChidoriWeb.CollectTabs.collect_tabs
+      :if={@collect_mode}
+      current={if @for_other_app, do: :apps, else: :datasets}
+    />
 
     <%!-- 集めるものごとのタブ。**収集も溜まる先も別**なので、1 つに混ぜると
          どちらの状態を見ているのか読めなくなる。並びは `Chidori.Datasets.tabs/1`
          （食事処はタブ 1 つで、範囲ごとのタブは下の段）。**見出しの上に置く**（関連図と同じ）——
          見出しと説明は選んだものなので、切り替える口がその下にあると、
          どこまでが切り替わるのかが読めない --%>
-    <ChidoriWeb.DiningTabs.dataset_tabs datasets={@datasets} current={@view} />
-    <ChidoriWeb.DiningTabs.dining_tabs :if={@dataset[:area]} datasets={@datasets} current={@view} />
+    <ChidoriWeb.DiningTabs.dataset_tabs
+      datasets={@datasets}
+      current={@view}
+      mode={
+        cond do
+          @for_other_app -> :apps
+          @collect_mode -> :collect
+          true -> :read
+        end
+      }
+    />
+    <ChidoriWeb.DiningTabs.dining_tabs
+      :if={@collect_mode and @dataset[:area]}
+      datasets={@datasets}
+      current={@view}
+    />
   </div>
 </div>
 
@@ -20,7 +38,16 @@
     <section class="relations-intro">
       <p>{@dataset.eyebrow}</p>
       <h1>{@dataset.title}</h1>
-      <p>{@dataset.description}</p>
+      <p :if={!@collect_mode}>
+        {@dataset.description}
+        <.link navigate={"#{Chidori.Datasets.collect_path(@dataset)}?view=#{@view}"}>この収集の画面へ</.link>
+      </p>
+      <p :if={@collect_mode}>
+        {@dataset.description}
+        <.link :if={Chidori.Datasets.listed?(@dataset)} navigate={"/datasets?view=#{@view}"}>
+          読む画面へ
+        </.link>
+      </p>
 
       <%!-- **開くたびには取りに行かない。** Chiezo の側は数時間に 1 度しか動かないので、
            いつのものを見ているかを出して、取り直すかは読む人に決めてもらう --%>
@@ -47,257 +74,261 @@
       </p>
     </section>
 
-    <%!-- **本棚**（読む側のアプリを持たない対象だけ）。**設定より先に置く** ——
+    <%!-- **読む画面と収集の画面を分ける**（`@collect_mode`）。読む画面は溜まったもの（本棚・
+         レシピ集・ドメイン）だけ、収集の設定・区画・依頼・書き出しは収集の画面（`/collect/datasets`・他アプリ用は `/collect/apps`）--%>
+    <%= if !@collect_mode do %>
+      <%!-- **本棚**（読む側のアプリを持たない対象だけ）。**設定より先に置く** ——
          この対象で読みに来るのは、溜まった本のほう --%>
-    <%!-- **いま止めている通信**（Pi-hole の画面の「1件ずつ流す」に当たるもの）。押した時点から先を
+      <%!-- **いま止めている通信**（Pi-hole の画面の「1件ずつ流す」に当たるもの）。押した時点から先を
          5 秒ごとに Chiezo 越しに読み、新しいものを上に 1 件 1 行で足す --%>
-    <section
-      :if={@dataset[:listing]}
-      class="live-blocked"
-      aria-label="いま止めている通信"
-    >
-      <h2>
-        いま止めている通信 <span :if={@live_on} class="live-dot" aria-hidden="true"></span>
-      </h2>
-      <p class="button-row">
-        <button :if={!@live_on} type="button" phx-click="live_start">流す</button>
-        <button :if={@live_on} type="button" phx-click="live_stop">止める</button>
-        <button :if={@live_rows != []} type="button" phx-click="live_clear">消す</button>
-        <span class="muted-note">
-          押した時点から先に Pi-hole が止めた問い合わせを、5 秒ごとに 1 件 1 行で足します（同じドメインでも来るたびに 1 行）。
-        </span>
+      <section
+        :if={@dataset[:listing]}
+        class="live-blocked"
+        aria-label="いま止めている通信"
+      >
+        <h2>
+          いま止めている通信 <span :if={@live_on} class="live-dot" aria-hidden="true"></span>
+        </h2>
+        <p class="button-row">
+          <button :if={!@live_on} type="button" phx-click="live_start">流す</button>
+          <button :if={@live_on} type="button" phx-click="live_stop">止める</button>
+          <button :if={@live_rows != []} type="button" phx-click="live_clear">消す</button>
+          <span class="muted-note">
+            押した時点から先に Pi-hole が止めた問い合わせを、5 秒ごとに 1 件 1 行で足します（同じドメインでも来るたびに 1 行）。
+          </span>
+        </p>
+        <p :if={@live_error} class="muted-note">{reason_text(@live_error)}</p>
+        <p :if={@live_on and @live_rows == [] and !@live_error} class="muted-note">
+          待っています…
+        </p>
+        <%!-- 溜めているドメインだけ押せる（詳細は溜めたものから開くので） --%>
+        <% known =
+          case @shelf do
+            {:ok, domains} when is_list(domains) -> MapSet.new(domains, & &1.domain)
+            _other -> MapSet.new()
+          end %>
+        <table :if={@live_rows != []} class="live-table">
+          <thead>
+            <tr>
+              <th>時刻</th><th>ドメイン</th><th>アクセス元</th><th>止め方</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={row <- @live_rows}>
+              <td>{Jst.format(row.at)}</td>
+              <td class="live-domain">
+                <button
+                  :if={MapSet.member?(known, row.domain)}
+                  type="button"
+                  class="domain-name"
+                  phx-click="open_domain"
+                  phx-value-domain={row.domain}
+                >
+                  {row.domain}
+                </button>
+                <span :if={!MapSet.member?(known, row.domain)}>{row.domain}</span>
+              </td>
+              <td>
+                {row.client}<span :if={row.client_name} class="muted-note">（{row.client_name}）</span>
+              </td>
+              <td class="muted-note">{row.status}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <%!-- **レシピ集**（設定より先に置く。見に来るのは溜まったレシピのほう） --%>
+      <ChidoriWeb.RecipeBook.book
+        :if={@dataset[:reading] && match?({:ok, _}, @shelf)}
+        recipes={elem(@shelf, 1)}
+        filter={@recipe_filter}
+        opened={@recipe_open}
+        message={@recipe_message}
+      />
+      <p :if={@dataset[:reading] && match?({:error, _}, @shelf)} class="muted-note">
+        レシピを読めませんでした: {reason_text(elem(@shelf, 1))}
       </p>
-      <p :if={@live_error} class="muted-note">{reason_text(@live_error)}</p>
-      <p :if={@live_on and @live_rows == [] and !@live_error} class="muted-note">
-        待っています…
-      </p>
-      <%!-- 溜めているドメインだけ押せる（詳細は溜めたものから開くので） --%>
-      <% known =
-        case @shelf do
-          {:ok, domains} when is_list(domains) -> MapSet.new(domains, & &1.domain)
-          _other -> MapSet.new()
-        end %>
-      <table :if={@live_rows != []} class="live-table">
-        <thead>
-          <tr>
-            <th>時刻</th><th>ドメイン</th><th>アクセス元</th><th>止め方</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr :for={row <- @live_rows}>
-            <td>{Jst.format(row.at)}</td>
-            <td class="live-domain">
+
+      <%!-- **Pi-hole のドメイン**（設定より先に置く。見に来るのは溜まったドメインのほう）。
+         気になる通信を先に、止めた回数の多い順。押すと調べた中身の全文が開く --%>
+      <section
+        :if={@dataset[:listing] && match?({:ok, _}, @shelf)}
+        class="domains"
+        aria-label="ドメイン"
+      >
+        <% {:ok, all_domains} = @shelf %>
+        <% domains = domains_shown(all_domains, @domain_filter, @domain_marks) %>
+        <h2>
+          ドメイン
+          <span class="muted-note">
+            （{length(all_domains)} 件・調べたもの {Enum.count(all_domains, & &1.researched)} 件）
+          </span>
+        </h2>
+        <p :if={all_domains == []} class="muted-note">
+          まだありません。Chiezo で Pi-hole の取り込み（ソース「pihole」）を焼き、下の設定から依頼して有効にすると、機械収集が引いてきます。
+        </p>
+        <p :if={all_domains != []} class="domain-filters" role="group" aria-label="絞り込み">
+          <button
+            :for={
+              {key, label, n} <- [
+                {"all", "すべて", length(all_domains)},
+                {"unseen", "まだ見ていない",
+                 Enum.count(all_domains, &(!domain_seen?(@domain_marks, &1.domain)))},
+                {"watch", "気になる通信", Enum.count(all_domains, & &1.watch)},
+                {"blocked", "止めたもの", Enum.count(all_domains, & &1.blocked)},
+                {"caution", "要注意", Enum.count(all_domains, &(&1.verdict == "要注意"))}
+              ]
+            }
+            type="button"
+            class={["domain-filter", @domain_filter == key && "is-on"]}
+            phx-click="filter_domains"
+            phx-value-filter={key}
+            aria-pressed={to_string(@domain_filter == key)}
+          >
+            {label}（{n}）
+          </button>
+        </p>
+        <ul :if={domains != []} class="domain-list">
+          <li
+            :for={d <- domains}
+            class={[
+              "domain-row",
+              d.watch && "is-watch",
+              domain_seen?(@domain_marks, d.domain) && "is-seen"
+            ]}
+          >
+            <p class="domain-head">
               <button
-                :if={MapSet.member?(known, row.domain)}
                 type="button"
                 class="domain-name"
                 phx-click="open_domain"
-                phx-value-domain={row.domain}
+                phx-value-domain={d.domain}
               >
-                {row.domain}
+                {d.domain}
               </button>
-              <span :if={!MapSet.member?(known, row.domain)}>{row.domain}</span>
-            </td>
-            <td>
-              {row.client}<span :if={row.client_name} class="muted-note">（{row.client_name}）</span>
-            </td>
-            <td class="muted-note">{row.status}</td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
+              <span :if={d.verdict} class={verdict_class(d.verdict)}>{d.verdict}</span>
+              <span
+                :if={domain_mark_summary(domain_mark_of(@domain_marks, d.domain))}
+                class="seen-badge"
+              >
+                {domain_mark_summary(domain_mark_of(@domain_marks, d.domain))}
+              </span>
+              <span :if={d.watch} class="domain-badge is-watch">気になる通信</span>
+              <span :if={d.blocked} class="domain-badge">止めた {d.blocked_count} 回</span>
+              <span :if={d.last_seen} class="muted-note">最後に見たのは {Jst.format(d.last_seen)}</span>
+              <span :for={reason <- d.reasons} class="domain-reason">{reason}</span>
+            </p>
+            <p class="domain-summary">
+              <span :if={!d.researched} class="muted-note">まだ調べていません。</span>
+              {d.summary}
+            </p>
+          </li>
+        </ul>
+      </section>
 
-    <%!-- **レシピ集**（設定より先に置く。見に来るのは溜まったレシピのほう） --%>
-    <ChidoriWeb.RecipeBook.book
-      :if={@dataset[:reading] && match?({:ok, _}, @shelf)}
-      recipes={elem(@shelf, 1)}
-      filter={@recipe_filter}
-      opened={@recipe_open}
-      message={@recipe_message}
-    />
-    <p :if={@dataset[:reading] && match?({:error, _}, @shelf)} class="muted-note">
-      レシピを読めませんでした: {reason_text(elem(@shelf, 1))}
-    </p>
-
-    <%!-- **Pi-hole のドメイン**（設定より先に置く。見に来るのは溜まったドメインのほう）。
-         気になる通信を先に、止めた回数の多い順。押すと調べた中身の全文が開く --%>
-    <section
-      :if={@dataset[:listing] && match?({:ok, _}, @shelf)}
-      class="domains"
-      aria-label="ドメイン"
-    >
-      <% {:ok, all_domains} = @shelf %>
-      <% domains = domains_shown(all_domains, @domain_filter, @domain_marks) %>
-      <h2>
-        ドメイン
-        <span class="muted-note">
-          （{length(all_domains)} 件・調べたもの {Enum.count(all_domains, & &1.researched)} 件）
-        </span>
-      </h2>
-      <p :if={all_domains == []} class="muted-note">
-        まだありません。Chiezo で Pi-hole の取り込み（ソース「pihole」）を焼き、下の設定から依頼して有効にすると、機械収集が引いてきます。
-      </p>
-      <p :if={all_domains != []} class="domain-filters" role="group" aria-label="絞り込み">
-        <button
-          :for={
-            {key, label, n} <- [
-              {"all", "すべて", length(all_domains)},
-              {"unseen", "まだ見ていない",
-               Enum.count(all_domains, &(!domain_seen?(@domain_marks, &1.domain)))},
-              {"watch", "気になる通信", Enum.count(all_domains, & &1.watch)},
-              {"blocked", "止めたもの", Enum.count(all_domains, & &1.blocked)},
-              {"caution", "要注意", Enum.count(all_domains, &(&1.verdict == "要注意"))}
-            ]
-          }
-          type="button"
-          class={["domain-filter", @domain_filter == key && "is-on"]}
-          phx-click="filter_domains"
-          phx-value-filter={key}
-          aria-pressed={to_string(@domain_filter == key)}
-        >
-          {label}（{n}）
-        </button>
-      </p>
-      <ul :if={domains != []} class="domain-list">
-        <li
-          :for={d <- domains}
-          class={[
-            "domain-row",
-            d.watch && "is-watch",
-            domain_seen?(@domain_marks, d.domain) && "is-seen"
-          ]}
-        >
-          <p class="domain-head">
-            <button
-              type="button"
-              class="domain-name"
-              phx-click="open_domain"
-              phx-value-domain={d.domain}
-            >
-              {d.domain}
-            </button>
-            <span :if={d.verdict} class={verdict_class(d.verdict)}>{d.verdict}</span>
-            <span
-              :if={domain_mark_summary(domain_mark_of(@domain_marks, d.domain))}
-              class="seen-badge"
-            >
-              {domain_mark_summary(domain_mark_of(@domain_marks, d.domain))}
-            </span>
-            <span :if={d.watch} class="domain-badge is-watch">気になる通信</span>
-            <span :if={d.blocked} class="domain-badge">止めた {d.blocked_count} 回</span>
-            <span :if={d.last_seen} class="muted-note">最後に見たのは {Jst.format(d.last_seen)}</span>
-            <span :for={reason <- d.reasons} class="domain-reason">{reason}</span>
-          </p>
-          <p class="domain-summary">
-            <span :if={!d.researched} class="muted-note">まだ調べていません。</span>
-            {d.summary}
-          </p>
-        </li>
-      </ul>
-    </section>
-
-    <section
-      :if={@dataset[:derived] && match?({:ok, [_ | _]}, @shelf)}
-      class="bookshelf"
-      aria-label="本棚"
-    >
-      <% {:ok, all_books} = @shelf %>
-      <% near_count = Enum.count(all_books, &(&1.near != [])) %>
-      <% books =
-        if @shelf_near_only, do: Enum.filter(all_books, &(&1.near != [])), else: all_books %>
-      <%!-- **上位の数冊を先に**（トップページと同じ枠）。本棚は何百冊にもなるので、
+      <section
+        :if={@dataset[:derived] && match?({:ok, [_ | _]}, @shelf)}
+        class="bookshelf"
+        aria-label="本棚"
+      >
+        <% {:ok, all_books} = @shelf %>
+        <% near_count = Enum.count(all_books, &(&1.near != [])) %>
+        <% books =
+          if @shelf_near_only, do: Enum.filter(all_books, &(&1.near != [])), else: all_books %>
+        <%!-- **上位の数冊を先に**（トップページと同じ枠）。本棚は何百冊にもなるので、
            いま何が勧められているかを一目で見るには長すぎる --%>
-      <%!-- **読んだ本は外す**（この枠は次に何を読むかを決めるためのもの） --%>
-      <h2>未読の上位 {ChidoriWeb.TopBooks.count()} 冊</h2>
-      <%!-- 押すと本棚の詳細と同じもの（勧めている記事つき）が開く。オライリーの本は札の印で見分ける --%>
-      <ChidoriWeb.TopBooks.top_books
-        books={all_books}
-        open_event="open_book"
-        read={read_titles(@book_marks)}
-      />
-      <h2>本棚 <span class="muted-note">（{length(all_books)} 冊・おすすめ度の高い順）</span></h2>
-      <%!-- **興味トピックに近い本は強調する**（技術ニュースで選んだもの。言い換えと
+        <%!-- **読んだ本は外す**（この枠は次に何を読むかを決めるためのもの） --%>
+        <h2>未読の上位 {ChidoriWeb.TopBooks.count()} 冊</h2>
+        <%!-- 押すと本棚の詳細と同じもの（勧めている記事つき）が開く。オライリーの本は札の印で見分ける --%>
+        <ChidoriWeb.TopBooks.top_books
+          books={all_books}
+          open_event="open_book"
+          read={read_titles(@book_marks)}
+        />
+        <h2>本棚 <span class="muted-note">（{length(all_books)} 冊・おすすめ度の高い順）</span></h2>
+        <%!-- **興味トピックに近い本は強調する**（技術ニュースで選んだもの。言い換えと
            すぐ下の子も近いと数える）。絞り込みは押したときだけ --%>
-      <p :if={near_count > 0} class="shelf-near">
-        <button
-          type="button"
-          class={["shelf-near-toggle", @shelf_near_only && "is-on"]}
-          phx-click="toggle_shelf_near"
-          aria-pressed={to_string(@shelf_near_only)}
-        >
-          ★ 興味トピックに近い本だけ（{near_count} 冊）
-        </button>
-      </p>
-      <p class="muted-note">
-        おすすめ度は<strong>その本を勧めている記事の本数</strong>です（機械が数えたもの）。表紙は
-        <a href="https://www.hanmoto.com/" target="_blank" rel="noreferrer">版元ドットコム</a>
-        の書影です。
-      </p>
-      <ol class="book-list">
-        <li
-          :for={book <- books}
-          class={[
-            "book-card",
-            book.near != [] && "is-near",
-            book_mark_of(@book_marks, book.title).read && "is-read"
-          ]}
-        >
-          <%!-- **本を押すと詳細が開く**（ほかの画面の詳細と同じくモーダル）。
-               表紙も押せる —— 目に入るのは表紙のほうが先 --%>
+        <p :if={near_count > 0} class="shelf-near">
           <button
             type="button"
-            class={["book-cover", !book.cover_url && "is-empty"]}
-            phx-click="open_book"
-            phx-value-title={book.title}
-            aria-label={"#{book.name} の詳細を開く"}
+            class={["shelf-near-toggle", @shelf_near_only && "is-on"]}
+            phx-click="toggle_shelf_near"
+            aria-pressed={to_string(@shelf_near_only)}
           >
-            <%!-- 表紙の無い本は 404 が返る。**壊れた画像の印を出さず、枠だけ残す** --%>
-            <img
-              :if={book.cover_url}
-              src={book.cover_url}
-              alt=""
-              loading="lazy"
-              onerror="this.classList.add('is-missing')"
-            />
+            ★ 興味トピックに近い本だけ（{near_count} 冊）
           </button>
-          <div class="book-body">
-            <p class="book-title">
-              <button
-                type="button"
-                class="book-name"
-                phx-click="open_book"
-                phx-value-title={book.title}
-              >
-                {book.name}
-              </button>
-              <span :if={Map.get(book, :oreilly)} class="book-badge is-oreilly">オライリー</span>
-              <%!-- **読んだ本は印で分かるように**（本棚には残す。上位の枠からは外す） --%>
-              <span
-                :if={book_mark_summary(book_mark_of(@book_marks, book.title))}
-                class="read-badge"
-              >
-                {book_mark_summary(book_mark_of(@book_marks, book.title))}
-              </span>
-            </p>
-            <p class="book-score">
-              記事 {book.docs} 本が勧めている<span :if={book.recent > 0}>（直近 {book.recent} 本）</span>
-            </p>
-            <p :if={book.near != []} class="book-near">★ 興味: {Enum.join(book.near, "・")}</p>
-            <p :if={book.fields != []} class="book-fields">{Enum.join(book.fields, "・")}</p>
-            <p :if={book.topics != []} class="book-topics">
-              <span :for={topic <- book.topics} class="book-topic">{topic}</span>
-            </p>
-            <p :if={book.note != ""} class="book-note">{book.note}</p>
-          </div>
-        </li>
-      </ol>
-    </section>
+        </p>
+        <p class="muted-note">
+          おすすめ度は<strong>その本を勧めている記事の本数</strong>です（機械が数えたもの）。表紙は
+          <a href="https://www.hanmoto.com/" target="_blank" rel="noreferrer">版元ドットコム</a>
+          の書影です。
+        </p>
+        <ol class="book-list">
+          <li
+            :for={book <- books}
+            class={[
+              "book-card",
+              book.near != [] && "is-near",
+              book_mark_of(@book_marks, book.title).read && "is-read"
+            ]}
+          >
+            <%!-- **本を押すと詳細が開く**（ほかの画面の詳細と同じくモーダル）。
+               表紙も押せる —— 目に入るのは表紙のほうが先 --%>
+            <button
+              type="button"
+              class={["book-cover", !book.cover_url && "is-empty"]}
+              phx-click="open_book"
+              phx-value-title={book.title}
+              aria-label={"#{book.name} の詳細を開く"}
+            >
+              <%!-- 表紙の無い本は 404 が返る。**壊れた画像の印を出さず、枠だけ残す** --%>
+              <img
+                :if={book.cover_url}
+                src={book.cover_url}
+                alt=""
+                loading="lazy"
+                onerror="this.classList.add('is-missing')"
+              />
+            </button>
+            <div class="book-body">
+              <p class="book-title">
+                <button
+                  type="button"
+                  class="book-name"
+                  phx-click="open_book"
+                  phx-value-title={book.title}
+                >
+                  {book.name}
+                </button>
+                <span :if={Map.get(book, :oreilly)} class="book-badge is-oreilly">オライリー</span>
+                <%!-- **読んだ本は印で分かるように**（本棚には残す。上位の枠からは外す） --%>
+                <span
+                  :if={book_mark_summary(book_mark_of(@book_marks, book.title))}
+                  class="read-badge"
+                >
+                  {book_mark_summary(book_mark_of(@book_marks, book.title))}
+                </span>
+              </p>
+              <p class="book-score">
+                記事 {book.docs} 本が勧めている<span :if={book.recent > 0}>（直近 {book.recent} 本）</span>
+              </p>
+              <p :if={book.near != []} class="book-near">★ 興味: {Enum.join(book.near, "・")}</p>
+              <p :if={book.fields != []} class="book-fields">{Enum.join(book.fields, "・")}</p>
+              <p :if={book.topics != []} class="book-topics">
+                <span :for={topic <- book.topics} class="book-topic">{topic}</span>
+              </p>
+              <p :if={book.note != ""} class="book-note">{book.note}</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+    <% end %>
 
     <%!-- Chiezo の状態と、そこへ送る設定を **1 つの枠にまとめる**（関連図と同じ形）。
          状態を見る場所と、直す場所と、押す場所が離れていると、何がどこへ効くのか
          読めない --%>
     <%!-- 設定はページの名前を冠した 1 つの枠にまとめる（他の画面と同じ形）--%>
-    <section class="settings-panel" aria-label={"#{@dataset.title}の設定"}>
+    <section :if={@collect_mode} class="settings-panel" aria-label={"#{@dataset.title}の設定"}>
       <%!-- **設定は畳んでおき、開いたときに Chiezo から読む**（関連図と同じ）。
            本棚を見に来るたびに、収集の状態・巡回・相手の一覧まで運んでいた。
            <details> にしないのは、開いたことをサーバーが知る必要があるため --%>
@@ -315,6 +346,8 @@
       </h2>
 
       <div :if={@settings_open} id="chiezo-settings">
+        <%!-- 名簿の広さ（レシピ集）。読む画面のレシピ集から移した --%>
+        <ChidoriWeb.RecipeBook.roster_form :if={@dataset[:reading]} message={@recipe_message} />
         <%!-- **誰が集めて、どこに残るか**を設定の頭に置く（ページの下に置いていた頃は、
            設定を読む人の目に入らなかった）。主役ではないので小さく --%>
         <p class="muted-note collect-origin">
@@ -742,7 +775,7 @@
         </form>
 
         <%!-- **情報収集を起こす時刻**（時刻で起こす対象だけ。食事処の範囲・ご当地グルメ・アニメ聖地）。Chiezo の時計は外してあり、
-           Chidori がこの時刻に起こす。設定ページの「Chiezo 収集」の表と同じ値。
+           Chidori がこの時刻に起こす。収集の画面（`/collect`）の表と同じ値。
            上のフォームの中には置けない（フォームは入れ子にできない） --%>
         <form
           :if={@survey_times}

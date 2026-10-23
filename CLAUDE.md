@@ -31,6 +31,18 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
 - **要約の時刻は Chidori が持つ**（`Chidori.Digest.Scheduler`）。Chiezo には「いま回して」としか言わない
 - **選り分けは Chiezo の側。** 消えたもの（`_chiezo_removed`）・未レビュー（`_chiezo_unreviewed`）は
   Chiezo の読み口が既定で外す。Chidori で選り分け直さない
+- **建付けは「Chiezo に集め方を教え、溜まったものを引き出す」。** 引き出したものは、専用の見せ方が要るものは
+  外のアプリ（travel-log）に渡し、専用のアプリを作るほどでないものは Chidori が見せる
+- **画面は「読む画面」と「収集の画面」に分ける。** 読む画面（`/`・`/news`・`/relations`・`/datasets`）は集めたものと、
+  利用者が書くもの（見た記録・お気に入り・興味トピック・読んだ記録）だけを出す。Chiezo へ頼む口（収集の設定・巡回と相手・
+  時刻・区画・1 回だけ頼む口・travel-log からの依頼・空き欄を埋める・名簿・書き出し・実行履歴）は収集の画面（`/collect`・
+  `/collect/news`・`/collect/relations`・`/collect/datasets`・`/collect/apps`）に集める。**同じ LiveView を `live_action` の `:collect` で開き、
+  `@collect_mode` で出し分ける**（裏の処理は 1 つ）。収集の画面の頭の段（`CollectTabs`）は一覧・最新情報・関連図・データ収集・他アプリ用。
+  **他アプリ用（`/collect/apps`。`DatasetsLive` の `:collect_apps`）は Chidori で読まない対象**（食事処・ご当地グルメ・アニメ聖地。読むのは travel-log。
+  `Datasets.for_other_app?/1`）で、データ収集には Chidori で読む対象だけを並べる。例外は**見ている 1 件から頼む口**（記事・本・人の詳細の「頼む」、見た映画を足す）で、
+  詳細の 1 ボタンとしてだけ読む画面に残す（結果は収集の画面の履歴で見る）
+- **Chiezo へ頼むのは Chidori の画面だけで済むようにする。** Chiezo の管理画面に残すのは、外部からの有効化の許可（最初の 1 回）・
+  名前の変更・データごとの削除・世代を戻す・ワーカーの作成と変更・AI の相手と鍵（取り消せない操作と、ほかのアプリとも共有する設定）だけ
 - **画面の 3 つの種類は、溜まったものの扱いで分ける。** 最新情報は古いものを捨てていく、関連図は集めたものを
   図で見せる、データ収集は集めたものを分かりやすく見せる（技術書の本棚・Pi-hole・レシピ集）。
   **食事処・ご当地グルメ・アニメ聖地は Chidori で一覧にしない** —— 読むのは travel-log で、両方に出すと二重に管理することになる
@@ -60,7 +72,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
 
 - `lib/chidori/` — 画面に依らない中身
   - Chiezo とのやり取り —— `chiezo.ex`（依頼・読み・走らせる、の共通部）・`http.ex`（外への HTTP の唯一の口）・
-    `collect_catalog.ex` / `collect_drift.ex` / `collect_overview.ex` / `collect_pace.ex`（設定の「Chiezo 収集」）・
+    `collect_catalog.ex` / `collect_drift.ex` / `collect_overview.ex` / `collect_pace.ex`（収集の画面（`/collect`））・
     `sweep_names.ex`・`settings_restore.ex`・`single_flight.ex` → `chiezo-client.md`
   - 利用者が書いたことの置き場 —— `data_store.ex`・`data_store/` → `chiezo-client.md`
   - 最新情報 —— `topics.ex`（話題の定義）・`news.ex`・`news/`（映画・アニメ・イベント・市況の要約・はてブ数・レポート）・
@@ -70,7 +82,8 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
   - データ収集 —— `datasets.ex`・`datasets/`（技術書・Pi-hole・レシピ集・ご当地グルメ・アニメ聖地・食事処・範囲・依頼・travel-log 書き出し）・`geo/` → `datasets-dining.md`
   - 共通の道具 —— `jst.ex`（人に見せる日時）・`safe_url.ex`（外から来た URL）・`repo.ex`・`release.ex`（移行）
 - `lib/chidori_web/` — 画面
-  - `live/` —— `home_live`・`news_live`・`relations_live`・`datasets_live`・`dining_areas_live`・`settings_live`・`collect.ex`（収集の枠の道具）
+  - `live/` —— `home_live`・`news_live`・`relations_live`・`datasets_live`・`dining_areas_live`・`settings_live`・`collect.ex`（収集の枠の道具）。
+    最新情報・関連図・データ収集・設定は、同じ LiveView を収集の画面（`/collect/…`。`live_action` が `:collect`。他アプリ用は `:collect_apps`）としても開く
   - `components/` —— 収集の枠・レポート・トピックの網・区画の地図・県の地図・食事処の中のタブ・作品の詳細・主要メニューなど
   - `controllers/` —— travel-log 用 ZIP・顔写真・サムネイルの配り口
   - `socket_origin.ex` —— LiveView の接続元の見比べ（`PHX_CHECK_ORIGIN`）

@@ -142,6 +142,8 @@ main.relations-page > div { padding-top: 0; }
 .relation-tabs a.selected { border-color: #d9dcea; background: #f6f7fb; color: #28235e; box-shadow: inset 0 3px 0 #6254d6; }
 /* 食事処の中のタブ（全体と範囲ごと）。データ収集のタブの下の段なので、間を詰めて一回り小さく */
 .relation-tabs.dining-tabs { margin-top: .4rem; }
+/* 収集の画面の頭の段（一覧・最新情報・関連図・データ収集）。その下の段（話題・図・集めるもの）は詰めて並べる */
+.collect-tabs + .relation-tabs { margin-top: .4rem; }
 .relation-tabs.dining-tabs a { padding: .45rem .9rem; font-size: .82rem; }
 /* 狭い画面ではタブを詰め、**折り返さずにタブの列だけを横にスクロールさせる** ——
    折り返すと段が増えて本文が押し下げられ、どれが選ばれているのかも読みにくい。

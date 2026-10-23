@@ -27,10 +27,16 @@ paths:
 
 詳しい説明・travel-log の項目との対応表・実測値は `docs/datasets.md`。
 
+- **読む画面（`/datasets`）と収集の画面（`/collect/datasets`・`/collect/apps`）は同じ `DatasetsLive`**（`@collect_mode`）。読む画面は読むものを持つ対象
+  （`Datasets.listed?/1` = 技術書・Pi-hole・レシピ集）だけをタブに並べ、溜まったものだけを出す。収集の設定・区画・依頼・書き出し・名簿の広さ
+  （`RecipeBook.roster_form/1`）は収集の画面。収集の画面は対象で 2 つに分ける —— データ収集（`/collect/datasets`。`:collect`）は Chidori で読む対象、
+  他アプリ用（`/collect/apps`。`:collect_apps`）はそれ以外（`Datasets.for_other_app?/1` = 食事処・ご当地グルメ・アニメ聖地。読むのは travel-log）。
+  道は `Datasets.collect_path/1` が決め、違う道で開くと正しい道へ送る（読む画面で開いたときも同じ）。他アプリ用を対象なしで開くと食事処の全体へ
+
 - データを集めて分かりやすく見せる画面（技術書の本棚・Pi-hole のドメイン・レシピ集は溜まったものをここで読む）。
   食事処とご当地グルメは読むのが travel-log なので、Chidori では一覧にしない（両方に出すと二重に管理することになる）。
   対象は `Chidori.Datasets.defined/0` に 1 つ書けばタブも依頼も増える。タブの並びは `Datasets.tabs/1`（技術書・食事処・ご当地グルメを前に、
-  残りは定義の順。上の段は `DiningTabs.dataset_tabs/1` をデータ収集と食事処の全体の 2 画面で共有）。読む画面を持つ対象は定義の `reading`
+  残りは定義の順。上の段は `DiningTabs.dataset_tabs/1`（`mode` = `:read` / `:collect` / `:apps` で並べる対象と道を切り替える）をデータ収集・他アプリ用と食事処の全体で共有）。読む画面を持つ対象は定義の `reading`
   （`Datasets.shelf/1` が `list/1` を呼び、本棚と同じ覚え書きに置く）
 - レシピ集（`Chidori.Datasets.Recipes`・`chidori_recipes`。網羅）: 各地の料理の正統とされる作り方。料理名は AI に考えさせず、
   百科事典の「〜料理」の分類（`tag_suffix`）を月の閲覧数で絞って機械で引く（既定 1,000。画面の「名簿を引き直す」で変える。
@@ -48,7 +54,7 @@ paths:
   検索文は回ごとに巡回の相手が考え、控えるのは Chiezo。調べ終えたものは調べ直さない（`{unreviewed}`）
 - Pi-hole: 繋ぐのは Chiezo（接続先とパスワードは Chiezo 側）。Chidori は Pi-hole に直接つながらない
 - 食事処: 範囲ごとに収集が 1 つ（`Chidori.Datasets.DiningAreas`・`chidori_dining_<番号>`。Chiezo に同じ名前が残っている番号は使わない）。
-  データ収集のタブは「食事処」1 つで、範囲ごとのタブはその下の段（`ChidoriWeb.DiningTabs`。「全体」= `/datasets/areas` と範囲ごと）
+  他アプリ用のタブは「食事処」1 つで、範囲ごとのタブはその下の段（`ChidoriWeb.DiningTabs`。「全体」= `/collect/apps/areas` と範囲ごと。食事処の段は収集の画面にだけある）
   範囲の正本は手元の表。「Chiezo から範囲を戻す」は手元に無い範囲を読み戻し、四角が違う範囲は Chiezo の四角に合わせる
   （`DiningAreas.restore/1`。Chiezo の画面で区画の範囲を直したとき向け。名前は手元のまま、Chiezo へは送らない）
 - 名前と座標は AI に書かせない。名簿は 3 つの辞典（`jawiki`・`osm_japan`・`overture_japan`）を範囲の四角（`bbox`）で絞って引く。

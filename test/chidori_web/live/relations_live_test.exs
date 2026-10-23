@@ -23,17 +23,29 @@ defmodule ChidoriWeb.RelationsLiveTest do
     refute html =~ "松田優作"
   end
 
-  test "映画の図に、見た映画を足す欄と引き継ぎの様子を出す（時刻は設定ページで決める）", %{
-    conn: conn
-  } do
+  test "映画の図には見た映画を足す欄を出し、引き継ぎの様子は収集の画面に回す", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/relations?view=films")
 
     assert html =~ "映画のつながり"
+    # 見ている図から足す口なので、図を見る画面に残す
     assert html =~ "見た映画を足す"
+    refute html =~ "最新情報からの引き継ぎ"
+    refute html =~ ~s(id="settings-toggle")
+    assert html =~ ~s(href="/collect/relations?view=films")
+  end
+
+  test "映画の収集の画面に、引き継ぎの様子を出す（時刻は収集の画面の表で決める）", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/collect/relations?view=films")
+
+    assert html =~ "映画のつながり"
     assert html =~ "最新情報からの引き継ぎ"
     assert html =~ "まだ頼んでいません"
     assert html =~ "時刻を決めていないので、頼みません"
-    assert html =~ ~s(href="/settings?tab=chiezo")
+    assert html =~ ~s(href="/collect")
+    # 収集の画面には図も、見た映画を足す欄も出さない
+    refute html =~ "見た映画を足す"
+    refute html =~ "relation-canvas"
+    assert html =~ ~s(href="/relations?view=films")
   end
 
   test "探すときは大文字と小文字、全角と半角を区別しない" do
@@ -153,7 +165,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
           end
       end)
 
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
 
       assert_receive {:asked, worker}, 2_000
@@ -199,7 +211,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
           end
       end)
 
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
 
       assert wait_until(fn -> render(live) =~ "いま Chiezo が取り込み中です" end)
@@ -238,7 +250,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
           end
       end)
 
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
       assert wait_until(fn -> render(live) =~ "収集の設定を更新" end)
 
@@ -274,7 +286,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
           else: Chidori.HttpStub.ok(~s({"collections":[],"results":[],"total":0}))
       end)
 
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
 
       assert render(live) =~ ~s(phx-disable-with="送っています…")
@@ -535,7 +547,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
     end
 
     test "理由つきで並び、名指しで戻すよう頼める", %{conn: conn} do
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
 
       html = render(live)
@@ -560,10 +572,10 @@ defmodule ChidoriWeb.RelationsLiveTest do
     :ok
   end
 
-  # 設定欄を開いて、Chiezo から読み終えるまで待つ。**設定は開いたときだけ読む**ので、
+  # 収集の画面で、Chiezo から設定を読み終えるまで待つ。**設定は収集の画面でだけ読む**ので、
   # 巡回の欄や「収集の設定を更新」を触るテストは、まずここを通る
+  # 収集の画面（/collect/relations）は設定欄を開いた形で出すので、押さずに待つ
   defp open_settings(live) do
-    live |> element("#settings-toggle") |> render_click()
     assert wait_until(fn -> has_element?(live, "form#collect-form") end)
     live
   end
@@ -805,7 +817,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
     test "ワーカーを選ぶと、その値のまま Chiezo へ送られる", %{conn: conn} do
       # 相手の欄に入ったまま送れば、Chiezo が `worker` へ振り分ける ——
       # こちら側が振り分けると、どこに入れるかを知っているのが 2 か所になる
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
@@ -824,7 +836,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
     test "ワーカーに頼む回は、そのワーカーが選ばれた状態で出る", %{conn: conn} do
       # Chiezo は別の項目（`worker`）で返すので、相手の欄と比べても一致しない ——
       # こちらで相手の欄の値へ直さないと、何も選ばれていないように見える
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
@@ -836,7 +848,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
     test "ワーカーも相手の選択肢に並ぶ", %{conn: conn} do
       # **一覧に無いものは選ばせようがない。** Chiezo は相手とワーカーを同じ一覧で
       # 返すので、こちらは種類で見出しを分けて並べるだけ
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
@@ -849,7 +861,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
     test "ワーカーを選ぶと、モデルの欄は出ない", %{conn: conn} do
       # 渡す先はそのときの枠で決まるので、モデルを 1 つ選んでも
       # どの相手に対する指定なのかが決まらない
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
@@ -864,7 +876,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
 
     test "考える量の欄は持たない", %{conn: conn} do
       # モデルの名前に畳んであるので、残すと選べるのに効かない欄になる
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
@@ -878,7 +890,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
       # サーバーが覚えていないと、図や状態が届いた拍子に描き直されて、
       # 選んだところが Chiezo に入っている値へ戻る（選んだつもりで押すと、
       # いま入っている値がそのまま送り返される）
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
@@ -931,7 +943,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
     test "時計を持たない巡回にも相手を選べる", %{conn: conn} do
       # 画家のモーダルから頼む「詳しく調べて」は割り込みとして走る。**人が待っている
       # 場面**なので、定時の巡回と同じ相手を使う理由が無い
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
       assert wait_until(fn -> render(live) =~ "整理" end)
 
@@ -944,7 +956,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
     test "モデルも巡回ごとに選べる", %{conn: conn} do
       # **相手だけ選べても足りない。** 同じ相手でもモデルで結果も時間も変わるので、
       # 巡回ごとに選べないと「じっくりだけ重いモデルで」が表せない
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
       assert wait_until(fn -> render(live) =~ "整理" end)
 
@@ -988,7 +1000,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
           end
       end)
 
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
@@ -1005,7 +1017,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
       # **一度覚えた欄を二度と変えられなくなっていた。** 相手を選んだ拍子に
       # 「モデル: 空」まで覚え、そのあとモデルを選んでも空のまま送られる ——
       # 画面では選べているように見えるので、押すまで気づけない
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
       assert wait_until(fn -> render(live) =~ "割り込み" end)
 
@@ -1030,7 +1042,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
       # **押下が黙って捨てられていた。** 8,000 件の読み直しは数十秒かかり、そのあいだ
       # ボタンは押せるのに何も起きない —— 画面には何も出ないので、設定が送られて
       # いないことに気づきようがなかった
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
@@ -1104,7 +1116,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
     test "選んだものが Chiezo へ送られる", %{conn: conn} do
       # **空文字も送る。** あれは「Chiezo の既定にまかせる」を選んだという意思表示で、
       # 落とすと一度決めた相手を画面から外せない
-      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
       open_settings(live)
       assert wait_until(fn -> render(live) =~ "ざっと見る" end)
 
@@ -1208,7 +1220,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
       :ok
     end
 
-    test "開くまでは Chiezo から設定を読まず、読み終えるまでは設定を出さない", %{conn: conn} do
+    test "図を見る画面では Chiezo から設定を読まず、収集の画面では読み終えるまで設定を出さない", %{conn: conn} do
       test_pid = self()
 
       Chidori.HttpStub.stub(fn %{url: url} ->
@@ -1244,13 +1256,15 @@ defmodule ChidoriWeb.RelationsLiveTest do
              end)
 
       flush()
-      {:ok, live, html} = live(conn, ~p"/relations?view=painters")
+      {:ok, _live, html} = live(conn, ~p"/relations?view=painters")
 
-      # 開いただけでは読まない
+      # 図を見る画面では読まない（設定欄そのものを出さない）
       refute html =~ "collect-form"
+      refute html =~ ~s(id="settings-toggle")
       refute_receive {:settings_asked, _pid}, 300
 
-      html = live |> element("#settings-toggle") |> render_click()
+      # 収集の画面は開いた形で出し、そのときに読む
+      {:ok, live, html} = live(conn, ~p"/collect/relations?view=painters")
       assert html =~ "Chiezo から情報を取得しています"
       refute html =~ "collect-form"
 

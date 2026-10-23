@@ -17,6 +17,9 @@ defmodule ChidoriWeb.DatasetsController do
 
   require Logger
 
+  @doc "前の食事処の「全体」の画面（`/datasets/areas`）は、収集の画面へ送る。"
+  def to_collect_areas(conn, _params), do: redirect(conn, to: ~p"/collect/apps/areas")
+
   def export(conn, %{"key" => key} = params) do
     dataset = Datasets.get(key)
 

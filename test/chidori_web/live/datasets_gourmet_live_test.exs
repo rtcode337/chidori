@@ -79,7 +79,7 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
   end
 
   test "県ごとに料理・店（うち店）・代表店あり・代表店まだ・代表店なしを出し、名前は出さない", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/datasets?view=gourmet")
+    {:ok, live, _html} = live(conn, ~p"/collect/apps?view=gourmet")
     html = render_async(live)
 
     assert html =~ "県ごとの進み具合"
@@ -106,7 +106,7 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
   end
 
   test "県を選ぶと、その県を選んだ巡回で 1 回走らせられる（押しただけでは走らない）", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/datasets?view=gourmet")
+    {:ok, live, _html} = live(conn, ~p"/collect/apps?view=gourmet")
     render_async(live)
 
     html =
@@ -137,7 +137,7 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
   end
 
   test "県の地図を出し、塗りの段と引き当てできずの印と凡例を添える", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/datasets?view=gourmet")
+    {:ok, live, _html} = live(conn, ~p"/collect/apps?view=gourmet")
     html = render_async(live)
 
     assert html =~ ~s(id="prefecture-canvas")
@@ -162,7 +162,7 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
   end
 
   test "地図の県を押すと選ばれ、フォームがその県になる（押しただけでは走らない）", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/datasets?view=gourmet")
+    {:ok, live, _html} = live(conn, ~p"/collect/apps?view=gourmet")
     render_async(live)
 
     html =
@@ -196,7 +196,7 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
   end
 
   test "区画がまだ無い県を地図で押しても、フォームは出さずにそう言う", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/datasets?view=gourmet")
+    {:ok, live, _html} = live(conn, ~p"/collect/apps?view=gourmet")
     render_async(live)
 
     html =
@@ -210,12 +210,17 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
   end
 
   test "依頼文と、引き当て・書式の指定が読める", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/datasets?view=gourmet")
+    {:ok, live, _html} = live(conn, ~p"/collect/apps?view=gourmet")
     html = render_async(live)
 
     assert html =~ "辞典への引き当てと書式"
     assert html =~ "osm_japan"
     assert html =~ "available_months"
     assert html =~ "県の名前が付いた"
+  end
+
+  test "読む画面で開くと、収集の画面へ送る（読むのは travel-log）", %{conn: conn} do
+    assert {:error, {:live_redirect, %{to: "/collect/apps?view=gourmet"}}} =
+             live(conn, ~p"/datasets?view=gourmet")
   end
 end

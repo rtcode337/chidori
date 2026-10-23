@@ -1,7 +1,7 @@
 defmodule Chidori.SettingsRestore do
   @moduledoc """
-  **Chiezo の収集に載っている設定から、Chidori の設定を戻します**（設定ページの
-  「Chiezo 収集」）。動かす場所を変えたとき・DB を作り直したときに、画面で選び直さずに
+  **Chiezo の収集に載っている設定から、Chidori の設定を戻します**（収集の画面
+  `/collect`）。動かす場所を変えたとき・DB を作り直したときに、画面で選び直さずに
   済むようにするためのものです。
 
   Chidori の設定のうち、次の 3 つは送ったものがそのまま Chiezo の収集に残っています。

@@ -1,6 +1,6 @@
 defmodule Chidori.CollectCatalog do
   @moduledoc """
-  Chidori が Chiezo に送る収集の一覧（設定ページの「Chiezo 収集」の表）。
+  Chidori が Chiezo に送る収集の一覧（収集の画面（`/collect`）の表）。
 
   **並びと中身は Chidori の画面のもの**です —— 最新情報（話題と、そのトピックの網）→
   関連図 → データ収集（その下の本棚）の順。Chiezo の一覧の順で並べると、同じ画面の
@@ -37,7 +37,7 @@ defmodule Chidori.CollectCatalog do
         %{
           name: name,
           label: topic.name,
-          screen: "/news?view=#{name}",
+          screen: "/collect/news?view=#{name}",
           # 興味トピックを載せる（要約の巡回と依頼文に要る。画面の送り方と同じ）
           attrs: fn choices -> News.attrs(name, Interests.attach(topic), choices) end
         }
@@ -48,7 +48,7 @@ defmodule Chidori.CollectCatalog do
             %{
               name: Themes.collection_name(topic),
               label: "#{topic.name}のトピック",
-              screen: "/news?view=#{name}",
+              screen: "/collect/news?view=#{name}",
               attrs: &Themes.attrs(topic, &1)
             }
             |> upserting()
@@ -62,7 +62,7 @@ defmodule Chidori.CollectCatalog do
       %{
         name: Relations.collection_of(key),
         label: title,
-        screen: "/relations?view=#{key}",
+        screen: "/collect/relations?view=#{key}",
         attrs: &Relations.attrs_of(key, &1)
       }
       |> upserting()
@@ -75,7 +75,7 @@ defmodule Chidori.CollectCatalog do
         %{
           name: dataset.collection,
           label: Map.get(dataset, :title, dataset.name),
-          screen: "/datasets?view=#{dataset.key}",
+          screen: "#{Datasets.collect_path(dataset)}?view=#{dataset.key}",
           attrs: &Datasets.call(dataset, :attrs, [&1]),
           # データ収集の画面と同じ道で送る。比べるのも同じもの
           outgoing: fn -> Datasets.outgoing(dataset) end,
@@ -91,7 +91,7 @@ defmodule Chidori.CollectCatalog do
               %{
                 name: derived.collection(),
                 label: derived.name(),
-                screen: "/datasets?view=#{dataset.key}",
+                screen: "/collect/datasets?view=#{dataset.key}",
                 attrs: &derived.attrs/1,
                 push: &derived.setup/2
               }

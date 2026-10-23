@@ -122,7 +122,7 @@ defmodule ChidoriWeb.NewsLive do
   def handle_params(params, _uri, socket) do
     # **お気に入りは話題ではない**（話題をまたいで 1 つの一覧）。開いているあいだは
     # 話題を選んでいない状態にして、話題ごとの節を出さない
-    favorites_view = params["view"] == @favorites_view
+    favorites_view = params["view"] == @favorites_view and socket.assigns.live_action != :collect
     topic = if favorites_view, do: nil, else: pick_topic(socket.assigns.topics, params["view"])
 
     # 話題を切り替えたら購読も付け替える。付け替えないと、見ていない話題の
@@ -139,8 +139,13 @@ defmodule ChidoriWeb.NewsLive do
       end
     end
 
+    # **収集の画面**（`/collect/news`）か、読む画面（`/news`）か。同じ話題を 2 つの形で開く
+    collect_mode = socket.assigns.live_action == :collect
+
     socket =
       assign(socket,
+        collect_mode: collect_mode,
+        base_path: if(collect_mode, do: "/collect/news", else: "/news"),
         topic: topic,
         page_title: page_title(topic, favorites_view),
         favorites_view: favorites_view,

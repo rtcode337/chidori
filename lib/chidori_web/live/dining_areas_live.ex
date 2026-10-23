@@ -289,7 +289,7 @@ defmodule ChidoriWeb.DiningAreasLive do
            :info,
            "範囲「#{area.name}」を作りました。「収集の設定を更新」を押すと、Chiezo にこの範囲の収集ができます。"
          )
-         |> push_navigate(to: ~p"/datasets?view=#{Dining.definition(area).key}")}
+         |> push_navigate(to: ~p"/collect/apps?view=#{Dining.definition(area).key}")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, draft: draft, errors: error_lines(changeset))}

@@ -2,12 +2,13 @@
 <%!-- 頭のメニューとタブは main の外に置き、画面の上に残す（スクロールするのは main の中だけ。root.html.heex） --%>
 <div class="relations-page page-head">
   <div>
-    <ChidoriWeb.MainNav.main_nav active={:datasets} />
+    <ChidoriWeb.MainNav.main_nav active={:collect} />
+    <ChidoriWeb.CollectTabs.collect_tabs current={:apps} />
 
     <%!-- データ収集の画面と同じタブ。**この画面は「食事処」のタブ**として出す
          （別の画面へ飛んだように見えると、戻る口を探すことになる）。範囲ごとのタブは
          その下の段（`ChidoriWeb.DiningTabs`）で、この画面はその「全体」 --%>
-    <ChidoriWeb.DiningTabs.dataset_tabs datasets={@datasets} on_areas={true} />
+    <ChidoriWeb.DiningTabs.dataset_tabs datasets={@datasets} on_areas={true} mode={:apps} />
     <ChidoriWeb.DiningTabs.dining_tabs datasets={@datasets} />
   </div>
 </div>
@@ -27,14 +28,14 @@
       <p :if={@areas == []} class="muted-note">まだありません。下の地図で四角を描いて足してください。</p>
       <ul :if={@areas != []} class="area-list">
         <li :for={area <- @areas} class={@editing && @editing.id == area.id && "is-editing"}>
-          <.link navigate={~p"/datasets?view=#{Chidori.Datasets.Dining.definition(area).key}"}>
+          <.link navigate={~p"/collect/apps?view=#{Chidori.Datasets.Dining.definition(area).key}"}>
             {area.name}
           </.link>
           <span class="muted-note">{bbox_text(area)}</span>
           <%!-- 控えている依頼の数（travel-log からの依頼を配った先）。頼むのは範囲の画面から --%>
           <.link
             :if={Map.get(@pending_counts, area.id, 0) > 0}
-            navigate={~p"/datasets?view=#{Chidori.Datasets.Dining.definition(area).key}"}
+            navigate={~p"/collect/apps?view=#{Chidori.Datasets.Dining.definition(area).key}"}
             class="area-pending"
           >
             控えている依頼 {Map.get(@pending_counts, area.id)} 件

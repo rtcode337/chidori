@@ -53,7 +53,9 @@ defmodule Chidori.SettingsRestoreTest do
     CollectPace.stop_tidy("chidori_news", true, nil)
 
     assert {:ok, %{resumed: ["chidori_news"], stopped: []}} =
-             SettingsRestore.run(fn -> {:ok, [collection("chidori_news", [sweep("整理", 720)])]} end)
+             SettingsRestore.run(fn ->
+               {:ok, [collection("chidori_news", [sweep("整理", 720)])]}
+             end)
 
     refute CollectPace.tidy_stopped?("chidori_news")
   end

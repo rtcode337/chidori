@@ -1,6 +1,6 @@
 defmodule Chidori.CollectOverview do
   @moduledoc """
-  Chidori が Chiezo に頼んでいる収集の一覧（設定ページの「Chiezo 収集」）。
+  Chidori が Chiezo に頼んでいる収集の一覧（収集の画面（`/collect`））。
 
   **ワーカーの待ち行列が溜まってきたときに、何がどれだけの間隔で回っているかを
   1 枚で読むため**のものです。収集の設定は Chiezo にあり、Chidori は写しを持たない

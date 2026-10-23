@@ -30,7 +30,7 @@ Chidori は Chiezo の「集める」層に収集を頼み、溜まったもの�
   定時の時計（要約・情報収集）からは申告しない
 - 「収集の設定を更新」は、無ければ止まった状態で作り、あれば Chidori の今の依頼文・抽出の指定・区画・巡回を送り直す。
   その場で走らせない。送るときは Chiezo に入っている巡回ごとの相手をそのまま載せる（載せないと既定へ戻る）
-- 設定ページの「Chiezo 収集」 —— `Chidori.CollectCatalog`（Chidori の画面の並びで収集を並べ、送る）、
+- 収集の画面（`/collect`） —— `Chidori.CollectCatalog`（Chidori の画面の並びで収集を並べ、送る）、
   `Chidori.CollectDrift`（Chiezo の今の設定と Chidori の定義の違い。頼む相手と止めた・動かしたは比べない）、
   `Chidori.CollectOverview`、`Chidori.CollectPace`（整理・ざっと見るの間隔。区画を回る巡回は一周の日数も同じ比で）、
   `Chidori.SettingsRestore`（Chiezo の収集から間隔・整理を止める収集・知名度の下限を戻す）
