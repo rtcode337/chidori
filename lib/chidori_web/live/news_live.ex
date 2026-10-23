@@ -1393,7 +1393,7 @@ defmodule ChidoriWeb.NewsLive do
   def status_message(%{collection: %{enabled: false}}),
     do:
       "収集は Chiezo にありますが、まだ止まっています。" <>
-        "動かすかどうかは Chiezo 側で決めるので、Chiezo の管理画面の「集める」で有効にしてください。"
+        "収集の画面（一覧）の「動かす」で動かせます（Chiezo の管理画面で外部からの有効化を許可してあるとき）。"
 
   def status_message(%{collection: %{docs: 0}}),
     do: "収集は動いていますが、まだ1件も溜まっていません。"
@@ -1416,7 +1416,7 @@ defmodule ChidoriWeb.NewsLive do
   def prompt_note(%{collection: nil}), do: "「収集を依頼する」を押すと、この内容で Chiezo に頼みます。"
 
   def prompt_note(_news),
-    do: "いま Chiezo が持っている内容です。直すのは Chiezo の管理画面の「集める」から。"
+    do: "いま Chiezo が持っている内容です。Chidori の今の内容に揃えるには「収集の設定を更新」を押してください。"
 
   @doc """
   トピックの収集の整理の回の依頼文。**Chiezo が持っているものを先に出します**
@@ -1429,7 +1429,7 @@ defmodule ChidoriWeb.NewsLive do
   def theme_prompt_text(_themes, topic), do: Themes.tidy_prompt(topic)
 
   def theme_prompt_note(%{collection: c}) when is_map(c),
-    do: "いま Chiezo が持っている内容です。直すのは Chiezo の管理画面の「集める」から。"
+    do: "いま Chiezo が持っている内容です。Chidori の今の内容に揃えるには「収集の設定を更新」を押してください。"
 
   def theme_prompt_note(_themes),
     do: "この節の「収集を依頼する」を押すと、この内容で Chiezo に頼みます。"

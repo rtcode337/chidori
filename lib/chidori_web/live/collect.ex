@@ -381,7 +381,7 @@ defmodule ChidoriWeb.Collect do
   def reason_text(:collection_disabled),
     do:
       "この収集は Chiezo 側で止まっています。" <>
-        "Chiezo の管理画面の「集める」で有効にすると動き出します。"
+        "収集の画面（一覧）の「動かす」で動かせます（Chiezo の管理画面で外部からの有効化を許可してあるとき）。"
 
   # 頼む直前に区画を読み直したら、控えがどの区画にも入らなかった（`Requests.send_partition/5`）
   def reason_text(:partitions_moved),

@@ -1018,6 +1018,94 @@ defmodule Chidori.Chiezo do
     end
   end
 
+  @doc """
+  **Chiezo の管理画面のボタンと同じ操作**を頼みます（Chiezo の REST。中身は画面と同じ）。
+  `op` は次のどれか:
+
+  - `:redo` —— 最後の 1 回を巻き戻してもう一度走らせる（人が押した 1 回として申告するので、止めた収集でも走る）
+  - `{:restart, sweep}` —— その巡回の一周をやり直す（区画の印を外すだけで走らせない）
+  - `:requeue` —— 今あるものを全部、まだ目を通していないものに戻すよう頼む（次に焼く回で効く）
+  - `:repartition` —— 区画の割り直しだけを裏で始める（AI も焼きも動かさない）
+  - `:stop` —— 走っているこの収集の取り込みを降ろす
+
+  `:ok` か `{:error, 理由}`。断られたら Chiezo の言い分を `{:chiezo_refused, status, message}` で返す。
+  """
+  def operate(base, name, op) when is_binary(name) do
+    collection = base <> "/v1/collect/" <> URI.encode(name, &URI.char_unreserved?/1)
+
+    path =
+      case op do
+        :redo -> "/redo?manual=true"
+        {:restart, sweep} -> "/restart?" <> URI.encode_query(%{"sweep" => sweep})
+        :requeue -> "/requeue"
+        :repartition -> "/repartition"
+        :stop -> "/stop"
+      end
+
+    reply(post(collection <> path, ""))
+  end
+
+  @doc """
+  考えさせた検索文の控え（新しい順。`GET /v1/collect/{name}/queries`）。
+  1 件は `%{"query", "used_at", "found", "kept", "by"}`。
+  """
+  def queries(base, name) when is_binary(name) do
+    case get(base <> "/v1/collect/" <> URI.encode(name, &URI.char_unreserved?/1) <> "/queries") do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"queries" => rows}} when is_list(rows) -> {:ok, rows}
+          _ -> {:error, :chiezo_unexpected_body}
+        end
+
+      {:ok, %{status: status, body: raw}} ->
+        {:error, {:chiezo_refused, status, reason_of(raw)}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
+  end
+
+  @doc """
+  検索文の控えを消す（`query` が nil なら全部）。消した検索文は次の回からまた使える。
+  """
+  def forget_queries(base, name, query \\ nil) when is_binary(name) do
+    url = base <> "/v1/collect/" <> URI.encode(name, &URI.char_unreserved?/1) <> "/queries"
+    url = if query, do: url <> "?" <> URI.encode_query(%{"query" => query}), else: url
+
+    reply(
+      Http.delete(url,
+        headers: [{"user-agent", @user_agent}],
+        timeout: @timeout,
+        connect_timeout: @connect_timeout
+      )
+    )
+  end
+
+  @doc """
+  ワーカーを止める / 動かす（`POST /v1/ai/workers/{id}/paused`）。待ち行列は残る。
+  """
+  def pause_worker(base, id, paused) when is_binary(id) and is_boolean(paused) do
+    url = base <> "/v1/ai/workers/" <> URI.encode(id, &URI.char_unreserved?/1) <> "/paused"
+    reply(post(url, Jason.encode!(%{paused: paused})))
+  end
+
+  @doc """
+  ワーカーを時計を待たずに起こす（`POST /v1/ai/workers/{id}/wake`）。行列が空・枠が詰まって
+  いるときは Chiezo が理由を書き分けて断る。
+  """
+  def wake_worker(base, id) when is_binary(id) do
+    reply(
+      post(base <> "/v1/ai/workers/" <> URI.encode(id, &URI.char_unreserved?/1) <> "/wake", "")
+    )
+  end
+
+  defp reply({:ok, %{status: status}}) when status in 200..299, do: :ok
+
+  defp reply({:ok, %{status: status, body: raw}}),
+    do: {:error, {:chiezo_refused, status, reason_of(raw)}}
+
+  defp reply({:error, _reason}), do: {:error, :chiezo_unavailable}
+
   def post(url, body, timeout \\ @timeout) do
     Http.post(url, body,
       headers: [{"user-agent", @user_agent}],

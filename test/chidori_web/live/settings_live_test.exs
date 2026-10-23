@@ -551,6 +551,163 @@ defmodule ChidoriWeb.SettingsLiveSwitchTest do
   end
 end
 
+defmodule ChidoriWeb.CollectOpsTest do
+  @moduledoc """
+  Chiezo の管理画面のボタンと同じ操作を、収集の画面（`/collect`）から頼む。
+  Chiezo の管理画面を開かずに済むようにするための口。
+  """
+
+  use ChidoriWeb.ConnCase, async: false
+
+  import Phoenix.LiveViewTest
+
+  alias Chidori.HttpStub
+
+  setup do
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+
+    parent = self()
+
+    HttpStub.stub(fn
+      %{method: :get, url: url} ->
+        cond do
+          String.ends_with?(url, "/v1/collect") ->
+            HttpStub.ok(
+              Jason.encode!(%{
+                "collections" => [
+                  %{
+                    "name" => "chidori_tech",
+                    "enabled" => true,
+                    "partitions_total" => 12,
+                    "last_undo" => %{"sweep" => "整理"},
+                    "sweeps" => [
+                      %{"name" => "整理", "interval_minutes" => 720},
+                      %{"name" => "機械収集", "use_feed" => true, "prompt" => "{queries}"}
+                    ]
+                  }
+                ]
+              })
+            )
+
+          String.ends_with?(url, "/v1/collect/queue") ->
+            HttpStub.ok(
+              Jason.encode!(%{
+                "workers" => [
+                  %{
+                    "id" => "w-1",
+                    "name" => "精査",
+                    "interval_minutes" => 60,
+                    "per_run" => 2,
+                    "paused" => false,
+                    "queued" => [%{"collection" => "chidori_tech", "sweep" => "整理"}]
+                  }
+                ]
+              })
+            )
+
+          String.contains?(url, "/queries") ->
+            HttpStub.ok(
+              Jason.encode!(%{
+                "queries" => [%{"query" => "SRE 本", "used_at" => nil, "found" => 3, "kept" => 2}]
+              })
+            )
+
+          true ->
+            HttpStub.ok(~s({"backends":[]}))
+        end
+
+      %{method: method, url: url} = request ->
+        send(parent, {method, url, request[:body]})
+        HttpStub.ok("{}")
+    end)
+
+    :ok
+  end
+
+  defp opened(conn) do
+    {:ok, live, _html} = live(conn, ~p"/collect")
+    {live, render_async(live)}
+  end
+
+  test "やり直す・一周をやり直す・割り直す・未確認に戻す・止めるを Chiezo へ頼む", %{conn: conn} do
+    {live, html} = opened(conn)
+    assert html =~ "ほかの操作"
+
+    for {op, path} <- [
+          {"redo", "/redo?manual=true"},
+          {"repartition", "/repartition"},
+          {"requeue", "/requeue"},
+          {"stop", "/stop"}
+        ] do
+      live
+      |> element(~s(button[phx-click="operate"][phx-value-op="#{op}"]))
+      |> render_click()
+
+      url = "http://chiezo.test/v1/collect/chidori_tech" <> path
+      assert_receive {:post, ^url, _body}
+    end
+
+    live
+    |> element(~s(button[phx-value-op="restart"][phx-value-sweep="整理"]))
+    |> render_click()
+
+    assert_receive {:post, "http://chiezo.test/v1/collect/chidori_tech/restart?sweep=" <> sweep,
+                    _}
+
+    assert URI.decode_www_form(sweep) == "整理"
+    assert render_async(live) =~ "「整理」の一周をやり直します"
+  end
+
+  test "Chiezo が断ったら、その言い分を出す", %{conn: conn} do
+    HttpStub.stub(fn
+      %{method: :get, url: url} ->
+        if String.ends_with?(url, "/v1/collect"),
+          do:
+            HttpStub.ok(
+              ~s({"collections":[{"name":"chidori_tech","enabled":true,"sweeps":[{"name":"整理"}]}]})
+            ),
+          else: HttpStub.ok(~s({"workers":[],"backends":[]}))
+
+      %{method: :post} ->
+        {:ok, %{status: 409, body: ~s({"error":"いま割り直しています"})}}
+    end)
+
+    {live, _html} = opened(conn)
+
+    live
+    |> element(~s(button[phx-click="operate"][phx-value-op="stop"]))
+    |> render_click()
+
+    assert render_async(live) =~ "Chiezo が断りました: いま割り直しています"
+  end
+
+  test "ワーカーを止める・起こす", %{conn: conn} do
+    {live, _html} = opened(conn)
+
+    live |> element(~s(button[phx-value-id="w-1"][phx-value-op="pause"])) |> render_click()
+    assert_receive {:post, "http://chiezo.test/v1/ai/workers/w-1/paused", ~s({"paused":true})}
+
+    live |> element(~s(button[phx-value-id="w-1"][phx-value-op="wake"])) |> render_click()
+    assert_receive {:post, "http://chiezo.test/v1/ai/workers/w-1/wake", _}
+  end
+
+  test "検索文の控えは開いたときだけ読み、1 つずつ消せる", %{conn: conn} do
+    {live, html} = opened(conn)
+    refute html =~ "SRE 本"
+
+    live |> element(~s(button[phx-click="load_queries"])) |> render_click()
+    assert render_async(live) =~ "SRE 本"
+
+    live
+    |> element(~s(button[phx-click="forget_query"][phx-value-query="SRE 本"]))
+    |> render_click()
+
+    assert_receive {:delete,
+                    "http://chiezo.test/v1/collect/chidori_tech/queries?query=SRE+%E6%9C%AC", _}
+  end
+end
+
 defmodule ChidoriWeb.CollectTabsTest do
   @moduledoc "収集の画面の頭の段（一覧・最新情報・関連図・データ収集・他アプリ用）。頭のメニューの「収集」から直接たどれる。"
 

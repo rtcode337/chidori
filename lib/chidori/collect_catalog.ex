@@ -171,6 +171,11 @@ defmodule Chidori.CollectCatalog do
       # **巡回は定義から組み直すので、ここで足さないと落ちる**
       sweeps: sweeps ++ Chidori.CollectOverview.chidori_rows(entry.name),
       push: entry.push,
+      # 管理画面と同じ操作の口を出すかどうか（`CollectOverview` が Chiezo の設定から読んだもの）
+      partitions: (chiezo && chiezo[:partitions]) || 0,
+      redo_sweep: chiezo && chiezo[:redo_sweep],
+      requeue_at: chiezo && chiezo[:requeue_at],
+      thinks_queries: (chiezo && chiezo[:thinks_queries]) || false,
       # **Chidori の定義と違う項目**（Chiezo にまだ無い収集は空）
       drift: if(chiezo, do: drift.(entry, chiezo), else: [])
     }

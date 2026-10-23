@@ -167,6 +167,7 @@
                 <th>1 回に流す数</th>
                 <th>次に起きる（JST）</th>
                 <th>流している / 待っている</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -194,6 +195,30 @@
                     </li>
                   </ul>
                 </td>
+                <%!-- **止める・動かす・今すぐ起こす**（Chiezo の管理画面と同じ。作る・直すは Chiezo で） --%>
+                <td :if={worker.id} class="worker-ops">
+                  <button
+                    type="button"
+                    phx-click="worker"
+                    phx-value-id={worker.id}
+                    phx-value-op={if worker.paused, do: "resume", else: "pause"}
+                  >
+                    {if worker.paused, do: "動かす", else: "止める"}
+                  </button>
+                  <button
+                    :if={!worker.paused and worker.queued != []}
+                    type="button"
+                    phx-click="worker"
+                    phx-value-id={worker.id}
+                    phx-value-op="wake"
+                  >
+                    今すぐ起こす
+                  </button>
+                  <p :if={@worker_sent[worker.id]} class="muted-note" aria-live="polite">
+                    {@worker_sent[worker.id]}
+                  </p>
+                </td>
+                <td :if={!worker.id}></td>
               </tr>
             </tbody>
           </table>
@@ -285,6 +310,136 @@
                     <p class="muted-note">
                       「Chiezo に送る」で Chidori の今の定義に揃います（Chiezo の管理画面で直したものも上書きされます）。
                     </p>
+                  </details>
+                  <%!-- **Chiezo の管理画面のボタンと同じ操作**（Chiezo の REST。取り消せない操作 ——
+                       削除・世代を戻す・名前を変える —— は Chiezo の管理画面だけ） --%>
+                  <details :if={collection.in_chiezo} class="collect-ops">
+                    <summary>ほかの操作</summary>
+                    <ul>
+                      <li :if={collection[:redo_sweep]}>
+                        <button
+                          type="button"
+                          phx-click="operate"
+                          phx-value-collection={collection.name}
+                          phx-value-op="redo"
+                          data-confirm={"#{collection.label} の最後の 1 回（#{collection[:redo_sweep]}）を巻き戻して、もう一度走らせます。AI を 1 回使います。よろしいですか？"}
+                        >
+                          最後の 1 回をやり直す
+                        </button>
+                        <span class="muted-note">
+                          進み具合と区画の印だけを戻して走り直します（焼いた中身と消したものは戻しません）。
+                        </span>
+                      </li>
+                      <%!-- Chidori の時計が起こす行（`virtual`）は Chiezo の巡回ではないので出さない --%>
+                      <li
+                        :for={sweep <- Enum.reject(collection.sweeps, & &1[:virtual])}
+                        :if={(collection[:partitions] || 0) > 0}
+                      >
+                        <button
+                          type="button"
+                          phx-click="operate"
+                          phx-value-collection={collection.name}
+                          phx-value-op="restart"
+                          phx-value-sweep={sweep.name}
+                          data-confirm={"「#{sweep.name}」の区画の印を全部外します。よろしいですか？"}
+                        >
+                          「{sweep.name}」の一周をやり直す
+                        </button>
+                      </li>
+                      <li :if={(collection[:partitions] || 0) > 0}>
+                        <button
+                          type="button"
+                          phx-click="operate"
+                          phx-value-collection={collection.name}
+                          phx-value-op="repartition"
+                        >
+                          区画を割り直す
+                        </button>
+                        <span class="muted-note">AI も焼きも動かしません（いま {collection[:partitions]} 区画）。</span>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          phx-click="operate"
+                          phx-value-collection={collection.name}
+                          phx-value-op="requeue"
+                          disabled={collection[:requeue_at] != nil}
+                        >
+                          全部を未確認に戻す
+                        </button>
+                        <span :if={collection[:requeue_at]} class="muted-note">
+                          頼んであります（次に焼く回で効きます）。
+                        </span>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          phx-click="operate"
+                          phx-value-collection={collection.name}
+                          phx-value-op="stop"
+                        >
+                          走っている取り込みを止める
+                        </button>
+                      </li>
+                    </ul>
+                    <%!-- **検索文の控え**（検索文を考えさせる巡回を持つ収集だけ。開いたときだけ読む） --%>
+                    <div :if={collection[:thinks_queries]} class="collect-queries">
+                      <% queries = @queries[collection.name] %>
+                      <button
+                        :if={queries == nil}
+                        type="button"
+                        phx-click="load_queries"
+                        phx-value-collection={collection.name}
+                      >
+                        検索文の控えを見る
+                      </button>
+                      <p :if={queries == :loading} class="muted-note">読んでいます…</p>
+                      <p :if={match?({:error, _}, queries)} class="muted-note">
+                        {reason_text(elem(queries, 1))}
+                      </p>
+                      <%= if match?({:ok, _}, queries) do %>
+                        <p :if={elem(queries, 1) == []} class="muted-note">
+                          まだ 1 回も引いていません。
+                        </p>
+                        <table :if={elem(queries, 1) != []} class="collect-overview">
+                          <thead>
+                            <tr>
+                              <th>検索文</th>
+                              <th>使った（JST）</th>
+                              <th>入った / 残った</th>
+                              <th></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr :for={row <- elem(queries, 1)}>
+                              <td>{row["query"]}</td>
+                              <td>{at(row["used_at"])}</td>
+                              <td>{row["found"] || "—"} / {row["kept"] || "—"}</td>
+                              <td>
+                                <button
+                                  type="button"
+                                  phx-click="forget_query"
+                                  phx-value-collection={collection.name}
+                                  phx-value-query={row["query"]}
+                                >
+                                  消す
+                                </button>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        <button
+                          :if={elem(queries, 1) != []}
+                          type="button"
+                          phx-click="forget_query"
+                          phx-value-collection={collection.name}
+                          phx-value-query=""
+                          data-confirm="検索文の控えを全部消します（次の回は最初の組から始まります）。よろしいですか？"
+                        >
+                          全部消す
+                        </button>
+                      <% end %>
+                    </div>
                   </details>
                   <form
                     id={form_id}

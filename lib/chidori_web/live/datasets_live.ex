@@ -1094,7 +1094,7 @@ defmodule ChidoriWeb.DatasetsLive do
   def status_message(%{collection: %{enabled: false}}),
     do:
       "収集はありますが、Chiezo 側で止まっています。" <>
-        "Chiezo の管理画面の「集める」で有効にすると、決まった間隔で集め始めます。"
+        "収集の画面（一覧）の「動かす」で動かせます（Chiezo の管理画面で外部からの有効化を許可してあるとき）。動かすと、決まった間隔で集め始めます。"
 
   def status_message(%{collection: %{docs: 0}}),
     do: "有効になっています。まだ 1 件も溜まっていないので、最初の取り込みを待っています。"

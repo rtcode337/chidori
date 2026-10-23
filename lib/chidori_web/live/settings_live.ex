@@ -16,7 +16,7 @@ defmodule ChidoriWeb.SettingsLive do
 
   use ChidoriWeb, :live_view
 
-  import ChidoriWeb.Collect, only: [sweep_choices: 1, models_for: 2, by_kind: 1]
+  import ChidoriWeb.Collect, only: [sweep_choices: 1, models_for: 2, by_kind: 1, reason_text: 1]
 
   alias Chidori.Chiezo
   alias Chidori.CollectCatalog
@@ -56,6 +56,10 @@ defmodule ChidoriWeb.SettingsLive do
        picks: %{},
        # 収集ごとに、送った結果の一言
        sent: %{},
+       # ワーカーごとに、止めた・起こした結果の一言
+       worker_sent: %{},
+       # 収集ごとの検索文の控え（開いたときだけ読む。`{:ok, 行}` / `{:error, 理由}` / `:loading`）
+       queries: %{},
        # 「最後に取得」（Chiezo から表を読めた時刻）と、読み直している最中か
        checked_at: nil,
        reloading: false,
@@ -218,6 +222,32 @@ defmodule ChidoriWeb.SettingsLive do
   def handle_async({:switch, name}, {:exit, _reason}, socket),
     do: {:noreply, update(socket, :sent, &Map.put(&1, name, "切り替えられませんでした。"))}
 
+  def handle_async({:operate, name}, {:ok, {op, result}}, socket) do
+    {:noreply,
+     socket
+     |> update(:sent, &Map.put(&1, name, operate_text(op, result)))
+     |> load("chiezo")}
+  end
+
+  def handle_async({:operate, name}, {:exit, _reason}, socket),
+    do: {:noreply, update(socket, :sent, &Map.put(&1, name, "頼めませんでした。"))}
+
+  def handle_async({:worker, id}, {:ok, {op, result}}, socket) do
+    {:noreply,
+     socket
+     |> update(:worker_sent, &Map.put(&1, id, worker_text(op, result)))
+     |> load("chiezo")}
+  end
+
+  def handle_async({:worker, id}, {:exit, _reason}, socket),
+    do: {:noreply, update(socket, :worker_sent, &Map.put(&1, id, "頼めませんでした。"))}
+
+  def handle_async({:queries, name}, {:ok, result}, socket),
+    do: {:noreply, update(socket, :queries, &Map.put(&1, name, result))}
+
+  def handle_async({:queries, name}, {:exit, _reason}, socket),
+    do: {:noreply, update(socket, :queries, &Map.put(&1, name, {:error, :chiezo_unavailable}))}
+
   def handle_async({:send, name}, {:exit, _reason}, socket),
     do: {:noreply, update(socket, :sent, &Map.put(&1, name, "送れませんでした。"))}
 
@@ -328,6 +358,75 @@ defmodule ChidoriWeb.SettingsLive do
 
       _none ->
         {:noreply, update(socket, :sent, &Map.put(&1, name, "Chiezo の場所が決まっていません。"))}
+    end
+  end
+
+  # **Chiezo の管理画面のボタンと同じ操作**（やり直す・一周をやり直す・未確認に戻す・
+  # 区画を割り直す・取り込みを止める）。中身は Chiezo の REST（`Chidori.Chiezo.operate/3`）
+  def handle_event("operate", %{"collection" => name, "op" => op} = params, socket) do
+    with base when is_binary(base) <- News.chiezo_base_url(),
+         {:ok, op} <- parse_op(op, params["sweep"]) do
+      {:noreply,
+       socket
+       |> update(:sent, &Map.put(&1, name, "頼んでいます…"))
+       |> start_async({:operate, name}, fn -> {op, Chidori.Chiezo.operate(base, name, op)} end)}
+    else
+      _ -> {:noreply, update(socket, :sent, &Map.put(&1, name, "頼めませんでした。"))}
+    end
+  end
+
+  # **ワーカーを止める・動かす・起こす**（Chiezo の `POST /v1/ai/workers/{id}/…`）
+  def handle_event("worker", %{"id" => id, "op" => op}, socket)
+      when op in ["pause", "resume", "wake"] do
+    case News.chiezo_base_url() do
+      base when is_binary(base) ->
+        {:noreply,
+         socket
+         |> update(:worker_sent, &Map.put(&1, id, "頼んでいます…"))
+         |> start_async({:worker, id}, fn ->
+           {op,
+            case op do
+              "pause" -> Chidori.Chiezo.pause_worker(base, id, true)
+              "resume" -> Chidori.Chiezo.pause_worker(base, id, false)
+              "wake" -> Chidori.Chiezo.wake_worker(base, id)
+            end}
+         end)}
+
+      _none ->
+        {:noreply, update(socket, :worker_sent, &Map.put(&1, id, "Chiezo の場所が決まっていません。"))}
+    end
+  end
+
+  # **検索文の控え**。開いたときだけ読む（収集の数だけ毎回聞きに行かない）
+  def handle_event("load_queries", %{"collection" => name}, socket) do
+    case News.chiezo_base_url() do
+      base when is_binary(base) ->
+        {:noreply,
+         socket
+         |> update(:queries, &Map.put(&1, name, :loading))
+         |> start_async({:queries, name}, fn -> Chidori.Chiezo.queries(base, name) end)}
+
+      _none ->
+        {:noreply, update(socket, :queries, &Map.put(&1, name, {:error, :chiezo_not_configured}))}
+    end
+  end
+
+  # 検索文を 1 つ（`query` が空なら全部）消して、控えを読み直す
+  def handle_event("forget_query", %{"collection" => name} = params, socket) do
+    case News.chiezo_base_url() do
+      base when is_binary(base) ->
+        query = if params["query"] in [nil, ""], do: nil, else: params["query"]
+
+        {:noreply,
+         socket
+         |> update(:queries, &Map.put(&1, name, :loading))
+         |> start_async({:queries, name}, fn ->
+           with :ok <- Chidori.Chiezo.forget_queries(base, name, query),
+                do: Chidori.Chiezo.queries(base, name)
+         end)}
+
+      _none ->
+        {:noreply, socket}
     end
   end
 
@@ -574,6 +673,44 @@ defmodule ChidoriWeb.SettingsLive do
   end
 
   @doc false
+  defp parse_op("redo", _sweep), do: {:ok, :redo}
+  defp parse_op("requeue", _sweep), do: {:ok, :requeue}
+  defp parse_op("repartition", _sweep), do: {:ok, :repartition}
+  defp parse_op("stop", _sweep), do: {:ok, :stop}
+
+  defp parse_op("restart", sweep) when is_binary(sweep) and sweep != "",
+    do: {:ok, {:restart, sweep}}
+
+  defp parse_op(_op, _sweep), do: :error
+
+  def operate_text(:redo, :ok),
+    do: "最後の 1 回を巻き戻して、もう一度走らせるよう頼みました（進み具合は「収集」の表で見られます）。"
+
+  def operate_text({:restart, sweep}, :ok),
+    do: "「#{sweep}」の一周をやり直します（区画の印を外しました。次の予定で先頭から回ります）。"
+
+  def operate_text(:requeue, :ok),
+    do: "全部を未確認に戻すよう頼みました（次に焼く回で効きます）。"
+
+  def operate_text(:repartition, :ok),
+    do: "区画の割り直しを始めました（AI は使いません。大きな収集では数分かかります）。"
+
+  def operate_text(:stop, :ok), do: "走っている取り込みを止めるよう頼みました。"
+
+  def operate_text(_op, {:error, {:chiezo_refused, _status, message}}) when is_binary(message),
+    do: "Chiezo が断りました: #{message}"
+
+  def operate_text(_op, {:error, _reason}), do: "頼めませんでした（Chiezo に届きませんでした）。"
+
+  def worker_text("pause", :ok), do: "止めました（待ち行列は残ります。動かすと続きから流れます）。"
+  def worker_text("resume", :ok), do: "動かしました。"
+  def worker_text("wake", :ok), do: "起こしました（待っている先頭の 1 本を流します）。"
+
+  def worker_text(_op, {:error, {:chiezo_refused, _status, message}}) when is_binary(message),
+    do: "Chiezo が断りました: #{message}"
+
+  def worker_text(_op, {:error, _reason}), do: "頼めませんでした（Chiezo に届きませんでした）。"
+
   def switch_text(true, :ok), do: "動かしました（Chiezo の時計で回り始めます）。"
   def switch_text(false, :ok), do: "止めました（時計では走りません。画面から押した 1 回は走ります）。"
 

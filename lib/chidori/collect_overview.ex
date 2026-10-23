@@ -74,6 +74,16 @@ defmodule Chidori.CollectOverview do
       enabled: collection["enabled"] == true,
       last_status: collection["last_status"],
       last_error: collection["last_error"],
+      # 管理画面と同じ操作の口を出すかどうか（区画を持つか・やり直せる回があるか・
+      # 検索文を考えさせる巡回があるか）
+      partitions: collection["partitions_total"] || 0,
+      redo_sweep: blank(get_in(collection, ["last_undo", "sweep"]) || ""),
+      requeue_at: blank(collection["requeue_at"] || ""),
+      thinks_queries:
+        Enum.any?(
+          collection["sweeps"] || [],
+          &String.contains?(to_string(&1["prompt"] || ""), "{queries}")
+        ),
       # Chiezo の今の設定そのもの（Chidori の定義と突き合わせる。`Chidori.CollectDrift`）
       config: collection,
       sweeps:
@@ -291,6 +301,7 @@ defmodule Chidori.CollectOverview do
 
   defp worker_row(worker) do
     %{
+      id: worker["id"],
       name: worker["name"],
       every: every(max(worker["interval_minutes"] || 1, 1)),
       per_run: worker["per_run"],
