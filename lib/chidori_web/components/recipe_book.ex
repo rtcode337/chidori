@@ -3,10 +3,11 @@ defmodule ChidoriWeb.RecipeBook do
   レシピ集を読むところ（データ収集の「レシピ」のタブ。`Chidori.Datasets.Recipes`）。
 
   **一覧は写真と料理名だけ、押したら詳細を重ねて開く**（作品の詳細と同じ動き）。
-  **一覧は料理の種類ごとに見出しを立てて並べる**（主菜 → 副菜 → … の語彙の順。`grouped/1`）——
-  名前順に混ぜて並べると、主菜とお菓子と調味料が隣り合って何があるのか読み取れない。
-  1 品の本文は材料と手順まであって長いので、一覧に並べると何があるのか見渡せない。
-  国・種類・語（料理名と主な食材）で絞れる。
+  **一覧は国ごとに畳み**（品数の多い国から。`by_country/1`）、国の中は料理の種類ごとに見出しを
+  立てて並べる（主菜 → 副菜 → … の語彙の順。`grouped/1`）—— 全部を開いて並べると数百品が
+  続いて、どの国の料理があるのか見渡せない。名前順に混ぜると主菜とお菓子と調味料が隣り合う。
+  国の絞り込みは置かない（国を開けば足りる）。種類・語（料理名と主な食材）で絞っているときは
+  畳まずに、当てはまる料理を国の見出しの下に並べる（畳んだままだと、当たったのか分からない）。
 
   押したときの動き（`filter_recipes` / `open_recipe` / `close_recipe` / `reroster_recipes`）は
   置いた画面（`ChidoriWeb.DatasetsLive`）が受けます。
@@ -25,7 +26,7 @@ defmodule ChidoriWeb.RecipeBook do
     assigns =
       assign(assigns,
         shown: filtered(assigns.recipes, assigns.filter),
-        countries: counts(assigns.recipes, & &1.country),
+        narrowed: filtered?(assigns.filter),
         kinds: kind_counts(assigns.recipes),
         recipe: Enum.find(assigns.recipes, &(&1.title == assigns.opened))
       )
@@ -39,19 +40,6 @@ defmodule ChidoriWeb.RecipeBook do
         まだありません。収集の画面から依頼して有効にすると、名簿の回が百科事典から料理を引き、書く回が 1 品ずつレシピを書いていきます（書き終えた料理から並びます）。
       </p>
       <form :if={@recipes != []} class="recipe-filters" phx-change="filter_recipes">
-        <label>
-          国
-          <select name="country">
-            <option value="">すべて</option>
-            <option
-              :for={{country, n} <- @countries}
-              value={country}
-              selected={@filter["country"] == country}
-            >
-              {country}（{n}）
-            </option>
-          </select>
-        </label>
         <label>
           種類
           <select name="kind">
@@ -73,26 +61,50 @@ defmodule ChidoriWeb.RecipeBook do
         </label>
       </form>
       <p :if={@recipes != [] and @shown == []} class="muted-note">当てはまる料理はありません。</p>
-      <section :for={{kind, list} <- grouped(@shown)} class="recipe-kind">
-        <h3>{kind} <span class="muted-note">（{length(list)} 品）</span></h3>
-        <ul class="recipe-grid">
-          <li :for={recipe <- list}>
-            <button
-              type="button"
-              class="recipe-card"
-              phx-click="open_recipe"
-              phx-value-title={recipe.title}
-            >
-              <img :if={recipe.thumb} src={recipe.thumb} alt="" loading="lazy" />
-              <span :if={!recipe.thumb} class="recipe-noimage" aria-hidden="true"></span>
-              <strong>{recipe.title}</strong>
-              <span class="muted-note">{facts(recipe)}</span>
-            </button>
-          </li>
-        </ul>
+      <%!-- 国ごとに畳む。開け閉めはブラウザに任せる（料理を開いて描き直しても、開いた国が閉じないように） --%>
+      <details
+        :for={{country, list} <- by_country(@shown)}
+        :if={!@narrowed}
+        class="recipe-country"
+        id={"recipe-country-" <> country_id(country)}
+        phx-mounted={Phoenix.LiveView.JS.ignore_attributes(["open"])}
+      >
+        <summary>{country} <span class="muted-note">（{length(list)} 品）</span></summary>
+        <.kind_groups recipes={list} />
+      </details>
+      <%!-- 絞っているときは畳まない --%>
+      <section :for={{country, list} <- by_country(@shown)} :if={@narrowed} class="recipe-country">
+        <h3>{country} <span class="muted-note">（{length(list)} 品）</span></h3>
+        <.kind_groups recipes={list} />
       </section>
 
       <.recipe_modal :if={@recipe} recipe={@recipe} />
+    </section>
+    """
+  end
+
+  attr :recipes, :list, required: true
+
+  # 国の中の、種類ごとの組と料理の札
+  defp kind_groups(assigns) do
+    ~H"""
+    <section :for={{kind, list} <- grouped(@recipes)} class="recipe-kind">
+      <h4>{kind} <span class="muted-note">（{length(list)} 品）</span></h4>
+      <ul class="recipe-grid">
+        <li :for={recipe <- list}>
+          <button
+            type="button"
+            class="recipe-card"
+            phx-click="open_recipe"
+            phx-value-title={recipe.title}
+          >
+            <img :if={recipe.thumb} src={recipe.thumb} alt="" loading="lazy" />
+            <span :if={!recipe.thumb} class="recipe-noimage" aria-hidden="true"></span>
+            <strong>{recipe.title}</strong>
+            <span class="muted-note">{facts(recipe)}</span>
+          </button>
+        </li>
+      </ul>
     </section>
     """
   end
@@ -211,16 +223,14 @@ defmodule ChidoriWeb.RecipeBook do
   end
 
   @doc """
-  絞り込み。国と種類は一致、語は料理名と主な食材の部分一致（大文字小文字は区別しない）。
+  絞り込み。種類は一致、語は料理名と主な食材の部分一致（大文字小文字は区別しない）。
   """
   def filtered(recipes, filter) do
-    country = blank(filter["country"])
     kind = blank(filter["kind"])
     q = filter["q"] |> blank() |> then(&(&1 && String.downcase(&1)))
 
     Enum.filter(recipes, fn recipe ->
-      (is_nil(country) or recipe.country == country) and
-        (is_nil(kind) or recipe.kind == kind) and
+      (is_nil(kind) or recipe.kind == kind) and
         (is_nil(q) or
            Enum.any?(
              [recipe.title | recipe.ingredients_tags],
@@ -238,14 +248,38 @@ defmodule ChidoriWeb.RecipeBook do
 
   defp blank(_value), do: nil
 
-  # 多い順（同じ数なら名前順）
-  defp counts(recipes, key) do
-    recipes
-    |> Enum.map(key)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.frequencies()
-    |> Enum.sort_by(fn {name, n} -> {-n, name} end)
+  @doc "種類か語で絞っているか（絞っているときは国を畳まない）。"
+  def filtered?(filter), do: blank(filter["kind"]) != nil or blank(filter["q"]) != nil
+
+  @doc """
+  国ごとの組（`[{国, [レシピ]}]`）。品数の多い国から（同じ数なら名前順）、国の分からない料理
+  （国が無いか「不明」）はいちばん後ろの「国の分からない料理」へ。組の中は渡された順のまま。
+  同じ国の書き方の揺れ（`@country_aliases`）は 1 つの組にまとめる（AI が書いた国のタグに
+  「アメリカ」と「アメリカ合衆国」が混ざっていて、同じ国が 2 つの組に割れた）。
+  """
+  def by_country(recipes) do
+    {known, unknown} =
+      recipes
+      |> Enum.map(&{country_of(&1), &1})
+      |> Enum.split_with(fn {country, _recipe} -> country != nil end)
+
+    unknown = Enum.map(unknown, &elem(&1, 1))
+
+    known
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Enum.sort_by(fn {country, list} -> {-length(list), country} end)
+    |> Kernel.++(if unknown == [], do: [], else: [{"国の分からない料理", unknown}])
   end
+
+  @country_aliases %{"アメリカ" => "アメリカ合衆国"}
+
+  defp country_of(%{country: country}) when is_binary(country) and country not in ["", "不明"],
+    do: Map.get(@country_aliases, country, country)
+
+  defp country_of(_recipe), do: nil
+
+  # 畳んだ国の id（開け閉めをブラウザに任せるには、描き直しても同じ要素だと分かる id が要る）
+  defp country_id(country), do: Base.url_encode64(country, padding: false)
 
   @doc """
   種類ごとの組（`[{種類, [レシピ]}]`）。並びは語彙の順（主菜 → 副菜 → …）、語彙に無い種類は

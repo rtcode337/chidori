@@ -143,19 +143,57 @@ defmodule Chidori.Datasets.RecipesTest do
   end
 
   describe "画面の絞り込み" do
+    import Phoenix.LiveViewTest
+
     defp recipe(title, country, kind, ingredients),
       do: %{title: title, country: country, kind: kind, ingredients_tags: ingredients}
 
-    test "国と種類は一致、語は料理名と主な食材の部分一致" do
+    test "種類は一致、語は料理名と主な食材の部分一致" do
       all = [
         recipe("カルボナーラ", "イタリア", "麺・パスタ", ["卵", "豚肉"]),
         recipe("親子丼", "日本", "ご飯もの", ["鶏肉", "卵"]),
         recipe("ラタトゥイユ", "フランス", "副菜", ["ナス"])
       ]
 
-      assert [%{title: "親子丼"}] = RecipeBook.filtered(all, %{"country" => "日本"})
+      # 国では絞らない（国ごとに畳んで並べる）
+      assert length(RecipeBook.filtered(all, %{"country" => "日本"})) == 3
       assert ["カルボナーラ", "親子丼"] = all |> RecipeBook.filtered(%{"q" => "卵"}) |> Enum.map(& &1.title)
       assert [%{title: "ラタトゥイユ"}] = RecipeBook.filtered(all, %{"kind" => "副菜", "q" => ""})
+    end
+
+    test "国ごとに、品数の多い国から組にする（国の分からない料理は最後）" do
+      all = [
+        recipe("ピザ", "イタリア", "主菜", []),
+        recipe("親子丼", "日本", "ご飯もの", []),
+        recipe("謎の料理", nil, "主菜", []),
+        recipe("カルボナーラ", "イタリア", "麺・パスタ", []),
+        recipe("書いた国が不明", "不明", "主菜", []),
+        # 書き方の揺れは 1 つの国にまとめる
+        recipe("ハンバーガー", "アメリカ", "主菜", []),
+        recipe("ガンボ", "アメリカ合衆国", "汁物", []),
+        recipe("ジャンバラヤ", "アメリカ合衆国", "ご飯もの", [])
+      ]
+
+      assert [
+               {"アメリカ合衆国", [_, _, _]},
+               {"イタリア", [%{title: "ピザ"}, %{title: "カルボナーラ"}]},
+               {"日本", [_]},
+               {"国の分からない料理", [%{title: "謎の料理"}, %{title: "書いた国が不明"}]}
+             ] = RecipeBook.by_country(all)
+    end
+
+    test "国は畳んで並べ、種類か語で絞っているときは畳まない（国の絞り込みは置かない）" do
+      all = [recipe("カルボナーラ", "イタリア", "麺・パスタ", ["卵"]) |> Map.put(:thumb, nil)]
+      all = Enum.map(all, &Map.merge(&1, %{regions: []}))
+
+      html = render_component(&RecipeBook.book/1, recipes: all)
+      assert html =~ ~r|<details[^>]*class="recipe-country"|
+      assert html =~ "イタリア"
+      refute html =~ ~s(name="country")
+
+      html = render_component(&RecipeBook.book/1, recipes: all, filter: %{"q" => "卵"})
+      refute html =~ "<details"
+      assert html =~ "カルボナーラ"
     end
   end
 
