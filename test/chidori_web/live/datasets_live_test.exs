@@ -41,16 +41,16 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
     # 本棚の収集の画面から「読む画面へ」はトップページの技術書の枠へ
     {:ok, _live, html} = live(conn, ~p"/collect/datasets?view=books")
-    assert html =~ ~s(href="/?panel=books")
+    assert html =~ ~s(href="/datasets?view=books")
   end
 
-  test "技術書（本棚）は読む画面に置かず、トップページの技術書の枠へ送る", %{conn: conn} do
-    assert {:error, {:live_redirect, %{to: "/?panel=books"}}} =
-             live(conn, ~p"/datasets?view=books")
+  test "技術書（本棚）は趣味の読む画面で読む（閲覧は廃止した）", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/datasets?view=books")
+    assert html =~ ~r|href="/datasets\?view=books"[^>]*class="selected"|
 
-    # 対象なしで開くと、読む画面に並ぶ先頭（レシピ）
+    # 対象なしで開くと、読む画面に並ぶ先頭（技術書）
     {:ok, _live, html} = live(conn, ~p"/datasets")
-    assert html =~ ~r|class="selected"[^>]*>\s*レシピ|
+    assert html =~ ~r|class="selected"[^>]*>\s*技術書|
   end
 
   test "読むものを持たない対象を読む画面で開くと、収集の画面へ送る", %{conn: conn} do
@@ -84,7 +84,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     [_, tabs] = String.split(html, ~s(id="dataset-tabs"), parts: 2)
     [tabs, _] = String.split(tabs, "</nav>", parts: 2)
 
-    refute tabs =~ "view=books"
+    assert tabs =~ ~s(href="/datasets?view=books")
     assert tabs =~ ~s(href="/datasets?view=pihole")
     assert tabs =~ ~s(href="/datasets?view=recipes")
     refute tabs =~ "view=anime"
@@ -510,7 +510,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     assert html =~ "定番の技術書の設定"
 
     {:ok, _live, html} = live(conn, ~p"/datasets?view=%2E%2E%2F")
-    assert html =~ ~s(href="/collect/datasets?view=recipes")
+    assert html =~ ~s(href="/collect/datasets?view=books")
   end
 
   test "溜まったものは、この画面には出さない", %{conn: conn} do
@@ -1404,6 +1404,241 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
       assert idle =~ "読んでいません"
       assert none =~ "まだ Chiezo にありません"
+    end
+  end
+
+  describe "趣味の技術書のタブ（本棚）" do
+    # 本棚（全冊）は趣味の技術書のタブで読む（閲覧は廃止した）
+    @shelf %{
+      "name" => "chidori_books",
+      "enabled" => false,
+      "interval_minutes" => 1440,
+      "kind" => "stock",
+      "sweeps" => [
+        %{"name" => "機械収集", "interval_minutes" => 360, "use_extract" => true, "enabled" => true},
+        %{"name" => "整理", "interval_minutes" => 1440, "enabled" => true}
+      ]
+    }
+
+    setup do
+      System.put_env("CHIEZO_BASE_URL", "http://chiezo.test:7010")
+      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+      test_pid = self()
+
+      Chidori.HttpStub.stub(fn
+        %{url: "http://chiezo.test:7010/v1/ai/backends"} ->
+          Chidori.HttpStub.ok(~s({"backends":[{"id":"antigravity","label":"Antigravity"}]}))
+
+        %{method: :get, url: "http://chiezo.test:7010/v1/collect"} ->
+          Chidori.HttpStub.ok(Jason.encode!(%{"collections" => [@shelf]}))
+
+        %{method: :get, url: "http://chiezo.test:7010/v1/collect/chidori_books" <> _rest} ->
+          Chidori.HttpStub.ok(Jason.encode!(@shelf))
+
+        %{method: :get, url: "http://chiezo.test:7010/v1/chidori_book_posts/filter?" <> _query} ->
+          Chidori.HttpStub.ok(
+            Jason.encode!(%{
+              "results" => [
+                %{
+                  "title" => "おすすめの本 10 冊",
+                  "extra" => %{"url" => "https://example.com/a", "published_at" => "2026-01-07"}
+                }
+              ]
+            })
+          )
+
+        %{method: :get, url: "http://chiezo.test:7010/v1/chidori_books/filter?" <> _query} ->
+          Chidori.HttpStub.ok(
+            Jason.encode!(%{
+              "results" => [
+                %{
+                  "title" => "本:入門 監視",
+                  "tags" => ["技術書", "話題:監視"],
+                  "extra" => %{"docs" => 2}
+                },
+                # 整理の回が見出しを書き換えて足してしまったもの（数を持たない）
+                %{"title" => "リーダブルコード", "tags" => ["技術書"], "extra" => %{}},
+                %{
+                  "title" => "本:リーダブルコード",
+                  "tags" => ["技術書", "分野:設計・アーキテクチャ"],
+                  "opening" => "読みやすいコードの書き方",
+                  "extra" => %{"docs" => 5, "isbn" => "9784873115658"}
+                }
+              ]
+            })
+          )
+
+        %{method: :patch, url: url, body: body} ->
+          send(test_pid, {:patched, url, Jason.decode!(body)})
+          Chidori.HttpStub.ok(~s({}))
+
+        %{method: :post, url: url, body: body} ->
+          send(test_pid, {:posted, url, Jason.decode!(body)})
+          Chidori.HttpStub.ok(~s({}))
+
+        %{method: :get, url: _other} ->
+          Chidori.HttpStub.ok(~s({"collections":[],"sources":[],"changes":[]}))
+      end)
+
+      :ok
+    end
+
+    defp open_books(conn) do
+      {:ok, live, _html} = live(conn, ~p"/datasets?view=books")
+      {:ok, live, render_async(live, 2_000)}
+    end
+
+    defp receive_post(part) do
+      receive do
+        {:posted, url, body} -> if url =~ part, do: {url, body}, else: receive_post(part)
+      after
+        2_000 -> flunk("#{part} への POST が届きませんでした")
+      end
+    end
+
+    test "本棚の本を、表紙つきでおすすめ度の高い順に並べる", %{conn: conn} do
+      {:ok, live, _html} = open_books(conn)
+      html = render_async(live)
+
+      [_, shelf] = String.split(html, ~s(class="bookshelf"), parts: 2)
+
+      # 表紙はまだ取りに行っていないので空の枠（取りに行く列に並ぶ。「表紙なし」は取れなかった本だけ）。
+      # 外の絵を直に指さない
+      assert shelf =~ "book-cover is-empty"
+      refute shelf =~ "hanmoto.com/bd/img"
+      assert shelf =~ "記事 5 本が勧めている"
+      refute shelf =~ ~s(class="book-badge">定番<)
+
+      # 順は本棚の一覧で見る
+      [_, list] = String.split(shelf, ~s(class="book-list"), parts: 2)
+      {first, _} = :binary.match(list, "リーダブルコード")
+      {second, _} = :binary.match(list, "入門 監視")
+      assert first < second
+
+      # リーダブルコードはオライリーの本。上位の枠にも同じ並びで出て、印で見分ける
+      [top, _] = String.split(html, ~s(class="bookshelf"), parts: 2)
+      assert top =~ ~r|リーダブルコード\s*</a>.*?book-badge is-oreilly|s
+      # 数を持たない本（見出しを書き換えて足されたもの）は並べない
+      refute shelf =~ ~s(phx-value-title="リーダブルコード")
+
+      # 本棚は畳んでおく（何百冊にもなるので、上位の枠が一覧に埋もれない）
+      [details] = Regex.run(~r|<details[^>]*id="bookshelf"[^>]*>|, html)
+      refute details =~ " open"
+    end
+
+    test "興味トピックに近い本を強調し、絞り込める", %{conn: conn} do
+      Chidori.News.Interests.toggle("chidori_tech", "設計・アーキテクチャ")
+      Chidori.News.Interests.toggle("chidori_tech", "監視")
+
+      {:ok, live, _html} = open_books(conn)
+      html = render_async(live)
+
+      assert html =~ "★ 興味: 監視"
+      assert html =~ "興味トピックに近い本だけ（1 冊）"
+
+      html = live |> element(".shelf-near-toggle") |> render_click()
+      [_, rest] = String.split(html, ~s(class="book-list"), parts: 2)
+      [shelf, _] = String.split(rest, "</ol>", parts: 2)
+      assert shelf =~ "入門 監視"
+      refute shelf =~ "リーダブルコード"
+    end
+
+    test "本を押すと詳細が開き、勧めている記事へのリンクが出る", %{conn: conn} do
+      {:ok, live, _html} = open_books(conn)
+      render_async(live)
+
+      refute render(live) =~ "https://example.com/a"
+
+      live
+      |> element(~s(button.book-name[phx-value-title="本:リーダブルコード"]))
+      |> render_click()
+
+      html = render_async(live)
+      assert html =~ ~s(role="dialog")
+      assert html =~ ~s(href="https://example.com/a")
+      assert html =~ "おすすめの本 10 冊"
+      assert html =~ "ISBN 9784873115658"
+
+      refute live |> element(~s(button[phx-click="close_book"])) |> render_click() =~
+               ~s(role="dialog")
+    end
+
+    test "詳細から、その本だけを本棚の整理の回に調べ直してもらえる", %{conn: conn} do
+      # 「いま頼む」はどの収集に頼むのか読めなかった。本を見ながら、その本について頼む
+      {:ok, live, _html} = open_books(conn)
+      render_async(live)
+
+      live
+      |> element(~s(button.book-name[phx-value-title="本:リーダブルコード"]))
+      |> render_click()
+
+      live
+      |> element("#book-ask")
+      |> render_submit(%{"title" => "本:リーダブルコード", "note" => "表紙が違う"})
+
+      assert render_async(live) =~ "Chiezo に頼みました"
+
+      # 本棚を開くと表紙の取り寄せ（`POST /v1/covers`）も同じ口へ届くので、割り込みだけを待つ
+      {url, body} = receive_post("/focus")
+      assert url =~ "/v1/collect/chidori_books/focus"
+      assert body["titles"] == ["本:リーダブルコード"]
+      assert body["sweep"] == "整理"
+      assert body["note"] =~ "リーダブルコードについて"
+      assert body["note"] =~ "補足: 表紙が違う"
+      # 調べ終えた本でも並ぶように、名指しした 1 冊を {current} で見せる
+      assert body["prompt"] =~ "{current}"
+      refute body["prompt"] =~ "{unreviewed}"
+    end
+
+    test "読んだ印を付けると、本棚で分かり、未読の上位の枠から外れる", %{conn: conn} do
+      {:ok, live, html} = open_books(conn)
+      html = render_async(live) || html
+
+      assert html =~ "未読の上位"
+      refute html =~ "オライリー以外の未読の上位"
+      assert html =~ ~r|<ol[^>]*class="top-books">.*本:リーダブルコード|s
+
+      live
+      |> element(~s(button.book-name[phx-value-title="本:リーダブルコード"]))
+      |> render_click()
+
+      html =
+        live
+        |> element("#book-mark")
+        |> render_submit(%{
+          "title" => "本:リーダブルコード",
+          "read" => "on",
+          "read_on" => "2026-10-01",
+          "note" => "命名の章が役に立った"
+        })
+
+      assert html =~ "保存しました。"
+      assert Chidori.Datasets.BookMarks.get("本:リーダブルコード").read
+
+      # 本棚の一覧には残し、読んだことが分かる印を付ける
+      assert html =~ ~s(class="book-card is-read")
+      assert html =~ "読んだ（2026-10-01）"
+      # 未読の上位の枠からは外れる
+      for [top] <- Regex.scan(~r|<ol[^>]*class="top-books">.*?</ol>|s, html) do
+        refute top =~ "本:リーダブルコード"
+      end
+    end
+
+    test "印もメモも空にして保存すると、記録ごと消える", %{conn: conn} do
+      {:ok, _mark} = Chidori.Datasets.BookMarks.put("本:リーダブルコード", %{"read" => true})
+      {:ok, live, _html} = open_books(conn)
+      render_async(live)
+
+      live
+      |> element(~s(button.book-name[phx-value-title="本:リーダブルコード"]))
+      |> render_click()
+
+      live
+      |> element("#book-mark")
+      # チェックを外す（外したチェックボックスは値を送らない。ここでは空で上書きする）
+      |> render_submit(%{"title" => "本:リーダブルコード", "read" => "", "read_on" => "", "note" => ""})
+
+      refute Chidori.Datasets.BookMarks.get("本:リーダブルコード")
     end
   end
 end

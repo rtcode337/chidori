@@ -9,12 +9,19 @@
       cond do
         @collect_mode -> :collect
         hobby? -> :datasets
+        @events_mode -> :events
         true -> :news
       end
     } />
     <ChidoriWeb.CollectTabs.collect_tabs
       :if={@collect_mode}
-      current={if hobby?, do: :datasets, else: :news}
+      current={
+        cond do
+          hobby? -> :datasets
+          @events_mode -> :events
+          true -> :news
+        end
+      }
     />
     <%!-- **映画・アニメは趣味の段**（データの対象と同じタブに並べる）。画面はこのまま --%>
     <ChidoriWeb.DiningTabs.dataset_tabs
@@ -23,6 +30,12 @@
       current={@topic.collection}
       mode={if @collect_mode, do: :collect, else: :read}
       elsewhere={true}
+    />
+    <%!-- **映画のタブの中は、最新と関連図を四角い札で切り替える**（映画の関連図は映画のタブの中） --%>
+    <ChidoriWeb.DiningTabs.movie_tabs
+      :if={@topic && @topic.collection == "chidori_movies"}
+      current={:latest}
+      mode={if @collect_mode, do: :collect, else: :read}
     />
 
     <%!-- 話題ごとのタブ。**集めるものも溜まるものも話題ごとに別**なので、
@@ -47,7 +60,7 @@
       </.link>
       <%!-- お気に入りは話題をまたいだ 1 つの一覧なので、話題のタブの最後に置く（収集の画面には無い） --%>
       <.link
-        :if={!@collect_mode}
+        :if={!@collect_mode and !@events_mode}
         patch={~p"/news?view=#{favorites_view()}"}
         class={if @favorites_view, do: "selected"}
         aria-current={if @favorites_view, do: "page"}

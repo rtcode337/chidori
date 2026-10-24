@@ -80,8 +80,14 @@
     <%!-- **読む画面と収集の画面を分ける**（`@collect_mode`）。読む画面は溜まったもの（本棚・
          レシピ集・ドメイン）だけ、収集の設定・区画・依頼・書き出しは収集の画面（`/collect/datasets`・他アプリ用は `/collect/apps`）--%>
     <%= if !@collect_mode do %>
-      <%!-- **本棚**（読む側のアプリを持たない対象だけ）。**設定より先に置く** ——
-         この対象で読みに来るのは、溜まった本のほう --%>
+      <%!-- **本棚**（技術書。未読の上位・畳んだ全冊・本の詳細。`ChidoriWeb.BooksPanel`）。
+         **設定より先に置く** —— この対象で読みに来るのは、溜まった本のほう --%>
+      <.live_component
+        :if={@dataset[:derived] && match?({:ok, [_ | _]}, @shelf)}
+        module={ChidoriWeb.BooksPanel}
+        id="books"
+        books={elem(@shelf, 1)}
+      />
       <%!-- **レシピ集**（設定より先に置く。見に来るのは溜まったレシピのほう） --%>
       <ChidoriWeb.RecipeBook.book
         :if={@dataset[:reading] && match?({:ok, _}, @shelf)}

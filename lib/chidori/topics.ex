@@ -41,8 +41,7 @@ defmodule Chidori.Topics do
   def defined do
     [
       # 一般ニュースを先頭に置く。タブの並びの先頭が、話題を選ばずに `/news` を
-      # 開いたときに出る話題になる（トップページに何も選んでいないときの既定も
-      # この話題の要約。`Chidori.Home`）
+      # 開いたときに出る話題になる
       %{
         name: "一般ニュース",
         # **収集の名前は変えない**（それまで溜めた先を見失う）
@@ -154,6 +153,8 @@ defmodule Chidori.Topics do
       },
       %{
         name: "技術イベント",
+        # 頭のメニューの「イベント」に並べる（ニュースのタブには出さない。`event?/1`）
+        event: true,
         collection: "chidori_events",
         interest:
           "これから開かれる技術のイベント(カンファレンス・勉強会・ハンズオン)。" <>
@@ -195,6 +196,7 @@ defmodule Chidori.Topics do
       },
       %{
         name: "お笑いイベント",
+        event: true,
         collection: "chidori_comedy",
         interest:
           "これから開かれるお笑いのイベントと、お笑いのテレビ番組。" <>
@@ -211,9 +213,6 @@ defmodule Chidori.Topics do
         # 外を探す回（情報収集）だけで集め、片付けもその回がする（整理の回は置かない）
         feeds: [],
         look_ahead: Chidori.News.ComedyEvents,
-        # **トップページには注目度が中のものも出す**（`home_attention/1`）。技術イベントほど
-        # 数が無く、高だけだと 2 か月先まででも数件しか並ばない
-        home_attention: [:high, :mid],
         # **絵を Chiezo に縮めて持たせる**（AI が公式サイトの絵の URL を返す）。
         # 返さなかったイベントは、公式サイトのページの og:image から（ホストは問わない）
         thumbs: %{pages_from: ["*"]}
@@ -401,13 +400,6 @@ defmodule Chidori.Topics do
   def calendar?(%{calendar: true}), do: true
   def calendar?(_topic), do: false
 
-  @doc """
-  トップページの「これからの注目イベント」に出す注目度（`:high` / `:mid` / `:low`）。
-  **既定は高だけ** —— 中まで入れると、件数の多い話題では近い日のもので埋まる。
-  """
-  def home_attention(%{home_attention: levels}) when is_list(levels), do: levels
-  def home_attention(_topic), do: [:high]
-
   @doc "カレンダーの日付を読むタグの頭（既定は技術イベントの `開催日`）。"
   def date_tag(%{date_tag: tag}) when is_binary(tag), do: tag
   def date_tag(_topic), do: Chidori.News.Events.date_tag()
@@ -446,8 +438,18 @@ defmodule Chidori.Topics do
   @doc "趣味に並べる話題（定義の順）。"
   def hobbies, do: Enum.filter(defined(), &hobby?/1)
 
-  @doc "ニュースのタブに並べる話題（趣味の話題を除く）。"
-  def news, do: Enum.reject(defined(), &hobby?/1)
+  @doc "ニュースのタブに並べる話題（趣味の話題とイベントを除く）。"
+  def news, do: Enum.reject(defined(), &(hobby?(&1) or event?(&1)))
+
+  @doc """
+  頭のメニューの「イベント」に並べる話題か（技術イベント・お笑いイベント）。画面は最新情報のもの
+  （`NewsLive` の `:events`。道は `/events?view=…`）。映画・アニメもカレンダーを持つが、趣味に並べる。
+  """
+  def event?(%{event: true}), do: true
+  def event?(_topic), do: false
+
+  @doc "イベントに並べる話題（定義の順）。"
+  def events, do: Enum.filter(defined(), &event?/1)
 
   @doc "話題の一覧（定義の順）。"
   def list, do: defined()

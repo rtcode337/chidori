@@ -14,6 +14,8 @@ defmodule ChidoriWeb.BookshelfList do
   attr :books, :list, required: true
   attr :marks, :map, required: true
   attr :near_only, :boolean, default: false
+  # 押したときの宛先（`ChidoriWeb.BooksPanel`）
+  attr :target, :any, default: nil
 
   def shelf(assigns) do
     near_count = Enum.count(assigns.books, &(&1.near != []))
@@ -40,6 +42,7 @@ defmodule ChidoriWeb.BookshelfList do
           type="button"
           class={["shelf-near-toggle", @near_only && "is-on"]}
           phx-click="toggle_shelf_near"
+          phx-target={@target}
           aria-pressed={to_string(@near_only)}
         >
           ★ 興味トピックに近い本だけ（{@near_count} 冊）
@@ -65,6 +68,7 @@ defmodule ChidoriWeb.BookshelfList do
             type="button"
             class={["book-cover", !book.cover_url && "is-empty"]}
             phx-click="open_book"
+            phx-target={@target}
             phx-value-title={book.title}
             aria-label={"#{book.name} の詳細を開く"}
           >
@@ -83,6 +87,7 @@ defmodule ChidoriWeb.BookshelfList do
                 type="button"
                 class="book-name"
                 phx-click="open_book"
+                phx-target={@target}
                 phx-value-title={book.title}
               >
                 {book.name}
@@ -115,6 +120,7 @@ defmodule ChidoriWeb.BookshelfList do
   attr :book, :map, required: true
   attr :asking, :boolean, default: false
   attr :message, :string, default: nil
+  attr :target, :any, default: nil
 
   @doc """
   本の詳細の中に置く「この本を Chiezo に調べ直してもらう」口（本棚の整理の回への割り込み）。
@@ -122,7 +128,7 @@ defmodule ChidoriWeb.BookshelfList do
   """
   def ask_form(assigns) do
     ~H"""
-    <form id="book-ask" phx-submit="ask_book" class="article-ask">
+    <form id="book-ask" phx-submit="ask_book" phx-target={@target} class="article-ask">
       <input type="hidden" name="title" value={@book.title} />
       <label>
         この本を Chiezo に調べ直してもらう<br />

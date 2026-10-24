@@ -123,10 +123,21 @@ defmodule ChidoriWeb.NewsLive do
   def handle_params(params, _uri, socket) do
     # **お気に入りは話題ではない**（話題をまたいで 1 つの一覧）。開いているあいだは
     # 話題を選んでいない状態にして、話題ごとの節を出さない
-    favorites_view = params["view"] == @favorites_view and socket.assigns.live_action != :collect
+    favorites_view =
+      params["view"] == @favorites_view and socket.assigns.live_action in [:index]
+
+    action = socket.assigns.live_action
+
+    # **イベント**（`/events`。頭のメニューの「イベント」）は、カレンダーを持つ話題だけを並べる
+    events_mode = action in [:events, :collect_events]
 
     # 映画・アニメ（趣味の話題）もこの画面で開く。タブに並べないだけ
-    topic = if favorites_view, do: nil, else: pick_topic(Topics.list(), params["view"])
+    topic =
+      cond do
+        favorites_view -> nil
+        events_mode -> pick_topic(Topics.events(), params["view"])
+        true -> pick_topic(Topics.list(), params["view"])
+      end
 
     # 話題を切り替えたら購読も付け替える。付け替えないと、見ていない話題の
     # 収集結果でこの画面が書き換わる
@@ -143,12 +154,23 @@ defmodule ChidoriWeb.NewsLive do
     end
 
     # **収集の画面**（`/collect/news`）か、読む画面（`/news`）か。同じ話題を 2 つの形で開く
-    collect_mode = socket.assigns.live_action == :collect
+    collect_mode = action in [:collect, :collect_events]
+
+    base_path =
+      case {collect_mode, events_mode} do
+        {false, false} -> "/news"
+        {true, false} -> "/collect/news"
+        {false, true} -> "/events"
+        {true, true} -> "/collect/events"
+      end
 
     socket =
       assign(socket,
         collect_mode: collect_mode,
-        base_path: if(collect_mode, do: "/collect/news", else: "/news"),
+        events_mode: events_mode,
+        # 話題のタブ（ニュースかイベントか。趣味の話題は趣味の段に並べる）
+        topics: if(events_mode, do: Topics.events(), else: Topics.news()),
+        base_path: base_path,
         topic: topic,
         page_title: page_title(topic, favorites_view),
         favorites_view: favorites_view,
@@ -183,16 +205,22 @@ defmodule ChidoriWeb.NewsLive do
         digest_wanted: params["digest"] == "latest"
       )
 
-    {:noreply,
-     socket
-     |> open_wanted_digest()
-     |> load_themes()
-     |> load_calendar()
-     |> load_works()
-     # 上映スケジュール（お気に入りの館・頼める AI・調べた答え）。映画の話題だけ。
-     # 画面どうしで共通（`ChidoriWeb.ShowtimeAsk`。作品の詳細からも調べられる）
-     |> ShowtimeAsk.init(movies?(topic))
-     |> load_ai_digests()}
+    # **イベントの話題をニュースの道で開いたら、イベントの道へ送る**（前のリンク・通知）
+    if not events_mode and topic != nil and Topics.event?(topic) do
+      to = if collect_mode, do: "/collect/events", else: "/events"
+      {:noreply, push_navigate(socket, to: "#{to}?view=#{topic.collection}", replace: true)}
+    else
+      {:noreply,
+       socket
+       |> open_wanted_digest()
+       |> load_themes()
+       |> load_calendar()
+       |> load_works()
+       # 上映スケジュール（お気に入りの館・頼める AI・調べた答え）。映画の話題だけ。
+       # 画面どうしで共通（`ChidoriWeb.ShowtimeAsk`。作品の詳細からも調べられる）
+       |> ShowtimeAsk.init(movies?(topic))
+       |> load_ai_digests()}
+    end
   end
 
   defp movies?(topic), do: topic != nil and Topics.works(topic) == Movies

@@ -5,10 +5,7 @@ paths:
   - "lib/chidori/news/**"
   - "lib/chidori/themes.ex"
   - "lib/chidori/themes/**"
-  - "lib/chidori/home.ex"
-  - "lib/chidori/home/**"
   - "lib/chidori_web/live/news_live*"
-  - "lib/chidori_web/live/home_live*"
   - "lib/chidori_web/components/report.ex"
   - "lib/chidori_web/components/topic_map.ex"
   - "lib/chidori_web/components/ai_digests.ex"
@@ -28,7 +25,7 @@ paths:
   - "test/chidori/topics_test.exs"
 ---
 
-# 最新情報・トピック・トップページ
+# 最新情報・イベント・トピック
 
 詳しい説明と、それぞれの形にした理由（実測値つき）は `docs/news-and-topics.md`。トップと設定は `docs/overview.md`。
 
@@ -57,8 +54,6 @@ paths:
   無ければ AI が書いた駅）。AI に頼んだ答え（映画館を探した答え・上映時刻）は返ったら通知でも知らせ（`Notify.deliver_notice/4`。話題の「知らせる」は見ない）、画面に直接送らず `AskStore` に置いて
   PubSub で知らせる（頼んでいる最中に画面を移っても、戻ってきた画面が読める）
 - 「近くの上映館を Gemini に聞く」は普通のリンクとして開く（`ask_nearby.js`）。空のタブを開いてから行き先を入れると PWA で白いまま残る
-- トップの映画・アニメの要約の枠には、要約の下に公開中・放送中の注目作（`HomeLive.started_works/2`。見た印も出す）と、
-  その下に見た作品（`HomeLive.seen_works/1`。見た日の新しい順）を並べる。どちらも既定で畳む
 - 上映スケジュールを調べる動きは画面どうしで共通（`ChidoriWeb.ShowtimeAsk`）。映画館の欄と、作品の詳細の欄
   （`TheaterPanel.showtime_box/1`。その作品だけを調べ、その作品の答えだけを出す）から使う
 - 映画の画面の注目作の組（公開中・これから）は既定で畳む（下の映画館の欄と設定まで遠くなるため）
@@ -71,5 +66,5 @@ paths:
   溜め先は記事とは別の網羅の収集 `<話題>_topics`。図の語彙（`トピック`・`分野:`・`親:`・`同義:`）は Chidori が持つ
 - 網の置き方は決まった手順で詰める（同じ材料なら同じ図）。札の大きさは直近の件数、線は一緒に出た回数
 - 興味トピックは `chidori_data` に持ち、依頼文に書き込んで送る。選び直したら整理と興味の要約の依頼文をその場で送り直す。付け終えた興味度は動かさない
-- トップ（`Chidori.Home`）は設定で選んだ枠を大きなタブ（ニュース・イベント・関連図・データ収集。`Home.groups/0`）にまとめ、
-  中の枠は下の段に四角い札で 1 行に並べる（折り返さず横へ送る）（短い名前と並びは `@order`。設定で選ぶのは出すかどうかだけ）。何も選んでいなければ一般ニュースの要約だけ
+- トップページ（閲覧）は廃止した。`/` はニュースへ送る（`ChidoriWeb.PageController`）
+- イベント（技術イベント・お笑いイベント。`event: true`・`Topics.events/0`）は頭のメニューの「イベント」（`/events`。`NewsLive` の `:events` / `:collect_events`）。ニュースのタブ（`Topics.news/0`）には出さず、`/news?view=<イベント>` はイベントの道へ送る

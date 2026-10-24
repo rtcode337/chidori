@@ -234,13 +234,11 @@ defmodule Chidori.Datasets do
     do: if(for_other_app?(dataset), do: "/collect/apps", else: "/collect/datasets")
 
   @doc """
-  データ収集の読む画面（`/datasets`）で読む対象か（Pi-hole・レシピ集）。**本棚（技術書）は
-  トップページの「技術書」の枠で読む**ので、ここには並べない（収集の画面のデータ収集には並ぶ）。
+  趣味の読む画面（`/datasets`）で読む対象か（技術書の本棚・レシピ集・Pi-hole）。
   """
-  def read_on_datasets?(dataset), do: listed?(dataset) and is_nil(dataset[:derived])
+  def read_on_datasets?(dataset), do: listed?(dataset)
 
-  @doc "その対象を読む画面の道（本棚はトップページの枠、ほかはデータ収集の読む画面）。"
-  def read_path(%{derived: derived}) when not is_nil(derived), do: "/?panel=books"
+  @doc "その対象を読む画面の道。"
   def read_path(dataset), do: "/datasets?view=#{dataset.key}"
 
   @doc "データ収集の読む画面で最初に開く対象。"

@@ -89,16 +89,17 @@ defmodule ChidoriWeb.SettingsLiveTest do
     assert render_async(live) =~ "本の巡回に送りました"
   end
 
-  test "開くとトップページのタブが先頭で選ばれている", %{conn: conn} do
+  test "開くと写真と表紙のタブが先頭で選ばれている（トップページは廃止した）", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/settings")
 
     [_before, tabs | _rest] = String.split(html, ~s(aria-label="設定"))
     [tabs | _rest] = String.split(tabs, "</nav>")
-    assert :binary.match(tabs, "トップページ") < :binary.match(tabs, "通知")
+    assert :binary.match(tabs, "写真と表紙") < :binary.match(tabs, "通知")
 
-    # Chiezo 収集の表は収集の画面（/collect）へ移した。設定のタブには置かない
+    # Chiezo 収集の表は収集の画面（/collect）へ、トップページ（閲覧）は廃止。設定のタブには置かない
     refute tabs =~ "Chiezo 収集"
-    assert html =~ ~r/class="selected"[^>]*>\s*トップページ/
+    refute tabs =~ "トップページ"
+    assert html =~ ~r/class="selected"[^>]*>\s*写真と表紙/
   end
 
   test "前の「Chiezo 収集」のタブを開くと、収集の画面へ送る", %{conn: conn} do
@@ -709,26 +710,28 @@ defmodule ChidoriWeb.CollectOpsTest do
 end
 
 defmodule ChidoriWeb.CollectTabsTest do
-  @moduledoc "収集の画面の頭の段（一覧・ニュース・関連図・趣味・他アプリ用）。頭のメニューの「収集」から直接たどれる。"
+  @moduledoc "収集の画面の頭の段（一覧・ニュース・趣味・他アプリ用）。頭のメニューの「収集」から直接たどれる。"
 
   use ChidoriWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
 
   test "どの段へも行け、開いている段に印が付く" do
-    html = render_component(&ChidoriWeb.CollectTabs.collect_tabs/1, current: :relations)
+    html = render_component(&ChidoriWeb.CollectTabs.collect_tabs/1, current: :apps)
 
     for path <- [
           "/collect",
           "/collect/news",
-          "/collect/relations",
           "/collect/news?view=chidori_movies",
           "/collect/apps"
         ] do
       assert html =~ ~s(href="#{path}")
     end
 
-    [picked] = Regex.run(~r|<a[^>]*href="/collect/relations"[^>]*>|, html)
+    # 関連図はどれも趣味に並べたので、関連図の段は無い
+    refute html =~ ~s(href="/collect/relations")
+
+    [picked] = Regex.run(~r|<a[^>]*href="/collect/apps"[^>]*>|, html)
     assert picked =~ ~s(class="selected") and picked =~ ~s(aria-current="page")
     [other] = Regex.run(~r|<a[^>]*href="/collect/news"[^>]*>|, html)
     refute other =~ "selected"

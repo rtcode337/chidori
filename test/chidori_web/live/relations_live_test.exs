@@ -5,13 +5,30 @@ defmodule ChidoriWeb.RelationsLiveTest do
 
   alias ChidoriWeb.RelationsLive
 
-  test "最初に開くのは関連図のタブの先頭（芸術家は趣味に並べるので外す）", %{conn: conn} do
+  test "対象なしで開くと芸術家の図（関連図はどれも趣味の段に並ぶ）", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/relations")
 
-    assert html =~ "映画のつながり"
-    [_, tabs] = String.split(html, ~s(id="relation-tabs"), parts: 2)
+    assert html =~ "芸術家"
+    refute html =~ ~s(id="relation-tabs")
+    assert html =~ ~s(id="dataset-tabs")
+  end
+
+  test "芸能人の図は趣味の段の「芸能人」、映画の図は映画のタブの中", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/relations?view=people")
+    assert html =~ ~r|href="/relations\?view=people"[^>]*class="selected"[^>]*>\s*芸能人|
+    refute html =~ ~s(id="movie-tabs")
+
+    # 映画の図を開くと、趣味の段は「映画」に印が付き、中の四角い札は「関連図」
+    {:ok, _live, html} = live(conn, ~p"/relations?view=films")
+    assert html =~ ~r|href="/news\?view=chidori_movies"[^>]*class="selected"[^>]*>\s*映画|
+    [_, tabs] = String.split(html, ~s(id="movie-tabs"), parts: 2)
     [tabs, _] = String.split(tabs, "</nav>", parts: 2)
-    refute tabs =~ "view=painters"
+    assert tabs =~ ~r|href="/relations\?view=films"[^>]*class="selected"|
+
+    # 映画の関連図は段のタブにはしない（映画のタブの中だけ）
+    [_, hobby_tabs] = String.split(html, ~s(id="dataset-tabs"), parts: 2)
+    [hobby_tabs, _] = String.split(hobby_tabs, "</nav>", parts: 2)
+    refute hobby_tabs =~ "view=films"
   end
 
   test "芸術家の図は趣味の段に並び、頭のメニューは「趣味」を選んだ状態", %{conn: conn} do
@@ -227,10 +244,10 @@ defmodule ChidoriWeb.RelationsLiveTest do
              "新しい説明"
   end
 
-  test "知らない種類は関連図のタブの先頭に丸める", %{conn: conn} do
+  test "知らない種類は芸術家の図に丸める", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/relations?view=%2E%2E%2F")
 
-    assert html =~ "映画のつながり"
+    assert html =~ "芸術家"
   end
 
   test "開くたびに Chiezo へ聞きに行かない", %{conn: conn} do

@@ -23,10 +23,10 @@ defmodule ChidoriWeb.NewsLiveTest do
   end
 
   test "技術イベントは開催日のカレンダーを出し、要約と通知の設定は出さない", %{conn: conn} do
-    {:ok, _live, html} = live(conn, ~p"/news?view=chidori_events")
+    {:ok, _live, html} = live(conn, ~p"/events?view=chidori_events")
     assert html =~ "開催日のカレンダー"
 
-    {:ok, _live, html} = live(conn, ~p"/collect/news?view=chidori_events")
+    {:ok, _live, html} = live(conn, ~p"/collect/events?view=chidori_events")
     refute html =~ "<h3>通知</h3>"
     refute html =~ "<h3>要約</h3>"
 
@@ -55,12 +55,42 @@ defmodule ChidoriWeb.NewsLiveTest do
     assert html =~ ~s(href="/news?view=chidori_tech")
   end
 
-  test "トップページは、何も選んでいなければ一般ニュースの要約", %{conn: conn} do
-    # トップは設定ページで選んだ枠。何も選んでいなければいちばん読まれるものを出す
-    {:ok, _live, html} = live(conn, ~p"/")
+  test "トップページ（閲覧）は置かず、/ はニュースへ送る", %{conn: conn} do
+    assert conn |> get("/") |> redirected_to() == "/news"
+  end
 
-    assert html =~ ~s(aria-label="一般ニュース")
-    assert html =~ ~s(href="/news?view=chidori_news")
+  test "頭のメニューは ニュース・イベント・趣味・ツール・収集・設定", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/news")
+    [_, menu] = String.split(html, ~s(id="main-menu"), parts: 2)
+    [menu, _] = String.split(menu, "</nav>", parts: 2)
+
+    labels = Regex.scan(~r|>\s*([^<>\s][^<>]*?)\s*</a>|, menu) |> Enum.map(&Enum.at(&1, 1))
+    assert labels == ["ニュース", "イベント", "趣味", "ツール", "収集", "設定"]
+  end
+
+  test "イベントは独立した画面（ニュースのタブには出さず、前の道はイベントの道へ送る）", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/news")
+    [_, tabs] = String.split(html, ~s(id="topic-tabs"), parts: 2)
+    [tabs, _] = String.split(tabs, "</nav>", parts: 2)
+    refute tabs =~ "chidori_events"
+    refute tabs =~ "chidori_comedy"
+
+    {:ok, _live, html} = live(conn, ~p"/events")
+    [_, tabs] = String.split(html, ~s(id="topic-tabs"), parts: 2)
+    [tabs, _] = String.split(tabs, "</nav>", parts: 2)
+    assert tabs =~ ~r|href="/events\?view=chidori_events"[^>]*class="selected"|
+    assert tabs =~ ~s(href="/events?view=chidori_comedy")
+    refute tabs =~ "chidori_news"
+    assert html =~ ~r|class="active" href="/events"|
+
+    assert {:error, {:live_redirect, %{to: "/events?view=chidori_events"}}} =
+             live(conn, ~p"/news?view=chidori_events")
+
+    # 収集の画面も同じ（頭の段の「イベント」）
+    {:ok, _live, html} = live(conn, ~p"/collect/events?view=chidori_comedy")
+    [_, collect_tabs] = String.split(html, ~s(id="collect-tabs"), parts: 2)
+    [collect_tabs, _] = String.split(collect_tabs, "</nav>", parts: 2)
+    assert collect_tabs =~ ~r|href="/collect/events"[^>]*class="selected"|
   end
 
   test "最新情報のタブは見出しの上にある", %{conn: conn} do
@@ -552,10 +582,23 @@ defmodule ChidoriWeb.NewsLiveTest do
     end
   end
 
-  test "関連図への行き来ができる", %{conn: conn} do
+  test "頭のメニューに関連図は無く（どれも趣味に並べた）、映画のタブの中で最新と関連図を切り替える",
+       %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/news")
+    [_, menu] = String.split(html, ~s(id="main-menu"), parts: 2)
+    [menu, _] = String.split(menu, "</nav>", parts: 2)
+    refute menu =~ "関連図"
 
-    assert html =~ ~p"/relations"
+    # 映画のタブの中の四角い札（最新が選ばれている）
+    {:ok, _live, html} = live(conn, ~p"/news?view=chidori_movies")
+    [_, tabs] = String.split(html, ~s(id="movie-tabs"), parts: 2)
+    [tabs, _] = String.split(tabs, "</nav>", parts: 2)
+    assert tabs =~ ~r|href="/news\?view=chidori_movies"[^>]*class="selected"|
+    assert tabs =~ ~s(href="/relations?view=films")
+
+    # ほかの話題には出さない
+    {:ok, _live, html} = live(conn, ~p"/news?view=chidori_anime")
+    refute html =~ ~s(id="movie-tabs")
   end
 
   test "収集の一覧の画面では、誰に頼むかを選ばせない", %{conn: conn} do
@@ -764,7 +807,7 @@ defmodule ChidoriWeb.NewsLiveTest do
       stub_themes([@news_collection], [])
 
       # （一般ニュースも網を持つようになったので、持たない技術イベントで見る）
-      {:ok, live, _html} = live(conn, ~p"/collect/news?view=chidori_events")
+      {:ok, live, _html} = live(conn, ~p"/collect/events?view=chidori_events")
       html = render_async(live, 2_000)
 
       refute html =~ "トピックの収集"
@@ -778,7 +821,7 @@ defmodule ChidoriWeb.NewsLiveTest do
       {:ok, live, _html} = live(conn, ~p"/news?view=chidori_tech")
       assert render_async(live, 2_000) =~ ~s(aria-label="トピックの網")
 
-      html = live |> render_patch(~p"/news?view=chidori_events")
+      html = live |> render_patch(~p"/news?view=chidori_market")
       refute html =~ ~s(aria-label="トピックの網")
       refute render_async(live, 2_000) =~ ~s(aria-label="トピックの網")
     end

@@ -112,8 +112,8 @@ defmodule ChidoriWeb.DiningTabs do
           <% {:hobby, hobby} -> %>
             <.link
               navigate={if @mode == :collect, do: hobby.collect, else: hobby.read}
-              class={if @current == hobby.id, do: "selected"}
-              aria-current={if @current == hobby.id, do: "page"}
+              class={if Chidori.Hobbies.current?(hobby, @current), do: "selected"}
+              aria-current={if Chidori.Hobbies.current?(hobby, @current), do: "page"}
             >
               {hobby.name}
             </.link>
@@ -174,4 +174,34 @@ defmodule ChidoriWeb.DiningTabs do
   # Chidori で読む対象を全部（本棚の収集もここ）
   defp in_mode?(dataset, :read), do: Chidori.Datasets.read_on_datasets?(dataset)
   defp in_mode?(dataset, _mode), do: Chidori.Datasets.listed?(dataset)
+
+  attr :current, :atom, required: true, doc: "`:latest`（最新）か `:graph`（関連図）"
+  attr :mode, :atom, default: :read
+
+  @doc """
+  趣味の映画のタブの中の切り替え（最新・関連図）。**閲覧の中の枠と同じ四角い札**
+  （`home-subtabs`）—— 上の段がタブの形なので、両方タブだとどちらが上の階層か読めない。
+  画面はそれぞれ（最新情報と関連図）のものなので、移るのは `navigate`。
+  """
+  def movie_tabs(assigns) do
+    assigns = assign(assigns, tabs: Chidori.Hobbies.movie_tabs())
+
+    ~H"""
+    <nav
+      id="movie-tabs"
+      class="home-subtabs"
+      phx-hook="ScrollTabs"
+      aria-label="映画の中の切り替え"
+    >
+      <.link
+        :for={{key, name, read, collect} <- @tabs}
+        navigate={if @mode == :collect, do: collect, else: read}
+        class={if @current == key, do: "selected"}
+        aria-current={if @current == key, do: "page"}
+      >
+        {name}
+      </.link>
+    </nav>
+    """
+  end
 end

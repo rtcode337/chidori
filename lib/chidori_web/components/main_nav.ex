@@ -12,11 +12,13 @@ defmodule ChidoriWeb.MainNav do
     statics: ChidoriWeb.static_paths()
 
   @items [
-    {:home, "閲覧", "/"},
     {:news, "ニュース", "/news"},
-    {:relations, "関連図", "/relations"},
-    # 趣味（映画・アニメと、Pi-hole・レシピ集）。先頭のタブ（映画）を開く
+    # 技術イベント・お笑いイベント（画面は最新情報のもの）
+    {:events, "イベント", "/events"},
+    # 趣味（映画・芸術家・技術書・レシピ・芸能人・アニメ・Pi-hole）。先頭のタブ（映画）を開く
     {:datasets, "趣味", "/news?view=chidori_movies"},
+    # その場の様子を見る道具（いま止めている通信）
+    {:tools, "ツール", "/tools"},
     # 収集の画面（Chiezo へ頼む口をまとめた所）。読む画面とは分ける
     {:collect, "収集", "/collect"},
     {:settings, "設定", "/settings"}
@@ -30,7 +32,7 @@ defmodule ChidoriWeb.MainNav do
     ~H"""
     <header>
       <%!-- 画面に出す名前は Chidori --%>
-      <a href={~p"/"} class="brand" aria-label="Chidori トップページ">
+      <a href={~p"/news"} class="brand" aria-label="Chidori ニュース">
         <img src={~p"/images/icon.svg"} alt="" class="brand-mark" /><b class="brand-name">Chidori</b>
       </a>
       <nav id="main-menu" phx-hook="ScrollTabs" aria-label="主要メニュー">

@@ -23,24 +23,32 @@ defmodule ChidoriWeb.BookModal do
   attr :saved, :boolean, default: false
   # 勧めている記事（nil / :loading / {:ok, 記事} / {:error, 理由}）
   attr :posts, :any, default: nil
+  # 押したときの宛先（部品の中で開くとき。`ChidoriWeb.BooksPanel`）
+  attr :target, :any, default: nil
   slot :inner_block
 
   def book_modal(assigns) do
     ~H"""
-    <div class="artwork-backdrop" phx-window-keydown="close_book" phx-key="Escape">
+    <div
+      class="artwork-backdrop"
+      phx-window-keydown="close_book"
+      phx-key="Escape"
+      phx-target={@target}
+    >
       <section
         class="artwork book-detail"
         role="dialog"
         aria-modal="true"
         aria-labelledby="book-detail-title"
         phx-click-away="close_book"
+        phx-target={@target}
       >
         <div class="artwork-head">
           <strong id="book-detail-title">
             {@book.name}
             <span :if={Map.get(@book, :oreilly)} class="book-badge is-oreilly">オライリー</span>
           </strong>
-          <button type="button" phx-click="close_book">閉じる</button>
+          <button type="button" phx-click="close_book" phx-target={@target}>閉じる</button>
         </div>
         <div class="book-detail-body">
           <span :if={@book.cover_url} class="book-detail-cover">
@@ -71,7 +79,7 @@ defmodule ChidoriWeb.BookModal do
           <summary>
             読んだ記録 <span :if={summary(@mark)} class="seen-badge">{summary(@mark)}</span>
           </summary>
-          <form id="book-mark" phx-submit="save_book_mark">
+          <form id="book-mark" phx-submit="save_book_mark" phx-target={@target}>
             <input type="hidden" name="title" value={@book.title} />
             <p class="seen-row">
               <label><input type="checkbox" name="read" checked={@mark.read} /> 読んだ</label>

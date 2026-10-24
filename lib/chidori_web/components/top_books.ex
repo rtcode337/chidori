@@ -26,6 +26,8 @@ defmodule ChidoriWeb.TopBooks do
   # **押すとその本の詳細を開く**（画面が受ける event の名前。`title` を渡す。詳細は
   # `ChidoriWeb.BookModal`）。書名のリンクは本の頁へ行くので、開く口は札そのものに置く
   attr :open_event, :string, default: nil
+  # 押したときの宛先（部品の中で開くとき。`ChidoriWeb.BooksPanel`）
+  attr :target, :any, default: nil
 
   def top_books(assigns) do
     # **オライリーの本も同じ並びに混ぜ、札の印で見分ける**（`Chidori.Datasets.Bookshelf.oreilly_isbn?/1`）。
@@ -55,6 +57,7 @@ defmodule ChidoriWeb.TopBooks do
           @open_event && "is-openable"
         ]}
         phx-click={@open_event}
+        phx-target={@target}
         phx-value-title={book.title}
         role={@open_event && "button"}
         tabindex={@open_event && "0"}

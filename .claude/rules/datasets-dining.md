@@ -1,5 +1,11 @@
 ---
 paths:
+  - "lib/chidori/hobbies.ex"
+  - "lib/chidori_web/components/books_panel.ex"
+  - "lib/chidori_web/components/bookshelf_list.ex"
+  - "lib/chidori_web/components/pihole_live.ex"
+  - "lib/chidori_web/live/tools_live*"
+  - "test/chidori_web/live/tools_live_test.exs"
   - "lib/chidori/datasets.ex"
   - "lib/chidori/datasets/**"
   - "lib/chidori/geo/**"
@@ -27,14 +33,14 @@ paths:
 
 詳しい説明・travel-log の項目との対応表・実測値は `docs/datasets.md`。
 
-- 頭のメニューでは「趣味」（映画・アニメの話題と同じ段。映画・芸術家を段の頭に、アニメをレシピの後ろに並べ（`Chidori.Hobbies.entries/0`・`arrange/2`。後ろに置くものは `@follows`）、そちらへは `navigate` で移る）
+- 頭のメニューでは「趣味」（映画・アニメの話題と同じ段。映画・芸術家を段の頭に、芸能人・アニメをレシピの後ろに並べ（`Chidori.Hobbies.entries/0`・`arrange/2`。後ろに置くものは `@follows`。映画の関連図は映画のタブの中）、そちらへは `navigate` で移る）
 - **読む画面（`/datasets`）と収集の画面（`/collect/datasets`・`/collect/apps`）は同じ `DatasetsLive`**（`@collect_mode`）。読む画面は読むものを持つ対象
-  （`Datasets.read_on_datasets?/1` = Pi-hole・レシピ集）だけをタブに並べ、溜まったものだけを出す。技術書の本棚はトップページの技術書の枠で読む（`ChidoriWeb.BookshelfList`。畳んで置く。`Datasets.read_path/1`）。収集の設定・区画・依頼・書き出し・名簿の広さ
+  （`Datasets.read_on_datasets?/1` = 技術書・レシピ集・Pi-hole）だけをタブに並べ、溜まったものだけを出す。技術書のタブは本棚（`ChidoriWeb.BooksPanel`。未読の上位・畳んだ全冊・本の詳細。状態は部品が持つ）。収集の設定・区画・依頼・書き出し・名簿の広さ
   （`RecipeBook.roster_form/1`）は収集の画面。収集の画面は対象で 2 つに分ける —— データ収集（`/collect/datasets`。`:collect`）は Chidori で読む対象、
   他アプリ用（`/collect/apps`。`:collect_apps`）はそれ以外（`Datasets.for_other_app?/1` = 食事処・ご当地グルメ・アニメ聖地。読むのは travel-log）。
   道は `Datasets.collect_path/1` が決め、違う道で開くと正しい道へ送る（読む画面で開いたときも同じ）。他アプリ用を対象なしで開くと食事処の全体へ
 
-- データを集めて分かりやすく見せる画面（Pi-hole のドメイン・レシピ集は溜まったものをここで読む。技術書の本棚はトップページ）。
+- データを集めて分かりやすく見せる画面（技術書の本棚・レシピ集・Pi-hole のドメインは溜まったものをここで読む）。
   食事処とご当地グルメは読むのが travel-log なので、Chidori では一覧にしない（両方に出すと二重に管理することになる）。
   対象は `Chidori.Datasets.defined/0` に 1 つ書けばタブも依頼も増える。タブの並びは `Datasets.tabs/1`（技術書・食事処・ご当地グルメを前に、
   残りは定義の順。上の段は `DiningTabs.dataset_tabs/1`（`mode` = `:read` / `:collect` / `:apps` で並べる対象と道を切り替える）をデータ収集・他アプリ用と食事処の全体で共有）。読む画面を持つ対象は定義の `reading`

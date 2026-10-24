@@ -2,7 +2,6 @@ defmodule ChidoriWeb.SettingsLive do
   @moduledoc """
   設定ページ。**タブで仕事を分けます**。
 
-  - トップページ —— トップに並べる枠と、その順（`Chidori.Home`）
   - 写真と表紙 —— 顔写真・レシピの写真・技術書の表紙を取る様子
   - 通知 —— まとめの知らせ先（ntfy の宛先と、通知を受け取る端末。`Chidori.WebPush`）と、
     知らせる話題
@@ -22,7 +21,6 @@ defmodule ChidoriWeb.SettingsLive do
   alias Chidori.CollectCatalog
   alias Chidori.CollectOverview
   alias Chidori.CollectPace
-  alias Chidori.Home
   alias Chidori.News
   alias Chidori.Notify.Destination
   alias Chidori.Notify.Settings
@@ -32,10 +30,9 @@ defmodule ChidoriWeb.SettingsLive do
 
   require Logger
 
-  # **トップページを先頭に**（いちばん触る設定。開いたときに出る）。
-  # **Chiezo 収集の表は収集の画面（`/collect`）へ移した** —— 同じ LiveView を収集の形で開く
+  # **Chiezo 収集の表は収集の画面（`/collect`）へ移した** —— 同じ LiveView を収集の形で開く。
+  # トップページ（閲覧）は廃止したので、並べる枠を選ぶタブも無い
   @tabs [
-    {"home", "トップページ"},
     {"photos", "写真と表紙"},
     {"notify", "通知"}
   ]
@@ -47,7 +44,6 @@ defmodule ChidoriWeb.SettingsLive do
        page_title: "設定",
        tabs: @tabs,
        overview: nil,
-       home_keys: [],
        pace_message: nil,
        restore_message: nil,
        # 収集ごとに選んでいるもの（`%{収集 => %{"sweeps" => 巡回ごとの相手, "tidy" => bool}}`）。
@@ -77,12 +73,7 @@ defmodule ChidoriWeb.SettingsLive do
       socket.assigns.live_action == :collect ->
         {:noreply,
          socket
-         |> assign(
-           tab: "chiezo",
-           page_title: "収集",
-           catalog: Home.catalog(),
-           home_keys: Home.selected_keys()
-         )
+         |> assign(tab: "chiezo", page_title: "収集")
          |> load("chiezo")}
 
       # 前の「設定 › Chiezo 収集」へのリンクは、収集の画面へ送る
@@ -90,12 +81,9 @@ defmodule ChidoriWeb.SettingsLive do
         {:noreply, push_navigate(socket, to: ~p"/collect", replace: true)}
 
       true ->
-        tab = if params["tab"] in Enum.map(@tabs, &elem(&1, 0)), do: params["tab"], else: "home"
+        tab = if params["tab"] in Enum.map(@tabs, &elem(&1, 0)), do: params["tab"], else: "photos"
 
-        {:noreply,
-         socket
-         |> assign(tab: tab, catalog: Home.catalog(), home_keys: Home.selected_keys())
-         |> load(tab)}
+        {:noreply, socket |> assign(tab: tab) |> load(tab)}
     end
   end
 
@@ -570,19 +558,6 @@ defmodule ChidoriWeb.SettingsLive do
 
         {:noreply, assign(socket, notify_topics: notify_topics())}
     end
-  end
-
-  # **選ぶのは出すかどうかだけ**（並びは `Chidori.Home` が決めた順）
-  def handle_event("save_home", params, socket) do
-    keys =
-      for {key, "true"} <- Map.get(params, "panels", %{}), do: key
-
-    Home.put(keys)
-
-    {:noreply,
-     socket
-     |> assign(home_keys: Home.selected_keys())
-     |> put_flash(:info, "トップページに並べる枠を保存しました。")}
   end
 
   defp first_error(changeset) do

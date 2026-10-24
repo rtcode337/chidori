@@ -13,11 +13,16 @@ defmodule ChidoriWeb.Router do
   scope "/", ChidoriWeb do
     pipe_through :browser
 
-    # **トップは設定ページで選んだ枠**（要約・関連図・技術書）。何も選んでいなければ
-    # 一般ニュースの要約を出す（`Chidori.Home`）。
+    # **トップページ（閲覧）は置かない**。ニュースへ送る（読むものは画面ごとに分けてある）
+    get "/", PageController, :to_news
+
     # 収集は数十秒かかるので LiveView にする。押した人に再読み込みをさせない
-    live "/", HomeLive, :index
     live "/news", NewsLive, :index
+
+    # 技術イベント・お笑いイベント（画面は最新情報のもの。頭のメニューの「イベント」）
+    live "/events", NewsLive, :events
+    # その場の様子を見る道具（いま止めている通信）
+    live "/tools", ToolsLive, :index
     # 設定（Chiezo に頼んでいる収集の一覧・トップページに並べる枠）
     live "/settings", SettingsLive, :index
     # 記事のタグから育てたトピック。仕分けを頼むのもここ
@@ -34,6 +39,7 @@ defmodule ChidoriWeb.Router do
     # （`:collect`）で開く —— 見る画面には集めたものだけを出し、頼むのは Chidori のこの画面だけで済むように
     live "/collect", SettingsLive, :collect
     live "/collect/news", NewsLive, :collect
+    live "/collect/events", NewsLive, :collect_events
     live "/collect/relations", RelationsLive, :collect
     live "/collect/datasets", DatasetsLive, :collect
 

@@ -162,6 +162,8 @@ defmodule Chidori.Relations do
   @views %{
     "films" => %{
       title: "映画のつながり",
+      # 趣味の映画のタブの中（最新と四角い札で切り替える。`Chidori.Hobbies`）
+      hobby: true,
       eyebrow: "DIRECTORS & STARS",
       # **これは手書きの表示例**（芸能人の図と同じ扱い。読めたものに差し替わるまで図は描かない）
       sample?: true,
@@ -188,6 +190,8 @@ defmodule Chidori.Relations do
     },
     "people" => %{
       title: "芸能人のつながり",
+      # 趣味の段の「芸能人」（`Chidori.Hobbies`）
+      hobby: true,
       eyebrow: "COUPLES & FAMILY",
       # **これは手書きの表示例**。Chiezo（や AI）から読めたものに差し替わるまで、
       # 図は描かない —— 本物と見分けが付かない図が出ると、何を見ているのか分からない
@@ -431,7 +435,7 @@ defmodule Chidori.Relations do
   @doc "図の見出し。"
   def title_of(key), do: @views[key].title
 
-  @doc "頭のメニューの「趣味」に並べる図（芸術家。`Chidori.Hobbies`）。"
+  @doc "頭のメニューの「趣味」に並べる図（芸術家・芸能人・映画。`Chidori.Hobbies`）。"
   def hobby_views, do: Enum.filter(@chiezo_views, &hobby?/1)
 
   @doc "趣味に並べる図か。"
