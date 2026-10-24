@@ -241,6 +241,16 @@ defmodule ChidoriWeb.Collect do
     }
   end
 
+  @doc """
+  Chiezo で止まっている収集か（収集の画面の設定の枠に色を付ける。`is-stopped`）。
+  まだ Chiezo に無い収集・読めていない収集は止まっているとは言わない。
+  """
+  def stopped?(%{collection: %{enabled: false}}), do: true
+  def stopped?(_state), do: false
+
+  @doc "止まっていれば `is-stopped`（枠の class に足す）。"
+  def stopped_class(state), do: if(stopped?(state), do: "is-stopped")
+
   @doc "検索文を AI に考えさせてから引く回か（Chiezo の `{queries}` の差し込み口）。"
   def thinks_queries?(sweep),
     do:

@@ -176,7 +176,12 @@
          状態を見る場所と、直す場所と、押す場所が離れていると、何がどこへ効くのか
          読めない --%>
     <%!-- 設定はページの名前を冠した 1 つの枠にまとめる（他の画面と同じ形）--%>
-    <section :if={@collect_mode} class="settings-panel" aria-label={"#{@dataset.title}の設定"}>
+    <%!-- **Chiezo で止まっている収集は枠ごと色を付ける**（収集の一覧と同じ色）。この収集から作る収集は節ごと --%>
+    <section
+      :if={@collect_mode}
+      class={["settings-panel", stopped_class(@state)]}
+      aria-label={"#{@dataset.title}の設定"}
+    >
       <%!-- **設定は畳んでおき、開いたときに Chiezo から読む**（関連図と同じ）。
            本棚を見に来るたびに、収集の状態・巡回・相手の一覧まで運んでいた。
            <details> にしないのは、開いたことをサーバーが知る必要があるため --%>
@@ -721,7 +726,7 @@
            囲むと、枠の中に枠が入り、どこまでが 1 つの設定なのか読みにくい --%>
         <section
           :if={@dataset[:derived]}
-          class="settings-block lined-block"
+          class={["settings-block lined-block", stopped_class(@derived_state)]}
           aria-label="この収集から作るもの"
         >
           <h3>{@dataset.derived.name()}</h3>

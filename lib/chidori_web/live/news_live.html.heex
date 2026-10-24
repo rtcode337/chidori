@@ -568,7 +568,7 @@
          **中は仕事ごとに分ける** —— 集める設定と、知らせる設定は別のもの --%>
     <section
       :if={@collect_mode and !@favorites_view}
-      class="settings-panel"
+      class={["settings-panel", stopped_class(@news)]}
       aria-label={settings_title(@topic)}
     >
       <h2>{settings_title(@topic)}</h2>
@@ -632,7 +632,10 @@
 
       <%!-- トピックの収集。**記事とは別の収集**（記事は 30 日で落ちるが、
            トピックは期限では落とさない）。持つ話題にだけ出す --%>
-      <section :if={Chidori.Topics.themes?(@topic)} class="settings-block">
+      <section
+        :if={Chidori.Topics.themes?(@topic)}
+        class={["settings-block", stopped_class(@themes)]}
+      >
         <h3>トピックの収集</h3>
         <p aria-live="polite">{theme_note(@themes)}</p>
 

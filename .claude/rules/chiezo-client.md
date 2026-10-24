@@ -37,7 +37,7 @@ Chidori は Chiezo の「集める」層に収集を頼み、溜まったもの�
 - 表には Chidori の時計が起こす行も並ぶ（要約の回の時刻・映画の図の「最新情報からの引き継ぎ」・食事処の「情報収集」。`CollectOverview.chidori_rows/1` と `wake/2`）。
   時刻は Chidori が持つので、ここで直しても Chiezo へは送らない（引き継ぎの行は相手を選ばせず、送るときも数えない）
 - 設定ページの表で収集を止める・動かす（`Chidori.Chiezo.switch/3` → Chiezo の `POST /v1/collect/{name}/enabled`。名乗りは `chidori`）。
-  動かすのは Chiezo の管理画面で「外部からの有効化を許可する」を押したときだけ通る（403 ならそう出す）。止まっている収集は塊ごと色を付ける（`tbody.is-stopped`）
+  動かすのは Chiezo の管理画面で「外部からの有効化を許可する」を押したときだけ通る（403 ならそう出す）。止まっている収集は塊ごと色を付ける（`tbody.is-stopped`。各収集の画面の設定の枠も `ChidoriWeb.Collect.stopped_class/1` で同じ色）
 - Chiezo の管理画面のボタンと同じ操作（やり直す・一周をやり直す・区画を割り直す・未確認に戻す・取り込みを止める・検索文の控え・
   ワーカーを止める / 動かす / 起こす）は収集の画面から頼む（`Chidori.Chiezo.operate/3`・`queries/2`・`forget_queries/3`・
   `pause_worker/3`・`wake_worker/2`）。断られたら Chiezo の言い分をそのまま出す。取り消せない操作は Chiezo の管理画面だけ

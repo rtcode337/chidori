@@ -1106,6 +1106,10 @@ ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column:
 .collect-overview tbody + tbody { border-top: 2px solid #d9dcea; }
 /* 止まっている収集は塊ごと色を付ける（一言だけでは並びに埋もれる） */
 .collect-overview tbody.is-stopped { background: #fdecea; }
+/* 収集の画面の設定の枠も、Chiezo で止まっている収集は同じ色に（`ChidoriWeb.Collect.stopped_class/1`）。
+   この収集から作る収集（トピックの網・本棚）は節ごとに付ける */
+.settings-panel.is-stopped { border-color: #f1b8b1; background: #fdecea; }
+.settings-block.is-stopped { margin-left: -.6rem; margin-right: -.6rem; padding: 1rem .6rem .4rem; border-radius: .5rem; background: #fdecea; }
 .stopped-mark { display: inline-block; margin-top: .2rem; padding: 0 .45rem; border-radius: .5rem; background: #c0392b; color: #fff; font-size: .75rem; font-weight: 700; }
 .collection-switch { display: block; margin: .3rem 0; }
 .queue-list { margin: 0; padding-left: 1.1rem; }

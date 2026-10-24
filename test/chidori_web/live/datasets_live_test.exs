@@ -318,6 +318,13 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     refute render_async(live) =~ "これまで検索に使った語"
   end
 
+  test "色を付けるのは Chiezo で止まっている収集だけ（まだ無い・読めていない収集には付けない）" do
+    assert ChidoriWeb.Collect.stopped_class(%{collection: %{enabled: false}}) == "is-stopped"
+    refute ChidoriWeb.Collect.stopped_class(%{collection: %{enabled: true}})
+    refute ChidoriWeb.Collect.stopped_class(%{collection: nil})
+    refute ChidoriWeb.Collect.stopped_class(%{})
+  end
+
   test "収集の画面の巡回の表から、巡回を今すぐ 1 回走らせられる（人が押した 1 回として）", %{conn: conn} do
     System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
     on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
@@ -356,6 +363,9 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
     {:ok, live, _html} = live(conn, ~p"/collect/datasets?view=books")
     html = render_async(live)
+
+    # Chiezo で止まっている収集は、設定の枠ごと色を付ける（収集の一覧と同じ）
+    assert html =~ ~s(class="settings-panel is-stopped")
 
     # 時計を持たない割り込み用の回には出さない（Chiezo が断る）
     assert html =~ "今すぐ走らせる"
