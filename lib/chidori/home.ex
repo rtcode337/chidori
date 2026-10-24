@@ -15,7 +15,8 @@ defmodule Chidori.Home do
   - これからの注目イベント（`events:<収集>`）—— 要約を作らず、開催日のカレンダーを
     持つ話題（技術イベント）。注目度が高いもの（話題によっては中も）で、これから 2 か月のもの
   - 関連図（`relations:<種類>`）—— 関連図の画面をそのまま埋め込む
-  - 技術書（`books`）—— 本棚の未読の上位 10 冊（`ChidoriWeb.TopBooks`。オライリーの本は札の印で見分ける）
+  - 技術書（`books`）—— 本棚の未読の上位 10 冊（`ChidoriWeb.TopBooks`。オライリーの本は札の印で見分ける）と、
+    その下に畳んだ本棚の全冊（`ChidoriWeb.BookshelfList`。本棚を読むのはここだけ）
   - レシピ（`recipes`）—— レシピ集を種類ごとに（`ChidoriWeb.RecipeBook`）
 
   **何も選んでいなければ一般ニュースの要約だけ**（トップを開いて何も出ないより、
@@ -31,7 +32,7 @@ defmodule Chidori.Home do
   @default ["topic:" <> Chidori.News.collection_name()]
 
   # 大きなタブ（並べる順）
-  @groups [news: "ニュース", events: "イベント", relations: "関連図", datasets: "データ収集"]
+  @groups [news: "ニュース", events: "イベント", relations: "関連図", datasets: "趣味"]
 
   # 枠の並び（大きなタブの中の順）と、下の段に出す短い名前。**ここに無い枠は、
   # その大きなタブの後ろに元の名前で並ぶ**（話題を足したときに消えないように）
@@ -83,7 +84,8 @@ defmodule Chidori.Home do
                 key: "topic:" <> topic.collection,
                 name: topic.name,
                 kind: :topic,
-                group: :news,
+                # 映画・アニメは「趣味」の大きなタブ（頭のメニューと同じ分け方）
+                group: if(Topics.hobby?(topic), do: :datasets, else: :news),
                 topic: topic
               }
             ] ++

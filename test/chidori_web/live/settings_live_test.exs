@@ -709,7 +709,7 @@ defmodule ChidoriWeb.CollectOpsTest do
 end
 
 defmodule ChidoriWeb.CollectTabsTest do
-  @moduledoc "収集の画面の頭の段（一覧・最新情報・関連図・データ収集・他アプリ用）。頭のメニューの「収集」から直接たどれる。"
+  @moduledoc "収集の画面の頭の段（一覧・ニュース・関連図・趣味・他アプリ用）。頭のメニューの「収集」から直接たどれる。"
 
   use ChidoriWeb.ConnCase, async: true
 
@@ -722,7 +722,7 @@ defmodule ChidoriWeb.CollectTabsTest do
           "/collect",
           "/collect/news",
           "/collect/relations",
-          "/collect/datasets",
+          "/collect/news?view=chidori_movies",
           "/collect/apps"
         ] do
       assert html =~ ~s(href="#{path}")

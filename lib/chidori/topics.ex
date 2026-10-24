@@ -221,6 +221,8 @@ defmodule Chidori.Topics do
       %{
         name: "映画",
         collection: "chidori_movies",
+        # 頭のメニューの「趣味」に並べる（ニュースのタブには出さない。`hobby?/1`）
+        hobby: true,
         interest:
           "日本の映画館でこれから公開される映画と、公開中の映画。" <>
             "観るかどうかの判断が変わるもの(公開日と上映形式、注目の度合い、" <>
@@ -269,6 +271,7 @@ defmodule Chidori.Topics do
       %{
         name: "アニメ",
         collection: "chidori_anime",
+        hobby: true,
         interest:
           "日本で放送・配信される今期と来期のアニメ(テレビアニメと配信アニメの新作)。" <>
             "観るかどうかの判断が変わるもの(放送・配信の開始日と曜日、放送局と配信サービス、" <>
@@ -432,7 +435,21 @@ defmodule Chidori.Topics do
   def articles?(%{articles: false}), do: false
   def articles?(_topic), do: true
 
-  @doc "話題の一覧（定義の順）。そのままタブの並びになります。"
+  @doc """
+  頭のメニューの「趣味」に並べる話題か（映画・アニメ）。読む画面も収集の画面も今までどおり
+  `NewsLive`（道は `/news?view=…`。通知のリンクがこの形なので変えない）で、タブと頭のメニューの
+  印だけを趣味の側に出す。ニュースのタブには並べない。
+  """
+  def hobby?(%{hobby: true}), do: true
+  def hobby?(_topic), do: false
+
+  @doc "趣味に並べる話題（定義の順）。"
+  def hobbies, do: Enum.filter(defined(), &hobby?/1)
+
+  @doc "ニュースのタブに並べる話題（趣味の話題を除く）。"
+  def news, do: Enum.reject(defined(), &hobby?/1)
+
+  @doc "話題の一覧（定義の順）。"
   def list, do: defined()
 
   @doc "1 つぶん。定義に無い名前なら nil。"

@@ -44,7 +44,10 @@
       </p>
       <p :if={@collect_mode}>
         {@dataset.description}
-        <.link :if={Chidori.Datasets.listed?(@dataset)} navigate={"/datasets?view=#{@view}"}>
+        <.link
+          :if={Chidori.Datasets.listed?(@dataset)}
+          navigate={Chidori.Datasets.read_path(@dataset)}
+        >
           読む画面へ
         </.link>
       </p>
@@ -224,103 +227,6 @@
             </p>
           </li>
         </ul>
-      </section>
-
-      <section
-        :if={@dataset[:derived] && match?({:ok, [_ | _]}, @shelf)}
-        class="bookshelf"
-        aria-label="本棚"
-      >
-        <% {:ok, all_books} = @shelf %>
-        <% near_count = Enum.count(all_books, &(&1.near != [])) %>
-        <% books =
-          if @shelf_near_only, do: Enum.filter(all_books, &(&1.near != [])), else: all_books %>
-        <%!-- **上位の数冊を先に**（トップページと同じ枠）。本棚は何百冊にもなるので、
-           いま何が勧められているかを一目で見るには長すぎる --%>
-        <%!-- **読んだ本は外す**（この枠は次に何を読むかを決めるためのもの） --%>
-        <h2>未読の上位 {ChidoriWeb.TopBooks.count()} 冊</h2>
-        <%!-- 押すと本棚の詳細と同じもの（勧めている記事つき）が開く。オライリーの本は札の印で見分ける --%>
-        <ChidoriWeb.TopBooks.top_books
-          books={all_books}
-          open_event="open_book"
-          read={read_titles(@book_marks)}
-        />
-        <h2>本棚 <span class="muted-note">（{length(all_books)} 冊・おすすめ度の高い順）</span></h2>
-        <%!-- **興味トピックに近い本は強調する**（技術ニュースで選んだもの。言い換えと
-           すぐ下の子も近いと数える）。絞り込みは押したときだけ --%>
-        <p :if={near_count > 0} class="shelf-near">
-          <button
-            type="button"
-            class={["shelf-near-toggle", @shelf_near_only && "is-on"]}
-            phx-click="toggle_shelf_near"
-            aria-pressed={to_string(@shelf_near_only)}
-          >
-            ★ 興味トピックに近い本だけ（{near_count} 冊）
-          </button>
-        </p>
-        <p class="muted-note">
-          おすすめ度は<strong>その本を勧めている記事の本数</strong>です（機械が数えたもの）。表紙は
-          <a href="https://www.hanmoto.com/" target="_blank" rel="noreferrer">版元ドットコム</a>
-          の書影です。
-        </p>
-        <ol class="book-list">
-          <li
-            :for={book <- books}
-            class={[
-              "book-card",
-              book.near != [] && "is-near",
-              book_mark_of(@book_marks, book.title).read && "is-read"
-            ]}
-          >
-            <%!-- **本を押すと詳細が開く**（ほかの画面の詳細と同じくモーダル）。
-               表紙も押せる —— 目に入るのは表紙のほうが先 --%>
-            <button
-              type="button"
-              class={["book-cover", !book.cover_url && "is-empty"]}
-              phx-click="open_book"
-              phx-value-title={book.title}
-              aria-label={"#{book.name} の詳細を開く"}
-            >
-              <%!-- 表紙の無い本は 404 が返る。**壊れた画像の印を出さず、枠だけ残す** --%>
-              <img
-                :if={book.cover_url}
-                src={book.cover_url}
-                alt=""
-                loading="lazy"
-                onerror="this.classList.add('is-missing')"
-              />
-            </button>
-            <div class="book-body">
-              <p class="book-title">
-                <button
-                  type="button"
-                  class="book-name"
-                  phx-click="open_book"
-                  phx-value-title={book.title}
-                >
-                  {book.name}
-                </button>
-                <span :if={Map.get(book, :oreilly)} class="book-badge is-oreilly">オライリー</span>
-                <%!-- **読んだ本は印で分かるように**（本棚には残す。上位の枠からは外す） --%>
-                <span
-                  :if={book_mark_summary(book_mark_of(@book_marks, book.title))}
-                  class="read-badge"
-                >
-                  {book_mark_summary(book_mark_of(@book_marks, book.title))}
-                </span>
-              </p>
-              <p class="book-score">
-                記事 {book.docs} 本が勧めている<span :if={book.recent > 0}>（直近 {book.recent} 本）</span>
-              </p>
-              <p :if={book.near != []} class="book-near">★ 興味: {Enum.join(book.near, "・")}</p>
-              <p :if={book.fields != []} class="book-fields">{Enum.join(book.fields, "・")}</p>
-              <p :if={book.topics != []} class="book-topics">
-                <span :for={topic <- book.topics} class="book-topic">{topic}</span>
-              </p>
-              <p :if={book.note != ""} class="book-note">{book.note}</p>
-            </div>
-          </li>
-        </ol>
       </section>
     <% end %>
 
@@ -1463,42 +1369,5 @@
         <% end %>
       </section>
     </div>
-
-    <%!-- **本の詳細**（ほかの画面の詳細と同じくモーダル）。勧めている記事と、その本について
-       Chiezo へ頼む口（本棚の整理の回への割り込み）を置く —— 頼みごとは本を見ながら
-       思いつくので、設定の欄に離して置くと、どの本の話か書き直すことになる --%>
-    <% book = opened_book(assigns) %>
-    <ChidoriWeb.BookModal.book_modal
-      :if={book}
-      book={book}
-      mark={book_mark_of(@book_marks, book.title)}
-      saved={@book_mark_saved == book.title}
-      posts={@book_posts[book.title]}
-    >
-      <form id="book-ask" phx-submit="ask_book" class="article-ask">
-        <input type="hidden" name="title" value={book.title} />
-        <label>
-          この本を Chiezo に調べ直してもらう<br />
-          <textarea
-            name="note"
-            rows="3"
-            placeholder="例: 表紙が別の本になっている / 分野が違う / 第 2 版が出ている"
-          ></textarea>
-        </label>
-        <p class="muted-note">
-          本棚の収集（{@dataset.derived && @dataset.derived.collection()}）の「整理」の回として、
-          この本だけを 1 回調べ直します（分野・タグ・説明・ISBN を確かめ、違っていれば直す）。
-          定時の巡回の進み具合にも次の予定にも触りません。書き添えたことは補足として渡します。
-        </p>
-        <div class="button-row">
-          <button type="submit" disabled={@book_asking} phx-disable-with="頼んでいます…">
-            Chiezo に頼む
-          </button>
-        </div>
-        <p :if={ask_message(@book_asked)} class="muted-note" aria-live="polite">
-          {ask_message(@book_asked)}
-        </p>
-      </form>
-    </ChidoriWeb.BookModal.book_modal>
   </div>
 </main>

@@ -258,10 +258,15 @@
             read={ChidoriWeb.BookModal.read_titles(@book_marks)}
             open_event="open_book"
           />
+          <%!-- **本棚（全冊）もここで読む**（データ収集の読む画面には置かない）。何百冊にもなるので畳んでおく --%>
+          <ChidoriWeb.BookshelfList.shelf
+            books={elem(@books, 1)}
+            marks={@book_marks}
+            near_only={@shelf_near_only}
+          />
         <% end %>
 
-        <p :if={match?({:ok, _}, @books)}><a href={~p"/datasets?view=books"}>本棚をぜんぶ見る</a></p>
-        <%!-- 本の詳細（技術書の画面と同じもの）。読んだ記録はここで付ける --%>
+        <%!-- 本の詳細。読んだ記録と、その本を調べ直してもらう口はここで --%>
         <% book = opened_book(assigns) %>
         <ChidoriWeb.BookModal.book_modal
           :if={book}
@@ -269,7 +274,13 @@
           mark={ChidoriWeb.BookModal.mark_of(@book_marks, book.title)}
           saved={@book_mark_saved == book.title}
           posts={@book_posts}
-        />
+        >
+          <ChidoriWeb.BookshelfList.ask_form
+            book={book}
+            asking={@book_asking}
+            message={ask_message(@book_asked)}
+          />
+        </ChidoriWeb.BookModal.book_modal>
       </section>
     </div>
 

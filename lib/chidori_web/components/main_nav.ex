@@ -12,10 +12,11 @@ defmodule ChidoriWeb.MainNav do
     statics: ChidoriWeb.static_paths()
 
   @items [
-    {:home, "トップ", "/"},
-    {:news, "最新情報", "/news"},
+    {:home, "閲覧", "/"},
+    {:news, "ニュース", "/news"},
     {:relations, "関連図", "/relations"},
-    {:datasets, "データ収集", "/datasets"},
+    # 趣味（映画・アニメと、Pi-hole・レシピ集）。先頭のタブ（映画）を開く
+    {:datasets, "趣味", "/news?view=chidori_movies"},
     # 収集の画面（Chiezo へ頼む口をまとめた所）。読む画面とは分ける
     {:collect, "収集", "/collect"},
     {:settings, "設定", "/settings"}

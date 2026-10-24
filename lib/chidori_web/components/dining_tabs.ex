@@ -66,8 +66,12 @@ defmodule ChidoriWeb.DiningTabs do
   # 食事処の「全体」の画面にいるか（その画面ではタブの行き先と選んだ印が変わる）
   attr :on_areas, :boolean, default: false
 
-  # どの画面の段か（`:read` = 読む画面 / `:collect` = 収集の画面のデータ収集 / `:apps` = 他アプリ用）
+  # どの画面の段か（`:read` = 読む画面 / `:collect` = 収集の画面の趣味 / `:apps` = 他アプリ用）
   attr :mode, :atom, default: :read
+
+  # 最新情報の画面（`NewsLive`）から出しているか。映画・アニメは話題なので、その画面から
+  # 趣味の段を出す —— そのときデータの対象へは別の LiveView へ移る（patch できない）
+  attr :in_news, :boolean, default: false
 
   @doc """
   データ収集のタブ（上の段）。並びは `Chidori.Datasets.tabs/1`。食事処は範囲がいくつあっても
@@ -83,8 +87,11 @@ defmodule ChidoriWeb.DiningTabs do
         tabs:
           if(assigns.mode == :apps,
             do: Enum.filter(tabs, &(&1 == :dining or Chidori.Datasets.for_other_app?(&1))),
-            else: Enum.filter(tabs, &(&1 != :dining and Chidori.Datasets.listed?(&1)))
+            else: Enum.filter(tabs, &(&1 != :dining and in_mode?(&1, assigns.mode)))
           ),
+        # **趣味の段の頭に映画・アニメ**（話題なので画面は最新情報のもの。`Topics.hobby?/1`）
+        hobbies: if(assigns.mode == :apps, do: [], else: Chidori.Topics.hobbies()),
+        news_base: if(assigns.mode == :collect, do: "/collect/news", else: "/news"),
         base:
           case assigns.mode do
             :read -> "/datasets"
@@ -98,6 +105,14 @@ defmodule ChidoriWeb.DiningTabs do
 
     ~H"""
     <nav id="dataset-tabs" class="relation-tabs" phx-hook="ScrollTabs" aria-label="集めるもの">
+      <.link
+        :for={topic <- @hobbies}
+        navigate={"#{@news_base}?view=#{topic.collection}"}
+        class={if @current == topic.collection, do: "selected"}
+        aria-current={if @current == topic.collection, do: "page"}
+      >
+        {topic.name}
+      </.link>
       <%= for tab <- @tabs do %>
         <%= if tab == :dining do %>
           <.link
@@ -117,9 +132,11 @@ defmodule ChidoriWeb.DiningTabs do
             食事処
           </.link>
         <% else %>
-          <.link :if={@on_areas} navigate={"#{@base}?view=#{tab.key}"}>{tab.name}</.link>
+          <.link :if={@on_areas or @in_news} navigate={"#{@base}?view=#{tab.key}"}>
+            {tab.name}
+          </.link>
           <.link
-            :if={!@on_areas}
+            :if={!@on_areas and !@in_news}
             patch={"#{@base}?view=#{tab.key}"}
             class={if @current == tab.key, do: "selected"}
             aria-current={if @current == tab.key, do: "page"}
@@ -131,4 +148,9 @@ defmodule ChidoriWeb.DiningTabs do
     </nav>
     """
   end
+
+  # 読む画面には読む画面で読む対象だけ（本棚はトップページ）、データ収集の収集の画面には
+  # Chidori で読む対象を全部（本棚の収集もここ）
+  defp in_mode?(dataset, :read), do: Chidori.Datasets.read_on_datasets?(dataset)
+  defp in_mode?(dataset, _mode), do: Chidori.Datasets.listed?(dataset)
 end

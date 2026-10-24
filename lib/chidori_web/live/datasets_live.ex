@@ -24,7 +24,6 @@ defmodule ChidoriWeb.DatasetsLive do
 
   alias Chidori.Chiezo
   alias Chidori.Datasets
-  alias Chidori.Datasets.BookMarks
   alias Chidori.Datasets.DiningAreas
   alias Chidori.Datasets.SurveySetting
   alias Chidori.Datasets.Requests
@@ -45,7 +44,7 @@ defmodule ChidoriWeb.DatasetsLive do
     {:ok,
      socket
      |> assign(
-       page_title: "データ収集",
+       page_title: "趣味",
        datasets: Datasets.list(),
        backends: [],
        # 巡回ごとに選んだ相手。**サーバー側で覚える** —— 覚えないと、状態が届いた
@@ -59,17 +58,6 @@ defmodule ChidoriWeb.DatasetsLive do
        recipe_filter: %{},
        recipe_open: nil,
        recipe_message: nil,
-       # 本ごとの「勧めている記事」。**開いたものだけ引く**（79 冊ぶんを先に引かない）
-       book_posts: %{},
-       # 詳細を開いている本（見出し）。本を押すとモーダルで開く
-       opened_book: nil,
-       # 本に付けた「読んだ」印とメモ（Chidori が持つ。本の見出しで引く）
-       book_marks: %{},
-       book_mark_saved: nil,
-       book_asking: false,
-       book_asked: nil,
-       # 興味トピックに近い本だけを並べるか
-       shelf_near_only: false,
        # Pi-hole のドメインの絞り込み（"all" / "watch" / "blocked" / "caution"）
        domain_filter: "all",
        # **いま止めている通信**（Pi-hole のタブ）。流しているか・新しい順の行・続きの印
@@ -140,9 +128,16 @@ defmodule ChidoriWeb.DatasetsLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    key = Datasets.valid_key(params["view"])
-    dataset = Datasets.get(key)
     action = socket.assigns.live_action
+
+    # 読む画面を対象なしで（か知らない対象で）開いたら、読む画面に並ぶ先頭
+    # （本棚はトップページで読むので外す）
+    key =
+      if action == :index and Datasets.get(params["view"]) == nil,
+        do: Datasets.default_read_key(),
+        else: Datasets.valid_key(params["view"])
+
+    dataset = Datasets.get(key)
 
     # **収集の画面**（`/collect/datasets`・他アプリ用 `/collect/apps`）か、読む画面（`/datasets`）か
     collect_mode = action in [:collect, :collect_apps]
@@ -151,6 +146,7 @@ defmodule ChidoriWeb.DatasetsLive do
     right? =
       case action do
         :collect_apps -> Datasets.for_other_app?(dataset)
+        :index -> Datasets.read_on_datasets?(dataset)
         _other -> Datasets.listed?(dataset)
       end
 
@@ -162,10 +158,11 @@ defmodule ChidoriWeb.DatasetsLive do
       # 読むものを持たない対象（ご当地グルメ・アニメ聖地・食事処。読むのは travel-log）は他アプリ用の
       # 収集の画面、Chidori で読む対象は読む画面かデータ収集の収集の画面へ送る
       not right? ->
+        # 本棚（技術書）はトップページの「技術書」の枠で読む
         to =
           if collect_mode or Datasets.for_other_app?(dataset),
             do: "#{Datasets.collect_path(dataset)}?view=#{key}",
-            else: "/datasets?view=#{key}"
+            else: Datasets.read_path(dataset)
 
         {:noreply, push_navigate(socket, to: to, replace: true)}
 
@@ -191,8 +188,6 @@ defmodule ChidoriWeb.DatasetsLive do
         # 対象を切り替えたら、設定は対象ごとの既定に戻す（別の収集のもの）
         # 収集の画面は設定を開いた形で出す
         settings_open: collect_mode,
-        book_marks: if(dataset[:derived], do: BookMarks.all(), else: %{}),
-        book_mark_saved: nil,
         opened_domain: nil,
         recipe_filter: %{},
         recipe_open: nil,
@@ -404,44 +399,6 @@ defmodule ChidoriWeb.DatasetsLive do
     end
   end
 
-  def handle_event("toggle_shelf_near", _params, socket),
-    do: {:noreply, assign(socket, shelf_near_only: !socket.assigns.shelf_near_only)}
-
-  # **本を押すと詳細を開く**（ほかの画面の詳細と同じくモーダル）。勧めている記事は
-  # 開いたときに初めて引く（前に引いたものは覚えておく）
-  def handle_event("open_book", %{"title" => title}, socket) do
-    socket = assign(socket, opened_book: title, book_asked: nil)
-
-    if Map.has_key?(socket.assigns.book_posts, title) do
-      {:noreply, socket}
-    else
-      {:noreply,
-       socket
-       |> assign(book_posts: Map.put(socket.assigns.book_posts, title, :loading))
-       |> start_async({:book_posts, title}, fn ->
-         with {:ok, base} <- Datasets.base_url(),
-              do: Chidori.Datasets.Books.recommending(base, title)
-       end)}
-    end
-  end
-
-  # 「読んだ」印とメモを書く。**空にしたら消える**（関連図の「見た」と同じ）
-  def handle_event("save_book_mark", %{"title" => title} = params, socket) do
-    case BookMarks.put(title, ChidoriWeb.BookModal.mark_attrs(params)) do
-      {:ok, mark} ->
-        marks =
-          if mark,
-            do: Map.put(socket.assigns.book_marks, title, mark),
-            else: Map.delete(socket.assigns.book_marks, title)
-
-        {:noreply, assign(socket, book_marks: marks, book_mark_saved: title)}
-
-      {:error, _changeset} ->
-        # 書けなかったことは黙って捨てない
-        {:noreply, put_flash(socket, :error, "読んだ記録を保存できませんでした。")}
-    end
-  end
-
   # **Pi-hole のドメイン。** 絞り込みは押したときだけ（一覧は全部読んである）
   def handle_event("filter_domains", %{"filter" => filter}, socket)
       when filter in ~w(all unseen watch blocked caution),
@@ -537,29 +494,6 @@ defmodule ChidoriWeb.DatasetsLive do
 
   def handle_event("close_domain", _params, socket),
     do: {:noreply, assign(socket, opened_domain: nil)}
-
-  def handle_event("close_book", _params, socket),
-    do: {:noreply, assign(socket, opened_book: nil, book_asked: nil)}
-
-  # **この本を詳しく調べて**、を本棚の整理の回へ割り込ませる（1 回だけ）
-  # 同じ本への頼みは 1 本だけ（続けて押しても AI の回を重ねない）
-  def handle_event("ask_book", %{"title" => title} = params, socket) do
-    key = {:ask_book, title}
-
-    if SingleFlight.busy?(key) do
-      {:noreply, assign(socket, book_asked: {:error, :busy})}
-    else
-      {:noreply,
-       socket
-       |> assign(book_asking: true, book_asked: nil)
-       |> start_async(:ask_book, fn ->
-         SingleFlight.run(key, fn ->
-           with {:ok, base} <- Datasets.base_url(),
-                do: Chidori.Datasets.Bookshelf.focus_book(base, title, params["note"])
-         end)
-       end)}
-    end
-  end
 
   # 選び直したら、その場で覚える（親の収集の `pick_sweep` と同じ理由）
   def handle_event("pick_derived_sweep", params, socket),
@@ -836,16 +770,6 @@ defmodule ChidoriWeb.DatasetsLive do
          domain_docs: Map.put(socket.assigns.domain_docs, domain, {:error, :collection_crashed})
        )}
 
-  def handle_async({:book_posts, title}, {:ok, result}, socket),
-    do: {:noreply, assign(socket, book_posts: Map.put(socket.assigns.book_posts, title, result))}
-
-  def handle_async({:book_posts, title}, {:exit, _reason}, socket),
-    do:
-      {:noreply,
-       assign(socket,
-         book_posts: Map.put(socket.assigns.book_posts, title, {:error, :collection_crashed})
-       )}
-
   def handle_async(:shelf, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, shelf: {:error, :collection_crashed}, shelf_loading: false)}
 
@@ -866,12 +790,6 @@ defmodule ChidoriWeb.DatasetsLive do
     do:
       {:noreply,
        assign(socket, derived_state: %{crashed(socket.assigns.derived_state) | pushing: false})}
-
-  def handle_async(:ask_book, {:ok, result}, socket),
-    do: {:noreply, assign(socket, book_asking: false, book_asked: result)}
-
-  def handle_async(:ask_book, {:exit, _reason}, socket),
-    do: {:noreply, assign(socket, book_asking: false, book_asked: {:error, :collection_crashed})}
 
   def handle_async(:blank_report, {:ok, result}, socket),
     do: {:noreply, assign(socket, blank_report: result)}
@@ -1568,11 +1486,6 @@ defmodule ChidoriWeb.DatasetsLive do
   # 対象ごとに違うので、ここで決め打つと対象を足すたびに画面が食い違う
   defp default_prompts(%{dataset: dataset}), do: Datasets.call(dataset, :prompts)
 
-  # 本の印の読み方は詳細（`ChidoriWeb.BookModal`）と同じものを使う（本棚の一覧にも出す）
-  defdelegate read_titles(marks), to: ChidoriWeb.BookModal
-  defdelegate book_mark_of(marks, title), to: ChidoriWeb.BookModal, as: :mark_of
-  defdelegate book_mark_summary(mark), to: ChidoriWeb.BookModal, as: :summary
-
   @doc "詳細を開いているドメイン（一覧に無くなっていれば nil）。"
   def opened_domain(%{opened_domain: domain, shelf: {:ok, domains}}) when is_binary(domain),
     do: Enum.find(domains, &(&1.domain == domain))
@@ -1619,12 +1532,6 @@ defmodule ChidoriWeb.DatasetsLive do
   def verdict_class("要注意"), do: "verdict is-caution"
   def verdict_class("問題なし"), do: "verdict is-fine"
   def verdict_class(_verdict), do: "verdict"
-
-  @doc "詳細を開いている本（本棚に無くなっていれば nil）。"
-  def opened_book(%{opened_book: title, shelf: {:ok, books}}) when is_binary(title),
-    do: Enum.find(books, &(&1.title == title))
-
-  def opened_book(_assigns), do: nil
 
   @doc "この収集から作る収集（本棚）の、巡回ごとの依頼文。"
   def derived_prompts(%{derived: derived}) when not is_nil(derived) do

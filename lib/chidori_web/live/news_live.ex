@@ -50,7 +50,8 @@ defmodule ChidoriWeb.NewsLive do
     # 遅いあいだページが固まる（選択肢が無くても記事は読めるので、待つ価値が無い）
     socket =
       assign(socket,
-        topics: Topics.list(),
+        # ニュースのタブ（映画・アニメは趣味のタブに出す）
+        topics: Topics.news(),
         backends: [],
         picks: %{},
         # トピックの網（記事から育つ話題）。**持つ話題だけ**読みに行く
@@ -123,7 +124,9 @@ defmodule ChidoriWeb.NewsLive do
     # **お気に入りは話題ではない**（話題をまたいで 1 つの一覧）。開いているあいだは
     # 話題を選んでいない状態にして、話題ごとの節を出さない
     favorites_view = params["view"] == @favorites_view and socket.assigns.live_action != :collect
-    topic = if favorites_view, do: nil, else: pick_topic(socket.assigns.topics, params["view"])
+
+    # 映画・アニメ（趣味の話題）もこの画面で開く。タブに並べないだけ
+    topic = if favorites_view, do: nil, else: pick_topic(Topics.list(), params["view"])
 
     # 話題を切り替えたら購読も付け替える。付け替えないと、見ていない話題の
     # 収集結果でこの画面が書き換わる
@@ -1018,9 +1021,11 @@ defmodule ChidoriWeb.NewsLive do
     end
   end
 
-  defp page_title(_topic, true), do: "最新情報（お気に入り）"
-  defp page_title(nil, false), do: "最新情報"
-  defp page_title(topic, false), do: "最新情報（#{topic.name}）"
+  defp page_title(_topic, true), do: "ニュース（お気に入り）"
+  defp page_title(nil, false), do: "ニュース"
+
+  defp page_title(topic, false),
+    do: "#{if Topics.hobby?(topic), do: "趣味", else: "ニュース"}（#{topic.name}）"
 
   @doc "お気に入りのタブの `view` の値（話題の収集の名前とぶつからない語）。"
   def favorites_view, do: @favorites_view

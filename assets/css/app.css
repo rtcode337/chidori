@@ -1049,6 +1049,8 @@ ul:has(> .event-item > .event-thumb) > .event-item > .event-thumb { grid-column:
 .domain-detail h3 { margin: .75rem 0 .25rem; font-size: .95rem; color: #332c75; }
 .bookshelf { margin-bottom: 1.25rem; }
 .bookshelf h2 { margin-bottom: .3rem; font-size: 1.05rem; color: #332c75; }
+/* トップページの技術書の枠の本棚は畳んでおく（見出しを押すと開く。`ChidoriWeb.BookshelfList`） */
+.bookshelf > summary { margin: 1rem 0 .3rem; font-size: 1.05rem; font-weight: 700; color: #332c75; cursor: pointer; }
 .book-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); gap: .75rem; margin: .75rem 0 0; padding: 0; list-style: none; }
 .book-card { display: flex; gap: .8rem; padding: .75rem; border: 1px solid #e2e5ef; border-radius: .8rem; background: #fff; min-width: 0; }
 .book-cover { flex: 0 0 4rem; width: 4rem; height: 5.6rem; padding: 0; border: 0; border-radius: .3rem; background: #eef0f6; overflow: hidden; cursor: pointer; }

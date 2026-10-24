@@ -50,6 +50,11 @@ defmodule ChidoriWeb.HomeLive do
        # それを勧めている記事
        opened_book: nil,
        book_posts: nil,
+       # 本棚（畳んである全冊の一覧）を興味トピックに近い本だけに絞っているか
+       shelf_near_only: false,
+       # 詳細から「この本を調べ直して」と頼んでいる最中か・頼んだ結果
+       book_asking: false,
+       book_asked: nil,
        # 全画面で開いている要約（`ChidoriWeb.NewsLive.digest_viewer/1`）
        digest_open: nil,
        digest_section: nil,
@@ -352,6 +357,12 @@ defmodule ChidoriWeb.HomeLive do
   # 取り直せなければ、持っている頭だけで見せる
   def handle_async({:digest, _title}, _result, socket), do: {:noreply, socket}
 
+  def handle_async(:ask_book, {:ok, result}, socket),
+    do: {:noreply, assign(socket, book_asking: false, book_asked: result)}
+
+  def handle_async(:ask_book, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, book_asking: false, book_asked: {:error, :collection_crashed})}
+
   # **押した本の答えだけ受け取る**（続けて押すと、前の本の答えが後から届く）
   def handle_async({:book_posts, title}, result, socket) do
     if socket.assigns.opened_book == title do
@@ -465,7 +476,7 @@ defmodule ChidoriWeb.HomeLive do
 
   # 本を押すと詳細（`ChidoriWeb.BookModal`）を開く。勧めている記事は開いたときに引く
   def handle_event("open_book", %{"title" => title}, socket) do
-    socket = assign(socket, opened_book: title, book_mark_saved: nil)
+    socket = assign(socket, opened_book: title, book_mark_saved: nil, book_asked: nil)
 
     case News.chiezo_base_url() do
       nil ->
@@ -482,7 +493,33 @@ defmodule ChidoriWeb.HomeLive do
   end
 
   def handle_event("close_book", _params, socket),
-    do: {:noreply, assign(socket, opened_book: nil, book_posts: nil, book_mark_saved: nil)}
+    do:
+      {:noreply,
+       assign(socket, opened_book: nil, book_posts: nil, book_mark_saved: nil, book_asked: nil)}
+
+  # 本棚を興味トピックに近い本だけに絞る / 戻す
+  def handle_event("toggle_shelf_near", _params, socket),
+    do: {:noreply, assign(socket, shelf_near_only: !socket.assigns.shelf_near_only)}
+
+  # **この本を詳しく調べて**、を本棚の整理の回へ割り込ませる（1 回だけ）。
+  # 同じ本への頼みは 1 本だけ（続けて押しても AI の回を重ねない）
+  def handle_event("ask_book", %{"title" => title} = params, socket) do
+    key = {:ask_book, title}
+
+    if Chidori.SingleFlight.busy?(key) do
+      {:noreply, assign(socket, book_asked: {:error, :busy})}
+    else
+      {:noreply,
+       socket
+       |> assign(book_asking: true, book_asked: nil)
+       |> start_async(:ask_book, fn ->
+         Chidori.SingleFlight.run(key, fn ->
+           with {:ok, base} <- Chidori.Datasets.base_url(),
+                do: Bookshelf.focus_book(base, title, params["note"])
+         end)
+       end)}
+    end
+  end
 
   # 「読んだ」印とメモを書く（技術書の画面と同じ）。**空にしたら消える**。
   # 読んだ本は上位の枠から外れるが、詳細は開いたままにする（保存したことを見せる）
@@ -519,6 +556,11 @@ defmodule ChidoriWeb.HomeLive do
     do: {:noreply, ChidoriWeb.ShowtimeAsk.received(socket, state)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  @doc "本の詳細から頼んだ結果の一言（データ収集の画面の割り込みと同じ言い方）。"
+  def ask_message(:ok), do: "Chiezo に頼みました。定時の巡回とは別に 1 回だけ走ります。"
+  def ask_message({:error, reason}), do: ChidoriWeb.Collect.reason_text(reason)
+  def ask_message(_asked), do: nil
 
   @doc "詳細を開いている本（本棚に無くなっていれば nil）。"
   def opened_book(%{opened_book: title, books: {:ok, books}}) when is_binary(title),

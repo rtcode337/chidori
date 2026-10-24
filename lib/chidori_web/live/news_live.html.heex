@@ -4,8 +4,26 @@
 <%!-- 頭のメニューとタブは main の外に置き、画面の上に残す（スクロールするのは main の中だけ。root.html.heex） --%>
 <div class="relations-page page-head">
   <div>
-    <ChidoriWeb.MainNav.main_nav active={if @collect_mode, do: :collect, else: :news} />
-    <ChidoriWeb.CollectTabs.collect_tabs :if={@collect_mode} current={:news} />
+    <% hobby? = Chidori.Topics.hobby?(@topic || %{}) %>
+    <ChidoriWeb.MainNav.main_nav active={
+      cond do
+        @collect_mode -> :collect
+        hobby? -> :datasets
+        true -> :news
+      end
+    } />
+    <ChidoriWeb.CollectTabs.collect_tabs
+      :if={@collect_mode}
+      current={if hobby?, do: :datasets, else: :news}
+    />
+    <%!-- **映画・アニメは趣味の段**（データの対象と同じタブに並べる）。画面はこのまま --%>
+    <ChidoriWeb.DiningTabs.dataset_tabs
+      :if={hobby?}
+      datasets={Chidori.Datasets.list()}
+      current={@topic.collection}
+      mode={if @collect_mode, do: :collect, else: :read}
+      in_news={true}
+    />
 
     <%!-- 話題ごとのタブ。**集めるものも溜まるものも話題ごとに別**なので、
          1 つに混ぜると、どちらの状態を見ているのか読めなくなる。
@@ -13,7 +31,7 @@
          **見出しの上に置く**（関連図・データ収集と同じ）—— 見出しと説明は選んだ話題の
          ものなので、切り替える口がその下にあると、どこまでが切り替わるのかが読めない --%>
     <nav
-      :if={@topics != []}
+      :if={@topics != [] and !hobby?}
       id="topic-tabs"
       class="relation-tabs"
       phx-hook="ScrollTabs"
@@ -48,7 +66,7 @@
         {cond do
           @favorites_view -> "お気に入り"
           @topic -> @topic.name
-          true -> "最新情報"
+          true -> "ニュース"
         end}
       </h1>
       <p :if={!@favorites_view and !@collect_mode}>

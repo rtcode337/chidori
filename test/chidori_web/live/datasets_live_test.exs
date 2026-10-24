@@ -37,7 +37,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     {:ok, live, render_async(live)}
   end
 
-  test "収集の画面は設定を開いた状態で出し、読む画面（技術書の本棚）には設定を出さない", %{conn: conn} do
+  test "収集の画面は設定を開いた状態で出し、読む画面（Pi-hole）には設定を出さない", %{conn: conn} do
     Chidori.AreaFixture.area!()
 
     {:ok, _live, html} = live(conn, ~p"/collect/apps?view=dining-1")
@@ -48,10 +48,23 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     assert html =~ ~s(id="chiezo-settings")
     refute html =~ ~s(class="bookshelf")
 
-    {:ok, _live, html} = live(conn, ~p"/datasets?view=books")
+    {:ok, _live, html} = live(conn, ~p"/datasets?view=pihole")
     refute html =~ ~s(id="settings-toggle")
     refute html =~ ~s(id="chiezo-settings")
-    assert html =~ ~s(href="/collect/datasets?view=books")
+    assert html =~ ~s(href="/collect/datasets?view=pihole")
+
+    # 本棚の収集の画面から「読む画面へ」はトップページの技術書の枠へ
+    {:ok, _live, html} = live(conn, ~p"/collect/datasets?view=books")
+    assert html =~ ~s(href="/?panel=books")
+  end
+
+  test "技術書（本棚）は読む画面に置かず、トップページの技術書の枠へ送る", %{conn: conn} do
+    assert {:error, {:live_redirect, %{to: "/?panel=books"}}} =
+             live(conn, ~p"/datasets?view=books")
+
+    # 対象なしで開くと、読む画面に並ぶ先頭（Pi-hole）
+    {:ok, _live, html} = live(conn, ~p"/datasets")
+    assert html =~ ~r|class="selected"[^>]*>\s*Pi-hole|
   end
 
   test "読むものを持たない対象を読む画面で開くと、収集の画面へ送る", %{conn: conn} do
@@ -75,8 +88,9 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     {:ok, _live, html} = live(conn, ~p"/collect/datasets")
     assert html =~ ~r|class="active" href="/collect"|
 
+    # 読む画面では「趣味」（先頭のタブの映画を指す）
     {:ok, _live, html} = live(conn, ~p"/datasets")
-    assert html =~ ~r|class="active" href="/datasets"|
+    assert html =~ ~r|class="active" href="/news\?view=chidori_movies"[^>]*>\s*趣味|
   end
 
   test "タブは画面ごとに分ける（読む画面と収集のデータ収集は Chidori で読む対象、他アプリ用はそれ以外）", %{conn: conn} do
@@ -84,7 +98,8 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     [_, tabs] = String.split(html, ~s(id="dataset-tabs"), parts: 2)
     [tabs, _] = String.split(tabs, "</nav>", parts: 2)
 
-    assert tabs =~ ~s(href="/datasets?view=books")
+    refute tabs =~ "view=books"
+    assert tabs =~ ~s(href="/datasets?view=pihole")
     assert tabs =~ ~s(href="/datasets?view=recipes")
     refute tabs =~ "view=anime"
     refute tabs =~ "食事処"
@@ -126,7 +141,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     assert picked =~ ~s(class="selected")
 
     {:ok, _live, html} = live(conn, ~p"/collect/datasets?view=books")
-    [picked] = Regex.run(~r|<a[^>]*href="/collect/datasets"[^>]*>|, html)
+    [picked] = Regex.run(~r|<a[^>]*href="/collect/news\?view=chidori_movies"[^>]*>|, html)
     assert picked =~ ~s(class="selected")
   end
 
@@ -248,12 +263,45 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     assert html =~ "download-link"
   end
 
-  test "関連図と最新情報から行き来できる", %{conn: conn} do
+  test "関連図とニュースから趣味へ行き来できる", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/relations")
-    assert html =~ ~p"/datasets"
+    assert html =~ ~r|href="/news\?view=chidori_movies"[^>]*>\s*趣味|
 
     {:ok, _live, html} = live(conn, ~p"/news")
-    assert html =~ ~p"/datasets"
+    assert html =~ ~r|href="/news\?view=chidori_movies"[^>]*>\s*趣味|
+  end
+
+  test "趣味の段の頭に映画・アニメが並び、データの対象と行き来できる", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/datasets?view=pihole")
+    [_, tabs] = String.split(html, ~s(id="dataset-tabs"), parts: 2)
+    [tabs, _] = String.split(tabs, "</nav>", parts: 2)
+    {movies, _} = :binary.match(tabs, ~s(href="/news?view=chidori_movies"))
+    {anime, _} = :binary.match(tabs, ~s(href="/news?view=chidori_anime"))
+    {pihole, _} = :binary.match(tabs, ~s(href="/datasets?view=pihole"))
+    assert movies < anime and anime < pihole
+
+    # 映画の画面はニュースのタブではなく趣味の段を出し、頭のメニューは「趣味」
+    {:ok, _live, html} = live(conn, ~p"/news?view=chidori_movies")
+    refute html =~ ~s(id="topic-tabs")
+    assert html =~ ~s(id="dataset-tabs")
+    assert html =~ ~r|class="active" href="/news\?view=chidori_movies"|
+    assert html =~ ~s(href="/datasets?view=recipes")
+
+    # ニュースのタブには映画・アニメを出さない
+    {:ok, _live, html} = live(conn, ~p"/news")
+    [_, tabs] = String.split(html, ~s(id="topic-tabs"), parts: 2)
+    [tabs, _] = String.split(tabs, "</nav>", parts: 2)
+    refute tabs =~ "chidori_movies"
+    refute tabs =~ "chidori_anime"
+
+    # 収集の画面でも同じ（趣味の段に映画の収集の画面）
+    {:ok, _live, html} = live(conn, ~p"/collect/news?view=chidori_anime")
+    assert html =~ ~s(href="/collect/datasets?view=books")
+
+    # 収集の頭の段は「趣味」を選んだ状態（アニメの収集の画面にいる）
+    [_, collect_tabs] = String.split(html, ~s(id="collect-tabs"), parts: 2)
+    [collect_tabs, _] = String.split(collect_tabs, "</nav>", parts: 2)
+    assert collect_tabs =~ ~r|href="/collect/news\?view=chidori_movies"[^>]*class="selected"|
   end
 
   test "技術書の画面も開ける（抽出の指定と区画を持たない対象）", %{conn: conn} do
@@ -273,7 +321,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     assert html =~ "定番の技術書の設定"
 
     {:ok, _live, html} = live(conn, ~p"/datasets?view=%2E%2E%2F")
-    assert html =~ ~s(href="/collect/datasets?view=books")
+    assert html =~ ~s(href="/collect/datasets?view=pihole")
   end
 
   test "溜まったものは、この画面には出さない", %{conn: conn} do
@@ -1110,151 +1158,6 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       end)
 
       :ok
-    end
-
-    test "本棚の本を、表紙つきでおすすめ度の高い順に並べる", %{conn: conn} do
-      {:ok, live, _html} = open_read(conn, ~p"/datasets?view=books")
-      html = render_async(live)
-
-      [_, shelf] = String.split(html, ~s(class="bookshelf"), parts: 2)
-
-      # 表紙はまだ取りに行っていないので空の枠（取りに行く列に並ぶ。「表紙なし」は取れなかった本だけ）。
-      # 外の絵を直に指さない
-      assert shelf =~ "book-cover is-empty"
-      refute shelf =~ "hanmoto.com/bd/img"
-      assert shelf =~ "記事 5 本が勧めている"
-      refute shelf =~ ~s(class="book-badge">定番<)
-
-      # 順は本棚の一覧で見る
-      [_, list] = String.split(shelf, ~s(class="book-list"), parts: 2)
-      {first, _} = :binary.match(list, "リーダブルコード")
-      {second, _} = :binary.match(list, "入門 監視")
-      assert first < second
-
-      # リーダブルコードはオライリーの本。上位の枠にも同じ並びで出て、印で見分ける
-      [top, _] = String.split(shelf, ~s(class="book-list"), parts: 2)
-      assert top =~ ~r|リーダブルコード\s*</a>.*?book-badge is-oreilly|s
-      # 数を持たない本（見出しを書き換えて足されたもの）は並べない
-      refute shelf =~ ~s(phx-value-title="リーダブルコード")
-
-      # 読む画面には収集の設定を出さない（収集の画面で直す）
-      refute html =~ "収集の設定を更新"
-      refute html =~ "Chiezo への依頼文"
-    end
-
-    test "興味トピックに近い本を強調し、絞り込める", %{conn: conn} do
-      Chidori.News.Interests.toggle("chidori_tech", "設計・アーキテクチャ")
-      Chidori.News.Interests.toggle("chidori_tech", "監視")
-
-      {:ok, live, _html} = open_read(conn, ~p"/datasets?view=books")
-      html = render_async(live)
-
-      assert html =~ "★ 興味: 監視"
-      assert html =~ "興味トピックに近い本だけ（1 冊）"
-
-      html = live |> element(".shelf-near-toggle") |> render_click()
-      [_, rest] = String.split(html, ~s(class="book-list"), parts: 2)
-      [shelf, _] = String.split(rest, "</ol>", parts: 2)
-      assert shelf =~ "入門 監視"
-      refute shelf =~ "リーダブルコード"
-    end
-
-    test "本を押すと詳細が開き、勧めている記事へのリンクが出る", %{conn: conn} do
-      {:ok, live, _html} = open_read(conn, ~p"/datasets?view=books")
-      render_async(live)
-
-      refute render(live) =~ "https://example.com/a"
-
-      live
-      |> element(~s(button.book-name[phx-value-title="本:リーダブルコード"]))
-      |> render_click()
-
-      html = render_async(live)
-      assert html =~ ~s(role="dialog")
-      assert html =~ ~s(href="https://example.com/a")
-      assert html =~ "おすすめの本 10 冊"
-      assert html =~ "ISBN 9784873115658"
-
-      refute live |> element(~s(button[phx-click="close_book"])) |> render_click() =~
-               ~s(role="dialog")
-    end
-
-    test "詳細から、その本だけを本棚の整理の回に調べ直してもらえる", %{conn: conn} do
-      # 「いま頼む」はどの収集に頼むのか読めなかった。本を見ながら、その本について頼む
-      {:ok, live, _html} = open_read(conn, ~p"/datasets?view=books")
-      render_async(live)
-
-      live
-      |> element(~s(button.book-name[phx-value-title="本:リーダブルコード"]))
-      |> render_click()
-
-      live
-      |> element("#book-ask")
-      |> render_submit(%{"title" => "本:リーダブルコード", "note" => "表紙が違う"})
-
-      assert render_async(live) =~ "Chiezo に頼みました"
-
-      # 本棚を開くと表紙の取り寄せ（`POST /v1/covers`）も同じ口へ届くので、割り込みだけを待つ
-      {url, body} = receive_post("/focus")
-      assert url =~ "/v1/collect/chidori_books/focus"
-      assert body["titles"] == ["本:リーダブルコード"]
-      assert body["sweep"] == "整理"
-      assert body["note"] =~ "リーダブルコードについて"
-      assert body["note"] =~ "補足: 表紙が違う"
-      # 調べ終えた本でも並ぶように、名指しした 1 冊を {current} で見せる
-      assert body["prompt"] =~ "{current}"
-      refute body["prompt"] =~ "{unreviewed}"
-    end
-
-    test "読んだ印を付けると、本棚で分かり、未読の上位の枠から外れる", %{conn: conn} do
-      {:ok, live, html} = open_read(conn, ~p"/datasets?view=books")
-      html = render_async(live) || html
-
-      assert html =~ "未読の上位"
-      refute html =~ "オライリー以外の未読の上位"
-      assert html =~ ~r|<ol[^>]*class="top-books">.*本:リーダブルコード|s
-
-      live
-      |> element(~s(button.book-name[phx-value-title="本:リーダブルコード"]))
-      |> render_click()
-
-      html =
-        live
-        |> element("#book-mark")
-        |> render_submit(%{
-          "title" => "本:リーダブルコード",
-          "read" => "on",
-          "read_on" => "2026-10-01",
-          "note" => "命名の章が役に立った"
-        })
-
-      assert html =~ "保存しました。"
-      assert Chidori.Datasets.BookMarks.get("本:リーダブルコード").read
-
-      # 本棚の一覧には残し、読んだことが分かる印を付ける
-      assert html =~ ~s(class="book-card is-read")
-      assert html =~ "読んだ（2026-10-01）"
-      # 未読の上位の枠からは外れる
-      for [top] <- Regex.scan(~r|<ol[^>]*class="top-books">.*?</ol>|s, html) do
-        refute top =~ "本:リーダブルコード"
-      end
-    end
-
-    test "印もメモも空にして保存すると、記録ごと消える", %{conn: conn} do
-      {:ok, _mark} = Chidori.Datasets.BookMarks.put("本:リーダブルコード", %{"read" => true})
-      {:ok, live, _html} = open_read(conn, ~p"/datasets?view=books")
-      render_async(live)
-
-      live
-      |> element(~s(button.book-name[phx-value-title="本:リーダブルコード"]))
-      |> render_click()
-
-      live
-      |> element("#book-mark")
-      # チェックを外す（外したチェックボックスは値を送らない。ここでは空で上書きする）
-      |> render_submit(%{"title" => "本:リーダブルコード", "read" => "", "read_on" => "", "note" => ""})
-
-      refute Chidori.Datasets.BookMarks.get("本:リーダブルコード")
     end
 
     test "「いま頼む」の欄は出さず、依頼文は収集ごとの節に出す", %{conn: conn} do

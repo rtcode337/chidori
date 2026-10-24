@@ -1,6 +1,6 @@
 defmodule ChidoriWeb.CollectTabs do
   @moduledoc """
-  収集の画面の頭の段（一覧・最新情報・関連図・データ収集・他アプリ用）。**頭のメニューの「収集」から直接たどれるように**
+  収集の画面の頭の段（一覧・ニュース・関連図・趣味・他アプリ用）。**頭のメニューの「収集」から直接たどれるように**
   —— 一覧だけだった頃は、話題・図・データごとの収集の画面へ一覧の行のリンクからしか行けず、
   食事処やご当地グルメも一覧の行を探して開くことになった。
 
@@ -16,9 +16,9 @@ defmodule ChidoriWeb.CollectTabs do
 
   @tabs [
     {:list, "一覧", "/collect"},
-    {:news, "最新情報", "/collect/news"},
+    {:news, "ニュース", "/collect/news"},
     {:relations, "関連図", "/collect/relations"},
-    {:datasets, "データ収集", "/collect/datasets"},
+    {:datasets, "趣味", "/collect/news?view=chidori_movies"},
     # 他のアプリ（travel-log）が読む収集。Chidori のデータ収集と並べると、どちらで読むものか分からない
     {:apps, "他アプリ用", "/collect/apps"}
   ]
