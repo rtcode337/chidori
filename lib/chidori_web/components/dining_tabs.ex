@@ -91,7 +91,8 @@ defmodule ChidoriWeb.DiningTabs do
             do: Enum.filter(tabs, &(&1 == :dining or Chidori.Datasets.for_other_app?(&1))),
             else: Enum.filter(tabs, &(&1 != :dining and in_mode?(&1, assigns.mode)))
           ),
-        # **趣味の段の頭に映画・アニメ・芸術家**（画面はそれぞれのもの。`Chidori.Hobbies`）
+        # **趣味の段には映画・芸術家・アニメも並べる**（画面はそれぞれのもの。並びは
+        # `Chidori.Hobbies.arrange/2`）
         hobbies: if(assigns.mode == :apps, do: [], else: Chidori.Hobbies.entries()),
         base:
           case assigns.mode do
@@ -106,47 +107,66 @@ defmodule ChidoriWeb.DiningTabs do
 
     ~H"""
     <nav id="dataset-tabs" class="relation-tabs" phx-hook="ScrollTabs" aria-label="集めるもの">
-      <.link
-        :for={hobby <- @hobbies}
-        navigate={if @mode == :collect, do: hobby.collect, else: hobby.read}
-        class={if @current == hobby.id, do: "selected"}
-        aria-current={if @current == hobby.id, do: "page"}
-      >
-        {hobby.name}
-      </.link>
-      <%= for tab <- @tabs do %>
-        <%= if tab == :dining do %>
-          <.link
-            :if={@on_areas}
-            patch={~p"/collect/apps/areas"}
-            class="selected"
-            aria-current="page"
-          >
-            食事処
-          </.link>
-          <.link
-            :if={!@on_areas}
-            navigate={~p"/collect/apps/areas"}
-            class={if @dining?, do: "selected"}
-            aria-current={if @dining?, do: "page"}
-          >
-            食事処
-          </.link>
-        <% else %>
-          <.link :if={@on_areas or @elsewhere} navigate={"#{@base}?view=#{tab.key}"}>
-            {tab.name}
-          </.link>
-          <.link
-            :if={!@on_areas and !@elsewhere}
-            patch={"#{@base}?view=#{tab.key}"}
-            class={if @current == tab.key, do: "selected"}
-            aria-current={if @current == tab.key, do: "page"}
-          >
-            {tab.name}
-          </.link>
+      <%= for item <- Chidori.Hobbies.arrange(@hobbies, @tabs) do %>
+        <%= case item do %>
+          <% {:hobby, hobby} -> %>
+            <.link
+              navigate={if @mode == :collect, do: hobby.collect, else: hobby.read}
+              class={if @current == hobby.id, do: "selected"}
+              aria-current={if @current == hobby.id, do: "page"}
+            >
+              {hobby.name}
+            </.link>
+          <% {:tab, tab} -> %>
+            <.dataset_tab
+              tab={tab}
+              on_areas={@on_areas}
+              elsewhere={@elsewhere}
+              base={@base}
+              current={@current}
+              dining?={@dining?}
+            />
         <% end %>
       <% end %>
     </nav>
+    """
+  end
+
+  attr :tab, :any, required: true
+  attr :on_areas, :boolean, required: true
+  attr :elsewhere, :boolean, required: true
+  attr :base, :string, required: true
+  attr :current, :string, default: nil
+  attr :dining?, :boolean, required: true
+
+  # データの対象 1 つぶんのタブ（食事処は範囲の「全体」へ）
+  defp dataset_tab(assigns) do
+    ~H"""
+    <%= if @tab == :dining do %>
+      <.link :if={@on_areas} patch={~p"/collect/apps/areas"} class="selected" aria-current="page">
+        食事処
+      </.link>
+      <.link
+        :if={!@on_areas}
+        navigate={~p"/collect/apps/areas"}
+        class={if @dining?, do: "selected"}
+        aria-current={if @dining?, do: "page"}
+      >
+        食事処
+      </.link>
+    <% else %>
+      <.link :if={@on_areas or @elsewhere} navigate={"#{@base}?view=#{@tab.key}"}>
+        {@tab.name}
+      </.link>
+      <.link
+        :if={!@on_areas and !@elsewhere}
+        patch={"#{@base}?view=#{@tab.key}"}
+        class={if @current == @tab.key, do: "selected"}
+        aria-current={if @current == @tab.key, do: "page"}
+      >
+        {@tab.name}
+      </.link>
+    <% end %>
     """
   end
 

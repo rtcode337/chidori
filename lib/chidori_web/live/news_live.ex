@@ -997,6 +997,12 @@ defmodule ChidoriWeb.NewsLive do
     end
   end
 
+  # 設定の枠で収集を止めた・動かした（`ChidoriWeb.CollectSwitch`）。状態を読み直して、止めた色を付け直す
+  def handle_info({:collection_switched, _name}, socket) do
+    if topic = socket.assigns.topic, do: News.refresh(News.server(topic.collection))
+    {:noreply, load_themes(socket)}
+  end
+
   def handle_info({:news_updated, news}, socket) do
     topic = socket.assigns.topic
 

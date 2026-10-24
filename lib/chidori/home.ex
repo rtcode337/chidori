@@ -43,7 +43,6 @@ defmodule Chidori.Home do
     {"topic:chidori_tech", "技術"},
     {"interest:chidori_tech", "技術興味"},
     {"topic:chidori_movies", "映画"},
-    {"topic:chidori_anime", "アニメ"},
     {"topic:chidori_market", "市況"},
     {"events:chidori_comedy", "お笑い"},
     {"events:chidori_events", "技術"},
@@ -52,6 +51,8 @@ defmodule Chidori.Home do
     {"relations:films", "映画"},
     {"books", "技術書"},
     {"recipes", "レシピ"},
+    # 趣味の段と同じ並び（アニメはレシピの後ろ）
+    {"topic:chidori_anime", "アニメ"},
     {"pihole_live", "止めている通信"}
   ]
 

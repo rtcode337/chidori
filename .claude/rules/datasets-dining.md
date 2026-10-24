@@ -27,7 +27,7 @@ paths:
 
 詳しい説明・travel-log の項目との対応表・実測値は `docs/datasets.md`。
 
-- 頭のメニューでは「趣味」（映画・アニメの話題と同じ段。段の頭に映画・アニメ・芸術家（`Chidori.Hobbies.entries/0`）を並べ、そちらへは `navigate` で移る）
+- 頭のメニューでは「趣味」（映画・アニメの話題と同じ段。映画・芸術家を段の頭に、アニメをレシピの後ろに並べ（`Chidori.Hobbies.entries/0`・`arrange/2`。後ろに置くものは `@follows`）、そちらへは `navigate` で移る）
 - **読む画面（`/datasets`）と収集の画面（`/collect/datasets`・`/collect/apps`）は同じ `DatasetsLive`**（`@collect_mode`）。読む画面は読むものを持つ対象
   （`Datasets.read_on_datasets?/1` = Pi-hole・レシピ集）だけをタブに並べ、溜まったものだけを出す。技術書の本棚はトップページの技術書の枠で読む（`ChidoriWeb.BookshelfList`。畳んで置く。`Datasets.read_path/1`）。収集の設定・区画・依頼・書き出し・名簿の広さ
   （`RecipeBook.roster_form/1`）は収集の画面。収集の画面は対象で 2 つに分ける —— データ収集（`/collect/datasets`。`:collect`）は Chidori で読む対象、

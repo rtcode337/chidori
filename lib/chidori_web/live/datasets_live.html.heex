@@ -185,18 +185,17 @@
       <%!-- **設定は畳んでおき、開いたときに Chiezo から読む**（関連図と同じ）。
            本棚を見に来るたびに、収集の状態・巡回・相手の一覧まで運んでいた。
            <details> にしないのは、開いたことをサーバーが知る必要があるため --%>
-      <h2 class="settings-heading">
-        <button
-          type="button"
-          id="settings-toggle"
-          phx-click="toggle_settings"
-          aria-expanded={to_string(@settings_open)}
-          aria-controls="chiezo-settings"
-        >
-          <span class="settings-caret" aria-hidden="true">{if @settings_open, do: "▾", else: "▸"}</span>
-          {@dataset.title}の設定
-        </button>
-      </h2>
+      <%!-- **見出しの行の右端に「止める」「動かす」**（`ChidoriWeb.CollectSwitch`）。この収集から
+           作る収集（本棚）を持つ対象は、収集ごとの節の見出しの行に置く --%>
+      <div class="settings-title-row">
+        <h2>{@dataset.title}の設定</h2>
+        <.live_component
+          :if={!@dataset[:derived] && @state.collection}
+          module={ChidoriWeb.CollectSwitch}
+          id="switch-main"
+          collection={@state.collection}
+        />
+      </div>
 
       <div :if={@settings_open} id="chiezo-settings">
         <%!-- 名簿の広さ（レシピ集）。読む画面のレシピ集から移した --%>
@@ -583,11 +582,19 @@
           ]}
           aria-label="この収集"
         >
-          <h3>
-            {if @dataset[:derived],
-              do: "#{@dataset.collection_name}（#{@dataset.collection}）",
-              else: "Chiezo の収集"}
-          </h3>
+          <div class="settings-title-row">
+            <h3>
+              {if @dataset[:derived],
+                do: "#{@dataset.collection_name}（#{@dataset.collection}）",
+                else: "Chiezo の収集"}
+            </h3>
+            <.live_component
+              :if={@dataset[:derived] && @state.collection}
+              module={ChidoriWeb.CollectSwitch}
+              id="switch-main"
+              collection={@state.collection}
+            />
+          </div>
           <p aria-live="polite">{status_message(@state)}</p>
           <p class="muted-note">{push_note(@state)}</p>
 
@@ -754,7 +761,15 @@
           class={["settings-block lined-block", stopped_class(@derived_state)]}
           aria-label="この収集から作るもの"
         >
-          <h3>{@dataset.derived.name()}</h3>
+          <div class="settings-title-row">
+            <h3>{@dataset.derived.name()}</h3>
+            <.live_component
+              :if={@derived_state.collection}
+              module={ChidoriWeb.CollectSwitch}
+              id="switch-derived"
+              collection={@derived_state.collection}
+            />
+          </div>
           <p>
             上の収集に付いた<strong>タグから機械で作ります</strong>。
             数えるのは Chiezo で、<strong>AI がやるのは整えるところだけ</strong>です

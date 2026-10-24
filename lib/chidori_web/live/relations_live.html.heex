@@ -616,18 +616,17 @@
            運んでいた頃は、見もしない設定のために待たされた）。
            <details> にしないのは、開いたことをサーバーが知る必要があるため
            （開閉はサーバーが持ち、描き直しで勝手に閉じないようにする） --%>
-      <h2 class="settings-heading">
-        <button
-          type="button"
-          id="settings-toggle"
-          phx-click="toggle_settings"
-          aria-expanded={to_string(@settings_open)}
-          aria-controls="chiezo-settings"
-        >
-          <span class="settings-caret" aria-hidden="true">{if @settings_open, do: "▾", else: "▸"}</span>
-          {@relation.title}の設定
-        </button>
-      </h2>
+      <%!-- **見出しの行の右端に「止める」「動かす」**（`ChidoriWeb.CollectSwitch`。設定を読み終えてから） --%>
+      <% loaded = settings_ready?(@settings) && with_settings(@relation, @settings) %>
+      <div class="settings-title-row">
+        <h2>{@relation.title}の設定</h2>
+        <.live_component
+          :if={loaded && loaded.collection}
+          module={ChidoriWeb.CollectSwitch}
+          id="switch-relation"
+          collection={loaded.collection}
+        />
+      </div>
 
       <div :if={@settings_open} id="chiezo-settings">
         <%!-- 最新情報からの引き継ぎ（映画の図だけ）。収集の画面に置く --%>
@@ -910,7 +909,7 @@
 
         <%!-- 最近の回の見出しを押したときの、1 件の変更（この画面の上に重ねて開く） --%>
         <.live_component module={ChidoriWeb.DocDiff} id="doc-diff" />
-        <%!-- **最近の回**（Chiezo の変更履歴。設定欄を開いたときに読む。`ChidoriWeb.RecentRuns`） --%>
+        <%!-- **最近の回**（Chiezo の変更履歴。収集の画面を開いたときに読む。`ChidoriWeb.RecentRuns`） --%>
         <.recent_runs
           runs={@recent_runs}
           collection={Chidori.Relations.collection_of(@view)}

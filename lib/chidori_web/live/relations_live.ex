@@ -83,7 +83,7 @@ defmodule ChidoriWeb.RelationsLive do
        # settings は nil（まだ）/ :loading / 読めたもの / {:error, 理由}
        settings_open: false,
        settings: nil,
-       # この図の収集の最近の回（設定欄を開いたときに読む）
+       # この図の収集の最近の回（収集の画面を開いたときに読む）
        recent_runs: [],
        # 「見た」印。**ノード名で引く** —— 図は読み直すたびに id が振り直されるので、
        # id で持つと印が別人へ移る
@@ -231,17 +231,6 @@ defmodule ChidoriWeb.RelationsLive do
   end
 
   defp apply_pending_focus(socket), do: socket
-
-  # 設定欄を開く・閉じる。**開いたときに Chiezo から読む** —— 設定は見たいときだけ
-  # 見るもので、図を開くたびに 400 区画ぶんの台帳を運ぶ理由が無い。
-  # **開くたびに読み直す**（閉じているあいだに Chiezo の側が進んでいる）
-  def handle_event("toggle_settings", _params, socket) do
-    if socket.assigns.settings_open do
-      {:noreply, assign(socket, settings_open: false)}
-    else
-      {:noreply, socket |> assign(settings_open: true) |> load_settings()}
-    end
-  end
 
   # 未レビューの画家の区画を、先にざっと見てもらう。**区画は押したときに割り出す**
   # （区画の一覧は設定なので、図を開いただけでは読んでいない）
@@ -833,6 +822,10 @@ defmodule ChidoriWeb.RelationsLive do
 
     {:noreply, assign(socket, carry_pending: pending)}
   end
+
+  # 設定の枠で収集を止めた・動かした（`ChidoriWeb.CollectSwitch`）。設定を読み直して、止めた色を付け直す
+  def handle_info({:collection_switched, _name}, socket),
+    do: {:noreply, if(socket.assigns.settings_open, do: load_settings(socket), else: socket)}
 
   def handle_info({:relation_updated, relation}, socket) do
     # **設定を送り終えたら、開いている設定欄を読み直す。** 送った中身は Chiezo の

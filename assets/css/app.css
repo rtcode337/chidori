@@ -169,13 +169,6 @@ main.relations-page > div { padding-top: 0; }
 .home-subtabs a { flex: none; padding: .25rem .6rem; border: 1px solid #d9dcea; border-radius: 0; background: #fff; color: #4b5470; font-size: .82rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
 .home-subtabs a:hover { border-color: #b9b4ef; color: #28235e; }
 .home-subtabs a.selected { border-color: #6254d6; background: #6254d6; color: #fff; }
-/* 設定欄の開閉。**押せる見出し**として見せる */
-/* 設定欄の見出し。**見出しそのものが開閉の口**なので、見た目は見出しのまま、
-   押せることだけ分かるようにする（設定欄のボタンの塗りより強く当てる） */
-.settings-panel .settings-heading { margin: 0; }
-.settings-panel .settings-heading button { display: flex; align-items: center; gap: .45rem; width: 100%; padding: .2rem 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.settings-panel .settings-heading button:hover { color: #554bc0; }
-.settings-caret { display: inline-block; width: 1em; color: #6254d6; font-size: .85em; }
 #chiezo-settings { margin-top: .6rem; }
 /* 図の出どころの一文。下の状態の表と詰まらないよう少し空ける */
 .settings-panel .origin-note { margin-bottom: .8rem; }
@@ -1275,6 +1268,14 @@ a.top-book-cover { display: block; }
 /* 巡回を今すぐ 1 回（各収集の画面の巡回の表。`ChidoriWeb.RunSweepButton`） */
 .run-sweep { margin-top: .3rem; font-size: .8rem; }
 .run-sweep p { margin: .2rem 0 0; }
+/* 各収集の設定の枠の「止める」「動かす」（`ChidoriWeb.CollectSwitch`） */
+.collect-switch { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; margin: .3rem 0 .6rem; }
+.collect-switch p { flex-basis: 100%; margin: 0; }
+.collect-switch-link { font-weight: 700; color: #4338a8; }
+/* 設定の見出しの行（見出しと、右端の「止める」「動かす」） */
+.settings-title-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem .8rem; }
+.settings-title-row > h2, .settings-title-row > h3 { margin: 0; }
+.settings-title-row .collect-switch { margin: 0; justify-content: flex-end; }
 /* 最近の回・依頼の結果の見出し（押すと 1 件の変更がこの画面の上に開く。`ChidoriWeb.DocDiff`） */
 /* **前のリンクと同じ見た目に**。設定の枠の中のボタン（`.settings-panel button`。紫の塗り）に負けないよう、
    枠の中の一覧として指定を強くする */

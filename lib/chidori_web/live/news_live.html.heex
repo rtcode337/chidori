@@ -571,7 +571,16 @@
       class={["settings-panel", stopped_class(@news)]}
       aria-label={settings_title(@topic)}
     >
-      <h2>{settings_title(@topic)}</h2>
+      <%!-- **見出しの行の右端に「止める」「動かす」**（`ChidoriWeb.CollectSwitch`） --%>
+      <div class="settings-title-row">
+        <h2>{settings_title(@topic)}</h2>
+        <.live_component
+          :if={@news.collection}
+          module={ChidoriWeb.CollectSwitch}
+          id="switch-news"
+          collection={@news.collection}
+        />
+      </div>
 
       <section class="settings-block">
         <h3>Chiezo の収集</h3>
@@ -636,7 +645,15 @@
         :if={Chidori.Topics.themes?(@topic)}
         class={["settings-block", stopped_class(@themes)]}
       >
-        <h3>トピックの収集</h3>
+        <div class="settings-title-row">
+          <h3>トピックの収集</h3>
+          <.live_component
+            :if={@themes.collection}
+            module={ChidoriWeb.CollectSwitch}
+            id="switch-themes"
+            collection={@themes.collection}
+          />
+        </div>
         <p aria-live="polite">{theme_note(@themes)}</p>
 
         <dl :if={@themes.collection} class="collect-facts">

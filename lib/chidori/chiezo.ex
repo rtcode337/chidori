@@ -1190,7 +1190,9 @@ defmodule Chidori.Chiezo do
              # 溜まった数は消したもの（墓標）も数えるので、生きている数を出すのに引く
              |> Map.put(:removed_docs, tag_count(base, name, removed_tag()))
              |> Map.put(:unreviewed_docs, tag_count(base, name, unreviewed_tag()))
-             |> Map.put(:recent, detail["recent"] || [])}
+             |> Map.put(:recent, detail["recent"] || [])
+             # 外のアプリから動かせるか（Chiezo の管理画面で許可したときだけ。`CollectSwitch`）
+             |> Map.put(:outside_switch_allowed, detail["outside_switch_allowed"] == true)}
 
           _ ->
             {:error, :chiezo_unexpected_body}

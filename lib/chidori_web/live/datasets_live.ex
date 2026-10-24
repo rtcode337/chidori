@@ -78,7 +78,7 @@ defmodule ChidoriWeb.DatasetsLive do
        recent_runs: [],
        # この収集から作る収集（本棚）の最近の回
        derived_runs: [],
-       # これまで検索に使った語（検索文を考えさせる対象だけ。設定を開いたときに読む）
+       # これまで検索に使った語（検索文を考えさせる対象だけ。収集の画面を開いたときに読む）
        search_queries: nil,
        # 「位置OK」「位置修正」の行を Chiezo に固定させた結果（`Requests.hold/2`）
        held: nil,
@@ -228,17 +228,6 @@ defmodule ChidoriWeb.DatasetsLive do
        true ->
          socket
      end}
-  end
-
-  # 設定欄を開く・閉じる。**開いたときに Chiezo から読む** —— 設定は見たいときだけ
-  # 見るもので、本棚を見に来るたびに収集の状態・巡回・相手の一覧まで運ぶ理由が無い。
-  # **開くたびに読み直す**（閉じているあいだに Chiezo の側が進んでいる）
-  def handle_event("toggle_settings", _params, socket) do
-    if socket.assigns.settings_open do
-      {:noreply, assign(socket, settings_open: false)}
-    else
-      {:noreply, socket |> assign(settings_open: true) |> load_settings()}
-    end
   end
 
   @impl true
@@ -833,6 +822,10 @@ defmodule ChidoriWeb.DatasetsLive do
   # travel-log からの依頼が終わった（頼めた・断られた・待ちきれなかった）。
   # 見積もりは一言に使うので、結果と組にして残す
   @impl true
+  # 設定の枠で収集を止めた・動かした（`ChidoriWeb.CollectSwitch`）。状態を読み直して、止めた色を付け直す
+  def handle_info({:collection_switched, _name}, socket),
+    do: {:noreply, if(socket.assigns.settings_open, do: load_settings(socket), else: socket)}
+
   def handle_info({:recipes_rerostered, result}, socket) do
     message =
       case result do

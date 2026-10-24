@@ -22,12 +22,13 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     {:ok, live, render_async(live)}
   end
 
-  test "収集の画面は設定を開いた状態で出し、読む画面（Pi-hole）には設定を出さない", %{conn: conn} do
+  test "収集の画面は設定をいつも出し（開閉しない）、読む画面（Pi-hole）には設定を出さない", %{conn: conn} do
     Chidori.AreaFixture.area!()
 
+    # 収集の設定は収集の画面に切り出したので、設定の枠そのものを開け閉めする口は無い
     {:ok, _live, html} = live(conn, ~p"/collect/apps?view=dining-1")
-    assert html =~ ~s(aria-expanded="true")
     assert html =~ ~s(id="chiezo-settings")
+    refute html =~ ~s(id="settings-toggle")
 
     {:ok, _live, html} = live(conn, ~p"/collect/datasets?view=books")
     assert html =~ ~s(id="chiezo-settings")
@@ -224,10 +225,19 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     {:ok, _live, html} = live(conn, ~p"/datasets?view=pihole")
     [_, tabs] = String.split(html, ~s(id="dataset-tabs"), parts: 2)
     [tabs, _] = String.split(tabs, "</nav>", parts: 2)
-    {movies, _} = :binary.match(tabs, ~s(href="/news?view=chidori_movies"))
-    {anime, _} = :binary.match(tabs, ~s(href="/news?view=chidori_anime"))
-    {pihole, _} = :binary.match(tabs, ~s(href="/datasets?view=pihole"))
-    assert movies < anime and anime < pihole
+
+    # 映画・芸術家・レシピ・アニメ・Pi-hole の順（アニメはレシピの後ろ）
+    order =
+      for href <- [
+            ~s(href="/news?view=chidori_movies"),
+            ~s(href="/relations?view=painters"),
+            ~s(href="/datasets?view=recipes"),
+            ~s(href="/news?view=chidori_anime"),
+            ~s(href="/datasets?view=pihole")
+          ],
+          do: tabs |> :binary.match(href) |> elem(0)
+
+    assert order == Enum.sort(order)
 
     # 映画の画面はニュースのタブではなく趣味の段を出し、頭のメニューは「趣味」
     {:ok, _live, html} = live(conn, ~p"/news?view=chidori_movies")
@@ -350,6 +360,86 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     [derived, _rest] = String.split(derived, "Chiezo への依頼文", parts: 2)
     assert derived =~ "本:リーダブルコード"
     refute derived =~ "記事:おすすめ 10 冊"
+  end
+
+  describe "設定の枠の止める・動かす" do
+    setup do
+      System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
+      System.put_env("CHIEZO_PUBLIC_URL", "http://chiezo.example.lan:7010")
+
+      on_exit(fn ->
+        System.delete_env("CHIEZO_BASE_URL")
+        System.delete_env("CHIEZO_PUBLIC_URL")
+      end)
+
+      :ok
+    end
+
+    defp stub_posts(enabled, allowed) do
+      test_pid = self()
+
+      posts = %{
+        "name" => "chidori_book_posts",
+        "enabled" => enabled,
+        "interval_minutes" => 60,
+        "outside_switch_allowed" => allowed,
+        "sweeps" => [%{"name" => "整理", "interval_minutes" => 720, "enabled" => true}]
+      }
+
+      Chidori.HttpStub.stub(fn
+        %{method: :post, url: url, body: body} ->
+          send(test_pid, {:posted, url, Jason.decode!(body)})
+          Chidori.HttpStub.ok("{}")
+
+        %{method: :get, url: url} ->
+          cond do
+            String.ends_with?(url, "/v1/collect") ->
+              Chidori.HttpStub.ok(Jason.encode!(%{"collections" => [posts]}))
+
+            url =~ ~r|/v1/collect/chidori_book_posts\?| ->
+              Chidori.HttpStub.ok(Jason.encode!(posts))
+
+            true ->
+              Chidori.HttpStub.ok(
+                ~s({"collections":[],"results":[],"backends":[],"queries":[],"changes":[]})
+              )
+          end
+      end)
+    end
+
+    test "動いている収集には「止める」を出し、押すと Chidori の名乗りで止める", %{conn: conn} do
+      stub_posts(true, false)
+      {:ok, live, _html} = live(conn, ~p"/collect/datasets?view=books")
+      render_async(live)
+
+      live |> element(~s(#switch-main button), "止める") |> render_click()
+
+      assert_receive {:posted, "http://chiezo.test/v1/collect/chidori_book_posts/enabled",
+                      %{"enabled" => false, "requested_by" => "chidori"}}
+
+      assert render_async(live) =~ "止めました"
+    end
+
+    test "止まっていて外部からの有効化を許していれば「動かす」", %{conn: conn} do
+      stub_posts(false, true)
+      {:ok, live, _html} = live(conn, ~p"/collect/datasets?view=books")
+      html = render_async(live)
+
+      [switch] = Regex.run(~r|<div[^>]*id="switch-main".*?</div>|s, html)
+      assert switch =~ "動かす"
+      refute switch =~ "Chiezo で動かす"
+    end
+
+    test "許していなければ、Chiezo の収集の面への入口にする", %{conn: conn} do
+      stub_posts(false, false)
+      {:ok, live, _html} = live(conn, ~p"/collect/datasets?view=books")
+      html = render_async(live)
+
+      [switch] = Regex.run(~r|<div[^>]*id="switch-main".*?</div>|s, html)
+      assert switch =~ ~s(href="http://chiezo.example.lan:7010/admin/collect/chidori_book_posts")
+      assert switch =~ "Chiezo で動かす"
+      refute switch =~ ~s(phx-click="switch")
+    end
   end
 
   test "色を付けるのは Chiezo で止まっている収集だけ（まだ無い・読めていない収集には付けない）" do

@@ -10,9 +10,13 @@ defmodule Chidori.Hobbies do
   alias Chidori.Relations
   alias Chidori.Topics
 
+  # 段の頭ではなく、データの対象の後ろに置くもの（`id` → その後ろに置く対象の key）
+  @follows %{"chidori_anime" => "recipes"}
+
   @doc """
-  趣味の段の頭に並べるもの（並べる順）。`%{id:, name:, read:, collect:}`。
-  `id` は開いているかを比べる鍵（話題は収集の名前、関連図は図の鍵）。
+  趣味の段に並べるもの（並べる順）。`%{id:, name:, read:, collect:, follows:}`。
+  `id` は開いているかを比べる鍵（話題は収集の名前、関連図は図の鍵）。`follows` が nil なら
+  段の頭、データの対象の key ならその後ろ（`arrange/2`）。
   """
   def entries do
     topics =
@@ -21,7 +25,8 @@ defmodule Chidori.Hobbies do
           id: topic.collection,
           name: topic.name,
           read: "/news?view=#{topic.collection}",
-          collect: "/collect/news?view=#{topic.collection}"
+          collect: "/collect/news?view=#{topic.collection}",
+          follows: @follows[topic.collection]
         }
       end
 
@@ -31,10 +36,30 @@ defmodule Chidori.Hobbies do
           id: key,
           name: Relations.title_of(key),
           read: "/relations?view=#{key}",
-          collect: "/collect/relations?view=#{key}"
+          collect: "/collect/relations?view=#{key}",
+          follows: @follows[key]
         }
       end
 
     topics ++ relations
+  end
+
+  @doc """
+  趣味の段の並び。`follows` を持たないものを頭に、持つものはその対象の後ろに差し込む
+  （`{:hobby, entry}` と `{:tab, 対象}` の並び）。その対象が段に無ければ（読む画面に無い対象など）
+  いちばん後ろに置く。
+  """
+  def arrange(hobbies, tabs) do
+    {placed, rest} = Enum.split_with(hobbies, &is_nil(&1.follows))
+    head = Enum.map(placed, &{:hobby, &1})
+
+    {body, left} =
+      Enum.flat_map_reduce(tabs, rest, fn tab, left ->
+        key = if is_map(tab), do: tab.key
+        {here, left} = Enum.split_with(left, &(&1.follows == key))
+        {[{:tab, tab} | Enum.map(here, &{:hobby, &1})], left}
+      end)
+
+    head ++ body ++ Enum.map(left, &{:hobby, &1})
   end
 end
