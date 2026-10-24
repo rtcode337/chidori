@@ -1123,8 +1123,8 @@
         </p>
 
         <%!-- **依頼と、その結果を並べる。** 結果は Chiezo の変更履歴から、頼んだ後に
-           同じ区画を見た回を引き当てたもの。見出しを押すと、Chiezo の画面で
-           その 1 件の「直す前との違い」が開く。**結果はどれも畳んで出す** ——
+           同じ区画を見た回を引き当てたもの。見出しを押すと、この画面の上に
+           その 1 件の「直す前との違い」が開く（`ChidoriWeb.DocDiff`）。**結果はどれも畳んで出す** ——
            開いて置くと、足した・直した見出しの一覧が依頼の欄の下を長く埋める --%>
         <section
           :if={@dataset.reader == "travel-log" and @request_results != []}
@@ -1169,7 +1169,7 @@
                 {Jst.format(entry.result.at)} に終わった回{if entry.result.backend,
                   do:
                     "（#{entry.result.backend}#{if entry.result.model, do: " / #{entry.result.model}", else: ""}）",
-                  else: ""}。見出しを押すと、Chiezo の画面で直す前との違いが開きます。
+                  else: ""}。見出しを押すと、直す前との違いが開きます。
               </p>
               <.change_lists change={entry.result} collection={@dataset.collection} />
               <p
@@ -1321,5 +1321,7 @@
         <% end %>
       </section>
     </div>
+    <%!-- 最近の回・依頼の結果の見出しを押したときの、1 件の変更（この画面の上に重ねて開く） --%>
+    <.live_component module={ChidoriWeb.DocDiff} id="doc-diff" />
   </div>
 </main>

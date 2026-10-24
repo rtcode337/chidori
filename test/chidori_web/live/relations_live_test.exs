@@ -102,6 +102,131 @@ defmodule ChidoriWeb.RelationsLiveTest do
     assert render(live) =~ ~s(<strong id="artwork-name">三船敏郎</strong>)
   end
 
+  test "映画の図で同じ監督の線を 1 回押すとその監督の作品だけを立たせ、2 回目で詳細を開く", %{conn: conn} do
+    {:ok, live, _html} = live(conn, ~p"/relations?view=films")
+
+    graph =
+      Chidori.Relations.Graph.from_docs(
+        [
+          %{"title" => "東京物語", "tags" => ~w(映画 監督:小津安二郎 年代:1953 国:日本 主演:笠智衆)},
+          %{"title" => "秋刀魚の味", "tags" => ~w(映画 監督:小津安二郎 年代:1962 国:日本 主演:笠智衆)},
+          %{"title" => "七人の侍", "tags" => ~w(映画 監督:黒澤明 年代:1954 国:日本)}
+        ],
+        Chidori.Relations.Films.graph_spec()
+      )
+
+    # 表示例ではなく、読み込んだ図として渡す（表示例の図は描かない）
+    relation =
+      Chidori.Relations.current("films")
+      |> Map.merge(graph)
+      |> Map.merge(%{sample?: false, status: :ready})
+
+    send(live.pid, {:relation_updated, relation})
+    render(live)
+
+    edge = Enum.find(graph.edges, &(&1.kind == :director))
+
+    click = fn ->
+      render_click(live, "show_edge", %{
+        "from" => edge.from,
+        "to" => edge.to,
+        "kind" => "director"
+      })
+    end
+
+    # 1 回目は立たせるだけ（札と同じ押し方）。詳細はまだ開かない
+    html = click.()
+    assert html =~ "has-pick"
+    refute html =~ ~s(id="edge-name")
+
+    # 立つのは小津安二郎の 2 本だけ（七人の侍は沈む）
+    near =
+      for [_, name] <-
+            Regex.scan(
+              ~r|<g[^>]*class="relation-node[^"]*is-near[^"]*"[^>]*phx-value-name="([^"]*)"|s,
+              html
+            ),
+          do: name
+
+    assert Enum.sort(near) == Enum.sort(["東京物語", "秋刀魚の味"])
+
+    # もう一度押すと詳細
+    assert click.() =~ ~s(id="edge-name")
+  end
+
+  test "収集の画面には図を取り直す口を出さない（図を描かない）", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/collect/relations?view=painters")
+    assert html =~ "芸術家の設定"
+    refute html =~ "最新の情報を取得"
+
+    {:ok, _live, html} = live(conn, ~p"/relations?view=painters")
+    assert html =~ "最新の情報を取得"
+  end
+
+  test "関連図の収集の画面に、この図の収集の最近の回を出す", %{conn: conn} do
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+
+    Chidori.HttpStub.stub(fn %{url: url} ->
+      if url =~ "/v1/collect/changes?" and url =~ ~r/name=chidori_painters(&|$)/,
+        do:
+          Chidori.HttpStub.ok(
+            Jason.encode!(%{
+              "changes" => [
+                %{
+                  "at" => "2026-10-24T03:07:51+00:00",
+                  "status" => "ok",
+                  "sweep" => "ざっと見る",
+                  "added" => 0,
+                  "updated" => 1,
+                  "removed" => 0,
+                  "updated_titles" => ["クロード・モネ"]
+                }
+              ]
+            })
+          ),
+        else:
+          if(url =~ "/v1/collect/chidori_painters/diff?",
+            do:
+              Chidori.HttpStub.ok(
+                Jason.encode!(%{
+                  "what" => "rewritten",
+                  "compared" => "kept",
+                  "changed_by" => "ざっと見る",
+                  "now_stamp" => "20261024030751",
+                  "before_stamp" => "",
+                  "tags_added" => ["様式:印象派"],
+                  "tags_removed" => [],
+                  "extra" => [%{"key" => "fame_scale", "before" => "1.0", "after" => "1.4"}],
+                  "body_diff" => ["@@ -1 +1 @@", "-旧い説明", "+新しい説明"],
+                  "body_full" => ""
+                })
+              ),
+            else:
+              Chidori.HttpStub.ok(~s({"collections":[],"backends":[],"results":[],"changes":[]}))
+          )
+    end)
+
+    {:ok, live, _html} = live(conn, ~p"/collect/relations?view=painters")
+    assert wait_until(fn -> render(live) =~ "クロード・モネ" end)
+    html = render(live)
+    assert html =~ "最近の回"
+    assert html =~ "ざっと見る"
+
+    # 見出しを押すと、Chiezo の管理画面へ飛ばずにこの画面の上で変更が開く
+    live |> element(~s(button.doc-diff-link[phx-value-title="クロード・モネ"])) |> render_click()
+    assert wait_until(fn -> render(live) =~ "新しい説明" end)
+    html = render(live)
+    assert html =~ "クロード・モネ の変更"
+    assert html =~ "「ざっと見る」が書き換えたもの"
+    assert html =~ "様式:印象派"
+    assert html =~ "1.0 → 1.4"
+    assert html =~ ~s(<span class="removed">-旧い説明)
+
+    refute live |> element(~s(#doc-diff button[phx-click="close"])) |> render_click() =~
+             "新しい説明"
+  end
+
   test "知らない種類は関連図のタブの先頭に丸める", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/relations?view=%2E%2E%2F")
 
@@ -757,6 +882,49 @@ defmodule ChidoriWeb.RelationsLiveTest do
       assert Enum.map(drawn, & &1.id) == ["big"]
     end
 
+    test "選んだ札は小さくても、大きい相手と重なっても描く" do
+      # 相手の大きい札に場所を取られて、選んだ札だけが消えていた
+      big = node("big", 100, 100, 30)
+      tiny = node("tiny", 102, 102, 1)
+      viewport = %{x: 0, y: 0, w: 400, h: 400, ppu: 1.0}
+      relation = %{graph([big, tiny]) | edges: [%{from: "big", to: "tiny", kind: :costar}]}
+
+      drawn =
+        RelationsLive.drawn_nodes(relation, viewport, %{
+          id: "tiny",
+          near: MapSet.new(["tiny", "big"])
+        })
+
+      assert Enum.sort(Enum.map(drawn, & &1.id)) == ["big", "tiny"]
+    end
+
+    test "選んだ札の鎖の先（同じ主演の 2 つ先の作品）は、小さくても描く" do
+      # 鎖の先が間引かれると、そこへの線も引けず、鎖が 1 本目で途切れて見えた
+      a = node("a", 50, 50, 30)
+      b = node("b", 150, 150, 30)
+      c = node("c", 250, 250, 1)
+      stranger = node("stranger", 300, 300, 1)
+      viewport = %{x: 0, y: 0, w: 400, h: 400, ppu: 1.0}
+
+      relation = %{
+        graph([a, b, c, stranger])
+        | edges: [
+            %{from: "a", to: "b", kind: :costar, label: "甲", via: "主演", value: "甲"},
+            %{from: "b", to: "c", kind: :costar, label: "甲", via: "主演", value: "甲"}
+          ]
+      }
+
+      pick =
+        RelationsLive.pick_of(
+          %{relation | nodes: Enum.map(relation.nodes, &Map.put(&1, :name, &1.id))},
+          "a"
+        )
+
+      drawn = RelationsLive.drawn_nodes(relation, viewport, pick)
+      assert Enum.sort(Enum.map(drawn, & &1.id)) == ["a", "b", "c"]
+      assert length(RelationsLive.edge_lines(relation, drawn)) == 2
+    end
+
     test "描かれていない相手への線は引かない" do
       # 片方しか出ていない線は、どこへ向かうのか読めないまま画面の外へ消える
       a = node("a", 10, 10, 30)
@@ -1246,6 +1414,10 @@ defmodule ChidoriWeb.RelationsLiveTest do
 
       Chidori.HttpStub.stub(fn %{url: url} ->
         cond do
+          # 最近の回は設定とは別に読む（待たせない）
+          String.contains?(url, "/v1/collect/changes") ->
+            Chidori.HttpStub.ok(~s({"changes":[]}))
+
           String.contains?(url, "/v1/collect") or String.contains?(url, "/v1/ai/backends") ->
             # 読みに来たことを知らせて、テストが許すまで待つ
             send(test_pid, {:settings_asked, self()})

@@ -838,6 +838,9 @@ defmodule Chidori.Relations do
   defp public(state, key) do
     state.relations
     |> Map.fetch!(key)
+    # **見出しはいつも定義から**（読み込んだ図は起動したときの定義を抱えたまま残るので、
+    # 見出しを改めても取り直すまで古い名前が出ていた）
+    |> Map.merge(Map.take(@views[key], [:title, :eyebrow]))
     |> Map.put(:status, Map.fetch!(state.statuses, key))
     |> Map.put(:collected_at, Map.get(state.collected_at, key))
     |> Map.put(:checked_at, Map.get(state.checked_at, key))

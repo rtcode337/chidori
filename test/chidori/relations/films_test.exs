@@ -63,10 +63,63 @@ defmodule Chidori.Relations.FilmsTest do
       assert Enum.any?(lit, &(&1.from == ids["用心棒"] and &1.to == ids["赤ひげ"]))
     end
 
-    test "縦は作品ごとの公開年の順", %{graph: graph} do
+    test "共通項の線を押すと、その人の作品だけが立つ（札を押したときのように全部の共通項は立てない）",
+         %{graph: graph} do
+      ids = Map.new(graph.nodes, &{&1.name, &1.id})
+      [ozu] = Enum.filter(graph.edges, &(&1.kind == :director and &1.label == "小津安二郎"))
+      pick = ChidoriWeb.RelationsLive.pick_of(graph, {ozu.from, ozu.to, ozu.kind})
+
+      assert pick.id == nil
+      assert pick.near == MapSet.new([ids["東京物語"], ids["新作"]])
+      lit = Enum.filter(graph.edges, &ChidoriWeb.RelationsLive.lit?(pick, &1))
+      assert lit == [ozu]
+
+      # 黒澤明の線を押すと黒澤明の 3 本だけ（同じ 2 本を結ぶ三船敏郎の線も、共通項の線なので
+      # 黒澤明の鎖には載らない）
+      kurosawa = Enum.find(graph.edges, &(&1.kind == :director and &1.label == "黒澤明"))
+      pick = ChidoriWeb.RelationsLive.pick_of(graph, {kurosawa.from, kurosawa.to, :director})
+      assert pick.near == MapSet.new([ids["七人の侍"], ids["用心棒"], ids["赤ひげ"]])
+
+      refute Enum.any?(
+               graph.edges,
+               &(&1.kind == :costar and ChidoriWeb.RelationsLive.lit?(pick, &1))
+             )
+    end
+
+    test "2 本の作品が主演を 2 人とも共にしていても、2 人目の主演の先まで立つ" do
+      # 線は 1 組 1 本に畳むので、畳んだ線が 2 人目の値を持っていないと、その人の鎖が押した札から始まらない
+      docs = [
+        doc("一作目", ~w(映画 年代:1950 国:日本 主演:甲 主演:乙)),
+        doc("二作目", ~w(映画 年代:1955 国:日本 主演:甲 主演:乙)),
+        doc("三作目", ~w(映画 年代:1960 国:日本 主演:甲))
+      ]
+
+      graph = Graph.from_docs(docs, Films.graph_spec())
+      ids = Map.new(graph.nodes, &{&1.name, &1.id})
+      pick = ChidoriWeb.RelationsLive.pick_of(graph, "一作目")
+
+      assert MapSet.member?(pick.near, ids["三作目"])
+      lit = Enum.filter(graph.edges, &ChidoriWeb.RelationsLive.lit?(pick, &1))
+      assert Enum.any?(lit, &(&1.from == ids["二作目"] and &1.to == ids["三作目"]))
+
+      # 一作目と二作目のあいだは 1 本のまま（網にしない）
+      assert Enum.count(
+               graph.edges,
+               &(Enum.sort([&1.from, &1.to]) == Enum.sort([ids["一作目"], ids["二作目"]]))
+             ) == 1
+    end
+
+    test "縦は作品ごとの公開年の順で、上が新しい", %{graph: graph} do
+      # 見に来るのは最近の作品のほう。古い順だと、新しい作品が図の下の端に溜まる
       y = Map.new(graph.nodes, &{&1.name, &1.y})
-      assert y["赤ひげ"] < y["新作"]
-      assert y["七人の侍"] <= y["用心棒"]
+      assert y["新作"] < y["赤ひげ"]
+      assert y["用心棒"] <= y["七人の侍"]
+
+      # 目盛りも同じ向き（新しい年ほど上）
+      ticks = Enum.sort_by(graph.ticks, & &1.y)
+      years = Enum.map(ticks, & &1.year)
+      assert years == Enum.sort(years, :desc)
+      assert Enum.all?(graph.nodes, &(&1.y > 0 and &1.y < graph.height))
     end
 
     test "横は国の帯。合作は先に挙げた帯（日本）に入る", %{graph: graph} do

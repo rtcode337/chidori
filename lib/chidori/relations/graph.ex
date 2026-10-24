@@ -345,6 +345,7 @@ defmodule Chidori.Relations.Graph do
         relation[:band_order] || region_bands(),
         relation[:cluster_rule]
       )
+      |> oriented(relation[:newest_first] == true)
 
     fame = Map.new(laid.nodes, &{&1.article, &1[:views] || 0})
 
@@ -352,7 +353,7 @@ defmodule Chidori.Relations.Graph do
     |> Map.merge(%{
       nodes: refit(laid.nodes, fame),
       edges: mark_framed(edges, laid[:clusters] || []),
-      ticks: ticks(laid.nodes),
+      ticks: laid.ticks,
       bands: laid.bands,
       clusters: paint_clusters(laid[:clusters] || [], laid.nodes),
       height: laid.height
@@ -405,7 +406,8 @@ defmodule Chidori.Relations.Graph do
     edges = edges(docs, by_name, spec)
     order = band_order(spec)
     clusters = spec[:clusters]
-    laid = arrange(nodes, edges, nil, order, clusters)
+    newest_first = spec[:newest_first] == true
+    laid = nodes |> arrange(edges, nil, order, clusters) |> oriented(newest_first)
     hues = style_hues(laid.nodes)
     counts = laid.nodes |> Enum.flat_map(&styles_of/1) |> Enum.frequencies()
 
@@ -439,7 +441,9 @@ defmodule Chidori.Relations.Graph do
       # **枠に入っているメンバーへの線は描かない**（枠で分かる。印を付けるだけで、
       # 線そのものは残す —— 絞り込んで置き直すときに、枠をこの線から組み直す）
       edges: mark_framed(edges, laid[:clusters] || []),
-      ticks: ticks(laid.nodes),
+      ticks: laid.ticks,
+      # 上を新しい年にする図か（映画）。絞り込んで置き直すときも同じ向きにする
+      newest_first: newest_first,
       bands: laid.bands,
       # 色の凡例に使う（様式・人数・色相）。**図に出ているものだけ**を数える
       styles:
@@ -963,8 +967,14 @@ defmodule Chidori.Relations.Graph do
         }
       end)
     end)
-    # 同じ 2 本を 2 人の主演が共にしていても 1 本（字は先に来た人）
-    |> Enum.uniq_by(&Enum.sort([&1.from, &1.to]))
+    # 同じ 2 本を 2 人の主演が共にしていても 1 本（字は先に来た人）。**共通項は全部持たせる**
+    # （`values`）—— 1 つに畳むと、捨てた人の鎖がこの線で途切れ、札を押してもその人の
+    # ほかの作品が立たなかった
+    |> Enum.group_by(&Enum.sort([&1.from, &1.to]))
+    |> Enum.map(fn {_pair, [first | _] = same} ->
+      Map.put(first, :values, Enum.map(same, & &1.value))
+    end)
+    |> Enum.sort_by(&{&1.value, &1.from, &1.to})
   end
 
   # 1 つの決まりぶんの線。**名指しされた側か、文書の主か**から向きを決める
@@ -1087,6 +1097,27 @@ defmodule Chidori.Relations.Graph do
 
   # 置き方の入口。**グループを枠にする図**（`clusters`）は横の帯を持たず、
   # メンバーをまとめて置く（`cluster_layout/4`）。それ以外は帯に割る（`layout/4`）
+  # **上下の向き。** 置き方は古い年を上から並べる。上を新しい年にする図（映画。
+  # `newest_first`）は、置き終えた図を上下に裏返す —— 置き方そのものを変えると、
+  # 混み具合で行を詰める決まりまで書き直すことになる。目盛りは裏返す前の向きで
+  # 拾ってから裏返す（`ticks/1` は上から年が戻らないものを拾う）
+  defp oriented(laid, false), do: Map.put(laid, :ticks, ticks(laid.nodes))
+
+  defp oriented(laid, true) do
+    height = laid.height
+    flip = fn y -> Float.round(height - y * 1.0, 1) end
+
+    laid
+    |> Map.put(:nodes, Enum.map(laid.nodes, &%{&1 | y: flip.(&1.y)}))
+    |> Map.put(
+      :clusters,
+      Enum.map(laid[:clusters] || [], fn cluster ->
+        %{cluster | y: flip.(cluster.y + Map.get(cluster, :height, 0))}
+      end)
+    )
+    |> Map.put(:ticks, laid.nodes |> ticks() |> Enum.map(&%{&1 | y: flip.(&1.y)}))
+  end
+
   defp arrange(nodes, edges, columns, order, nil), do: layout(nodes, edges, columns, order)
 
   defp arrange(nodes, edges, columns, _order, rule),

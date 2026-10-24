@@ -942,15 +942,30 @@ defmodule Chidori.Chiezo do
   defp parse_time(_text), do: nil
 
   @doc """
-  Chiezo の画面で、1 件の「直す前との違い」を開く URL（収集の 1 件のページ）。
+  1 件が**どう書き換わったか**（Chiezo の `GET /v1/collect/{name}/diff`）。管理画面の差分の面と
+  同じ比べ方で、`what`・`compared`・タグの出入り・脇書きの変化・本文の行の差分を返す。
+  `{:ok, map}` か `{:error, 理由}`。
   """
-  def doc_page_url(name, title) when is_binary(name) and is_binary(title) do
-    link(
-      "/admin/collect/" <>
+  def doc_diff(base, name, title) when is_binary(name) and is_binary(title) do
+    url =
+      base <>
+        "/v1/collect/" <>
         URI.encode(name, &URI.char_unreserved?/1) <>
-        "/doc?" <>
-        URI.encode_query(%{"title" => title})
-    )
+        "/diff?" <> URI.encode_query(%{"title" => title})
+
+    case get(url) do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"what" => _} = diff} -> {:ok, diff}
+          _other -> {:error, :chiezo_unexpected_body}
+        end
+
+      {:ok, %{status: status, body: raw}} ->
+        {:error, {:chiezo_refused, status, reason_of(raw)}}
+
+      {:error, _reason} ->
+        {:error, :chiezo_unavailable}
+    end
   end
 
   @doc "溜まった件数。集めたものは長期記憶側にあるので、ソース表から取ります。"

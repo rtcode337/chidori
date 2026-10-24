@@ -80,7 +80,9 @@
         <.link navigate={"/relations?view=#{@view}"}>図を見る画面へ</.link>
       </p>
 
-      <.checked_line relation={@relation} />
+      <%!-- **収集の画面には出さない**（図を描かないので、図を取り直す口は要らない。
+           区画の未レビューの数だけは図から数えるので、その表の横で取り直す） --%>
+      <.checked_line :if={!@collect_mode} relation={@relation} />
 
       <%!-- 図に無い映画も、見た記録を付けられる。**記録はその場で書き**、図へは AI に
            足させる（載るのは取り込みが終わってから）。それまでのあいだ、記録だけある
@@ -143,7 +145,8 @@
          散らばって拡大しないと読めず、絞った意味が無い --%>
       <% shown = shown(@relation, assigns) %>
       <%!-- 1 回押した札。その札・線・線の先を目立たせ、ほかを沈める（もう一度押すと詳細） --%>
-      <% pick = pick_of(shown, @picked) %>
+      <%!-- 1 回押した線は、その線と両端（共通項の線ならその人の作品の鎖）を立たせる（札は選ばない） --%>
+      <% pick = pick_of(shown, @picked_edge || @picked) %>
       <%!-- **器の縦横比は図に合わせる。** 画家の図は縦に長い（幅 1,200 に対して高さ
          2,000 超）ので、画面の高さで切った器では拡大しないと下が見えず、全体を
          入れようと縮めると札が小さすぎて 1 枚も描けない。図と同じ比にすれば、
@@ -300,7 +303,7 @@
              引き当ててある（`edge_lines/2`）—— ここで探すとノード数 × エッジ数の
              線形探索になる --%>
           <%!-- 目立たせている札の線の先は、小さくても描く（探して選んだ人と同じ） --%>
-          <% drawn = drawn_nodes(shown, @viewport, (pick && pick.id) || @focus) %>
+          <% drawn = drawn_nodes(shown, @viewport, pick || @focus) %>
           <%= for edge <- edge_lines(shown, drawn) do %>
             <line
               x1={edge.x1}
@@ -799,7 +802,14 @@
                      読み直すが、未レビューの数は図を取得したときの画家から数える ——
                      図を取り直さないと、見た印だけが進んで数が食い違って見える --%>
                 <strong>未レビューの数は、図を最後に取得した時点（{unreviewed_as_of(@relation)}）のものです。</strong>
-                最新にするには、ページ上部の「最新の情報を取得」を押してください。
+                <button
+                  type="button"
+                  class="inline-reload"
+                  phx-click="reload"
+                  disabled={reloading?(@relation)}
+                >
+                  {if reloading?(@relation), do: "取り直しています…", else: "未レビューの数を取り直す"}
+                </button>
                 区画は「地域 × 生年」で切ってあります。 <strong>「ざっと見る」</strong>
                 は未レビューの人に目を通して空欄を埋める回、 <strong>「整理」</strong>
                 は漏れ探しと磨きの回として、その区画を先に見てもらいます（印が付くので、巡回が同じところをもう一度見ることはありません）。
@@ -897,6 +907,15 @@
               <pre>{prompt_text(cfg, @view)}</pre>
             </details>
         <% end %>
+
+        <%!-- 最近の回の見出しを押したときの、1 件の変更（この画面の上に重ねて開く） --%>
+        <.live_component module={ChidoriWeb.DocDiff} id="doc-diff" />
+        <%!-- **最近の回**（Chiezo の変更履歴。設定欄を開いたときに読む。`ChidoriWeb.RecentRuns`） --%>
+        <.recent_runs
+          runs={@recent_runs}
+          collection={Chidori.Relations.collection_of(@view)}
+          reload="reload_recent_runs"
+        />
       </div>
     </section>
 

@@ -41,6 +41,7 @@ Chidori は Chiezo の「集める」層に収集を頼み、溜まったもの�
 - Chiezo の管理画面のボタンと同じ操作（やり直す・一周をやり直す・区画を割り直す・未確認に戻す・取り込みを止める・検索文の控え・
   ワーカーを止める / 動かす / 起こす）は収集の画面から頼む（`Chidori.Chiezo.operate/3`・`queries/2`・`forget_queries/3`・
   `pause_worker/3`・`wake_worker/2`）。断られたら Chiezo の言い分をそのまま出す。取り消せない操作は Chiezo の管理画面だけ
+- 最近の回・依頼の結果の見出しを押したら、1 件の変更を Chidori の画面の上に開く（`ChidoriWeb.DocDiff`・`Chiezo.doc_diff/3` → Chiezo の `GET /v1/collect/{name}/diff`）。Chiezo の管理画面へは飛ばさない
 - 巡回を今すぐ 1 回走らせるのは各収集の画面の巡回の表（`ChidoriWeb.RunSweepButton`。状態は部品が持つ。人が押した 1 回として `by_hand/1`）
 - 整理を自動で回さない収集は `by_caller`（Chiezo の巡回の時計だけを外す）。選んだものは表 `tidy_stops` に覚え、送り直すたびに載せる
 - 巡回の名前は `Chidori.SweepNames` から選ぶ。仕事が同じなら同じ名前にし、当てはまらない仕事が出たときだけ足す

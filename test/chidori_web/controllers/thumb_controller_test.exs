@@ -53,8 +53,8 @@ defmodule ChidoriWeb.ThumbControllerTest do
 
     assert Chidori.Chiezo.url("/v1/sources") == "http://chiezo-app:7010/v1/sources"
 
-    assert Chidori.Chiezo.doc_page_url("chidori_dining_1", "店") ==
-             "http://chiezo.example.lan:7010/admin/collect/chidori_dining_1/doc?title=%E5%BA%97"
+    assert Chidori.Chiezo.link("/admin/collect") ==
+             "http://chiezo.example.lan:7010/admin/collect"
 
     # 書いていなければ、引く宛先と同じ
     System.delete_env("CHIEZO_PUBLIC_URL")

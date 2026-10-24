@@ -1275,6 +1275,16 @@ a.top-book-cover { display: block; }
 /* 巡回を今すぐ 1 回（各収集の画面の巡回の表。`ChidoriWeb.RunSweepButton`） */
 .run-sweep { margin-top: .3rem; font-size: .8rem; }
 .run-sweep p { margin: .2rem 0 0; }
+/* 最近の回・依頼の結果の見出し（押すと 1 件の変更がこの画面の上に開く。`ChidoriWeb.DocDiff`） */
+/* **前のリンクと同じ見た目に**。設定の枠の中のボタン（`.settings-panel button`。紫の塗り）に負けないよう、
+   枠の中の一覧として指定を強くする */
+.request-changes .doc-diff-link { display: inline; padding: 0; border: 0; border-radius: 0; background: none; color: #4338a8; font: inherit; font-weight: 400; line-height: inherit; text-align: left; text-decoration: underline; cursor: pointer; overflow-wrap: anywhere; }
+.request-changes .doc-diff-link:hover { color: #28235e; }
+.doc-diff-detail .removed { color: #b42318; }
+.doc-diff-body { max-height: 50vh; overflow: auto; padding: .6rem; border-radius: .5rem; background: #f6f7fb; font-size: .82rem; white-space: pre-wrap; }
+.doc-diff-body .added { display: block; background: #e8f6ec; color: #1d6b38; }
+.doc-diff-body .removed { display: block; background: #fdecea; }
+.doc-diff-extra { margin: .2rem 0 .6rem; padding-left: 1.1rem; font-size: .85rem; }
 /* 技術書の収集の「これまで検索に使った語」（畳んでおく） */
 .search-queries { margin: 1rem 0; }
 .search-queries > summary { font-weight: 700; cursor: pointer; }

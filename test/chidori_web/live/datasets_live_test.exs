@@ -1041,7 +1041,10 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       assert log.status == "sent"
       assert html =~ "依頼の結果"
       assert html =~ "足した 25 ・直した 1 ・消した 1"
-      assert html =~ "/admin/collect/chidori_dining_1/doc?title="
+
+      # 見出しは Chiezo の管理画面へ飛ばさず、この画面の上で変更を開く（`ChidoriWeb.DocDiff`）
+      assert html =~ ~r|phx-target="#doc-diff"[^>]*phx-value-collection="chidori_dining_1"|s
+      refute html =~ "/admin/collect/chidori_dining_1/doc?title="
 
       # 控えは頼まずに捨てられる
       html =

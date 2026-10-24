@@ -255,6 +255,8 @@ defmodule Chidori.Relations.Films do
       band_prefix: @country_prefix,
       bands: @country_bands,
       works?: false,
+      # **上を新しい年に**（見に来るのは最近の作品のほう。古い順だと、新しい作品が図の下の端に溜まる）
+      newest_first: true,
       edge_rules: [
         %{prefix: @director_prefix, kind: :director, shared: true, undirected: true},
         %{prefix: @star_prefix, kind: :costar, shared: true, undirected: true}

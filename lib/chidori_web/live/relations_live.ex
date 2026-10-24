@@ -10,6 +10,7 @@ defmodule ChidoriWeb.RelationsLive do
 
   import ChidoriWeb.Collect
   import ChidoriWeb.CollectPanel
+  import ChidoriWeb.RecentRuns, only: [recent_runs: 1]
 
   alias Chidori.Jst
   alias Chidori.Relations
@@ -69,6 +70,9 @@ defmodule ChidoriWeb.RelationsLive do
        # 1 回押した札の名前（その札と線と線の先を目立たせる。もう一度押すと詳細が開く）。
        # **名前で持つ** —— 図は読み直すたびに id が振り直される（印と同じ理由）
        picked: nil,
+       # 1 回押した線（`{from, to, kind}`）。その線と両端を立たせる。共通項の線（同じ監督・
+       # 同じ主演）なら、その人の作品だけを鎖ごと立たせる。もう一度押すと詳細
+       picked_edge: nil,
        # 開いている作品の主演のうち、芸能人の図に載っている人（映画の図。押すとその人へ飛ぶ）
        star_people: MapSet.new(),
        # URL の `focus` で名指しされた人。**図がまだ読めていなければ、読めたときに寄る**
@@ -79,6 +83,8 @@ defmodule ChidoriWeb.RelationsLive do
        # settings は nil（まだ）/ :loading / 読めたもの / {:error, 理由}
        settings_open: false,
        settings: nil,
+       # この図の収集の最近の回（設定欄を開いたときに読む）
+       recent_runs: [],
        # 「見た」印。**ノード名で引く** —— 図は読み直すたびに id が振り直されるので、
        # id で持つと印が別人へ移る
        marks: %{},
@@ -191,6 +197,7 @@ defmodule ChidoriWeb.RelationsLive do
         # 図を切り替えたら設定は読み直す（別の収集のもの）
         settings_open: false,
         settings: nil,
+        recent_runs: [],
         pending_focus: params["focus"],
         detail: nil,
         edge: nil
@@ -265,6 +272,9 @@ defmodule ChidoriWeb.RelationsLive do
   end
 
   # **取り直す口。** 開くたびに聞きに行くのをやめた代わりに、押したときだけ取りに行く
+  def handle_event("reload_recent_runs", _params, socket),
+    do: {:noreply, load_recent_runs(socket)}
+
   def handle_event("reload", _params, socket) do
     Relations.refresh(socket.assigns.view)
     {:noreply, socket}
@@ -342,12 +352,13 @@ defmodule ChidoriWeb.RelationsLive do
       # 1 回目は、その札と線と線の先を目立たせるだけ（トピックの網と同じ押し方）。
       # いきなり詳細を開くと、図の上でどこと繋がっているかを見る前に覆われる
       true ->
-        {:noreply, assign(socket, picked: name)}
+        {:noreply, assign(socket, picked: name, picked_edge: nil)}
     end
   end
 
   # 余白を押したら目立たせるのをやめる（`relation_map.js`）
-  def handle_event("unpick", _params, socket), do: {:noreply, assign(socket, picked: nil)}
+  def handle_event("unpick", _params, socket),
+    do: {:noreply, assign(socket, picked: nil, picked_edge: nil)}
 
   # 影響の線を押したら、**何をもって影響元としたか**を出す。
   #
@@ -376,33 +387,21 @@ defmodule ChidoriWeb.RelationsLive do
     edges = socket.assigns.relation.edges
     edge = Enum.find(edges, fn e -> e.from == from and e.to == to and e.kind == kind end)
 
-    if edge && nodes[from] && nodes[to] do
-      {:noreply,
-       assign(socket,
-         edge: %{
-           from: nodes[from],
-           to: nodes[to],
-           label: edge.label,
-           kind: kind,
-           excerpt: edge[:excerpt] || [],
-           # **逆向きの影響も書かれているか**（互いに影響し合った組）
-           mutual: Enum.any?(edges, &(&1.from == to and &1.to == from and &1.kind == :influence)),
-           # 受けた側が、ほかに誰から受けているか。**この線だけを見て「この人から
-           # 学んだ画家」と読まないため** —— 影響元が 5 人いる 1 本かもしれない
-           others:
-             for(
-               e <- edges,
-               e.kind == :influence and e.to == to and e.from != from,
-               other = nodes[e.from],
-               do: other.name
-             )
-         },
-         detail: nil,
-         artwork: nil,
-         portrait: nil
-       )}
-    else
-      {:noreply, socket}
+    key = {from, to, kind}
+
+    cond do
+      edge == nil or nodes[from] == nil or nodes[to] == nil ->
+        {:noreply, socket}
+
+      # **1 回目は立たせるだけ**（札と同じ押し方）。共通項の線（同じ監督・同じ主演）なら、
+      # その人の作品だけを鎖ごと立たせる —— 札を押したときは札の共通項の全部が立つので、
+      # 1 人に絞って見たいときの口になる。いきなり詳細を開くと、図の上で鎖を見る前に覆われる
+      socket.assigns.picked_edge != key ->
+        {:noreply, assign(socket, picked: nil, picked_edge: key, edge: nil)}
+
+      # もう一度押したら詳細
+      true ->
+        {:noreply, open_edge(socket, edge, nodes, from, to, kind)}
     end
   end
 
@@ -706,6 +705,11 @@ defmodule ChidoriWeb.RelationsLive do
   def fold(text), do: text |> String.normalize(:nfkc) |> String.downcase()
 
   @impl true
+  def handle_async(:recent_runs, {:ok, {:ok, runs}}, socket),
+    do: {:noreply, assign(socket, recent_runs: runs)}
+
+  def handle_async(:recent_runs, _result, socket), do: {:noreply, socket}
+
   def handle_async(:settings, {:ok, {:ok, loaded}}, socket),
     do: {:noreply, assign(socket, settings: loaded)}
 
@@ -853,6 +857,19 @@ defmodule ChidoriWeb.RelationsLive do
     socket
     |> assign(settings: :loading)
     |> start_async(:settings, fn -> Relations.settings(view, nodes) end)
+    |> load_recent_runs()
+  end
+
+  # **この図の収集の最近の回**（Chiezo の変更履歴をそのまま新しい順に。依頼の印は付かない）
+  defp load_recent_runs(socket) do
+    name = Relations.collection_of(socket.assigns.view)
+
+    start_async(socket, :recent_runs, fn ->
+      with base when is_binary(base) <- Chidori.News.chiezo_base_url(),
+           {:ok, rows} <- Chidori.Chiezo.changes(base, name, limit: 10) do
+        {:ok, Enum.map(rows, &%{change: &1, by_request: false})}
+      end
+    end)
   end
 
   @doc """
@@ -1279,7 +1296,16 @@ defmodule ChidoriWeb.RelationsLive do
   範囲がまだ分からないとき（画面が繋がる前）は、全体が見えている前提で選びます。
   """
   def drawn_nodes(relation, viewport, focus \\ nil) do
-    kept = neighbourhood(relation, focus)
+    # **選んだ札（`pick_of/2`）なら、同じ監督・同じ主演の鎖の先まで必ず描く**（`near`）。
+    # 線の先しか残していなかった頃は、鎖の 2 つ先の作品が小さいと間引かれ、そこへの線も
+    # 引けないので、鎖が 1 本目で途切れて見えた。探して選んだ人（id）は今までどおり線の先まで
+    {focus_id, kept} =
+      case focus do
+        %{id: id, near: near} -> {id, near}
+        nil -> {nil, MapSet.new()}
+        id -> {id, neighbourhood(relation, id)}
+      end
+
     couples = couples(relation)
 
     shown =
@@ -1297,15 +1323,23 @@ defmodule ChidoriWeb.RelationsLive do
       MapSet.member?(kept, node.id) or MapSet.member?(shown, node.id) or
         (MapSet.member?(partners, node.id) and visible?(node, viewport))
     end)
-    # 探して選んだ人とその相手を先に、次に夫婦の組、あとは大きい順に。
-    # **置く順がそのまま優先順**で、先に置いたものが場所を取る
+    # **選んだ札そのものを先頭に**、次にその相手、次に夫婦の組、あとは大きい順に。
+    # **置く順がそのまま優先順**で、先に置いたものが場所を取る —— 選んだ札が小さいと、
+    # 相手の大きい札に場所を取られて、選んだ札だけが消えていた
     |> Enum.sort_by(fn node ->
-      {!MapSet.member?(kept, node.id), !Map.has_key?(couples, node.id), -radius_of(node)}
+      {node.id != focus_id, !MapSet.member?(kept, node.id), !Map.has_key?(couples, node.id),
+       -radius_of(node)}
     end)
-    # 重なりを見るのは総当たりなので、見る数に蓋をする
-    |> Enum.take(@max_drawn * 4)
-    |> without_overlap()
-    |> Enum.take(@max_drawn)
+    # 重なりを見るのは総当たりなので、見る数に蓋をする（選んだ札とその相手は数えずに残す）
+    |> then(fn nodes ->
+      {must, rest} = Enum.split_with(nodes, &MapSet.member?(kept, &1.id))
+      must ++ Enum.take(rest, @max_drawn * 4)
+    end)
+    |> without_overlap(kept)
+    |> then(fn nodes ->
+      {must, rest} = Enum.split_with(nodes, &MapSet.member?(kept, &1.id))
+      must ++ Enum.take(rest, max(@max_drawn - length(must), 0))
+    end)
   end
 
   # 夫婦の組（id → 相手の id の並び）。夫婦の線を持たない図では空
@@ -1326,12 +1360,14 @@ defmodule ChidoriWeb.RelationsLive do
   #
   # **消えたものは拡大すると出てくる。** 拡大するほど見える範囲が狭まり、
   # 同じ場所を取り合う相手が減るため。
-  defp without_overlap(candidates) do
+  # **選んだ札とその相手（`keep`）は重なっても落とさない** —— 見たいのはその鎖で、
+  # 落とすと線ごと消える。ほかの札は、それらの場所を避けて描く。
+  defp without_overlap(candidates, keep) do
     candidates
     |> Enum.reduce({[], []}, fn node, {drawn, boxes} ->
       box = label_box(node)
 
-      if Enum.any?(boxes, &overlap?(&1, box)),
+      if not MapSet.member?(keep, node.id) and Enum.any?(boxes, &overlap?(&1, box)),
         do: {drawn, boxes},
         else: {[node | drawn], [box | boxes]}
     end)
@@ -1357,11 +1393,61 @@ defmodule ChidoriWeb.RelationsLive do
     a.left < b.right and b.left < a.right and a.top < b.bottom and b.top < a.bottom
   end
 
+  # 線の詳細（2 回目に押したとき）
+  defp open_edge(socket, edge, nodes, from, to, kind) do
+    edges = socket.assigns.relation.edges
+
+    assign(socket,
+      edge: %{
+        from: nodes[from],
+        to: nodes[to],
+        label: edge.label,
+        kind: kind,
+        excerpt: edge[:excerpt] || [],
+        # **逆向きの影響も書かれているか**（互いに影響し合った組）
+        mutual: Enum.any?(edges, &(&1.from == to and &1.to == from and &1.kind == :influence)),
+        # 受けた側が、ほかに誰から受けているか。**この線だけを見て「この人から
+        # 学んだ画家」と読まないため** —— 影響元が 5 人いる 1 本かもしれない
+        others:
+          for(
+            e <- edges,
+            e.kind == :influence and e.to == to and e.from != from,
+            other = nodes[e.from],
+            do: other.name
+          )
+      },
+      detail: nil,
+      artwork: nil,
+      portrait: nil
+    )
+  end
+
   @doc """
   目立たせる札（`picked` は札の名前）。`%{id: 札の id, near: 線の先の id の集まり（札を含む）}`。
   図に出ていない（絞り込みで外れた）札なら nil。
   """
   def pick_of(_relation, nil), do: nil
+
+  # 1 回押した線（`{from, to, kind}`）。札は選ばず、その線と両端を立たせる。共通項の線
+  # （同じ監督・同じ主演）なら、その人の作品だけを鎖ごと立たせる。図に無い線なら nil
+  def pick_of(relation, {from, to, kind}) do
+    case Enum.find(relation.edges, &(&1.from == from and &1.to == to and &1.kind == kind)) do
+      nil ->
+        nil
+
+      edge ->
+        chains = MapSet.new(chains_of(edge))
+
+        near =
+          for other <- relation.edges,
+              on_chain?(chains, other),
+              id <- [other.from, other.to],
+              into: MapSet.new([from, to]),
+              do: id
+
+        %{id: nil, near: near, chains: chains, edge: {from, to, kind}}
+    end
+  end
 
   def pick_of(relation, name) do
     case Enum.find(relation.nodes, &(&1.name == name)) do
@@ -1374,13 +1460,13 @@ defmodule ChidoriWeb.RelationsLive do
         chains =
           for edge <- relation.edges,
               node.id in [edge.from, edge.to],
-              value = edge[:value],
+              chain <- chains_of(edge),
               into: MapSet.new(),
-              do: {edge.via, value}
+              do: chain
 
         near =
           for edge <- relation.edges,
-              MapSet.member?(chains, chain_of(edge)),
+              on_chain?(chains, edge),
               id <- [edge.from, edge.to],
               into: neighbourhood(relation, node.id),
               do: id
@@ -1404,9 +1490,20 @@ defmodule ChidoriWeb.RelationsLive do
   def lit?(nil, _edge), do: false
 
   def lit?(pick, edge),
-    do: pick.id in [edge.from, edge.to] or MapSet.member?(pick.chains, chain_of(edge))
+    do:
+      pick.id in [edge.from, edge.to] or on_chain?(pick.chains, edge) or
+        pick[:edge] == {edge.from, edge.to, edge.kind}
 
-  defp chain_of(edge), do: {edge[:via], edge[:value]}
+  # 線が載っている鎖（共通項ごとに 1 つ）。**2 本の作品が主演を 2 人とも共にしていると、
+  # 線は 1 本でも鎖は 2 つ**（`values`。`Graph` が畳むときに全部残す）
+  defp chains_of(edge) do
+    case edge[:values] || List.wrap(edge[:value]) do
+      [] -> []
+      values -> for value <- values, do: {edge[:via], value}
+    end
+  end
+
+  defp on_chain?(chains, edge), do: Enum.any?(chains_of(edge), &MapSet.member?(chains, &1))
 
   @doc """
   選んだ人と、その人に線で繋がっている相手。
@@ -1478,6 +1575,7 @@ defmodule ChidoriWeb.RelationsLive do
         # 共通項の線の鎖（札を押したときに鎖ごと立たせる）
         via: edge[:via],
         value: edge[:value],
+        values: edge[:values],
         # 押されたときに誰と誰の線かを引き当てる
         from: edge.from,
         to: edge.to,
