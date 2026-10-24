@@ -315,6 +315,12 @@ main.relations-page > div { padding-top: 0; }
 /* 見に行ったものの目印。**巡回で動いたもの(破線)とは別の見え方にする** ——
    同じ形にすると、自分が付けた印なのか Chiezo が動かしたのか読み分けられない */
 .relation-node.marked rect { stroke: #b45309; stroke-width: 3; }
+/* 見た作品（見た印のある札）。札の上の縁から黄色いしおりを垂らす（引いて見ても見分けられるように） */
+.relation-node.is-seen > rect { stroke: #ca8a04; stroke-width: 3; }
+.seen-flag-cloth { fill: #facc15; stroke: #a16207; stroke-width: 0.6px; stroke-linejoin: round; }
+.relation-node .seen-flag { pointer-events: none; }
+.seen-legend { margin: .4rem 0; }
+.seen-legend-flag { width: .8em; height: 1.1em; vertical-align: -0.2em; overflow: visible; }
 /* AI がまだ目を通していない人。**札ごと薄くする** —— 縁は「動いた」「見た」「選んだ」に
    使っているので、重ねても読み分けられるように形ではなく濃さで示す */
 .relation-node.unreviewed { opacity: .45; }

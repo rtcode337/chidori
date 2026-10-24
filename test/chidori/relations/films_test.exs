@@ -259,7 +259,45 @@ defmodule Chidori.Relations.FilmsTest do
       carried = film("サンプル映画 (映画)", ["記録:サンプル映画"])
 
       assert Films.mark_key(carried, %{"サンプル映画" => %Mark{}}) == "サンプル映画"
-      assert Films.mark_key(carried, %{}) == "サンプル映画 (映画)"
+      assert Films.mark_key(carried, %{"サンプル映画 (映画)" => %Mark{}}) == "サンプル映画 (映画)"
+
+      # まだ書いていなければ、**元の見出し（最新情報の見出し）で書く** —— 札の名前で書くと、
+      # 最新情報の画面では同じ作品に見た印が付かない
+      assert Films.mark_key(carried, %{}) == "サンプル映画"
+      # 引き継いでいない作品は札の名前
+      assert Films.mark_key(film("七人の侍", ["映画"]), %{}) == "七人の侍"
+    end
+
+    test "札の名前で書かれてしまった記録を、元の見出しへ移す" do
+      nodes = [
+        film("サンプル映画 (映画)", ["記録:サンプル映画"]),
+        film("両方ある (映画)", ["記録:両方ある"]),
+        film("七人の侍", ["映画"])
+      ]
+
+      marks = %{
+        "サンプル映画 (映画)" => %Mark{seen: true},
+        "両方ある (映画)" => %Mark{seen: true},
+        "両方ある" => %Mark{note: "こちらにも"},
+        "七人の侍" => %Mark{seen: true}
+      }
+
+      # 元の見出しに既にあるもの（2 つに割れたもの）と、引き継いでいない作品は動かさない
+      assert Films.misplaced_marks(marks, nodes) == [{"サンプル映画 (映画)", "サンプル映画"}]
+
+      {:ok, _} =
+        Chidori.Relations.Marks.put(Films.mark_view(), "サンプル映画 (映画)", %{
+          "seen" => true,
+          "seen_on" => "2026-10-18",
+          "note" => "IMAX で見た"
+        })
+
+      assert Films.align_marks(nodes) == 1
+      moved = Chidori.Relations.Marks.get(Films.mark_view(), "サンプル映画")
+      assert moved.seen and moved.seen_on == ~D[2026-10-18] and moved.note == "IMAX で見た"
+      refute Chidori.Relations.Marks.get(Films.mark_view(), "サンプル映画 (映画)")
+      # 2 回目は何もしない
+      assert Films.align_marks(nodes) == 0
     end
 
     test "図に載っていない記録を拾う" do

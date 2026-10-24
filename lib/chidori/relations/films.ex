@@ -53,6 +53,7 @@ defmodule Chidori.Relations.Films do
 
   alias Chidori.Chiezo
   alias Chidori.Relations.Graph
+  alias Chidori.Relations.Marks
 
   @kind_tag "映画"
   # 色と区画に使う国
@@ -164,8 +165,48 @@ defmodule Chidori.Relations.Films do
     cond do
       Map.has_key?(marks, name) -> name
       key = Enum.find(record_titles(node), &Map.has_key?(marks, &1)) -> key
+      # **引き継いだ作品は、元の見出し（最新情報の見出し）で書く** —— 札の名前で書くと、
+      # 最新情報の画面はその見出しでしか引かないので、同じ作品に見た印が付かない
+      title = List.first(record_titles(node)) -> title
       true -> name
     end
+  end
+
+  @doc """
+  **札の名前で書かれてしまった記録を、元の見出しへ移す組**（`[{札の名前, 元の見出し}]`）。
+  引き継いだ作品の記録を札の名前で書いていた頃のぶん（最新情報の画面で見た印が付かない）。
+  元の見出しに記録が既にあるものは動かさない（2 つに割れたものを勝手に畳まない）。
+  """
+  def misplaced_marks(marks, nodes) when is_map(marks) and is_list(nodes) do
+    for node <- nodes,
+        Map.has_key?(marks, node.name),
+        title = List.first(record_titles(node)),
+        title != nil and title != node.name,
+        not Map.has_key?(marks, title),
+        do: {node.name, title}
+  end
+
+  @doc """
+  札の名前で書かれた記録を元の見出しへ移す（`misplaced_marks/2`）。移した組の数を返す。
+  書き写してから元を消す（途中で落ちても記録が消えない順）。
+  """
+  def align_marks(nodes) when is_list(nodes) do
+    view = mark_view()
+    marks = Marks.for_view(view)
+
+    marks
+    |> misplaced_marks(nodes)
+    |> Enum.count(fn {from, to} ->
+      mark = Map.fetch!(marks, from)
+      attrs = %{"seen" => mark.seen, "seen_on" => mark.seen_on, "note" => mark.note}
+
+      with {:ok, _moved} <- Marks.put(view, to, attrs),
+           {:ok, nil} <- Marks.put(view, from, %{"seen" => false, "seen_on" => nil, "note" => ""}) do
+        true
+      else
+        _error -> false
+      end
+    end)
   end
 
   @doc """

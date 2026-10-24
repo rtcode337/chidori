@@ -168,12 +168,8 @@ defmodule ChidoriWeb.NewsLive do
       assign(socket,
         collect_mode: collect_mode,
         events_mode: events_mode,
-        # 映画のタブの中の切り替え（最新・映画館。関連図は関連図の画面）
-        movie_section:
-          if(not collect_mode and movies?(topic) and params["section"] == "theaters",
-            do: :theaters,
-            else: :latest
-          ),
+        # 映画のタブの中の切り替え（最新・映画館・見た映画。関連図は関連図の画面）
+        movie_section: movie_section(collect_mode, topic, params["section"]),
         # 話題のタブ（ニュースかイベントか。趣味の話題は趣味の段に並べる）
         topics: if(events_mode, do: Topics.events(), else: Topics.news()),
         base_path: base_path,
@@ -230,6 +226,12 @@ defmodule ChidoriWeb.NewsLive do
   end
 
   defp movies?(topic), do: topic != nil and Topics.works(topic) == Movies
+
+  defp movie_section(false, topic, "theaters"),
+    do: if(movies?(topic), do: :theaters, else: :latest)
+
+  defp movie_section(false, topic, "seen"), do: if(movies?(topic), do: :seen, else: :latest)
+  defp movie_section(_collect_mode, _topic, _section), do: :latest
 
   # お気に入りに入れるときに最寄り駅を 1 回引いて残す（複数の駅の館を見分けるため。AI は使わない）。
   # 辞典で確かめられた館（座標がある）だけ。AI が挙げただけの館は、AI が書いた駅のまま

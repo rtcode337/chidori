@@ -42,7 +42,7 @@ paths:
   記事は Chiezo の期限で消えるに任せ、原文の写しは持たない。タブは話題の最後の「お気に入り」（`?view=favorites`。話題は nil にする）
 - 映画・アニメは 1 件 = 1 作品（`works`）。お笑いイベントは整理の回を置かず情報収集の回に寄せる。先の月は `look_ahead` で 1 回 1 区切りずつ、次の区切りは Chiezo のカーソルに覚えさせる
 - 作品の絵は Chiezo が 1 回だけ取って縮めて持つ（`thumbs`）。画面から外のサイトの絵を直に指さない
-- 映画のタブの中の「映画館」（`ChidoriWeb.TheaterPanel`。`/news?view=chidori_movies&section=theaters`。最新・関連図・映画館は本文の頭の四角い札 `DiningTabs.movie_tabs/1` で切り替え、映画館のときは映画館だけを出す）: 映画館は **AI に web で探させる**（`Chidori.News.TheaterFinder`）。
+- 映画のタブの中の「映画館」（`ChidoriWeb.TheaterPanel`。`/news?view=chidori_movies&section=theaters`。最新・関連図・映画館・見た映画は本文の頭の四角い札 `DiningTabs.movie_tabs/1` で切り替え、映画館・見た映画のときはそれだけを出す。見た映画は `section=seen`・`ChidoriWeb.SeenFilms`）: 映画館は **AI に web で探させる**（`Chidori.News.TheaterFinder`）。
   出発地（駅名・地名か現在地）から決めた時間（既定 30 分）以内に**着ける**館を、着くまでの時間が短い順に（直線の距離ではない）。
   同じ館は 1 つにまとめさせ、営業中の館だけ。AI が挙げた館は店舗辞典（`overture_japan` の `category=cinema`。試写室・会社・
   確からしさ 0.6 未満を除く。`Theaters.to_theater/1`）と名前（`Theaters.similar_name?/2`。会社の名前だけでは当てない）と

@@ -63,12 +63,13 @@ defmodule ChidoriWeb.RelationsLiveTest do
     refute html =~ "松田優作"
   end
 
-  test "映画の図には見た映画を足す欄を出し、引き継ぎの様子は収集の画面に回す", %{conn: conn} do
+  test "映画の図には見た映画を足す欄を出さず（見た映画のページへ移した）、引き継ぎの様子は収集の画面に回す",
+       %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/relations?view=films")
 
     assert html =~ "映画のつながり"
-    # 見ている図から足す口なので、図を見る画面に残す
-    assert html =~ "見た映画を足す"
+    refute html =~ "見た映画を足す"
+    assert html =~ ~s(href="/news?view=chidori_movies&amp;section=seen")
     refute html =~ "最新情報からの引き継ぎ"
     refute html =~ ~s(id="settings-toggle")
     assert html =~ ~s(href="/collect/relations?view=films")
@@ -1778,6 +1779,29 @@ defmodule ChidoriWeb.RelationsLiveTest do
                {"エドガー・ドガ", "エドガー・ドガ（2026-09-10）"},
                {"クロード・モネ", "クロード・モネ（2026-09-01）"}
              ]
+    end
+
+    test "見た印だけが図の「見た」の札になり、凡例に数が出る" do
+      nodes = [%{name: "見た作品"}, %{name: "メモだけ"}, %{name: "印なし"}]
+
+      marks = %{
+        "見た作品" => %Mark{seen: true, seen_on: ~D[2026-10-01]},
+        # メモだけの記録は「見た」にしない（橙の枠だけ）
+        "メモだけ" => %Mark{note: "気になる"},
+        "図にいない作品" => %Mark{seen: true}
+      }
+
+      assert RelationsLive.seen?(marks, "見た作品")
+      refute RelationsLive.seen?(marks, "メモだけ")
+      assert RelationsLive.marked?(marks, "メモだけ")
+      refute RelationsLive.seen?(marks, "印なし")
+      assert RelationsLive.seen_count(marks, nodes) == 1
+      assert RelationsLive.seen_count(marks, nil) == 0
+
+      # しおりの付いた札は名前を左へ寄せる（しおりに被らないように）
+      node = %{name: "見た作品", label_width: 200, label_height: 40}
+      assert RelationsLive.name_x(node, false) == 0
+      assert RelationsLive.name_x(node, true) < 0
     end
 
     test "日付を書いていない印は後ろに回る" do

@@ -84,55 +84,7 @@
            区画の未レビューの数だけは図から数えるので、その表の横で取り直す） --%>
       <.checked_line :if={!@collect_mode} relation={@relation} />
 
-      <%!-- 図に無い映画も、見た記録を付けられる。**記録はその場で書き**、図へは AI に
-           足させる（載るのは取り込みが終わってから）。それまでのあいだ、記録だけある
-           作品は下に「まだ図に無い」として並べる（書いたのに見当たらない、にしない） --%>
-      <details :if={@view == "films" and !@collect_mode} class="seen-mark film-add">
-        <summary>
-          見た映画を足す
-          <span :if={@unplaced_marks != %{}} class="seen-badge">
-            まだ図に無い {map_size(@unplaced_marks)}
-          </span>
-        </summary>
-        <form phx-submit="add_film">
-          <p>
-            <label>
-              題名 <input type="text" name="title" required placeholder="例: 七人の侍" />
-            </label>
-          </p>
-          <p>
-            <label>
-              手がかり（任意）
-              <input type="text" name="hint" placeholder="例: 1954年・黒澤明監督" />
-            </label>
-          </p>
-          <p class="seen-row">
-            <label>
-              見た日 <input type="date" name="seen_on" value={Date.to_iso8601(Jst.today())} />
-            </label>
-          </p>
-          <p>
-            <label>
-              メモ<br />
-              <textarea name="note" rows="2"></textarea>
-            </label>
-          </p>
-          <p class="muted-note">
-            図に無い作品は、図の収集に足すよう頼みます（AI が監督・主演を調べて足すので、
-            載るのは取り込みが終わって図を取り直してから）。題名は正確でなくて構いません ——
-            AI が作品を確かめて Wikipedia の記事名で足し、ここで書いた題名は記録との結び付けに残します。
-            同じ題名の別の作品があるときや、うろ覚えのときは手がかりを添えてください。
-          </p>
-          <button type="submit" phx-disable-with="記録しています…">記録して足す</button>
-          <span :if={@film_added} class="muted-note">{@film_added}</span>
-        </form>
-        <div :if={@unplaced_marks != %{}}>
-          <p class="seen-mark-title">まだ図に無い見た映画</p>
-          <ul>
-            <li :for={{_name, label} <- unplaced_options(@unplaced_marks)}>{label}</li>
-          </ul>
-        </div>
-      </details>
+      <%!-- 見た映画を足す口は、趣味の映画のタブの中の「見た映画」へ移した（`ChidoriWeb.SeenFilms`） --%>
     </section>
     <%!-- 映画の関連図は趣味の映画のタブの中（最新・関連図・映画館の切り替え。下に線を引く） --%>
     <ChidoriWeb.DiningTabs.movie_tabs
@@ -363,6 +315,7 @@
                 node[:changed?] && "changed",
                 node[:unreviewed?] && "unreviewed",
                 marked?(@marks, node.name) && "marked",
+                seen?(@marks, node.name) && "is-seen",
                 node.id == @focus && "focused",
                 pick && node.id == pick.id && "is-picked",
                 pick && MapSet.member?(pick.near, node.id) && "is-near"
@@ -415,7 +368,7 @@
                 text-anchor="middle"
                 dominant-baseline="central"
                 class="node-name"
-                x={face_slot(node) / 2}
+                x={name_x(node, seen?(@marks, node.name))}
                 y={node[:name_dy] || 0}
                 style={"font-size: #{name_size_of(node)}px"}
               >
@@ -438,6 +391,14 @@
               >
                 {node.note}
               </text>
+              <%!-- 見た作品には黄色いしおり（札の上の縁から垂らす。下の端は山形の切り込み） --%>
+              <g
+                :if={seen?(@marks, node.name)}
+                class="seen-flag"
+                transform={flag_anchor(node)}
+              >
+                <path class="seen-flag-cloth" d={flag_path(flag_unit(node))} />
+              </g>
               <%!-- 年代は外（下）のまま。札の中に 3 行入れると札が縦に伸びすぎる --%>
               <text
                 :if={node.years}
@@ -505,6 +466,19 @@
 
       <%!-- 色の凡例。**図の真下に置く** —— 色を見てから凡例を探すので、間に何かを
          挟むと目が行き来する。**押すとその様式だけになる**（もう一度押すと戻る）--%>
+      <%!-- 見た作品の数（札の右上の黄色いしおりが目印） --%>
+      <p
+        :if={!@embed and seen_count(@marks, @relation[:nodes]) > 0}
+        class="seen-legend muted-note"
+      >
+        <svg class="seen-legend-flag" viewBox="-12 -1 13 18" aria-hidden="true">
+          <path class="seen-flag-cloth" d={flag_path(11)} />
+        </svg>
+        のしおりが付いているのが、見た記録のある{if @view == "films", do: "作品", else: "人"}です（{seen_count(
+          @marks,
+          @relation[:nodes]
+        )}{counter_of(@view)}）。
+      </p>
       <section
         :if={!@embed and Chidori.Relations.chiezo_view?(@view) and style_legend(@relation) != []}
         class="style-legend"

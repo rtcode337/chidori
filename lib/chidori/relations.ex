@@ -682,6 +682,7 @@ defmodule Chidori.Relations do
           |> put_in([:step, key], nil)
           |> apply_result(key, result)
 
+        align_film_marks(key, result)
         {:noreply, broadcast(state, key)}
 
       :error ->
@@ -768,6 +769,18 @@ defmodule Chidori.Relations do
 
     :ok
   end
+
+  # **映画の図を読めたら、札の名前で書かれてしまった見た記録を元の見出しへ移す**
+  # （`Films.align_marks/1`。最新情報の画面でも同じ作品に見た印が付くように）。待たない
+  defp align_film_marks("films", {:ok, relation}), do: start_align(relation)
+  defp align_film_marks("films", {:ok, relation, _reason}), do: start_align(relation)
+  defp align_film_marks(_key, _result), do: :ok
+
+  defp start_align(%{nodes: nodes}) when is_list(nodes) and nodes != [] do
+    Task.Supervisor.start_child(Chidori.TaskSupervisor, fn -> Films.align_marks(nodes) end)
+  end
+
+  defp start_align(_relation), do: :ok
 
   defp apply_result(state, key, result) do
     apply_step(put_in(state.step[key], nil), key, result)

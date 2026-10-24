@@ -92,9 +92,6 @@ defmodule ChidoriWeb.RelationsLive do
        # 直したもので、映画の図では見出しが札の名前と違うことがある（`Films.marks_by_node/2`）
        raw_marks: %{},
        # 映画の図で、まだ図に載っていない見た記録（見出し → 記録）
-       unplaced_marks: %{},
-       # 「見た映画を足す」の結果の一言
-       film_added: nil,
        # 引き継ぎの時計の設定と前回の記録・次の予定（映画の図で開いたときに読む。
        # 時刻と 1 回の数を直すのは収集の画面（`/collect`））
        carry_setting: nil,
@@ -191,7 +188,6 @@ defmodule ChidoriWeb.RelationsLive do
         embed: params["embed"] == "1",
         relation: Relations.current(view),
         mark_saved: nil,
-        film_added: nil,
         carry_pending: nil,
         carry_message: nil,
         # 図を切り替えたら設定は読み直す（別の収集のもの）
@@ -491,53 +487,6 @@ defmodule ChidoriWeb.RelationsLive do
     {:noreply, focus_node(socket, name)}
   end
 
-  # 図に無い映画を、見た記録と一緒に足す（映画の図）。**記録はその場で書き**、図へは
-  # 引き継ぎを頼む（AI が足すので、載るのは取り込みが終わってから）
-  def handle_event("add_film", params, socket) do
-    title = String.trim(params["title"] || "")
-    hint = params["hint"] || ""
-
-    attrs = %{
-      "seen" => true,
-      "seen_on" => blank_to_nil(params["seen_on"]),
-      "note" => params["note"] || ""
-    }
-
-    cond do
-      socket.assigns.view != "films" or title == "" ->
-        {:noreply, socket}
-
-      # 図にもうある作品なら、その札に記録を付けるだけ（頼まない）
-      # （比べ方は探すときと同じ。大文字と小文字、全角と半角を区別しない）
-      node = Enum.find(socket.assigns.relation[:nodes] || [], &(fold(&1.name) == fold(title))) ->
-        handle_event(
-          "save_mark",
-          Map.merge(attrs, %{"name" => node.name, "seen" => "on"}),
-          socket
-        )
-        |> then(fn {:noreply, socket} -> {:noreply, focus_node(socket, node.name)} end)
-
-      true ->
-        case Marks.put(Films.mark_view(), title, attrs) do
-          {:ok, mark} ->
-            raw = Map.put(socket.assigns.raw_marks, title, mark)
-            pid = self()
-
-            Task.Supervisor.start_child(Chidori.TaskSupervisor, fn ->
-              send(pid, {:film_carried, title, FilmCarry.carry_now([title], hint)})
-            end)
-
-            {:noreply,
-             socket
-             |> with_marks(raw)
-             |> assign(film_added: "「#{title}」を記録しました。図に足すよう頼んでいます…")}
-
-          {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, "記録を保存できませんでした。")}
-        end
-    end
-  end
-
   # 引き継ぎを待っている作品を Chiezo に聞く（押したときだけ）
   def handle_event("carry_pending", _params, socket) do
     pid = self()
@@ -784,21 +733,6 @@ defmodule ChidoriWeb.RelationsLive do
       end
 
     {:noreply, assign(socket, reroster_message: message)}
-  end
-
-  def handle_info({:film_carried, title, result}, socket) do
-    message =
-      case result do
-        {:ok, _count} ->
-          "「#{title}」を記録しました。図に足すよう頼みました" <>
-            "（取り込みが終わって図を取り直すと載ります）。"
-
-        {:error, reason} ->
-          "「#{title}」を記録しましたが、図に足すよう頼めませんでした: " <>
-            relation_reason(reason) <> "（あとで自動でもう一度頼みます）"
-      end
-
-    {:noreply, socket |> assign(film_added: message) |> load_carry()}
   end
 
   def handle_info({:carry_done, result}, socket) do
@@ -1098,13 +1032,9 @@ defmodule ChidoriWeb.RelationsLive do
     nodes = socket.assigns[:relation][:nodes] || []
 
     if socket.assigns.view == "films" do
-      assign(socket,
-        raw_marks: raw,
-        marks: Films.marks_by_node(raw, nodes),
-        unplaced_marks: Films.unplaced(raw, nodes)
-      )
+      assign(socket, raw_marks: raw, marks: Films.marks_by_node(raw, nodes))
     else
-      assign(socket, raw_marks: raw, marks: raw, unplaced_marks: %{})
+      assign(socket, raw_marks: raw, marks: raw)
     end
   end
 
@@ -1116,15 +1046,6 @@ defmodule ChidoriWeb.RelationsLive do
     else
       _other -> name
     end
-  end
-
-  @doc """
-  まだ図に載っていない見た記録（映画の図）。見た日の新しい順に `{見出し, 一言}`。
-  """
-  def unplaced_options(unplaced) do
-    unplaced
-    |> Enum.sort_by(fn {name, mark} -> {seen_order(mark), name} end)
-    |> Enum.map(fn {name, mark} -> {name, seen_label(name, mark)} end)
   end
 
   @doc """
@@ -1181,6 +1102,41 @@ defmodule ChidoriWeb.RelationsLive do
 
   @doc "印が付いているか。図の上の目印と、札の出し分けに使う。"
   def marked?(marks, name), do: Map.has_key?(marks, name)
+
+  @doc "「見た」の印が付いているか（メモだけの記録は入れない）。札の「見た」の札に使う。"
+  def seen?(marks, name), do: match?(%{seen: true}, Map.get(marks, name))
+
+  @doc """
+  見た印のしおりの大きさの単位。しおりは幅 0.75・高さ 1 単位で、札の高さの半分ほど
+  （札の字に被らないように小さく）。
+  """
+  def flag_unit(node), do: label_height_of(node) * 0.5
+
+  @doc "しおりを置く場所。札の上の縁の、右の角から札の高さの 2 割内側（縁から垂らす）。"
+  def flag_anchor(node) do
+    pad = label_height_of(node) * 0.2
+    "translate(#{label_width_of(node) / 2 - pad}, #{-label_height_of(node) / 2})"
+  end
+
+  @doc "しおりの形（原点が右上の角。左下へ広がり、下の端は山形に切り込む）。"
+  def flag_path(unit) do
+    p = fn x, y -> "#{Float.round(x * unit, 2)},#{Float.round(y * unit, 2)}" end
+
+    "M#{p.(-0.75, 0.0)} L#{p.(0.0, 0.0)} L#{p.(0.0, 1.0)} " <>
+      "L#{p.(-0.375, 0.72)} L#{p.(-0.75, 1.0)} Z"
+  end
+
+  @doc """
+  札の名前の横の位置。しおりの付いた札は、しおりの幅と縁からの間のぶんの半分だけ左へ寄せる
+  （しおりの左に残る幅の中ほどに置き、名前の端がしおりに被らないように）。
+  """
+  def name_x(node, seen?) do
+    shift = if seen?, do: label_height_of(node) * (0.75 * 0.5 + 0.2) / 2, else: 0
+    face_slot(node) / 2 - shift
+  end
+
+  @doc "図に出ている札のうち、見た印の付いた数（凡例に添える）。"
+  def seen_count(marks, nodes), do: Enum.count(nodes || [], &seen?(marks, &1.name))
 
   @doc """
   「見た日」の欄に最初から入れておく日付。

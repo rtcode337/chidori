@@ -175,14 +175,17 @@ defmodule ChidoriWeb.DiningTabs do
   defp in_mode?(dataset, :read), do: Chidori.Datasets.read_on_datasets?(dataset)
   defp in_mode?(dataset, _mode), do: Chidori.Datasets.listed?(dataset)
 
-  attr :current, :atom, required: true, doc: "`:latest`（最新）・`:graph`（関連図）・`:theaters`（映画館）"
+  attr :current, :atom,
+    required: true,
+    doc: "`:latest`（最新）・`:graph`（関連図）・`:theaters`（映画館）・`:seen`（見た映画）"
+
   attr :mode, :atom, default: :read
 
   @doc """
-  趣味の映画のタブの中の切り替え（最新・関連図・映画館）。**四角い札**（`home-subtabs`）——
+  趣味の映画のタブの中の切り替え（最新・関連図・映画館・見た映画）。**四角い札**（`home-subtabs`）——
   上の段がタブの形なので、両方タブだとどちらが上の階層か読めない。**本文の頭に置き、下に線を
   引く**（`movie-tabs`。その下の要約や図から区切る）。画面はそれぞれ（最新情報と関連図）の
-  ものなので、移るのは `navigate`。収集の画面では映画館を出さない（頼むものが無い）。
+  ものなので、移るのは `navigate`。収集の画面では映画館・見た映画を出さない（頼むものが無い）。
   """
   def movie_tabs(assigns) do
     tabs =

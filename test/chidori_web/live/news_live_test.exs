@@ -608,6 +608,8 @@ defmodule ChidoriWeb.NewsLiveTest do
     refute main =~ ~s(aria-label="映画館")
     assert main =~ ~s(href="/news?view=chidori_movies&amp;section=theaters")
 
+    assert main =~ ~s(href="/news?view=chidori_movies&amp;section=seen")
+
     # 映画館の切り替えでは映画館だけ（要約・注目作は「最新」）
     {:ok, _live, html} = live(conn, ~p"/news?view=chidori_movies&section=theaters")
     [_, tabs] = String.split(html, ~s(id="movie-tabs"), parts: 2)
