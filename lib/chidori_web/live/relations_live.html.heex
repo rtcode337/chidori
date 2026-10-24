@@ -7,19 +7,38 @@
      root.html.heex）。取り直している間は頭も止める（下の main と同じ理由） --%>
 <div :if={!@embed} class="relations-page page-head" inert={busy?(@relation) || nil}>
   <div>
-    <ChidoriWeb.MainNav.main_nav active={if @collect_mode, do: :collect, else: :relations} />
-    <ChidoriWeb.CollectTabs.collect_tabs :if={@collect_mode} current={:relations} />
+    <% hobby? = Chidori.Relations.hobby?(@view) %>
+    <ChidoriWeb.MainNav.main_nav active={
+      cond do
+        @collect_mode -> :collect
+        hobby? -> :datasets
+        true -> :relations
+      end
+    } />
+    <ChidoriWeb.CollectTabs.collect_tabs
+      :if={@collect_mode}
+      current={if hobby?, do: :datasets, else: :relations}
+    />
+    <%!-- **芸術家は趣味の段**（データの対象と同じタブに並べる）。画面はこのまま --%>
+    <ChidoriWeb.DiningTabs.dataset_tabs
+      :if={hobby?}
+      datasets={Chidori.Datasets.list()}
+      current={@view}
+      mode={if @collect_mode, do: :collect, else: :read}
+      elsewhere={true}
+    />
 
     <%!-- **図の種類はタブで、見出しの上に置く。** 見出しと説明は選んだ図のものなので、
          切り替える口がその下にあると、どこまでが切り替わるのかが読めない --%>
     <nav
+      :if={!hobby?}
       id="relation-tabs"
       class="relation-tabs"
       phx-hook="ScrollTabs"
       aria-label="関連図の種類"
     >
       <.link
-        :for={{key, title} <- Chidori.Relations.views()}
+        :for={{key, title} <- Chidori.Relations.relation_views()}
         patch={"#{@base_path}?view=#{key}"}
         class={if @view == key, do: "selected"}
         aria-current={if @view == key, do: "page"}

@@ -17,6 +17,7 @@ paths:
 
 詳しい説明と理由（実測値つき）は `docs/relations.md`。
 
+- 画家の図の見出しは「芸術家」。頭のメニューの「趣味」の段に並べ（`Relations.hobby?/1`・`Chidori.Hobbies`）、関連図のタブ（`relation_views/0`）には出さない。画面と道（`/relations?view=painters`）はそのまま
 - **図を見る画面（`/relations`）と収集の画面（`/collect/relations`）は同じ `RelationsLive`**（`@collect_mode`）。収集の設定・名簿の広さ・区画・消えたもの・依頼文・
   映画の「最新情報からの引き継ぎ」は収集の画面。詳細の「区画を先に見て」「詳しく調べて」と「見た映画を足す」は図を見る画面に残す（見ている 1 件から頼む口）
 

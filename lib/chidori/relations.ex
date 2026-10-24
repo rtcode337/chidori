@@ -234,7 +234,9 @@ defmodule Chidori.Relations do
       ]
     },
     "painters" => %{
-      title: "画家の影響と時代",
+      title: "芸術家",
+      # 頭のメニューの「趣味」に並べる（関連図のタブには出さない。`hobby_views/0`）
+      hobby: true,
       eyebrow: "ARTISTS & INFLUENCE",
       sample?: true,
       description: "左から右へ、影響がつながる流れを表します。ノード下の帯は活躍した年代の目安です。",
@@ -425,6 +427,18 @@ defmodule Chidori.Relations do
   —— 手書きの表示例しか無い図を並べても、読むものが無い。
   """
   def views, do: Enum.map(@chiezo_views, &{&1, @views[&1].title})
+
+  @doc "図の見出し。"
+  def title_of(key), do: @views[key].title
+
+  @doc "頭のメニューの「趣味」に並べる図（芸術家。`Chidori.Hobbies`）。"
+  def hobby_views, do: Enum.filter(@chiezo_views, &hobby?/1)
+
+  @doc "趣味に並べる図か。"
+  def hobby?(key), do: @views[key][:hobby] == true
+
+  @doc "関連図のタブに並べる図（趣味に並べる図を除く。`{キー, 見出し}`）。"
+  def relation_views, do: Enum.reject(views(), fn {key, _title} -> hobby?(key) end)
 
   @doc "Chiezo に名簿を持たせて育てる図か（画家・芸能人・映画）。"
   def chiezo_view?(key), do: key in @chiezo_views

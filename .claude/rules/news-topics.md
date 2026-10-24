@@ -33,7 +33,7 @@ paths:
 詳しい説明と、それぞれの形にした理由（実測値つき）は `docs/news-and-topics.md`。トップと設定は `docs/overview.md`。
 
 - 頭のメニューでは「ニュース」。映画・アニメ（`hobby: true`。`Topics.hobby?/1`）は「趣味」の段に並べ、ニュースのタブ（`Topics.news/0`）には出さない。
-  画面と道（`/news?view=…`）はそのまま（通知のリンクがこの形）。開いているときは頭のメニューの「趣味」に印を付け、趣味の段（`DiningTabs.dataset_tabs/1` の `in_news`）を出す
+  画面と道（`/news?view=…`）はそのまま（通知のリンクがこの形）。開いているときは頭のメニューの「趣味」に印を付け、趣味の段（`DiningTabs.dataset_tabs/1` の `elsewhere`。並びは `Chidori.Hobbies`）を出す
 - **読む画面（`/news`）と収集の画面（`/collect/news`）は同じ `NewsLive`**（`@collect_mode`）。収集の設定・トピックの収集・要約の時刻・知らせる設定・「絵を探させる」は収集の画面、
   記事の詳細の「この記事について Chiezo に頼む」は読む画面に残す（見ている 1 件から頼む口）
 - 話題は `Chidori.Topics.defined/0` に 1 つ書けば、タブも収集も増える。収集も溜まったものも話題ごとに別

@@ -22,7 +22,7 @@
       datasets={Chidori.Datasets.list()}
       current={@topic.collection}
       mode={if @collect_mode, do: :collect, else: :read}
-      in_news={true}
+      elsewhere={true}
     />
 
     <%!-- 話題ごとのタブ。**集めるものも溜まるものも話題ごとに別**なので、

@@ -397,10 +397,10 @@ defmodule Chidori.Datasets.GourmetTest do
       refute Map.has_key?(tidy, :model)
     end
 
-    test "データ収集の対象に 1 つ並ぶ（技術書・Pi-hole・レシピのあと）" do
+    test "データ収集の対象に 1 つ並ぶ（技術書・レシピ・Pi-hole のあと）" do
       keys = Enum.map(Datasets.defined(), & &1.key)
 
-      assert Enum.take(keys, 4) == ["books", "pihole", "recipes", "gourmet"]
+      assert Enum.take(keys, 4) == ["books", "recipes", "pihole", "gourmet"]
       assert %{collection: "chidori_gourmet", prefectures: true} = Datasets.get("gourmet")
       assert Chidori.Datasets.TravelLog.exportable?(Datasets.get("gourmet"))
     end

@@ -152,7 +152,11 @@ defmodule ChidoriWeb.RelationsLive do
   def handle_params(params, _uri, socket) do
     # **どれを最初に開くかは 1 か所で決める**（`Relations.valid_key/1`）——
     # ここにも既定を書くと、片方だけ直したときに URL の有無で別の図が出る
-    view = Relations.valid_key(params["view"])
+    # 対象なしで（か知らない対象で）開いたら、関連図のタブの先頭（芸術家は趣味に並べるので外す）
+    view =
+      if Relations.chiezo_view?(params["view"]),
+        do: params["view"],
+        else: Relations.relation_views() |> hd() |> elem(0)
 
     # 種類を切り替えたら購読も付け替える。付け替えないと、見ていない側の
     # 収集結果でこの画面が書き換わる

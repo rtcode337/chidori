@@ -5,11 +5,34 @@ defmodule ChidoriWeb.RelationsLiveTest do
 
   alias ChidoriWeb.RelationsLive
 
-  test "最初に開くのは画家の図", %{conn: conn} do
-    # 関連図のタブの先頭（`Relations.views/0` の並び）
+  test "最初に開くのは関連図のタブの先頭（芸術家は趣味に並べるので外す）", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/relations")
 
-    assert html =~ "画家の影響と時代"
+    assert html =~ "映画のつながり"
+    [_, tabs] = String.split(html, ~s(id="relation-tabs"), parts: 2)
+    [tabs, _] = String.split(tabs, "</nav>", parts: 2)
+    refute tabs =~ "view=painters"
+  end
+
+  test "芸術家の図は趣味の段に並び、頭のメニューは「趣味」を選んだ状態", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/relations?view=painters")
+
+    assert html =~ "芸術家"
+    refute html =~ ~s(id="relation-tabs")
+    assert html =~ ~s(id="dataset-tabs")
+    assert html =~ ~r|class="active" href="/news\?view=chidori_movies"|
+    assert html =~ ~r|href="/relations\?view=painters"[^>]*class="selected"|
+
+    # 趣味の段から映画・Pi-hole へも行ける
+    assert html =~ ~s(href="/news?view=chidori_movies")
+    assert html =~ ~s(href="/datasets?view=pihole")
+
+    # 収集の画面でも同じ
+    {:ok, _live, html} = live(conn, ~p"/collect/relations?view=painters")
+    assert html =~ ~s(href="/collect/datasets?view=books")
+    [_, collect_tabs] = String.split(html, ~s(id="collect-tabs"), parts: 2)
+    [collect_tabs, _] = String.split(collect_tabs, "</nav>", parts: 2)
+    assert collect_tabs =~ ~r|href="/collect/news\?view=chidori_movies"[^>]*class="selected"|
   end
 
   test "芸能人の関連図を表示する", %{conn: conn} do
@@ -53,12 +76,10 @@ defmodule ChidoriWeb.RelationsLiveTest do
     assert String.contains?(RelationsLive.fold("スター・ウォーズ STAR WARS"), RelationsLive.fold("Star"))
   end
 
-  test "画家の関連図へ切り替えられる", %{conn: conn} do
-    {:ok, live, _html} = live(conn, ~p"/relations?view=people")
+  test "芸術家の関連図を開ける", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/relations?view=painters")
 
-    html = live |> element(~s|a[href="/relations?view=painters"]|) |> render_click()
-
-    assert html =~ "画家の影響と時代"
+    assert html =~ "芸術家"
 
     # **誰が出るかは Chiezo 次第**なので、名前では見ない（前のテストが読み込んだ図が
     # 残っていると落ちる）。切り替わったことは、見出しと図の器で分かる
@@ -81,10 +102,10 @@ defmodule ChidoriWeb.RelationsLiveTest do
     assert render(live) =~ ~s(<strong id="artwork-name">三船敏郎</strong>)
   end
 
-  test "知らない種類は画家の図に丸める", %{conn: conn} do
+  test "知らない種類は関連図のタブの先頭に丸める", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/relations?view=%2E%2E%2F")
 
-    assert html =~ "画家の影響と時代"
+    assert html =~ "映画のつながり"
   end
 
   test "開くたびに Chiezo へ聞きに行かない", %{conn: conn} do

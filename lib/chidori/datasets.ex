@@ -34,8 +34,9 @@ defmodule Chidori.Datasets do
   def defined,
     do: [
       Books.definition(),
-      Pihole.definition(),
+      # 趣味の段ではレシピを Pi-hole より前に（タブの並びは定義の順）
       Chidori.Datasets.Recipes.definition(),
+      Pihole.definition(),
       Gourmet.definition(),
       Chidori.Datasets.AnimeSeichi.definition()
       | Enum.map(DiningAreas.list(), &Dining.definition/1)

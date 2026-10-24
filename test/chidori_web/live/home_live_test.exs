@@ -12,7 +12,7 @@ defmodule ChidoriWeb.HomeLiveTest do
 
   test "枠は大きなタブにまとまり、決めた順に並び、最初の枠が開く", %{conn: conn} do
     # 選んだ順ではなく、決めた順（ニュース → イベント → 関連図 → 趣味）
-    Home.put(["books", "topic:chidori_tech", "relations:painters", "topic:chidori_news"])
+    Home.put(["books", "topic:chidori_tech", "relations:people", "topic:chidori_news"])
 
     {:ok, _live, html} = live(conn, ~p"/")
 
@@ -35,12 +35,12 @@ defmodule ChidoriWeb.HomeLiveTest do
   end
 
   test "大きなタブを押すと、その中の最初の枠が開く（中の枠が 1 つなら下の段は出さない）", %{conn: conn} do
-    Home.put(["topic:chidori_news", "relations:painters"])
+    Home.put(["topic:chidori_news", "relations:people"])
 
     {:ok, live, _html} = live(conn, ~p"/")
 
     live |> element("#home-tabs a", "関連図") |> render_click()
-    assert_patch(live, "/?panel=relations%3Apainters")
+    assert_patch(live, "/?panel=relations%3Apeople")
     refute render(live) =~ "home-subtabs"
   end
 

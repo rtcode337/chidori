@@ -62,9 +62,9 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     assert {:error, {:live_redirect, %{to: "/?panel=books"}}} =
              live(conn, ~p"/datasets?view=books")
 
-    # 対象なしで開くと、読む画面に並ぶ先頭（Pi-hole）
+    # 対象なしで開くと、読む画面に並ぶ先頭（レシピ）
     {:ok, _live, html} = live(conn, ~p"/datasets")
-    assert html =~ ~r|class="selected"[^>]*>\s*Pi-hole|
+    assert html =~ ~r|class="selected"[^>]*>\s*レシピ|
   end
 
   test "読むものを持たない対象を読む画面で開くと、収集の画面へ送る", %{conn: conn} do
@@ -374,7 +374,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     assert html =~ "定番の技術書の設定"
 
     {:ok, _live, html} = live(conn, ~p"/datasets?view=%2E%2E%2F")
-    assert html =~ ~s(href="/collect/datasets?view=pihole")
+    assert html =~ ~s(href="/collect/datasets?view=recipes")
   end
 
   test "溜まったものは、この画面には出さない", %{conn: conn} do

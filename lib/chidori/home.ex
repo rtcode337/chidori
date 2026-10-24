@@ -47,7 +47,7 @@ defmodule Chidori.Home do
     {"topic:chidori_market", "市況"},
     {"events:chidori_comedy", "お笑い"},
     {"events:chidori_events", "技術"},
-    {"relations:painters", "画家"},
+    {"relations:painters", "芸術家"},
     {"relations:people", "芸能人"},
     {"relations:films", "映画"},
     {"books", "技術書"},
@@ -111,13 +111,22 @@ defmodule Chidori.Home do
 
     relations =
       for {key, name} <- Chidori.Relations.views() do
-        %{
-          key: "relations:" <> key,
-          name: "関連図（#{name}）",
-          kind: :relations,
-          group: :relations,
-          view: key
-        }
+        # 芸術家は「趣味」の大きなタブ（頭のメニューと同じ分け方）
+        if Chidori.Relations.hobby?(key),
+          do: %{
+            key: "relations:" <> key,
+            name: name,
+            kind: :relations,
+            group: :datasets,
+            view: key
+          },
+          else: %{
+            key: "relations:" <> key,
+            name: "関連図（#{name}）",
+            kind: :relations,
+            group: :relations,
+            view: key
+          }
       end
 
     datasets = [
