@@ -109,6 +109,30 @@ defmodule Chidori.Relations.FilmsTest do
              ) == 1
     end
 
+    test "見た作品を除くと、同じ監督・主演の鎖は残った作品でつなぎ直す", %{graph: graph} do
+      shown = Graph.without(graph, ["用心棒"])
+      names = Map.new(shown.nodes, &{&1.id, &1.name})
+
+      refute Enum.any?(shown.nodes, &(&1.name == "用心棒"))
+
+      lines =
+        for edge <- shown.edges,
+            edge.kind in [:director, :costar],
+            do: {edge.kind, names[edge.from], names[edge.to], edge.label}
+
+      # 用心棒を挟んでいた七人の侍と赤ひげが、黒澤明と三船敏郎の両方で直に結ばれる（1 本に畳む）
+      assert {:director, "七人の侍", "赤ひげ", "黒澤明"} in lines
+
+      assert [%{values: values}] =
+               Enum.filter(shown.edges, &(&1.kind == :costar and names[&1.to] == "赤ひげ"))
+
+      assert values == ["三船敏郎"]
+      assert {:director, "東京物語", "新作", "小津安二郎"} in lines
+
+      # 除くものが無ければそのまま
+      assert Graph.without(graph, ["図に無い作品"]) == graph
+    end
+
     test "縦は作品ごとの公開年の順で、上が新しい", %{graph: graph} do
       # 見に来るのは最近の作品のほう。古い順だと、新しい作品が図の下の端に溜まる
       y = Map.new(graph.nodes, &{&1.name, &1.y})
@@ -120,6 +144,24 @@ defmodule Chidori.Relations.FilmsTest do
       years = Enum.map(ticks, & &1.year)
       assert years == Enum.sort(years, :desc)
       assert Enum.all?(graph.nodes, &(&1.y > 0 and &1.y < graph.height))
+    end
+
+    test "札の 2 行目は国にジャンルを添える（3 つまで）" do
+      docs = [
+        doc("怖い映画", ~w(映画 年代:1980 国:イギリス 国:アメリカ合衆国 ジャンル:スリラー ジャンル:ホラー)),
+        doc("多い映画", ~w(映画 年代:1990 国:日本 ジャンル:SF ジャンル:アクション ジャンル:冒険 ジャンル:ドラマ)),
+        doc("ジャンル無し", ~w(映画 年代:2000 国:日本))
+      ]
+
+      notes =
+        docs
+        |> Graph.from_docs(Films.graph_spec())
+        |> Map.get(:nodes)
+        |> Map.new(&{&1.name, &1.note})
+
+      assert notes["怖い映画"] == "イギリス・アメリカ合衆国・スリラー・ホラー"
+      assert notes["多い映画"] == "日本・SF・アクション・冒険"
+      assert notes["ジャンル無し"] == "日本"
     end
 
     test "横は国の帯。合作は先に挙げた帯（日本）に入る", %{graph: graph} do
@@ -161,12 +203,16 @@ defmodule Chidori.Relations.FilmsTest do
       assert extract.min_extra_unless_tag == extract.tag
     end
 
-    test "監督・公開年・国は分類から機械で付ける", %{attrs: attrs} do
+    test "監督・公開年・国・ジャンルは分類から機械で付ける", %{attrs: attrs} do
       rules = attrs.extract.tags
 
+      # Chiezo と同じ読み方（`map` があれば捕まえた値を表で読み替え、表に無ければ作らない。同じタグは 1 本）
       apply = fn tag ->
-        for %{pattern: pattern, format: format} <- rules,
-            [_ | captures] <- [Regex.run(Regex.compile!(pattern), tag)] do
+        for %{pattern: pattern, format: format} = rule <- rules,
+            [_ | captures] <- [Regex.run(Regex.compile!(pattern, "u"), tag)],
+            captures = if(rule[:map], do: [rule.map[hd(captures)]], else: captures),
+            nil not in captures,
+            uniq: true do
           captures
           |> Enum.with_index(1)
           |> Enum.reduce(format, fn {value, i}, acc -> String.replace(acc, "{#{i}}", value) end)
@@ -175,9 +221,20 @@ defmodule Chidori.Relations.FilmsTest do
 
       assert apply.("黒澤明の監督映画") == ["監督:黒澤明"]
       assert apply.("1954年の映画") == ["年代:1954"]
-      assert apply.("2001年のアニメ映画") == ["年代:2001"]
-      assert apply.("アメリカ合衆国のロマンティック・コメディ映画") == ["国:アメリカ合衆国"]
+      assert apply.("2001年のアニメ映画") == ["年代:2001", "ジャンル:アニメ"]
+
+      assert apply.("アメリカ合衆国のロマンティック・コメディ映画") ==
+               ["国:アメリカ合衆国", "ジャンル:恋愛", "ジャンル:コメディ"]
+
       assert apply.("東宝製作の映画作品") == ["国:日本"]
+      assert apply.("日本のSF映画作品") == ["国:日本", "ジャンル:SF"]
+      assert apply.("松竹製作の時代劇映画") == ["国:日本", "ジャンル:時代劇"]
+      # 「〜を原作とする」「〜を題材とした」は拾わない
+      assert apply.("テレビドラマを原作とする映画") == []
+      assert apply.("人形を題材としたホラー映画") == []
+      # 既にいる作品にも付くように（Chiezo の `fill`）
+      assert Enum.all?(rules, &(&1[:fill] != true or String.starts_with?(&1.format, "ジャンル:")))
+      assert Enum.any?(rules, &(&1[:fill] == true))
       # 監督の分類を国に読まない
       refute "国:黒澤明" in apply.("黒澤明の監督映画")
 

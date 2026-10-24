@@ -489,6 +489,17 @@
           @marks,
           @relation[:nodes]
         )}{counter_of(@view)}）。
+        <%!-- 見た作品を除いて置き直した図にする（同じ監督・主演の線は残った作品でつなぎ直す） --%>
+        <button
+          type="button"
+          class={["seen-toggle", @unseen_only && "is-on"]}
+          phx-click="toggle_unseen"
+          aria-pressed={to_string(@unseen_only)}
+        >
+          {if @unseen_only,
+            do: "見た#{if @view == "films", do: "作品", else: "人"}も出す",
+            else: "見ていない#{if @view == "films", do: "作品", else: "人"}だけにする"}
+        </button>
       </p>
       <section
         :if={!@embed and Chidori.Relations.chiezo_view?(@view) and style_legend(@relation) != []}

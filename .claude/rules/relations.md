@@ -38,7 +38,8 @@ paths:
   顔写真は Commons のものだけを 1 人 1 回、横 120px の縮小版を Chiezo に作らせ（`Chiezo.thumb_of/2`。Wikimedia へは出ない）、
   DB（`face_thumbs`）に写して `/faces/:id` から配る（Chiezo が Wikipedia のオフライン版から返したら（`Chiezo.thumb_from/2` の `offline`）1 分待たずに 1 秒で次を頼む。レシピ集の写真と技術書の表紙 `covers/1` もここで取る。幅は呼ぶ側が決める `faces/2`）。
   押すと Commons のファイルのページ（出典とライセンス）へのリンクを出す
-- 映画（`Chidori.Relations.Films`・収集 `chidori_films`）: 札は作品だけ。名簿・監督・公開年・国は分類から機械で
+- 映画（`Chidori.Relations.Films`・収集 `chidori_films`）: 札は作品だけ。名簿・監督・公開年・国・ジャンルは分類から機械で
+  （ジャンルは分類の中の語を `@genres` の表で読み替え、Chiezo の `fill` で既にいる作品にも渡す。札の 2 行目は国・ジャンル 3 つまで = `graph_spec` の `note_prefix`）
   （「〜の監督映画」の `tag_suffix` と主な賞の受賞作の `tag`、知名度で下を切る）、主演だけ AI（`verify_tags` で実在の記事に限る）。
   同じ監督と同じ主演は、どちらも公開年順に隣どうしを結ぶ線（`edge_rules` の `shared`。種類 `:director` と `:costar` で色を分ける）。
   監督の枠は使わない（枠は 1 つの高さにしか置けず、縦の公開年が崩れた）。縦は上が新しい（`newest_first`。置き終えた図を `Graph` が上下に裏返す。目盛りも）。横は国の帯（`@country_bands`。合作は先に当たる帯）。
@@ -63,7 +64,7 @@ paths:
 - 代表作の説明と絵は Chiezo の jawiki から引く（`Chidori.Artwork`。絵は Chiezo に縮小版を作らせ `/thumbs/…` から出す。
   Commons 以外は出さない。結果は 1 日覚える）
 - 見た記録は `chidori_data` に 1 ノード 1 件（`Chidori.Relations.Marks`）。収集には書かない。
-  印のある札は橙の枠（`marked`）、「見た」の印のある札は札の右上に上の縁から垂らした黄色いしおり（`is-seen`・`seen?/2`・`flag_path/1`。名前はそのぶん左へ寄せる `name_x/2`）、図の下に見た数（`seen_count/2`）
+  印のある札は橙の枠（`marked`）、「見た」の印のある札は札の右上に上の縁から垂らした黄色いしおり（`is-seen`・`seen?/2`・`flag_path/1`。名前はそのぶん左へ寄せる `name_x/2`）、図の下に見た数（`seen_count/2`）と「見ていない作品だけにする」（`unseen_only`。`Graph.without/2` で除いて置き直し、共通項の鎖は残った札でつなぎ直す。ほかの絞り込みと重ねられる）
 - 札は 2 回押して開く。1 回目は札・線・線の先を立たせ（`picked`。名前で持つ。`pick_of/2`）、共通項の線（`shared`。線は `value` と、同じ 2 本が共にする共通項の全部 `values` を持つ）は鎖ごと立たせる。立たせた札（`pick.near`）は小さくても重なっても描き、押した札をいちばん先に置く（`drawn_nodes/3`）。線も 2 回押して開く。1 回目はその線と両端（共通項の線ならその鎖だけ）を立たせる（`picked_edge`。`pick_of(relation, {from, to, kind})`。札は選ばない）。2 回目で詳細。余白で戻す（`unpick`）
 - 図の操作は `assets/js/pan_zoom.js` を関連図・トピックの網・区画の地図・県の地図で共有する。拡大は `viewBox` を動かす（CSS の transform で引き伸ばさない）。
   図ごとの事情だけを `relation_map.js` に足す

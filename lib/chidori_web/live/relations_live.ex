@@ -60,6 +60,9 @@ defmodule ChidoriWeb.RelationsLive do
        portrait: nil,
        edge: nil,
        style_filter: nil,
+       # 見た作品を除いた図にしているか（見た印の数の横のボタン。ほかの絞り込みと重ねられる ——
+       # 「見ていないホラー」のように、見ていない中から選びたい）
+       unseen_only: false,
        # 直近の巡回で動いたものだけを出しているか。**様式の絞り込みとは排他** ——
        # 2 つ重ねると、出ていないものが「動かなかった」のか「別の様式」なのか読めない
        changed_only: false,
@@ -213,6 +216,8 @@ defmodule ChidoriWeb.RelationsLive do
         settings_open: false,
         settings: nil,
         recent_runs: [],
+        unseen_only:
+          if(socket.assigns[:view] == view, do: socket.assigns[:unseen_only], else: false),
         pending_focus: params["focus"],
         detail: nil,
         edge: nil
@@ -423,6 +428,12 @@ defmodule ChidoriWeb.RelationsLive do
        viewport: nil,
        focus: nil
      )}
+  end
+
+  # 見た作品を除いた図にする。**もう一度押すと戻る**
+  def handle_event("toggle_unseen", _params, socket) do
+    {:noreply,
+     assign(socket, unseen_only: not socket.assigns.unseen_only, viewport: nil, focus: nil)}
   end
 
   # 直近の巡回で動いたものだけにする。**もう一度押すと戻る**（凡例と同じ押し方）
@@ -905,6 +916,11 @@ defmodule ChidoriWeb.RelationsLive do
   位置をもとのままにして絞ると、数十人が高さ 2,500 の面に散らばって拡大しないと
   読めません（絞った意味が無い）。
   """
+  def shown(relation, %{unseen_only: true, marks: marks} = assigns) do
+    seen = for {name, %{seen: true}} <- marks, do: name
+    relation |> Graph.without(seen) |> shown(%{assigns | unseen_only: false})
+  end
+
   def shown(relation, %{review_filter: "unreviewed"}), do: Graph.only_unreviewed(relation)
   def shown(relation, %{review_filter: "reviewed"}), do: Graph.only_reviewed(relation)
   def shown(relation, %{changed_only: true}), do: Graph.only_changed(relation)

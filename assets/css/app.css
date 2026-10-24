@@ -320,6 +320,8 @@ main.relations-page > div { padding-top: 0; }
 .seen-flag-cloth { fill: #facc15; stroke: #a16207; stroke-width: 0.6px; stroke-linejoin: round; }
 .relation-node .seen-flag { pointer-events: none; }
 .seen-legend { margin: .4rem 0; }
+.seen-toggle { margin-left: .5rem; padding: .15rem .6rem; border: 1px solid #ca8a04; border-radius: 999px; background: #fff; color: #854d0e; font-size: .8rem; cursor: pointer; }
+.seen-toggle.is-on { background: #facc15; color: #422006; }
 .seen-legend-flag { width: .8em; height: 1.1em; vertical-align: -0.2em; overflow: visible; }
 /* AI がまだ目を通していない人。**札ごと薄くする** —— 縁は「動いた」「見た」「選んだ」に
    使っているので、重ねても読み分けられるように形ではなく濃さで示す */

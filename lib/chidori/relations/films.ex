@@ -11,7 +11,7 @@ defmodule Chidori.Relations.Films do
   ## 名簿 —— ほとんど機械で引ける
 
   日本語版 Wikipedia の映画の記事には、**「黒澤明の監督映画」のような監督の分類**と、
-  **「1954年の映画」のような公開年の分類**が付いています。名簿・監督・公開年・国は
+  **「1954年の映画」のような公開年の分類**が付いています。名簿・監督・公開年・国・ジャンルは
   ここから機械で引き、AI には書かせません（`extract/1`）。
 
   - **名簿は「〜の監督映画」で終わる分類をまとめて指します**（`tag_suffix`）。監督の名前を
@@ -100,6 +100,46 @@ defmodule Chidori.Relations.Films do
     )}
   ]
 
+  # ジャンル（「アメリカ合衆国のホラー映画」「日本のSF映画作品」のような分類から機械で付ける）。
+  # 分類の中の語 → 札に出す名前。語が 2 つ入った分類（「SFホラー」「ロマンティック・コメディ」）は
+  # 前の語と後ろの語の両方を拾う（`genre_rules/0`）。「〜を題材とした」「〜を原作とする」の
+  # 分類は拾わない（「テレビドラマを原作とする映画」がドラマに、「人形を題材とした」が人形に読める）
+  @genre_prefix "ジャンル"
+  @genres %{
+    "コメディ" => "コメディ",
+    "ホラー" => "ホラー",
+    "SF" => "SF",
+    "アクション" => "アクション",
+    "サスペンス" => "サスペンス",
+    "スリラー" => "スリラー",
+    "ミステリ" => "ミステリー",
+    "ファンタジー" => "ファンタジー",
+    "アニメ" => "アニメ",
+    "ミュージカル" => "ミュージカル",
+    "戦争" => "戦争",
+    "西部劇" => "西部劇",
+    "時代劇" => "時代劇",
+    "恋愛" => "恋愛",
+    "ロマンティック" => "恋愛",
+    "犯罪" => "犯罪",
+    "クライム" => "犯罪",
+    "ドキュメンタリー" => "ドキュメンタリー",
+    "青春" => "青春",
+    "伝記" => "伝記",
+    "冒険" => "冒険",
+    "アドベンチャー" => "冒険",
+    "ドラマ" => "ドラマ",
+    "怪獣" => "怪獣",
+    "特撮" => "特撮",
+    "パニック" => "パニック",
+    "スポーツ" => "スポーツ",
+    "歴史" => "歴史",
+    "ヤクザ" => "ヤクザ",
+    "スパイ" => "スパイ",
+    "ゾンビ" => "ゾンビ",
+    "刑事" => "刑事"
+  }
+
   # 日本の大手の製作の分類（国の分類を持たない古い邦画がある）
   @japanese_studios ~w(東宝 東映 松竹 日活 大映)
 
@@ -115,6 +155,9 @@ defmodule Chidori.Relations.Films do
 
   @doc "図に載せる文書の印。"
   def kind_tag, do: @kind_tag
+
+  @doc "ジャンルのタグの頭（札の国の後ろに添える）。"
+  def genre_prefix, do: @genre_prefix
 
   @doc "国のタグの頭（色と区画）。"
   def category_tag, do: @country_prefix
@@ -293,6 +336,8 @@ defmodule Chidori.Relations.Films do
       kinds: [],
       default_kind: :film,
       style_prefix: @country_prefix,
+      # 札の国の後ろに添えるもの（「アメリカ合衆国・ホラー・サスペンス」）。凡例と色は国だけ
+      note_prefix: @genre_prefix,
       band_prefix: @country_prefix,
       bands: @country_bands,
       works?: false,
@@ -362,7 +407,7 @@ defmodule Chidori.Relations.Films do
 
   @doc """
   名簿の引き方（Chiezo の「抽出の指定」）。「〜の監督映画」の作品と主な賞の受賞作の和を
-  知名度で切る（**受賞作は下限を免除**）。監督・公開年・国を機械で付けます。
+  知名度で切る（**受賞作は下限を免除**）。監督・公開年・国・ジャンルを機械で付けます。
   """
   def extract(min_pageviews \\ Chidori.Relations.Settings.min_pageviews("films")) do
     %{
@@ -382,12 +427,32 @@ defmodule Chidori.Relations.Films do
           %{pattern: "^(\\d{4})年の.*映画$", format: "#{Graph.years_tag()}:{1}"}
         ] ++
           country_rules() ++
+          genre_rules() ++
           [
             # 続編・同じ題材のように記事どうしが互いにリンクしている組は、薄い線で引く
             %{linked: "mutual", format: "#{Graph.related_tag()}:{1}"}
           ],
       extra: ["pageviews_month", "image"]
     }
+  end
+
+  # ジャンル。分類の中の最初の語と最後の語を 1 本ずつ（語が 1 つなら同じタグになり 1 本に畳まれる）。
+  # **`fill` を付ける** —— 名簿を引き直す回は既にいる作品のタグに触らないので、付けないと
+  # この読み替えを足す前に入った作品にジャンルが付かない（Chiezo の `fill`。ジャンルのタグを
+  # 1 つも持たない作品にだけ渡す）
+  defp genre_rules do
+    words = @genres |> Map.keys() |> Enum.sort_by(&(-String.length(&1))) |> Enum.join("|")
+    head = "^(?:[^のを]+の)?[^のを]*"
+    tail = "[^のを]*映画(?:作品)?$"
+
+    for lazy <- ["?", ""] do
+      %{
+        pattern: head <> lazy <> "(" <> words <> ")" <> tail,
+        format: "#{@genre_prefix}:{1}",
+        map: @genres,
+        fill: true
+      }
+    end
   end
 
   defp country_rules do
@@ -417,7 +482,7 @@ defmodule Chidori.Relations.Films do
   # 機械で付けたタグ（触らせない）
   defp machine_rule do
     """
-    **"#{@director_prefix}:"・"#{Graph.years_tag()}:"・"#{@country_prefix}:" のタグは Wikipedia の分類から
+    **"#{@director_prefix}:"・"#{Graph.years_tag()}:"・"#{@country_prefix}:"・"#{@genre_prefix}:" のタグは Wikipedia の分類から
     機械で付けたものです。そのまま残してください**（足りないときだけ足してください）。
     **"#{@record_prefix}:" のタグも、そのまま残してください**（見た記録と結び付ける印です）。
     """
@@ -425,7 +490,7 @@ defmodule Chidori.Relations.Films do
 
   @doc """
   ざっと見る回の依頼文（収集の既定の文）。**主演を埋める**のがいちばんの仕事
-  （監督・公開年・国は名簿の時点で機械で付いている）。
+  （監督・公開年・国・ジャンルは名簿の時点で機械で付いている）。
   """
   def prompt do
     """

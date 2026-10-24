@@ -1824,6 +1824,27 @@ defmodule ChidoriWeb.RelationsLiveTest do
       assert RelationsLive.name_x(node, true) < 0
     end
 
+    test "見ていない作品だけにすると、見た作品を除いた図を描く" do
+      relation =
+        Chidori.Relations.Graph.from_docs(
+          [
+            %{"title" => "見た作品", "tags" => ~w(映画 年代:1990 国:日本 監督:甲), "body" => ""},
+            %{"title" => "まだの作品", "tags" => ~w(映画 年代:2000 国:日本 監督:甲), "body" => ""}
+          ],
+          Chidori.Relations.Films.graph_spec()
+        )
+
+      marks = %{"見た作品" => %Mark{seen: true}, "まだの作品" => %Mark{note: "気になる"}}
+      base = %{review_filter: nil, changed_only: false, style_filter: nil, marks: marks}
+
+      all = RelationsLive.shown(relation, Map.put(base, :unseen_only, false))
+      assert length(all.nodes) == 2
+
+      unseen = RelationsLive.shown(relation, Map.put(base, :unseen_only, true))
+      # メモだけの記録は「見た」に入らない
+      assert Enum.map(unseen.nodes, & &1.name) == ["まだの作品"]
+    end
+
     test "日付を書いていない印は後ろに回る" do
       relation = %{nodes: [%{name: "あ"}, %{name: "い"}]}
       marks = %{"あ" => %Mark{note: "行きたい"}, "い" => %Mark{seen: true, seen_on: ~D[2020-01-01]}}

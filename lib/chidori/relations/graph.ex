@@ -310,6 +310,73 @@ defmodule Chidori.Relations.Graph do
     end
   end
 
+  @doc """
+  名前で挙げた札を除いて、置き直した図を返します（映画の図の「見ていない作品だけ」）。
+
+  **共通項の線（`shared`）はつなぎ直します。** 同じ監督・同じ主演の線は公開年の順に
+  隣どうしだけを結んでいるので、間の作品を抜いて線を捨てるだけだと鎖がそこで切れる
+  （A → 見た B → C から B を抜くと、A と C が同じ監督なのに線が無くなる）。
+  残った作品を鎖ごとに並べ直して隣どうしを結び直します。ほかの線は両端が残るものだけ。
+  """
+  def without(relation, names) do
+    drop = MapSet.new(names)
+    nodes = relation.nodes || []
+
+    case Enum.reject(nodes, &MapSet.member?(drop, &1.name)) do
+      kept when length(kept) == length(nodes) ->
+        relation
+
+      [] ->
+        relation
+
+      kept ->
+        ids = MapSet.new(kept, & &1.id)
+        refocus(relation, kept, rebridged(relation.edges || [], relation.nodes, ids))
+    end
+  end
+
+  # 共通項の線を、残った作品だけでつなぎ直す（`rule_edges` と同じ形の線を作る）
+  defp rebridged(edges, nodes, ids) do
+    {shared, plain} = Enum.split_with(edges, &Map.has_key?(&1, :value))
+    by_id = Map.new(nodes, &{&1.id, &1})
+
+    bridged =
+      shared
+      |> Enum.flat_map(fn edge ->
+        for value <- edge[:values] || [edge.value],
+            id <- [edge.from, edge.to],
+            do: {{edge.kind, edge.via, value}, id}
+      end)
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+      |> Enum.flat_map(fn {{kind, via, value}, chain} ->
+        chain
+        |> Enum.uniq()
+        |> Enum.filter(&MapSet.member?(ids, &1))
+        |> Enum.map(&by_id[&1])
+        |> Enum.sort_by(&sort_key/1)
+        |> Enum.chunk_every(2, 1, :discard)
+        |> Enum.map(fn [from, to] ->
+          %{
+            from: from.id,
+            to: to.id,
+            label: display_name(value),
+            kind: kind,
+            via: via,
+            value: value,
+            excerpt: []
+          }
+        end)
+      end)
+      |> Enum.group_by(&{&1.kind, Enum.sort([&1.from, &1.to])})
+      |> Enum.map(fn {_pair, [first | _] = same} ->
+        Map.put(first, :values, Enum.map(same, & &1.value))
+      end)
+      |> Enum.sort_by(&{&1.value, &1.from, &1.to})
+
+    Enum.filter(plain, &(MapSet.member?(ids, &1.from) and MapSet.member?(ids, &1.to))) ++
+      bridged
+  end
+
   defp refocus(%{nodes: []} = relation, _kept), do: relation
 
   defp refocus(relation, []), do: relation
@@ -322,6 +389,10 @@ defmodule Chidori.Relations.Graph do
         MapSet.member?(ids, edge.from) and MapSet.member?(ids, edge.to)
       end)
 
+    refocus(relation, kept, edges)
+  end
+
+  defp refocus(relation, kept, edges) do
     # **人数が多ければ置き直さない。** 置き直しは読める大きさの升目に並べ直すので、
     # 数千人を並べると図の高さが桁違いに伸び（レビュー済み 3,637 人で約 3 万）、
     # 全体表示では札が 1 枚も描けなくなる。そこまで多いなら元の位置のまま絞る
@@ -775,7 +846,7 @@ defmodule Chidori.Relations.Graph do
           # **様式は 1 人にいくつでも付く。** ピカソのように時期で作風が変わる画家を
           # 1 つに決めると、どれを選んでも間違いになる（キュビスムだけの人ではない）
           styles: tag_values(tags, spec.style_prefix),
-          note: styles_note(tags, spec.style_prefix),
+          note: styles_note(tags, spec.style_prefix, spec[:note_prefix]),
           years: tag_value(tags, @years_prefix),
           # **代表作は複数持つ。** 抽出が人気の順に何枚か拾ってくるので、
           # そのまま並べる（`@max_works` まで）。**記事の無い作品名も入ってくる**
@@ -921,10 +992,13 @@ defmodule Chidori.Relations.Graph do
 
   # 丸の下に出す様式。**いくつあっても並べる** —— 1 つに切り詰めると、
   # 枠が 2 つ掛かっている画家の丸だけ、片方の様式しか書かれていないことになる
-  defp styles_note(tags, prefix) do
-    case tag_values(tags, prefix) do
+  # 札の 2 行目。様式（映画は国）に、`note_prefix` の値（映画はジャンル。3 つまで）を添える
+  defp styles_note(tags, prefix, extra_prefix) do
+    extra = if extra_prefix, do: tags |> tag_values(extra_prefix) |> Enum.take(3), else: []
+
+    case tag_values(tags, prefix) ++ extra do
       [] -> nil
-      styles -> Enum.join(styles, "・")
+      values -> values |> Enum.uniq() |> Enum.join("・")
     end
   end
 
