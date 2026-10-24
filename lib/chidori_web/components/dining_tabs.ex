@@ -9,6 +9,8 @@ defmodule ChidoriWeb.DiningTabs do
 
   「全体」は範囲の一覧・地図・全範囲の ZIP の画面（`ChidoriWeb.DiningAreasLive`）、
   範囲のタブはその範囲の収集の画面（`ChidoriWeb.DatasetsLive` の `view`）を開く。
+  **下の段は閲覧の中の枠と同じ四角い札**（`home-subtabs`）—— 上下の段が両方タブの形だと、
+  どちらが上の階層なのか読み取れない（閲覧の大きなタブと中の枠と同じ理由）。
 
   **食事処の段は収集の画面の「他アプリ用」にだけある**（食事処は Chidori で一覧にしない。読むのは travel-log）。
   上の段は `mode` で並べるものを変える —— 読む画面（`:read`。`/datasets`）と収集の画面のデータ収集
@@ -34,7 +36,7 @@ defmodule ChidoriWeb.DiningTabs do
     ~H"""
     <nav
       id="dining-tabs"
-      class="relation-tabs dining-tabs"
+      class="home-subtabs dining-tabs"
       phx-hook="ScrollTabs"
       aria-label="食事処の範囲"
     >

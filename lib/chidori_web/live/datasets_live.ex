@@ -75,6 +75,8 @@ defmodule ChidoriWeb.DatasetsLive do
        request_results: [],
        # 最近の回（自動の回も依頼の回も。Chiezo の変更履歴から）
        recent_runs: [],
+       # これまで検索に使った語（検索文を考えさせる対象だけ。設定を開いたときに読む）
+       search_queries: nil,
        # 「位置OK」「位置修正」の行を Chiezo に固定させた結果（`Requests.hold/2`）
        held: nil,
        # 「AI を使わずにいま反映する」の結果（`Requests.apply_now/1`）
@@ -792,6 +794,12 @@ defmodule ChidoriWeb.DatasetsLive do
 
   def handle_async(:recent_runs, _result, socket), do: {:noreply, socket}
 
+  def handle_async(:search_queries, {:ok, result}, socket),
+    do: {:noreply, assign(socket, search_queries: result)}
+
+  def handle_async(:search_queries, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, search_queries: {:error, :collection_crashed})}
+
   # 県の地図は**数が届いたときに 1 回だけ組む**（`Chidori.Datasets.Map.prefectures/1`）。
   # 画面で組むと、県を選び直すたびに 47 県ぶんの境目を送り直すことになる
   def handle_async(:prefecture_progress, {:ok, {:ok, progress} = result}, socket) do
@@ -866,6 +874,7 @@ defmodule ChidoriWeb.DatasetsLive do
     |> start_async(:backends, &Datasets.backends/0)
     |> load_request_results()
     |> load_recent_runs()
+    |> load_search_queries(dataset)
     |> load_prefecture_progress(dataset)
     |> load_blank_report(dataset)
   end
@@ -1208,6 +1217,17 @@ defmodule ChidoriWeb.DatasetsLive do
   end
 
   defp assign_pending(socket), do: socket
+
+  # **これまで検索に使った語**（Chiezo の `GET /v1/collect/{name}/queries`。検索文を考えさせる対象だけ）
+  defp load_search_queries(socket, %{queries: true, collection: name}) do
+    socket
+    |> assign(search_queries: :loading)
+    |> start_async(:search_queries, fn ->
+      with {:ok, base} <- Datasets.base_url(), do: Chidori.Chiezo.queries(base, name)
+    end)
+  end
+
+  defp load_search_queries(socket, _dataset), do: assign(socket, search_queries: nil)
 
   defp load_recent_runs(%{assigns: %{dataset: dataset}} = socket),
     do: start_async(socket, :recent_runs, fn -> Requests.runs(dataset) end)

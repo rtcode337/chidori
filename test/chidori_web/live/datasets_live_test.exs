@@ -278,6 +278,95 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     refute html =~ "区画の割り方"
   end
 
+  test "技術書の収集の画面に、これまで検索に使った語を並べる", %{conn: conn} do
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+
+    Chidori.HttpStub.stub(fn %{url: url} ->
+      if url =~ "/v1/collect/chidori_book_posts/queries",
+        do:
+          Chidori.HttpStub.ok(
+            Jason.encode!(%{
+              "queries" => [
+                %{
+                  "query" => "SRE 本",
+                  "used_at" => "2026-10-20T01:00:00+00:00",
+                  "found" => 12,
+                  "kept" => 4,
+                  "by" => "codex"
+                }
+              ]
+            })
+          ),
+        else: Chidori.HttpStub.ok(~s({"collections":[],"results":[],"backends":[]}))
+    end)
+
+    {:ok, live, _html} = live(conn, ~p"/collect/datasets?view=books")
+    html = render_async(live)
+
+    # 畳んでおく（長くなるうえ、毎回見るものではない）
+    [details] = Regex.run(~r|<details[^>]*class="search-queries"[^>]*>|, html)
+    refute details =~ " open"
+    assert html =~ "（1 件）"
+    [_, section] = String.split(html, "これまで検索に使った語", parts: 2)
+    assert section =~ "SRE 本"
+    assert section =~ "2026-10-20 10:00 JST"
+    assert section =~ "codex"
+
+    # 検索文を考えさせない対象には出さない
+    {:ok, live, _html} = live(conn, ~p"/collect/datasets?view=recipes")
+    refute render_async(live) =~ "これまで検索に使った語"
+  end
+
+  test "収集の画面の巡回の表から、巡回を今すぐ 1 回走らせられる（人が押した 1 回として）", %{conn: conn} do
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+    test_pid = self()
+
+    posts = %{
+      "name" => "chidori_book_posts",
+      "enabled" => false,
+      "interval_minutes" => 60,
+      "sweeps" => [
+        %{"name" => "整理", "interval_minutes" => 720, "enabled" => true},
+        %{"name" => "割り込み", "on_demand" => true, "enabled" => true}
+      ]
+    }
+
+    Chidori.HttpStub.stub(fn
+      %{method: :post, url: url} ->
+        send(test_pid, {:posted, url})
+        Chidori.HttpStub.ok("{}")
+
+      %{method: :get, url: url} ->
+        cond do
+          String.ends_with?(url, "/v1/collect") ->
+            Chidori.HttpStub.ok(Jason.encode!(%{"collections" => [posts]}))
+
+          url =~ "/v1/collect/chidori_book_posts/queries" ->
+            Chidori.HttpStub.ok(~s({"queries":[]}))
+
+          url =~ "/v1/collect/chidori_book_posts" ->
+            Chidori.HttpStub.ok(Jason.encode!(posts))
+
+          true ->
+            Chidori.HttpStub.ok(~s({"collections":[],"results":[],"backends":[]}))
+        end
+    end)
+
+    {:ok, live, _html} = live(conn, ~p"/collect/datasets?view=books")
+    html = render_async(live)
+
+    # 時計を持たない割り込み用の回には出さない（Chiezo が断る）
+    assert html =~ "今すぐ走らせる"
+    refute Regex.match?(~r|割り込み\s*<div[^>]*class="run-sweep"|, html)
+
+    live |> element(".run-sweep button") |> render_click()
+    assert_receive {:posted, "http://chiezo.test/v1/collect/chidori_book_posts/run?" <> query}
+    assert URI.decode_query(query) == %{"sweep" => "整理", "manual" => "true"}
+    assert render_async(live) =~ "頼みました"
+  end
+
   test "知らない種類は先頭の集めものに丸める", %{conn: conn} do
     # `?view=` は人が触れるところなので、書き換えられても画面が壊れない
     {:ok, _live, html} = open_live(conn, ~p"/collect/datasets?view=%2E%2E%2F")

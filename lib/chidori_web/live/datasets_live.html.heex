@@ -1150,6 +1150,50 @@
           </details>
         </section>
 
+        <%!-- **これまで検索に使った語**（検索文を AI に考えさせて引く対象だけ。新しい順）。
+           同じ語で引き直しても同じ記事しか返らないので、どの語で何件入り何件残ったかを見て、
+           依頼文を直すかを決める。消すのは収集の一覧の「ほかの操作」から。
+           **畳んでおく**（長くなるうえ、毎回見るものではない） --%>
+        <details
+          :if={@search_queries}
+          class="search-queries"
+          aria-label="これまで検索に使った語"
+        >
+          <summary>
+            これまで検索に使った語<span
+              :if={match?({:ok, [_ | _]}, @search_queries)}
+              class="muted-note"
+            >（{length(elem(@search_queries, 1))} 件）</span>
+          </summary>
+          <p :if={@search_queries == :loading} class="muted-note">読んでいます…</p>
+          <p :if={match?({:error, _}, @search_queries)} class="muted-note">
+            {reason_text(elem(@search_queries, 1))}
+          </p>
+          <%= if match?({:ok, _}, @search_queries) do %>
+            <p :if={elem(@search_queries, 1) == []} class="muted-note">まだ 1 回も引いていません。</p>
+            <table :if={elem(@search_queries, 1) != []} class="collect-overview">
+              <thead>
+                <tr>
+                  <th>検索文</th>
+                  <th>使った（JST）</th>
+                  <th>入った</th>
+                  <th>残った</th>
+                  <th>考えた相手</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={row <- elem(@search_queries, 1)}>
+                  <td>{row["query"]}</td>
+                  <td>{Jst.format(row["used_at"])}</td>
+                  <td>{row["found"] || "—"}</td>
+                  <td>{row["kept"] || "—"}</td>
+                  <td class="muted-note">{row["by"] || "最初の組"}</td>
+                </tr>
+              </tbody>
+            </table>
+          <% end %>
+        </details>
+
         <%!-- **最近の回**（自動で回った回も、依頼で走った回も）。依頼の結果は依頼ごとに
            回を引き当てるので、整理やざっと見るが何を直したのかはここで見る。
            依頼で走った回には印を付ける（同じ回が上の依頼の結果にも出る）。

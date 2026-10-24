@@ -19,7 +19,11 @@ defmodule ChidoriWeb.CollectPanel do
   出すと、そこに出る値はどちらか片方のものにしかなりません。
   """
   def sweep_table(assigns) do
-    assigns = assign(assigns, :rows, sweep_rows(assigns.state))
+    assigns =
+      assign(assigns,
+        rows: sweep_rows(assigns.state),
+        collection: get_in(assigns.state, [:collection, :name])
+      )
 
     ~H"""
     <table :if={@rows != []} class="sweep-table">
@@ -37,7 +41,17 @@ defmodule ChidoriWeb.CollectPanel do
         <tr :for={row <- @rows}>
           <% backend = pick_of(@picks, row.name, :backend, row.backend) %>
           <% model = pick_of(@picks, row.name, :model, row.model) %>
-          <td>{row.name}</td>
+          <td>
+            {row.name}
+            <%!-- **今すぐ 1 回**（人が押した 1 回。止めた収集でも走る。`ChidoriWeb.RunSweepButton`） --%>
+            <.live_component
+              :if={@collection && row.runnable}
+              module={ChidoriWeb.RunSweepButton}
+              id={"run-sweep-#{:erlang.phash2({@collection, row.name})}"}
+              collection={@collection}
+              sweep={row.name}
+            />
+          </td>
           <td :if={row.mechanical} class="pick">
             <span class="muted-note">AI を使いません</span>
           </td>

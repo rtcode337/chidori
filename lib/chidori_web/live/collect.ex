@@ -199,6 +199,8 @@ defmodule ChidoriWeb.Collect do
 
     %{
       name: sweep.name,
+      # **今すぐ走らせられる回か**（時計を持たない割り込み用の回と手で回す回は、Chiezo が断る）
+      runnable: not (sweep[:on_demand] == true or sweep[:by_hand] == true),
       backend: sweep.backend,
       model: sweep.model,
       interval:

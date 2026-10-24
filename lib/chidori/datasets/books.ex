@@ -127,6 +127,8 @@ defmodule Chidori.Datasets.Books do
         "技術者が繰り返し勧めている本を集めます。良し悪しは AI に決めさせず、" <>
           "勧めている記事を溜めて、その数で定番かどうかを分けます。",
       collection: collection(),
+      # 検索文を AI に考えさせて引く収集（収集の画面に、これまで使った検索文の一覧を出す）
+      queries: true,
       reader: "読む人",
       unit: "記事 1 本 1 文書",
       note:
@@ -148,7 +150,7 @@ defmodule Chidori.Datasets.Books do
       %{
         field: "勧めている本",
         stored: "タグ「#{@book_tag}:<書名>」",
-        who: "AI（記事を開いて読む。**ここが数の元**）"
+        who: "AI（記事を開いて読む。ここが数の元）"
       },
       %{field: "何の記事か", stored: "body", who: "AI（1〜2 行）"}
     ]
