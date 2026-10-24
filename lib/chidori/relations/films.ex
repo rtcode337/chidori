@@ -150,8 +150,12 @@ defmodule Chidori.Relations.Films do
   @rough_days_at_default 2
   @survey_days_at_default 14
 
-  @doc "収集の名前。"
-  def collection, do: "chidori_films"
+  @doc """
+  収集の名前。**映画の目録**（最新の映画の `chidori_movies` と頭をそろえる）。いまは映画の
+  つながりの図を描くのに読んでいるが、中身は名作と引き継いだ新作の幅広い情報（監督・主演・
+  公開年・国・ジャンル）なので、図の名前ではなく目録として名付ける（前は `chidori_films`）。
+  """
+  def collection, do: "chidori_movie_catalog"
 
   @doc "図に載せる文書の印。"
   def kind_tag, do: @kind_tag
@@ -380,7 +384,7 @@ defmodule Chidori.Relations.Films do
   def attrs(choices \\ %{}) do
     %{
       name: collection(),
-      description: "Chidori の関連図（映画のつながり）",
+      description: "Chidori の映画の目録（映画のつながりの図などで読む）",
       prompt: prompt(),
       interval_minutes: Chidori.SweepNames.scan_minutes(),
       partition: @partition,

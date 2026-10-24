@@ -84,7 +84,7 @@ defmodule Chidori.Relations.FilmCarryTest do
     test "映画の図の収集にだけ、引き継ぎの行が付く（時刻と 1 回の数を直せる）" do
       {:ok, _} = CarrySetting.put(%{run_at: "04:00", batch: 30})
 
-      assert [row] = Chidori.CollectOverview.chidori_rows("chidori_films")
+      assert [row] = Chidori.CollectOverview.chidori_rows("chidori_movie_catalog")
       assert row.name == "最新情報からの引き継ぎ"
       assert row.clock == "Chidori が起こす（04:00）"
       assert row.wake == {:carry, "04:00", 30}
@@ -95,7 +95,7 @@ defmodule Chidori.Relations.FilmCarryTest do
 
     test "設定ページの表（定義から組み直した行）にも、引き継ぎの行が残る" do
       rows = Chidori.CollectCatalog.rows_with([], fn _entry, _chiezo -> [] end)
-      films = Enum.find(rows, &(&1.name == "chidori_films"))
+      films = Enum.find(rows, &(&1.name == "chidori_movie_catalog"))
 
       assert "最新情報からの引き継ぎ" in Enum.map(films.sweeps, & &1.name)
     end
@@ -204,7 +204,7 @@ defmodule Chidori.Relations.FilmCarryTest do
 
       assert {:ok, 1} = FilmCarry.carry_batch_now()
       assert_received {:focus, url, %{"prompt" => prompt}}
-      assert url =~ "/v1/collect/chidori_films/focus?manual=true"
+      assert url =~ "/v1/collect/chidori_movie_catalog/focus?manual=true"
       assert prompt =~ "- 注目作"
 
       last = CarrySetting.get()

@@ -190,7 +190,7 @@ defmodule Chidori.Relations.FilmsTest do
     end
 
     test "名簿は監督の分類と賞の受賞作の和を知名度で切り、受賞作は下限を免除する", %{attrs: attrs} do
-      assert attrs.name == "chidori_films"
+      assert attrs.name == "chidori_movie_catalog"
       extract = attrs.extract
 
       assert extract.tag_suffix == "の監督映画"
@@ -257,7 +257,7 @@ defmodule Chidori.Relations.FilmsTest do
   test "関連図の 3 つ目の図として並ぶ" do
     assert {"films", "映画のつながり"} in Relations.views()
     assert Relations.valid_key("films") == "films"
-    assert Relations.collection_of("films") == "chidori_films"
+    assert Relations.collection_of("films") == "chidori_movie_catalog"
   end
 
   describe "主演から芸能人の図へ" do

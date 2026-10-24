@@ -3,7 +3,7 @@ defmodule Chidori.Relations.FilmCarry do
   **最新情報の映画を、映画のつながりの図へ引き継ぐ**ところ。
 
   最新情報の映画（`chidori_movies`）は上映が終わると整理の回が消します（公開から 60 日）。
-  図（`chidori_films`）は名作を Wikipedia の分類から引いた名簿なので、新しい作品は入りません。
+  図（`chidori_movie_catalog`）は名作を Wikipedia の分類から引いた名簿なので、新しい作品は入りません。
   そのままだと、**見た映画がどちらにも残らない**。そこで、消える前に図へ足させます。
 
   ## 何を引き継ぐか

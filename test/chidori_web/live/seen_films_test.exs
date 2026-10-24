@@ -19,17 +19,17 @@ defmodule ChidoriWeb.SeenFilmsTest do
       %{method: :get, url: url} ->
         cond do
           # 映画の図にある作品
-          url =~ "/v1/chidori_films/doc?" and url =~ URI.encode_www_form("七人の侍") ->
+          url =~ "/v1/chidori_movie_catalog/doc?" and url =~ URI.encode_www_form("七人の侍") ->
             Chidori.HttpStub.ok(~s({"title":"七人の侍"}))
 
-          url =~ "/v1/chidori_films/doc?" ->
+          url =~ "/v1/chidori_movie_catalog/doc?" ->
             {:ok, %{status: 404, body: ~s({"error":"not found"})}}
 
           url =~ "/v1/chidori_movies/doc?" ->
             {:ok, %{status: 404, body: ~s({"error":"not found"})}}
 
           # 引き継いだときの元の見出しで図にある作品
-          url =~ "/v1/chidori_films/filter?" and url =~ URI.encode_www_form("記録:元の見出し") ->
+          url =~ "/v1/chidori_movie_catalog/filter?" and url =~ URI.encode_www_form("記録:元の見出し") ->
             Chidori.HttpStub.ok(
               ~s|{"total":1,"results":[{"title":"元の見出し (映画)","tags":["映画","年代:1980","監督:ある監督","主演:主演A","主演:主演B"],"body":"図の作品の説明"}]}|
             )
@@ -88,7 +88,7 @@ defmodule ChidoriWeb.SeenFilmsTest do
 
     render_async(live)
     assert_received {:posted, url}
-    assert url =~ "/v1/collect/chidori_films/"
+    assert url =~ "/v1/collect/chidori_movie_catalog/"
   end
 
   test "最新情報に無い見た映画も、映画の図から詳細を開ける", %{conn: conn} do
