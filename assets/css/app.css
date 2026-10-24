@@ -1192,6 +1192,9 @@ a.top-book-cover { display: block; }
 .book-posts .muted-note { margin-left: .4rem; }
 /* 埋め込まれた関連図は取得の行だけ（見出しと説明を落とす） */
 .relations-intro.is-embedded { padding: .4rem 0 .6rem; }
+/* 映画の図の説明（切り替えの下。見出しは最新などと同じ movie-intro） */
+.relations-intro.film-intro { padding: 0 0 .6rem; }
+.relations-intro.film-intro > p:first-child { color: #52607a; font-size: .9rem; font-weight: 400; letter-spacing: 0; line-height: 1.7; max-width: 42rem; }
 
 /* 横にスクロールする列の**続きがある側の端をぼかす**（`ScrollTabs` が印を付ける）。
    どちらにも続きが無ければぼかさない */

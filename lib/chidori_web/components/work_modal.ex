@@ -25,6 +25,7 @@ defmodule ChidoriWeb.WorkModal do
   alias Chidori.News
   alias Chidori.News.Events
   alias Chidori.News.Movies
+  alias Chidori.Relations.Films
   alias Chidori.Relations.Mark
   alias Chidori.Relations.Marks
   alias Chidori.Topics
@@ -69,12 +70,49 @@ defmodule ChidoriWeb.WorkModal do
     end
   end
 
-  @doc "作品を 1 件、Chiezo から引きます（`{:ok, entry}` か `{:error, 理由}`）。"
+  @doc """
+  作品を 1 件、Chiezo から引きます（`{:ok, entry}` か `{:error, 理由}`）。
+
+  映画は、最新情報に無ければ映画の図からも引きます（見た映画の一覧から開いたとき）。
+  見た記録は最新情報と映画の図で同じ置き場なので、昔の作品や公開から日が経って
+  最新情報から消えた作品の記録もあり、最新情報だけを引くと「見当たらない」になった。
+  図では札の見出しか、引き継いだときの元の見出し（`記録:`）で探します。見出しは開いた
+  ときのまま返します（見た記録をその見出しで引くため）。
+  """
   def fetch(base, topic, title) do
     case Chiezo.doc(base, topic.collection, title, @doc_fields) do
-      {:ok, doc} -> {:ok, Events.entry(doc, Topics.date_tag(topic))}
-      {:error, reason} -> {:error, reason}
+      {:ok, doc} ->
+        {:ok, Events.entry(doc, Topics.date_tag(topic))}
+
+      {:error, :not_found} = missing ->
+        if Topics.works(topic) == Movies,
+          do: from_films(base, title, topic) || missing,
+          else: missing
+
+      {:error, reason} ->
+        {:error, reason}
     end
+  end
+
+  defp from_films(base, title, topic) do
+    doc =
+      case Chiezo.doc(base, Films.collection(), title, @doc_fields) do
+        {:ok, doc} ->
+          doc
+
+        _missing ->
+          case Chiezo.spot_docs(
+                 base,
+                 Films.collection(),
+                 Films.record_tag() <> ":" <> title,
+                 0,
+                 1, body: true) do
+            {:ok, %{docs: [doc | _]}} -> doc
+            _none -> nil
+          end
+      end
+
+    if doc, do: {:ok, Events.entry(Map.put(doc, "title", title), Topics.date_tag(topic))}
   end
 
   @doc """

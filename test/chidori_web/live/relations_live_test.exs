@@ -75,6 +75,26 @@ defmodule ChidoriWeb.RelationsLiveTest do
     assert html =~ ~s(href="/collect/relations?view=films")
   end
 
+  test "映画の図は開くたびに取るので取得の行を出さず、切り替えは中身の頭に置く", %{conn: conn} do
+    {:ok, _live, html} = live(conn, ~p"/relations?view=films")
+
+    refute html =~ "最新の情報を取得"
+    refute html =~ "最後に取得"
+    assert RelationsLive.refresh_on_open?("films")
+    refute RelationsLive.refresh_on_open?("painters")
+
+    # 見出しは最新などと同じ（違うと切り替えの札の位置がずれる）。図の説明は切り替えの下
+    {:ok, _live, latest} = live(conn, ~p"/news?view=chidori_movies")
+    assert movie_intro(html) == movie_intro(latest)
+    {tabs, _} = :binary.match(html, ~s(id="movie-tabs"))
+    {film_intro, _} = :binary.match(html, "film-intro")
+    assert tabs < film_intro
+
+    # ほかの図は今までどおり押したときだけ取る
+    {:ok, _live, html} = live(conn, ~p"/relations?view=painters")
+    assert html =~ "最新の情報を取得"
+  end
+
   test "映画の収集の画面に、引き継ぎの様子を出す（時刻は収集の画面の表で決める）", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/collect/relations?view=films")
 
@@ -1860,5 +1880,15 @@ defmodule ChidoriWeb.RelationsLiveTest do
 
       assert Chidori.Relations.current("painters").step == nil
     end
+  end
+
+  # 映画の見出し（切り替えの上）。行き先のリンクと位置の印は機能ごとに違うので外して比べる
+  defp movie_intro(html) do
+    [_, intro] = String.split(html, ~s(class="relations-intro movie-intro"), parts: 2)
+    [intro, _] = String.split(intro, "</section>", parts: 2)
+
+    intro
+    |> String.replace(~r/ data-phx-loc="\d+"/, "")
+    |> String.replace(~r/ href="[^"]*"/, "")
   end
 end

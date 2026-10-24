@@ -213,4 +213,44 @@ defmodule ChidoriWeb.DiningTabs do
     </nav>
     """
   end
+
+  attr :current, :atom,
+    required: true,
+    doc: "`:latest`（最新）・`:graph`（関連図）・`:theaters`（映画館）・`:seen`（見た映画）"
+
+  attr :mode, :atom, default: :read
+
+  @doc """
+  趣味の映画のタブの見出し（切り替えの上）。**最新・関連図・映画館・見た映画のどれでも同じ** ——
+  見出しと説明が機能ごとに違うと、長さが違うぶん下の切り替えの札の位置が、切り替えるたびにずれる。
+  機能ごとの説明は切り替えの下に置く。収集の画面へのリンクだけは、その機能の収集へ向ける
+  （頼むものが無い映画館・見た映画は最新の収集へ）。
+  """
+  def movie_intro(assigns) do
+    {_key, _name, read, collect} =
+      Enum.find(Chidori.Hobbies.movie_tabs(), &(elem(&1, 0) == assigns.current))
+
+    {_key, _name, latest_read, latest_collect} = hd(Chidori.Hobbies.movie_tabs())
+
+    assigns =
+      assign(assigns,
+        collect_path: collect || latest_collect,
+        read_path: if(collect, do: read, else: latest_read)
+      )
+
+    ~H"""
+    <section class="relations-intro movie-intro">
+      <p>DAILY UPDATES</p>
+      <h1>映画</h1>
+      <p :if={@mode != :collect}>
+        集めるのは Chiezo です。Chidori は収集を依頼して、溜まったものを読みます。
+        <.link navigate={@collect_path}>この話題の収集の画面へ</.link>
+      </p>
+      <p :if={@mode == :collect}>
+        この話題の収集を Chiezo に頼む画面です。依頼して作られる収集は止まった状態なので、
+        動かすまで AI が勝手に動くことはありません。 <.link navigate={@read_path}>読む画面へ</.link>
+      </p>
+    </section>
+    """
+  end
 end

@@ -67,7 +67,15 @@
 
 <main id="page-scroll" class="relations-page news-page" phx-hook="PageScroll">
   <div>
-    <section class="relations-intro">
+    <%!-- 映画は見出しを最新・関連図・映画館・見た映画で同じにする（`DiningTabs.movie_intro/1`）。
+         違うと、下の切り替えの札の位置が切り替えるたびにずれる --%>
+    <% movies? = @topic != nil and @topic.collection == "chidori_movies" %>
+    <ChidoriWeb.DiningTabs.movie_intro
+      :if={movies?}
+      current={@movie_section}
+      mode={if @collect_mode, do: :collect, else: :read}
+    />
+    <section :if={!movies?} class="relations-intro">
       <p>DAILY UPDATES</p>
       <h1>
         {cond do
@@ -90,9 +98,9 @@
         記事そのものが Chiezo から消えても、ここからは原文を開けます。
       </p>
     </section>
-    <%!-- **映画のタブの中の切り替え**（最新・関連図・映画館）。要約の上に、下へ線を引いて置く --%>
+    <%!-- **映画のタブの中の切り替え**（最新・関連図・映画館・見た映画）。見出しの下に、下へ線を引いて置く --%>
     <ChidoriWeb.DiningTabs.movie_tabs
-      :if={@topic && @topic.collection == "chidori_movies"}
+      :if={movies?}
       current={@movie_section}
       mode={if @collect_mode, do: :collect, else: :read}
     />

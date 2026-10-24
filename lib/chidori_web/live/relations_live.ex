@@ -116,17 +116,33 @@ defmodule ChidoriWeb.RelationsLive do
   end
 
   @doc """
+  開くたびに取り直す図か（映画の図）。作品は千数百件で読むのが軽く、見た映画のページで
+  足した作品や付けた記録をすぐ図で見たい。取り直すと名前のずれた見た記録の付け替え
+  （`Films.align_marks/1`）も走る。取得の行（最後に取得・最新の情報を取得）は出さない。
+  """
+  def refresh_on_open?(view), do: view == "films"
+
+  @doc """
   「最後に取得」と「最新の情報を取得」の行。**関連図の画面では見出しの下、
-  トップページに埋め込んだときは図の下**に置く（`embed`）。
+  トップページに埋め込んだときは図の下**に置く（`embed`）。開くたびに取り直す図
+  （`refresh_on_open?/1`）は、取りに行っている間の一言だけ。
   """
   attr :relation, :map, required: true
+  attr :view, :string, default: nil
 
   def checked_line(assigns) do
     ~H"""
+    <p
+      :if={refresh_on_open?(@view) and reloading?(@relation)}
+      class="relation-checked muted-note"
+      aria-live="polite"
+    >
+      取得しています…
+    </p>
     <%!-- **開くたびには取りに行かない。** 8,000 人ぶんを読むので数秒かかるのに、
        Chiezo の側は数時間に 1 度しか動かない。いつのものを見ているかを出して、
        取り直すかは読む人に決めてもらう --%>
-    <p class="relation-checked">
+    <p :if={!refresh_on_open?(@view)} class="relation-checked">
       <span class="muted-note">
         <%= if at = @relation[:checked_at] do %>
           最後に取得: <strong>{Jst.format(at)}（{Jst.ago(at)}）</strong>
@@ -172,8 +188,11 @@ defmodule ChidoriWeb.RelationsLive do
 
       # **開くたびには取り直さない。** 8,000 人ぶんを読むので数秒かかるうえ、
       # Chiezo の側は数時間に 1 度しか動かない —— 開いた回数だけ待たされる意味が無い。
-      # まだ 1 度も読めていないときだけ取りに行き、あとは「最新の情報を取得」で
-      if Relations.current(view)[:checked_at] == nil, do: Relations.refresh(view)
+      # まだ 1 度も読めていないときだけ取りに行き、あとは「最新の情報を取得」で。
+      # 映画の図だけは開くたびに取る（`refresh_on_open?/1`）
+      if Relations.current(view)[:checked_at] == nil or
+           (refresh_on_open?(view) and socket.assigns[:view] != view),
+         do: Relations.refresh(view)
     end
 
     # **収集の画面**（`/collect/relations`）か、図を見る画面か。収集の画面は設定を開いた形で出す

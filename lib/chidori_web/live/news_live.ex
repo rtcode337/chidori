@@ -1876,11 +1876,36 @@ defmodule ChidoriWeb.NewsLive do
   def hero?(nil), do: false
   def hero?(topic), do: Topics.works(topic) != nil or Map.get(topic, :thumbs) != nil
 
-  @doc "作品の事実（公開日・上映形式・配信開始、放送開始・曜日・放送局など）を 1 行で。"
+  @doc """
+  作品の事実（公開日・上映形式・配信開始、放送開始・曜日・放送局など）を 1 行で。
+
+  映画の図から開いた作品（見た映画の一覧から。`ChidoriWeb.WorkModal.fetch/3`）は公開日を
+  持たないので、図のタグの公開年・監督・主演で書く。
+  """
   def work_facts(entry, works \\ Movies) do
-    ["#{day_label(entry.date)} #{works.date_word()}" | works.facts(entry)]
+    tags = Map.get(entry, :tags) || []
+
+    released =
+      cond do
+        entry.date -> "#{day_label(entry.date)} #{works.date_word()}"
+        year = tag_values(tags, "年代") |> List.first() -> "#{year}年 #{works.date_word()}"
+        true -> nil
+      end
+
+    credits =
+      for {key, label} <- [{"監督", "監督"}, {"主演", "主演"}],
+          (names = tag_values(tags, key)) != [],
+          do: "#{label}: " <> Enum.join(names, "・")
+
+    ([released | works.facts(entry)] ++ credits)
     |> Enum.filter(&is_binary/1)
     |> Enum.join(" / ")
+  end
+
+  defp tag_values(tags, key) do
+    for tag <- tags,
+        String.starts_with?(tag, key <> ":"),
+        do: String.replace_prefix(tag, key <> ":", "")
   end
 
   @doc "1 件の開催の事実（時刻・会期・開催地）を 1 行で。"

@@ -63,7 +63,24 @@
     <%!-- 埋め込まれたときは**図と取得の行だけ**（見出し・説明・図の下の節は出さない）。
          トップページの中で読むのは図で、見方や設定は関連図の画面で読む。
          **取得の行は図の下へ**（埋め込みでは図が主役。上に置くと図が押し下がる） --%>
-    <section :if={!@embed} class="relations-intro">
+    <%!-- 映画の図は趣味の映画のタブの中。見出しは最新・映画館・見た映画と同じもの
+         （`DiningTabs.movie_intro/1`。違うと切り替えの札の位置がずれる）。図の説明は切り替えの下 --%>
+    <%= if @view == "films" and !@embed do %>
+      <ChidoriWeb.DiningTabs.movie_intro
+        current={:graph}
+        mode={if @collect_mode, do: :collect, else: :read}
+      />
+      <ChidoriWeb.DiningTabs.movie_tabs
+        current={:graph}
+        mode={if @collect_mode, do: :collect, else: :read}
+      />
+      <section class="relations-intro film-intro">
+        <p :if={!@collect_mode}>{@relation.description}</p>
+        <p :if={@collect_mode}>名簿・巡回・区画・依頼文はここで決めます。</p>
+        <.checked_line :if={!@collect_mode} relation={@relation} view={@view} />
+      </section>
+    <% end %>
+    <section :if={!@embed and @view != "films"} class="relations-intro">
       <p>{@relation.eyebrow}</p>
       <h1>{@relation.title}</h1>
       <p :if={!@collect_mode}>
@@ -82,16 +99,10 @@
 
       <%!-- **収集の画面には出さない**（図を描かないので、図を取り直す口は要らない。
            区画の未レビューの数だけは図から数えるので、その表の横で取り直す） --%>
-      <.checked_line :if={!@collect_mode} relation={@relation} />
+      <.checked_line :if={!@collect_mode} relation={@relation} view={@view} />
 
       <%!-- 見た映画を足す口は、趣味の映画のタブの中の「見た映画」へ移した（`ChidoriWeb.SeenFilms`） --%>
     </section>
-    <%!-- 映画の関連図は趣味の映画のタブの中（最新・関連図・映画館の切り替え。下に線を引く） --%>
-    <ChidoriWeb.DiningTabs.movie_tabs
-      :if={@view == "films" and !@embed}
-      current={:graph}
-      mode={if @collect_mode, do: :collect, else: :read}
-    />
 
     <%!-- **図を見る画面と収集の画面を分ける**（`@collect_mode`）。収集の画面には図を出さない --%>
     <%= if !@collect_mode do %>
