@@ -53,7 +53,7 @@ paths:
   （鍵 `isbn:<13 桁>`・5 秒おき）。取れなかった本（ISBN が無い・どこにも無かった）は「表紙なし」の絵（`Bookshelf.no_cover/0`）、まだ取りに行っていない本は空の枠（待てば埋まる本と見分ける）。ブラウザに外の絵を直に引かせない
 - 技術書: 本ではなく勧めている記事を溜める（`chidori_book_posts`）。数は機械が数え、AI は数に触らない（畳む・分野・説明だけ）。
   検索文は回ごとに巡回の相手が考え、控えるのは Chiezo。調べ終えたものは調べ直さない（`{unreviewed}`）
-- Pi-hole: 繋ぐのは Chiezo（接続先とパスワードは Chiezo 側）。Chidori は Pi-hole に直接つながらない
+- Pi-hole: 繋ぐのは Chiezo（接続先とパスワードは Chiezo 側）。Chidori は Pi-hole に直接つながらない。いま止めている通信を流すのは閲覧の「ツール」の枠（`ChidoriWeb.PiholeLive`。状態は部品が持つ）
 - 食事処: 範囲ごとに収集が 1 つ（`Chidori.Datasets.DiningAreas`・`chidori_dining_<番号>`。Chiezo に同じ名前が残っている番号は使わない）。
   他アプリ用のタブは「食事処」1 つで、範囲ごとのタブはその下の段（`ChidoriWeb.DiningTabs`。「全体」= `/collect/apps/areas` と範囲ごと。食事処の段は収集の画面にだけある）
   範囲の正本は手元の表。「Chiezo から範囲を戻す」は手元に無い範囲を読み戻し、四角が違う範囲は Chiezo の四角に合わせる

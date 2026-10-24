@@ -18,6 +18,7 @@ defmodule Chidori.Home do
   - 技術書（`books`）—— 本棚の未読の上位 10 冊（`ChidoriWeb.TopBooks`。オライリーの本は札の印で見分ける）と、
     その下に畳んだ本棚の全冊（`ChidoriWeb.BookshelfList`。本棚を読むのはここだけ）
   - レシピ（`recipes`）—— レシピ集を種類ごとに（`ChidoriWeb.RecipeBook`）
+  - いま止めている通信（`pihole_live`。大きなタブ「ツール」）—— Pi-hole が止めた問い合わせをその場で流す（`ChidoriWeb.PiholeLive`）
 
   **何も選んでいなければ一般ニュースの要約だけ**（トップを開いて何も出ないより、
   いちばん読まれるものを出す）。
@@ -32,7 +33,7 @@ defmodule Chidori.Home do
   @default ["topic:" <> Chidori.News.collection_name()]
 
   # 大きなタブ（並べる順）
-  @groups [news: "ニュース", events: "イベント", relations: "関連図", datasets: "趣味"]
+  @groups [news: "ニュース", events: "イベント", relations: "関連図", datasets: "趣味", tools: "ツール"]
 
   # 枠の並び（大きなタブの中の順）と、下の段に出す短い名前。**ここに無い枠は、
   # その大きなタブの後ろに元の名前で並ぶ**（話題を足したときに消えないように）
@@ -50,7 +51,8 @@ defmodule Chidori.Home do
     {"relations:people", "芸能人"},
     {"relations:films", "映画"},
     {"books", "技術書"},
-    {"recipes", "レシピ"}
+    {"recipes", "レシピ"},
+    {"pihole_live", "止めている通信"}
   ]
 
   @doc "大きなタブ（`[{鍵, 名前}]`。並べる順）。"
@@ -123,7 +125,17 @@ defmodule Chidori.Home do
       %{key: "recipes", name: "レシピ", kind: :recipes, group: :datasets}
     ]
 
-    (topics ++ relations ++ datasets)
+    # **ツール**（溜めたものを読むのではなく、その場の様子を見る道具）
+    tools = [
+      %{
+        key: "pihole_live",
+        name: "いま止めている通信（Pi-hole）",
+        kind: :pihole_live,
+        group: :tools
+      }
+    ]
+
+    (topics ++ relations ++ datasets ++ tools)
     |> Enum.map(&Map.put(&1, :short, short_name(&1)))
     |> sort()
   end

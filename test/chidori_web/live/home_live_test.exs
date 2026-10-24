@@ -307,6 +307,52 @@ defmodule ChidoriWeb.HomeLiveTest do
     end
   end
 
+  test "閲覧のツールのタブで、いま止めている通信を流せる", %{conn: conn} do
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+
+    Chidori.HttpStub.stub(fn %{method: :get, url: url} ->
+      body =
+        if url =~ "/v1/pihole/blocked",
+          do: %{
+            "cursor" => 1_759_600_005.0,
+            "queries" => [
+              %{
+                "id" => 1,
+                "at" => "2026-10-04T12:00:05+00:00",
+                "domain" => "ads.example.com",
+                "client" => "192.0.2.10",
+                "client_name" => "tablet",
+                "status" => "GRAVITY"
+              }
+            ]
+          },
+          else: %{"results" => []}
+
+      Chidori.HttpStub.ok(Jason.encode!(body))
+    end)
+
+    Home.put(["topic:chidori_news", "pihole_live"])
+    {:ok, live, html} = live(conn, ~p"/?panel=pihole_live")
+    assert html =~ "いま止めている通信"
+    # 大きなタブは「ツール」（ニュースの後ろ）
+    [_before, nav | _rest] = String.split(html, ~s(aria-label="トップページの大きなタブ"))
+    [nav | _rest] = String.split(nav, "</nav>")
+    assert nav =~ ~r|ニュース.*ツール|s
+
+    live |> element(~s|button[phx-click="start"]|) |> render_click()
+    html = render_async(live)
+
+    assert html =~ "ads.example.com"
+    assert html =~ "（tablet）"
+    assert html =~ ~s(phx-click="stop")
+
+    # 止めたら、読みに行かない（行は残る）
+    html = live |> element(~s|button[phx-click="stop"]|) |> render_click()
+    assert html =~ ~s(phx-click="start")
+    assert html =~ "ads.example.com"
+  end
+
   describe "技術書の枠の本棚" do
     # 本棚（全冊）はトップページの技術書の枠で読む（データ収集の読む画面には置かない）
     @shelf %{

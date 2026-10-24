@@ -82,64 +82,6 @@
     <%= if !@collect_mode do %>
       <%!-- **本棚**（読む側のアプリを持たない対象だけ）。**設定より先に置く** ——
          この対象で読みに来るのは、溜まった本のほう --%>
-      <%!-- **いま止めている通信**（Pi-hole の画面の「1件ずつ流す」に当たるもの）。押した時点から先を
-         5 秒ごとに Chiezo 越しに読み、新しいものを上に 1 件 1 行で足す --%>
-      <section
-        :if={@dataset[:listing]}
-        class="live-blocked"
-        aria-label="いま止めている通信"
-      >
-        <h2>
-          いま止めている通信 <span :if={@live_on} class="live-dot" aria-hidden="true"></span>
-        </h2>
-        <p class="button-row">
-          <button :if={!@live_on} type="button" phx-click="live_start">流す</button>
-          <button :if={@live_on} type="button" phx-click="live_stop">止める</button>
-          <button :if={@live_rows != []} type="button" phx-click="live_clear">消す</button>
-          <span class="muted-note">
-            押した時点から先に Pi-hole が止めた問い合わせを、5 秒ごとに 1 件 1 行で足します（同じドメインでも来るたびに 1 行）。
-          </span>
-        </p>
-        <p :if={@live_error} class="muted-note">{reason_text(@live_error)}</p>
-        <p :if={@live_on and @live_rows == [] and !@live_error} class="muted-note">
-          待っています…
-        </p>
-        <%!-- 溜めているドメインだけ押せる（詳細は溜めたものから開くので） --%>
-        <% known =
-          case @shelf do
-            {:ok, domains} when is_list(domains) -> MapSet.new(domains, & &1.domain)
-            _other -> MapSet.new()
-          end %>
-        <table :if={@live_rows != []} class="live-table">
-          <thead>
-            <tr>
-              <th>時刻</th><th>ドメイン</th><th>アクセス元</th><th>止め方</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={row <- @live_rows}>
-              <td>{Jst.format(row.at)}</td>
-              <td class="live-domain">
-                <button
-                  :if={MapSet.member?(known, row.domain)}
-                  type="button"
-                  class="domain-name"
-                  phx-click="open_domain"
-                  phx-value-domain={row.domain}
-                >
-                  {row.domain}
-                </button>
-                <span :if={!MapSet.member?(known, row.domain)}>{row.domain}</span>
-              </td>
-              <td>
-                {row.client}<span :if={row.client_name} class="muted-note">（{row.client_name}）</span>
-              </td>
-              <td class="muted-note">{row.status}</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
       <%!-- **レシピ集**（設定より先に置く。見に来るのは溜まったレシピのほう） --%>
       <ChidoriWeb.RecipeBook.book
         :if={@dataset[:reading] && match?({:ok, _}, @shelf)}

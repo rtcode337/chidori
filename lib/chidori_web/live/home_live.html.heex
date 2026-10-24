@@ -236,6 +236,15 @@
       </section>
 
       <%!-- レシピ集（データ収集の画面と同じ部品。名簿の設定はデータ収集の画面だけ） --%>
+      <%!-- **いま止めている通信**（ツール。流しているかと行は部品が持つ） --%>
+      <section
+        :if={@panel && @panel.kind == :pihole_live}
+        class="home-panel"
+        aria-label={@panel.name}
+      >
+        <.live_component module={ChidoriWeb.PiholeLive} id="pihole-live" />
+      </section>
+
       <section :if={@panel && @panel.kind == :recipes} class="home-panel" aria-label={@panel.name}>
         <p :if={@recipes in [nil, :loading]} class="muted-note">読み込んでいます…</p>
         <p :if={match?({:error, _}, @recipes)} class="muted-note">レシピ集を読めませんでした。</p>
