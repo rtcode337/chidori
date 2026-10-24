@@ -179,7 +179,7 @@
     <%!-- **Chiezo で止まっている収集は枠ごと色を付ける**（収集の一覧と同じ色）。この収集から作る収集は節ごと --%>
     <section
       :if={@collect_mode}
-      class={["settings-panel", stopped_class(@state)]}
+      class={["settings-panel", !@dataset[:derived] && stopped_class(@state)]}
       aria-label={"#{@dataset.title}の設定"}
     >
       <%!-- **設定は畳んでおき、開いたときに Chiezo から読む**（関連図と同じ）。
@@ -572,153 +572,178 @@
           </p>
         </section>
 
-        <h3>Chiezo の収集</h3>
-        <p aria-live="polite">{status_message(@state)}</p>
-        <p class="muted-note">{push_note(@state)}</p>
+        <%!-- **この収集の節**。この収集から作る収集（本棚）を持つ対象では、本棚と同じ高さの
+           見出しを付けて節に分け、この収集の最近の回と検索に使った語もこの節に入れる
+           （2 つの収集の控えが 1 つの枠に混ざると、どちらのものか読めない） --%>
+        <section
+          id="main-collection"
+          class={[
+            @dataset[:derived] && "settings-block lined-block",
+            @dataset[:derived] && stopped_class(@state)
+          ]}
+          aria-label="この収集"
+        >
+          <h3>
+            {if @dataset[:derived],
+              do: "#{@dataset.collection_name}（#{@dataset.collection}）",
+              else: "Chiezo の収集"}
+          </h3>
+          <p aria-live="polite">{status_message(@state)}</p>
+          <p class="muted-note">{push_note(@state)}</p>
 
-        <dl :if={collection_facts(@state) != []} class="collect-facts">
-          <div :for={{label, value} <- collection_facts(@state)}>
-            <dt>{label}</dt>
-            <dd>{value}</dd>
-          </div>
-        </dl>
+          <dl :if={collection_facts(@state) != []} class="collect-facts">
+            <div :for={{label, value} <- collection_facts(@state)}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          </dl>
 
-        <%!-- **選んだところはサーバーが覚える**（`phx-change`）。覚えないと、状態が
+          <%!-- **選んだところはサーバーが覚える**（`phx-change`）。覚えないと、状態が
            届いた拍子にフォームが描き直され、選んだ相手が元の値に戻る --%>
-        <form id="collect-form" phx-submit="collect" phx-change="pick_sweep">
-          <.sweep_table
-            state={@state}
-            picks={@picks}
-            backends={@backends}
-          />
+          <form id="collect-form" phx-submit="collect" phx-change="pick_sweep">
+            <.sweep_table
+              state={@state}
+              picks={@picks}
+              backends={@backends}
+            />
 
-          <%!-- **情報収集が 1 回に回る区画の数**（範囲ごとの食事処だけ）。重い相手で回すので、
+            <%!-- **情報収集が 1 回に回る区画の数**（範囲ごとの食事処だけ）。重い相手で回すので、
                区画の数から自動で決めさせず、ここで決める。送ったときに効く --%>
-          <p :if={@dataset[:area]}>
-            <label>
-              情報収集が 1 回に回る区画の数
-              <select name="survey_per_run">
-                <option
-                  :for={n <- Chidori.Datasets.DiningAreas.survey_per_run_choices()}
-                  value={n}
-                  selected={n == (@dataset.area.survey_per_run || 1)}
-                >
-                  {n} 区画
-                </option>
-              </select>
-            </label>
-            <span class="muted-note">
-              1 区画で十分ほどかかります。「収集の設定を更新」で送ったときに効きます。
-            </span>
-          </p>
+            <p :if={@dataset[:area]}>
+              <label>
+                情報収集が 1 回に回る区画の数
+                <select name="survey_per_run">
+                  <option
+                    :for={n <- Chidori.Datasets.DiningAreas.survey_per_run_choices()}
+                    value={n}
+                    selected={n == (@dataset.area.survey_per_run || 1)}
+                  >
+                    {n} 区画
+                  </option>
+                </select>
+              </label>
+              <span class="muted-note">
+                1 区画で十分ほどかかります。「収集の設定を更新」で送ったときに効きます。
+              </span>
+            </p>
 
-          <p class="muted-note">
-            収集の名前は「{@dataset.collection}」です（Chiezo のソース名。<strong>後から変えません</strong>
-            —— 変えると、それまで溜めた先を見失います）。
-          </p>
-          <div class="button-row">
-            <button
-              type="submit"
-              phx-disable-with="送っています…"
-              disabled={@state.pushing}
-            >
-              {collect_label(@state)}
-            </button>
-          </div>
-        </form>
+            <p class="muted-note">
+              収集の名前は「{@dataset.collection}」です（Chiezo のソース名。<strong>後から変えません</strong>
+              —— 変えると、それまで溜めた先を見失います）。
+            </p>
+            <div class="button-row">
+              <button
+                type="submit"
+                phx-disable-with="送っています…"
+                disabled={@state.pushing}
+              >
+                {collect_label(@state)}
+              </button>
+            </div>
+          </form>
 
-        <%!-- **情報収集を起こす時刻**（時刻で起こす対象だけ。食事処の範囲・ご当地グルメ・アニメ聖地）。Chiezo の時計は外してあり、
+          <%!-- **情報収集を起こす時刻**（時刻で起こす対象だけ。食事処の範囲・ご当地グルメ・アニメ聖地）。Chiezo の時計は外してあり、
            Chidori がこの時刻に起こす。収集の画面（`/collect`）の表と同じ値。
            上のフォームの中には置けない（フォームは入れ子にできない） --%>
-        <form
-          :if={@survey_times}
-          id="survey-times-form"
-          class="wake-form"
-          phx-submit="save_survey_times"
-        >
-          <label>
-            情報収集を起こす時刻（日本時間）
-            <input type="text" name="times" value={@survey_times} placeholder="04:00,16:00" />
-          </label>
-          <button type="submit" phx-disable-with="保存しています…">時刻を保存</button>
-          <p class="muted-note">
-            「04:00,16:00」のようにカンマで並べます。空なら起こしません。1 回十分ほどかかるので、
-            ほかの範囲と時刻をずらしてください。
-          </p>
-          <p :if={@survey_saved} aria-live="polite">{@survey_saved}</p>
-        </form>
-        <%!-- **情報収集を今すぐ 1 回**（区画は Chiezo が選ぶふつうの回。区画を選んで頼むのは区画の画面） --%>
-        <div :if={@dataset[:survey_clock] && @state.collection} class="button-row">
-          <button
-            type="button"
-            phx-click="run_survey_now"
-            phx-disable-with="頼んでいます…"
+          <form
+            :if={@survey_times}
+            id="survey-times-form"
+            class="wake-form"
+            phx-submit="save_survey_times"
           >
-            情報収集を今すぐ 1 回走らせる
-          </button>
-          <span :if={@survey_run} class="muted-note" aria-live="polite">{@survey_run}</span>
-        </div>
-
-        <p :if={@state.collection && @state.collection.url} class="muted-note">
-          <a href={@state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
-        </p>
-
-        <%!-- **依頼文は「Chiezo の収集」のためのもの**なので、その節の中に置く --%>
-        <%!-- **機械で引いたものと AI が書いたものの線引きが、ここでいちばん大事なところ**。
-           どちらも Chiezo が持っているものなので、1 つにまとめて出す --%>
-        <details class="news-prompt">
-          <summary>Chiezo への依頼文</summary>
-
-          <%!-- 抽出の指定と区画の割り方は、**持つ対象だけ**（技術書はどちらも持たない） --%>
-          <% extract = extract_text(assigns) %>
-          <% partition = partition_text(assigns) %>
-          <%= if extract do %>
-            <h3>抽出の指定（辞典から機械的に引く条件）</h3>
-            <p :if={@dataset[:extract_note]} class="news-prompt-note">
-              {@dataset[:extract_note]}
+            <label>
+              情報収集を起こす時刻（日本時間）
+              <input type="text" name="times" value={@survey_times} placeholder="04:00,16:00" />
+            </label>
+            <button type="submit" phx-disable-with="保存しています…">時刻を保存</button>
+            <p class="muted-note">
+              「04:00,16:00」のようにカンマで並べます。空なら起こしません。1 回十分ほどかかるので、
+              ほかの範囲と時刻をずらしてください。
             </p>
-            <p :if={!@dataset[:extract_note]} class="news-prompt-note">
-              名前・座標・住所・電話・サイト・ジャンル・紹介文は、この指定で辞典から引いています。 <strong>AI は関わりません</strong>（決まった結果が出ます）。 <strong>何本かに分けて書いてあれば、書いた順が優先の順</strong>です ——
-              <code>provides</code>
-              はその辞典が<strong>勝ちにいく項目</strong>で、
-              そこに書いていない項目は、どの辞典も埋めなかったときだけ使われます。
-            </p>
-            <pre>{extract}</pre>
-          <% end %>
-
-          <%= if partition do %>
-            <h3>区画の割り方</h3>
-            <p :if={@dataset[:partition_note]} class="news-prompt-note">
-              {@dataset[:partition_note]}
-            </p>
-            <p :if={!@dataset[:partition_note]} class="news-prompt-note">
-              巡回はここで割った区画を 1 つずつ回ります。<strong>母集団は集めたもの自身</strong>なので、
-              座標が直れば区画も追随し、育ちすぎた区画・空になった区画は Chiezo が割り直します。
-            </p>
-            <pre>{partition}</pre>
-          <% end %>
-
-          <%= if resolve = resolve_text(assigns) do %>
-            <h3>辞典への引き当てと書式</h3>
-            <p class="news-prompt-note">
-              AI が書いた代表店の手がかり（名前・住所・頁の URL）から、Chiezo が焼くときに辞典の店を引き当て、
-              座標と営業時間を運びます。提供の月と営業時間は書式を確かめ、崩れた値は落とします。 <strong>AI は関わりません</strong>。
-            </p>
-            <pre>{resolve}</pre>
-          <% end %>
-
-          <h3>指示文（AI に頼んでいる内容）</h3>
-          <p :if={@dataset[:prompt_note]} class="news-prompt-note">{@dataset[:prompt_note]}</p>
-          <p :if={extract && !@dataset[:prompt_note]} class="news-prompt-note">
-            AI が書くのは<strong>辞典に書いていないこと</strong>だけです ——
-            まだ開いているか、食べに行く価値があるか、どんな店か。
-            どこを見るかは Chiezo が区画で渡すので、指示文には書いてありません。
-          </p>
-          <div :for={{name, text} <- sweep_prompts(assigns)}>
-            <h3>{name}</h3>
-            <pre>{text}</pre>
+            <p :if={@survey_saved} aria-live="polite">{@survey_saved}</p>
+          </form>
+          <%!-- **情報収集を今すぐ 1 回**（区画は Chiezo が選ぶふつうの回。区画を選んで頼むのは区画の画面） --%>
+          <div :if={@dataset[:survey_clock] && @state.collection} class="button-row">
+            <button
+              type="button"
+              phx-click="run_survey_now"
+              phx-disable-with="頼んでいます…"
+            >
+              情報収集を今すぐ 1 回走らせる
+            </button>
+            <span :if={@survey_run} class="muted-note" aria-live="polite">{@survey_run}</span>
           </div>
-        </details>
+
+          <p :if={@state.collection && @state.collection.url} class="muted-note">
+            <a href={@state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
+          </p>
+
+          <%!-- **依頼文は「Chiezo の収集」のためのもの**なので、その節の中に置く --%>
+          <%!-- **機械で引いたものと AI が書いたものの線引きが、ここでいちばん大事なところ**。
+           どちらも Chiezo が持っているものなので、1 つにまとめて出す --%>
+          <details class="news-prompt">
+            <summary>Chiezo への依頼文</summary>
+
+            <%!-- 抽出の指定と区画の割り方は、**持つ対象だけ**（技術書はどちらも持たない） --%>
+            <% extract = extract_text(assigns) %>
+            <% partition = partition_text(assigns) %>
+            <%= if extract do %>
+              <h3>抽出の指定（辞典から機械的に引く条件）</h3>
+              <p :if={@dataset[:extract_note]} class="news-prompt-note">
+                {@dataset[:extract_note]}
+              </p>
+              <p :if={!@dataset[:extract_note]} class="news-prompt-note">
+                名前・座標・住所・電話・サイト・ジャンル・紹介文は、この指定で辞典から引いています。 <strong>AI は関わりません</strong>（決まった結果が出ます）。 <strong>何本かに分けて書いてあれば、書いた順が優先の順</strong>です ——
+                <code>provides</code>
+                はその辞典が<strong>勝ちにいく項目</strong>で、
+                そこに書いていない項目は、どの辞典も埋めなかったときだけ使われます。
+              </p>
+              <pre>{extract}</pre>
+            <% end %>
+
+            <%= if partition do %>
+              <h3>区画の割り方</h3>
+              <p :if={@dataset[:partition_note]} class="news-prompt-note">
+                {@dataset[:partition_note]}
+              </p>
+              <p :if={!@dataset[:partition_note]} class="news-prompt-note">
+                巡回はここで割った区画を 1 つずつ回ります。<strong>母集団は集めたもの自身</strong>なので、
+                座標が直れば区画も追随し、育ちすぎた区画・空になった区画は Chiezo が割り直します。
+              </p>
+              <pre>{partition}</pre>
+            <% end %>
+
+            <%= if resolve = resolve_text(assigns) do %>
+              <h3>辞典への引き当てと書式</h3>
+              <p class="news-prompt-note">
+                AI が書いた代表店の手がかり（名前・住所・頁の URL）から、Chiezo が焼くときに辞典の店を引き当て、
+                座標と営業時間を運びます。提供の月と営業時間は書式を確かめ、崩れた値は落とします。 <strong>AI は関わりません</strong>。
+              </p>
+              <pre>{resolve}</pre>
+            <% end %>
+
+            <h3>指示文（AI に頼んでいる内容）</h3>
+            <p :if={@dataset[:prompt_note]} class="news-prompt-note">{@dataset[:prompt_note]}</p>
+            <p :if={extract && !@dataset[:prompt_note]} class="news-prompt-note">
+              AI が書くのは<strong>辞典に書いていないこと</strong>だけです ——
+              まだ開いているか、食べに行く価値があるか、どんな店か。
+              どこを見るかは Chiezo が区画で渡すので、指示文には書いてありません。
+            </p>
+            <div :for={{name, text} <- sweep_prompts(assigns)}>
+              <h3>{name}</h3>
+              <pre>{text}</pre>
+            </div>
+          </details>
+
+          <%= if @dataset[:derived] do %>
+            <.search_queries queries={@search_queries} />
+            <.recent_runs
+              runs={@recent_runs}
+              collection={@dataset.collection}
+              reload="reload_recent_runs"
+            />
+          <% end %>
+        </section>
 
         <%!-- **この収集から作る収集**（本棚・話題の網）。**親の下に置く** ——
            別のタブにすると、何から作られたものかが読めなくなる --%>
@@ -771,6 +796,13 @@
           <p :if={@derived_state.collection && @derived_state.collection.url} class="muted-note">
             <a href={@derived_state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>
           </p>
+
+          <%!-- **この収集の最近の回**（親の収集の「最近の回」とは別の控え。置き場所でどちらの回かが分かる） --%>
+          <.recent_runs
+            runs={@derived_runs}
+            collection={@dataset.derived.collection()}
+            reload="reload_derived_runs"
+          />
 
           <%!-- 本棚の収集に何を頼んでいるか（親の収集と同じ形）。機械収集の回は AI を呼ばず、
              記事のタグを数えるだけなので、その指定を出す --%>
@@ -1155,87 +1187,16 @@
           </details>
         </section>
 
-        <%!-- **これまで検索に使った語**（検索文を AI に考えさせて引く対象だけ。新しい順）。
-           同じ語で引き直しても同じ記事しか返らないので、どの語で何件入り何件残ったかを見て、
-           依頼文を直すかを決める。消すのは収集の一覧の「ほかの操作」から。
-           **畳んでおく**（長くなるうえ、毎回見るものではない） --%>
-        <details
-          :if={@search_queries}
-          class="search-queries"
-          aria-label="これまで検索に使った語"
-        >
-          <summary>
-            これまで検索に使った語<span
-              :if={match?({:ok, [_ | _]}, @search_queries)}
-              class="muted-note"
-            >（{length(elem(@search_queries, 1))} 件）</span>
-          </summary>
-          <p :if={@search_queries == :loading} class="muted-note">読んでいます…</p>
-          <p :if={match?({:error, _}, @search_queries)} class="muted-note">
-            {reason_text(elem(@search_queries, 1))}
-          </p>
-          <%= if match?({:ok, _}, @search_queries) do %>
-            <p :if={elem(@search_queries, 1) == []} class="muted-note">まだ 1 回も引いていません。</p>
-            <table :if={elem(@search_queries, 1) != []} class="collect-overview">
-              <thead>
-                <tr>
-                  <th>検索文</th>
-                  <th>使った（JST）</th>
-                  <th>入った</th>
-                  <th>残った</th>
-                  <th>考えた相手</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr :for={row <- elem(@search_queries, 1)}>
-                  <td>{row["query"]}</td>
-                  <td>{Jst.format(row["used_at"])}</td>
-                  <td>{row["found"] || "—"}</td>
-                  <td>{row["kept"] || "—"}</td>
-                  <td class="muted-note">{row["by"] || "最初の組"}</td>
-                </tr>
-              </tbody>
-            </table>
-          <% end %>
-        </details>
+        <%!-- この収集から作る収集を持たない対象は、検索に使った語と最近の回を枠の後ろに置く --%>
+        <%= if !@dataset[:derived] do %>
+          <.search_queries queries={@search_queries} />
 
-        <%!-- **最近の回**（自動で回った回も、依頼で走った回も）。依頼の結果は依頼ごとに
-           回を引き当てるので、整理やざっと見るが何を直したのかはここで見る。
-           依頼で走った回には印を付ける（同じ回が上の依頼の結果にも出る）。
-           **どれも畳んで出す**（依頼の結果と同じ理由） --%>
-        <section :if={@recent_runs != []} class="request-results" aria-label="最近の回">
-          <header class="request-results-head">
-            <h3>最近の回</h3>
-            <button type="button" phx-click="reload_recent_runs">読み直す</button>
-          </header>
-          <details
-            :for={%{change: run, by_request: by_request} <- @recent_runs}
-            class="request-result"
-          >
-            <summary>
-              <span class="request-when">{Jst.format(run.at)}</span>
-              <span class="request-scope">
-                {run.sweep}{if run_scope(run) != "", do: "・#{run_scope(run)}", else: ""}
-              </span>
-              <span :if={by_request} class="run-by-request">依頼</span>
-              <span class={[
-                "request-state",
-                run.status == "ok" && run.added + run.updated + run.removed > 0 && "has-result"
-              ]}>
-                {run_state(run)}
-              </span>
-            </summary>
-            <p :if={run.status == "ok" and run.error != ""} class="muted-note">
-              Chiezo の控え: {run.error}
-            </p>
-            <p class="muted-note">
-              {if run.backend,
-                do: "#{run.backend}#{if run.model, do: " / #{run.model}", else: ""}。",
-                else: ""}見出しを押すと、Chiezo の画面で直す前との違いが開きます。
-            </p>
-            <.change_lists change={run} collection={@dataset.collection} />
-          </details>
-        </section>
+          <.recent_runs
+            runs={@recent_runs}
+            collection={@dataset.collection}
+            reload="reload_recent_runs"
+          />
+        <% end %>
 
         <%!-- **何が溜まるのかを、使う側の項目で書く。** ここで「どの項目がどこから
            来るか」が読めないと、足りない項目に気づけない。**読む相手も単位も対象ごとに

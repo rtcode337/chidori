@@ -129,6 +129,8 @@ defmodule Chidori.Datasets.Books do
       collection: collection(),
       # 検索文を AI に考えさせて引く収集（収集の画面に、これまで使った検索文の一覧を出す）
       queries: true,
+      # 収集の画面の節の見出し（本棚の節と同じ高さに並べる）
+      collection_name: "技術書を勧めている記事",
       reader: "読む人",
       unit: "記事 1 本 1 文書",
       note:

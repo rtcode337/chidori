@@ -75,6 +75,8 @@ defmodule ChidoriWeb.DatasetsLive do
        request_results: [],
        # 最近の回（自動の回も依頼の回も。Chiezo の変更履歴から）
        recent_runs: [],
+       # この収集から作る収集（本棚）の最近の回
+       derived_runs: [],
        # これまで検索に使った語（検索文を考えさせる対象だけ。設定を開いたときに読む）
        search_queries: nil,
        # 「位置OK」「位置修正」の行を Chiezo に固定させた結果（`Requests.hold/2`）
@@ -648,6 +650,9 @@ defmodule ChidoriWeb.DatasetsLive do
   def handle_event("reload_recent_runs", _params, socket),
     do: {:noreply, load_recent_runs(socket)}
 
+  def handle_event("reload_derived_runs", _params, socket),
+    do: {:noreply, load_derived_runs(socket, socket.assigns.dataset)}
+
   defp hold_locations(socket, _dataset, []), do: assign(socket, held: nil)
 
   defp hold_locations(socket, dataset, confirms) do
@@ -794,6 +799,11 @@ defmodule ChidoriWeb.DatasetsLive do
 
   def handle_async(:recent_runs, _result, socket), do: {:noreply, socket}
 
+  def handle_async(:derived_runs, {:ok, {:ok, runs}}, socket),
+    do: {:noreply, assign(socket, derived_runs: runs)}
+
+  def handle_async(:derived_runs, _result, socket), do: {:noreply, socket}
+
   def handle_async(:search_queries, {:ok, result}, socket),
     do: {:noreply, assign(socket, search_queries: result)}
 
@@ -874,6 +884,7 @@ defmodule ChidoriWeb.DatasetsLive do
     |> start_async(:backends, &Datasets.backends/0)
     |> load_request_results()
     |> load_recent_runs()
+    |> load_derived_runs(dataset)
     |> load_search_queries(dataset)
     |> load_prefecture_progress(dataset)
     |> load_blank_report(dataset)
@@ -1229,6 +1240,15 @@ defmodule ChidoriWeb.DatasetsLive do
 
   defp load_search_queries(socket, _dataset), do: assign(socket, search_queries: nil)
 
+  # **この収集から作る収集（本棚）の最近の回**。依頼は受けないので、依頼の印は付かない
+  defp load_derived_runs(socket, %{derived: derived}) when not is_nil(derived),
+    do:
+      start_async(socket, :derived_runs, fn ->
+        Requests.runs(%{collection: derived.collection()})
+      end)
+
+  defp load_derived_runs(socket, _dataset), do: assign(socket, derived_runs: [])
+
   defp load_recent_runs(%{assigns: %{dataset: dataset}} = socket),
     do: start_async(socket, :recent_runs, fn -> Requests.runs(dataset) end)
 
@@ -1316,6 +1336,99 @@ defmodule ChidoriWeb.DatasetsLive do
         </label>
       </p>
     </form>
+    """
+  end
+
+  attr :queries, :any, required: true, doc: "`nil` / `:loading` / `{:ok, 行}` / `{:error, 理由}`"
+
+  @doc """
+  **これまで検索に使った語**（検索文を AI に考えさせて引く対象だけ。新しい順）。同じ語で
+  引き直しても同じ記事しか返らないので、どの語で何件入り何件残ったかを見て、依頼文を
+  直すかを決める。消すのは収集の一覧の「ほかの操作」から。**畳んでおく**（長くなるうえ、
+  毎回見るものではない）。
+  """
+  def search_queries(assigns) do
+    ~H"""
+    <details :if={@queries} class="search-queries" aria-label="これまで検索に使った語">
+      <summary>
+        これまで検索に使った語<span
+          :if={match?({:ok, [_ | _]}, @queries)}
+          class="muted-note"
+        >（{length(elem(@queries, 1))} 件）</span>
+      </summary>
+      <p :if={@queries == :loading} class="muted-note">読んでいます…</p>
+      <p :if={match?({:error, _}, @queries)} class="muted-note">
+        {reason_text(elem(@queries, 1))}
+      </p>
+      <%= if match?({:ok, _}, @queries) do %>
+        <p :if={elem(@queries, 1) == []} class="muted-note">まだ 1 回も引いていません。</p>
+        <table :if={elem(@queries, 1) != []} class="collect-overview">
+          <thead>
+            <tr>
+              <th>検索文</th>
+              <th>使った（JST）</th>
+              <th>入った</th>
+              <th>残った</th>
+              <th>考えた相手</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={row <- elem(@queries, 1)}>
+              <td>{row["query"]}</td>
+              <td>{Jst.format(row["used_at"])}</td>
+              <td>{row["found"] || "—"}</td>
+              <td>{row["kept"] || "—"}</td>
+              <td class="muted-note">{row["by"] || "最初の組"}</td>
+            </tr>
+          </tbody>
+        </table>
+      <% end %>
+    </details>
+    """
+  end
+
+  attr :runs, :list, required: true
+  attr :collection, :string, required: true
+  attr :reload, :string, required: true, doc: "読み直すイベントの名前"
+
+  @doc """
+  **最近の回**（自動で回った回も、依頼で走った回も）。依頼の結果は依頼ごとに回を引き当てるので、
+  整理やざっと見るが何を直したのかはここで見る。依頼で走った回には印を付ける（同じ回が上の
+  依頼の結果にも出る）。**どれも畳んで出す**（依頼の結果と同じ理由）。収集ごとに 1 つ
+  （親の収集と、この収集から作る収集）。
+  """
+  def recent_runs(assigns) do
+    ~H"""
+    <section :if={@runs != []} class="request-results" aria-label="最近の回">
+      <header class="request-results-head">
+        <h3>最近の回</h3>
+        <button type="button" phx-click={@reload}>読み直す</button>
+      </header>
+      <details :for={%{change: run, by_request: by_request} <- @runs} class="request-result">
+        <summary>
+          <span class="request-when">{Jst.format(run.at)}</span>
+          <span class="request-scope">
+            {run.sweep}{if run_scope(run) != "", do: "・#{run_scope(run)}", else: ""}
+          </span>
+          <span :if={by_request} class="run-by-request">依頼</span>
+          <span class={[
+            "request-state",
+            run.status == "ok" && run.added + run.updated + run.removed > 0 && "has-result"
+          ]}>
+            {run_state(run)}
+          </span>
+        </summary>
+        <p :if={run.status == "ok" and run.error != ""} class="muted-note">
+          Chiezo の控え: {run.error}
+        </p>
+        <p class="muted-note">
+          {if run.backend,
+            do: "#{run.backend}#{if run.model, do: " / #{run.model}", else: ""}。",
+            else: ""}見出しを押すと、Chiezo の画面で直す前との違いが開きます。
+        </p>
+        <.change_lists change={run} collection={@collection} />
+      </details>
+    </section>
     """
   end
 

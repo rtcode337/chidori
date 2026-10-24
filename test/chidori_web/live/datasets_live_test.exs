@@ -14,26 +14,11 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     :ok
   end
 
-  # 届いた POST のうち、URL に `part` を含むものを待つ（ほかの POST は読み捨てる）
-  defp receive_post(part) do
-    receive do
-      {:posted, url, body} -> if url =~ part, do: {url, body}, else: receive_post(part)
-    after
-      2_000 -> flunk("#{part} への POST が届きませんでした")
-    end
-  end
-
   # 収集の画面（/collect/datasets）を開き、設定を読み終えるまで進める。
   # 収集の画面は設定欄を開いた形で出すので、設定の中身を見るテストはここを通る
   defp open_live(conn, path) do
     {:ok, live, _html} = live(conn, path)
     assert has_element?(live, "#chiezo-settings")
-    {:ok, live, render_async(live)}
-  end
-
-  # 読む画面（/datasets）を開き、溜まったものが届くまで進める
-  defp open_read(conn, path) do
-    {:ok, live, _html} = live(conn, path)
     {:ok, live, render_async(live)}
   end
 
@@ -304,6 +289,11 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     {:ok, live, _html} = live(conn, ~p"/collect/datasets?view=books")
     html = render_async(live)
 
+    # 記事の収集の節の中（本棚の節より前）に置く
+    [_before, main] = String.split(html, ~s(id="main-collection"), parts: 2)
+    [main, _derived] = String.split(main, ~s(aria-label="この収集から作るもの"), parts: 2)
+    assert main =~ "これまで検索に使った語"
+
     # 畳んでおく（長くなるうえ、毎回見るものではない）
     [details] = Regex.run(~r|<details[^>]*class="search-queries"[^>]*>|, html)
     refute details =~ " open"
@@ -316,6 +306,50 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     # 検索文を考えさせない対象には出さない
     {:ok, live, _html} = live(conn, ~p"/collect/datasets?view=recipes")
     refute render_async(live) =~ "これまで検索に使った語"
+  end
+
+  test "本棚の節に、本棚の収集の最近の回を出す（記事の収集の最近の回とは別）", %{conn: conn} do
+    System.put_env("CHIEZO_BASE_URL", "http://chiezo.test")
+    on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+
+    run = fn sweep, title ->
+      %{
+        "at" => "2026-10-24T03:07:51+00:00",
+        "status" => "ok",
+        "sweep" => sweep,
+        "added" => 0,
+        "updated" => 1,
+        "removed" => 0,
+        "updated_titles" => [title]
+      }
+    end
+
+    Chidori.HttpStub.stub(fn %{url: url} ->
+      cond do
+        url =~ "/v1/collect/changes?" and url =~ ~r/name=chidori_books(&|$)/ ->
+          Chidori.HttpStub.ok(Jason.encode!(%{"changes" => [run.("整理", "本:リーダブルコード")]}))
+
+        url =~ "/v1/collect/changes?" ->
+          Chidori.HttpStub.ok(Jason.encode!(%{"changes" => [run.("整理", "記事:おすすめ 10 冊")]}))
+
+        true ->
+          Chidori.HttpStub.ok(~s({"collections":[],"results":[],"backends":[],"queries":[]}))
+      end
+    end)
+
+    {:ok, live, _html} = live(conn, ~p"/collect/datasets?view=books")
+    html = render_async(live)
+
+    # 記事の収集の節（本棚と同じ高さの見出し）には記事の回、本棚の節には本棚の回だけ
+    [_before, main] = String.split(html, ~s(id="main-collection"), parts: 2)
+    [main, derived] = String.split(main, ~s(aria-label="この収集から作るもの"), parts: 2)
+    assert main =~ "技術書を勧めている記事（chidori_book_posts）"
+    assert main =~ "最近の回"
+    assert main =~ "記事:おすすめ 10 冊"
+    refute main =~ "本:リーダブルコード"
+    [derived, _rest] = String.split(derived, "Chiezo への依頼文", parts: 2)
+    assert derived =~ "本:リーダブルコード"
+    refute derived =~ "記事:おすすめ 10 冊"
   end
 
   test "色を付けるのは Chiezo で止まっている収集だけ（まだ無い・読めていない収集には付けない）" do
@@ -364,8 +398,10 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     {:ok, live, _html} = live(conn, ~p"/collect/datasets?view=books")
     html = render_async(live)
 
-    # Chiezo で止まっている収集は、設定の枠ごと色を付ける（収集の一覧と同じ）
-    assert html =~ ~s(class="settings-panel is-stopped")
+    # Chiezo で止まっている収集は色を付ける（収集の一覧と同じ）。本棚を持つ技術書では、この収集の節に
+    [section] = Regex.run(~r|<section[^>]*id="main-collection"[^>]*>|, html)
+    assert section =~ "is-stopped"
+    refute html =~ ~s(class="settings-panel is-stopped")
 
     # 時計を持たない割り込み用の回には出さない（Chiezo が断る）
     assert html =~ "今すぐ走らせる"
