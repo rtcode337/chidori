@@ -27,12 +27,6 @@
       mode={if @collect_mode, do: :collect, else: :read}
       elsewhere={true}
     />
-    <%!-- 映画の関連図は趣味の映画のタブの中（最新と四角い札で切り替える） --%>
-    <ChidoriWeb.DiningTabs.movie_tabs
-      :if={@view == "films"}
-      current={:graph}
-      mode={if @collect_mode, do: :collect, else: :read}
-    />
 
     <%!-- **図の種類はタブで、見出しの上に置く。** 見出しと説明は選んだ図のものなので、
          切り替える口がその下にあると、どこまでが切り替わるのかが読めない --%>
@@ -140,6 +134,12 @@
         </div>
       </details>
     </section>
+    <%!-- 映画の関連図は趣味の映画のタブの中（最新・関連図・映画館の切り替え。下に線を引く） --%>
+    <ChidoriWeb.DiningTabs.movie_tabs
+      :if={@view == "films" and !@embed}
+      current={:graph}
+      mode={if @collect_mode, do: :collect, else: :read}
+    />
 
     <%!-- **図を見る画面と収集の画面を分ける**（`@collect_mode`）。収集の画面には図を出さない --%>
     <%= if !@collect_mode do %>

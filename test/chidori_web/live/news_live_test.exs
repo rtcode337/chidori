@@ -59,13 +59,13 @@ defmodule ChidoriWeb.NewsLiveTest do
     assert conn |> get("/") |> redirected_to() == "/news"
   end
 
-  test "頭のメニューは ニュース・イベント・趣味・ツール・収集・設定", %{conn: conn} do
+  test "頭のメニューは ニュース・趣味・イベント・ツール・収集・設定", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/news")
     [_, menu] = String.split(html, ~s(id="main-menu"), parts: 2)
     [menu, _] = String.split(menu, "</nav>", parts: 2)
 
     labels = Regex.scan(~r|>\s*([^<>\s][^<>]*?)\s*</a>|, menu) |> Enum.map(&Enum.at(&1, 1))
-    assert labels == ["ニュース", "イベント", "趣味", "ツール", "収集", "設定"]
+    assert labels == ["ニュース", "趣味", "イベント", "ツール", "収集", "設定"]
   end
 
   test "イベントは独立した画面（ニュースのタブには出さず、前の道はイベントの道へ送る）", %{conn: conn} do
@@ -599,6 +599,22 @@ defmodule ChidoriWeb.NewsLiveTest do
     # ほかの話題には出さない
     {:ok, _live, html} = live(conn, ~p"/news?view=chidori_anime")
     refute html =~ ~s(id="movie-tabs")
+
+    # 切り替えは本文の頭（要約より上）。頭の段には置かない。映画館もここから開く
+    {:ok, _live, html} = live(conn, ~p"/news?view=chidori_movies")
+    [head, main] = String.split(html, ~s(id="page-scroll"), parts: 2)
+    refute head =~ ~s(id="movie-tabs")
+    assert main =~ ~s(id="movie-tabs")
+    refute main =~ ~s(aria-label="映画館")
+    assert main =~ ~s(href="/news?view=chidori_movies&amp;section=theaters")
+
+    # 映画館の切り替えでは映画館だけ（要約・注目作は「最新」）
+    {:ok, _live, html} = live(conn, ~p"/news?view=chidori_movies&section=theaters")
+    [_, tabs] = String.split(html, ~s(id="movie-tabs"), parts: 2)
+    [tabs, _] = String.split(tabs, "</nav>", parts: 2)
+    assert tabs =~ ~r|section=theaters"[^>]*class="selected"|
+    assert html =~ ~s(aria-label="映画館")
+    refute html =~ ~s(aria-label="要約")
   end
 
   test "収集の一覧の画面では、誰に頼むかを選ばせない", %{conn: conn} do

@@ -169,6 +169,8 @@ main.relations-page > div { padding-top: 0; }
 .home-subtabs a { flex: none; padding: .25rem .6rem; border: 1px solid #d9dcea; border-radius: 0; background: #fff; color: #4b5470; font-size: .82rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
 .home-subtabs a:hover { border-color: #b9b4ef; color: #28235e; }
 .home-subtabs a.selected { border-color: #6254d6; background: #6254d6; color: #fff; }
+/* 映画のタブの中の切り替え（最新・関連図・映画館）。本文の頭に置き、下に線を引いて要約や図から区切る */
+.movie-tabs { margin: .2rem 0 1rem; padding-bottom: .7rem; border-bottom: 1px solid #dedcf5; }
 #chiezo-settings { margin-top: .6rem; }
 /* 図の出どころの一文。下の状態の表と詰まらないよう少し空ける */
 .settings-panel .origin-note { margin-bottom: .8rem; }

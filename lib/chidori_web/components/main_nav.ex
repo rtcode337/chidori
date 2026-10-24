@@ -13,10 +13,10 @@ defmodule ChidoriWeb.MainNav do
 
   @items [
     {:news, "ニュース", "/news"},
-    # 技術イベント・お笑いイベント（画面は最新情報のもの）
-    {:events, "イベント", "/events"},
     # 趣味（映画・芸術家・技術書・レシピ・芸能人・アニメ・Pi-hole）。先頭のタブ（映画）を開く
     {:datasets, "趣味", "/news?view=chidori_movies"},
+    # 技術イベント・お笑いイベント（画面は最新情報のもの）
+    {:events, "イベント", "/events"},
     # その場の様子を見る道具（いま止めている通信）
     {:tools, "ツール", "/tools"},
     # 収集の画面（Chiezo へ頼む口をまとめた所）。読む画面とは分ける

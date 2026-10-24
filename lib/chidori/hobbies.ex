@@ -73,11 +73,15 @@ defmodule Chidori.Hobbies do
   @doc "そのタブを開いているか（タブの中に置いたほかの画面を開いているときも）。"
   def current?(entry, current), do: current == entry.id or current in entry.inside
 
-  @doc "映画のタブの中の切り替え（最新・関連図）。`[{鍵, 名前, 読む道, 収集の道}]`。"
+  @doc """
+  映画のタブの中の切り替え（最新・関連図・映画館）。`[{鍵, 名前, 読む道, 収集の道}]`。
+  収集の道が nil のものは読む画面にだけ出す（映画館は頼むものが無い）。
+  """
   def movie_tabs do
     [
       {:latest, "最新", "/news?view=chidori_movies", "/collect/news?view=chidori_movies"},
-      {:graph, "関連図", "/relations?view=films", "/collect/relations?view=films"}
+      {:graph, "関連図", "/relations?view=films", "/collect/relations?view=films"},
+      {:theaters, "映画館", "/news?view=chidori_movies&section=theaters", nil}
     ]
   end
 

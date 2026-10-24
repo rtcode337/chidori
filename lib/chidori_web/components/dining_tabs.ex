@@ -175,21 +175,27 @@ defmodule ChidoriWeb.DiningTabs do
   defp in_mode?(dataset, :read), do: Chidori.Datasets.read_on_datasets?(dataset)
   defp in_mode?(dataset, _mode), do: Chidori.Datasets.listed?(dataset)
 
-  attr :current, :atom, required: true, doc: "`:latest`（最新）か `:graph`（関連図）"
+  attr :current, :atom, required: true, doc: "`:latest`（最新）・`:graph`（関連図）・`:theaters`（映画館）"
   attr :mode, :atom, default: :read
 
   @doc """
-  趣味の映画のタブの中の切り替え（最新・関連図）。**閲覧の中の枠と同じ四角い札**
-  （`home-subtabs`）—— 上の段がタブの形なので、両方タブだとどちらが上の階層か読めない。
-  画面はそれぞれ（最新情報と関連図）のものなので、移るのは `navigate`。
+  趣味の映画のタブの中の切り替え（最新・関連図・映画館）。**四角い札**（`home-subtabs`）——
+  上の段がタブの形なので、両方タブだとどちらが上の階層か読めない。**本文の頭に置き、下に線を
+  引く**（`movie-tabs`。その下の要約や図から区切る）。画面はそれぞれ（最新情報と関連図）の
+  ものなので、移るのは `navigate`。収集の画面では映画館を出さない（頼むものが無い）。
   """
   def movie_tabs(assigns) do
-    assigns = assign(assigns, tabs: Chidori.Hobbies.movie_tabs())
+    tabs =
+      for {_key, _name, _read, collect} = tab <- Chidori.Hobbies.movie_tabs(),
+          assigns.mode != :collect or collect != nil,
+          do: tab
+
+    assigns = assign(assigns, tabs: tabs)
 
     ~H"""
     <nav
       id="movie-tabs"
-      class="home-subtabs"
+      class="home-subtabs movie-tabs"
       phx-hook="ScrollTabs"
       aria-label="映画の中の切り替え"
     >

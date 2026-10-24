@@ -31,12 +31,6 @@
       mode={if @collect_mode, do: :collect, else: :read}
       elsewhere={true}
     />
-    <%!-- **映画のタブの中は、最新と関連図を四角い札で切り替える**（映画の関連図は映画のタブの中） --%>
-    <ChidoriWeb.DiningTabs.movie_tabs
-      :if={@topic && @topic.collection == "chidori_movies"}
-      current={:latest}
-      mode={if @collect_mode, do: :collect, else: :read}
-    />
 
     <%!-- 話題ごとのタブ。**集めるものも溜まるものも話題ごとに別**なので、
          1 つに混ぜると、どちらの状態を見ているのか読めなくなる。
@@ -96,6 +90,12 @@
         記事そのものが Chiezo から消えても、ここからは原文を開けます。
       </p>
     </section>
+    <%!-- **映画のタブの中の切り替え**（最新・関連図・映画館）。要約の上に、下へ線を引いて置く --%>
+    <ChidoriWeb.DiningTabs.movie_tabs
+      :if={@topic && @topic.collection == "chidori_movies"}
+      current={@movie_section}
+      mode={if @collect_mode, do: :collect, else: :read}
+    />
     <%!-- **見る画面と収集の画面を分ける**（`@collect_mode`）。見る画面は集めたものを出すだけで、
          収集の設定・時刻・1 回だけ頼む口は収集の画面（`/collect/news`）に置く --%>
     <%= if !@collect_mode do %>
@@ -116,315 +116,275 @@
         </ul>
       </section>
 
-      <%!-- まとめ。**カレンダーと記事の一覧より先に出す**（映画の注目作の一覧は長いので、
+      <%!-- **映画館を開いているときは映画館だけ**（最新の要約・注目作・記事は「最新」で読む） --%>
+      <%= if @movie_section != :theaters do %>
+        <%!-- まとめ。**カレンダーと記事の一覧より先に出す**（映画の注目作の一覧は長いので、
          下に置くと要約が見えなくなっていた） —— 溜まったものをそのまま並べても
          読めないので、何が起きたかを先に言う（通知へ流れるのは、この中の要旨） --%>
-      <%!-- 要約を別の収集から読む話題（市況ニュース）は、書き手ごとの要約。
+        <%!-- 要約を別の収集から読む話題（市況ニュース）は、書き手ごとの要約。
          **Chidori 自身の要約は出さない**（作るのをやめる前に溜まった分が Chiezo に残っていても） --%>
-      <section
-        :if={@topic && Chidori.Topics.digest_from(@topic)}
-        class="news-digest"
-        aria-label="要約"
-      >
-        <h2 class="news-section-title">要約（AI ごと）</h2>
-        <ChidoriWeb.AiDigests.ai_digests
-          digests={@ai_digests}
-          label={@topic.name}
-          id_prefix="news-ai"
-        />
-      </section>
+        <section
+          :if={@topic && Chidori.Topics.digest_from(@topic)}
+          class="news-digest"
+          aria-label="要約"
+        >
+          <h2 class="news-section-title">要約（AI ごと）</h2>
+          <ChidoriWeb.AiDigests.ai_digests
+            digests={@ai_digests}
+            label={@topic.name}
+            id_prefix="news-ai"
+          />
+        </section>
 
-      <section
-        :if={@news.digests != [] and !(@topic && Chidori.Topics.digest_from(@topic))}
-        class="news-digest"
-        aria-label="要約"
-      >
-        <h2 class="news-section-title">要約</h2>
-        <.digest_preview
-          digests={@news.digests}
-          kind="main"
-          label={@topic && @topic.name}
-          articles={@news.articles}
-          hero={hero?(@topic)}
-        />
-      </section>
+        <section
+          :if={@news.digests != [] and !(@topic && Chidori.Topics.digest_from(@topic))}
+          class="news-digest"
+          aria-label="要約"
+        >
+          <h2 class="news-section-title">要約</h2>
+          <.digest_preview
+            digests={@news.digests}
+            kind="main"
+            label={@topic && @topic.name}
+            articles={@news.articles}
+            hero={hero?(@topic)}
+          />
+        </section>
 
-      <%!-- 興味トピックの要約。**ふつうの要約のすぐ下** —— 同じ期間を、読む人が選んだ
+        <%!-- 興味トピックの要約。**ふつうの要約のすぐ下** —— 同じ期間を、読む人が選んだ
          語に絞って書いた別の 1 本（興味トピックを選んでいなければ書かれない） --%>
-      <section
-        :if={@news.interest_digests != []}
-        class="news-digest"
-        aria-label="興味トピックの要約"
-      >
-        <h2 class="news-section-title">興味トピックの要約</h2>
-        <.digest_preview
-          digests={@news.interest_digests}
-          kind="interest"
-          label="興味トピック"
-          articles={@news.articles}
-          hero={hero?(@topic)}
-        />
-      </section>
+        <section
+          :if={@news.interest_digests != []}
+          class="news-digest"
+          aria-label="興味トピックの要約"
+        >
+          <h2 class="news-section-title">興味トピックの要約</h2>
+          <.digest_preview
+            digests={@news.interest_digests}
+            kind="interest"
+            label="興味トピック"
+            articles={@news.articles}
+            hero={hero?(@topic)}
+          />
+        </section>
 
-      <%!-- 開催日のカレンダー（技術イベント）。**記事の一覧より先に出す** ——
+        <%!-- **公開中（放送中）の作品はカレンダーの上**（口コミで観るかを決めるもの。見出しは付けない） --%>
+        <.works_part
+          :if={@topic && Chidori.Topics.works(@topic)}
+          part={:started}
+          topic={@topic}
+          works={@works}
+          work_marks={@work_marks}
+        />
+
+        <%!-- 開催日のカレンダー（技術イベント）。**記事の一覧より先に出す** ——
          イベントは読み物ではなく「いつ・どこで・行く価値があるか」で選ぶもの。
          注目度の高いものを色付きで上に並べ、低いものは件数だけに畳む
          （connpass の新着は 1 日に数十件入るので、全部並べるとマスが埋まる） --%>
-      <section
-        :if={@topic && Chidori.Topics.calendar?(@topic)}
-        class="event-calendar"
-        aria-label={"#{Chidori.Topics.date_tag(@topic)}のカレンダー"}
-      >
-        <header class="event-calendar-head">
-          <h2 class="news-section-title">{Chidori.Topics.date_tag(@topic)}のカレンダー</h2>
-          <div class="event-calendar-nav">
-            <button type="button" phx-click="cal_shift" phx-value-by="-1" aria-label="前の月">
-              ‹
-            </button>
-            <strong>{cal_title(@cal_month)}</strong>
-            <button type="button" phx-click="cal_shift" phx-value-by="1" aria-label="次の月">
-              ›
-            </button>
-            <button type="button" phx-click="cal_today">今月</button>
-          </div>
-        </header>
+        <section
+          :if={@topic && Chidori.Topics.calendar?(@topic)}
+          class="event-calendar"
+          aria-label={"#{Chidori.Topics.date_tag(@topic)}のカレンダー"}
+        >
+          <header class="event-calendar-head">
+            <h2 class="news-section-title">{Chidori.Topics.date_tag(@topic)}のカレンダー</h2>
+            <div class="event-calendar-nav">
+              <button type="button" phx-click="cal_shift" phx-value-by="-1" aria-label="前の月">
+                ‹
+              </button>
+              <strong>{cal_title(@cal_month)}</strong>
+              <button type="button" phx-click="cal_shift" phx-value-by="1" aria-label="次の月">
+                ›
+              </button>
+              <button type="button" phx-click="cal_today">今月</button>
+            </div>
+          </header>
 
-        <p :if={@cal_events in [nil, :loading]} class="muted-note">読み込んでいます…</p>
-        <p :if={match?({:error, _}, @cal_events)} class="muted-note">
-          {cal_error(@cal_events)}
-        </p>
-
-        <%= if match?({:ok, _}, @cal_events) do %>
-          <% {:ok, all} = @cal_events %>
-          <% shown = Events.only_places(all, @cal_places) %>
-          <div
-            :if={Events.places_of(all) != []}
-            class="event-places"
-            role="group"
-            aria-label="開催地で絞る"
-          >
-            <button
-              type="button"
-              phx-click="cal_all_places"
-              class={@cal_places == [] && "selected"}
-              aria-pressed={to_string(@cal_places == [])}
-            >
-              すべて
-            </button>
-            <%!-- 国内か海外かで「行けるか」の読み方がまるで違うので、まとめて選べる口を置く --%>
-            <button
-              :for={group <- cal_groups(all)}
-              type="button"
-              phx-click="cal_place"
-              phx-value-place={group}
-              class={["event-place-group", group in @cal_places && "selected"]}
-              aria-pressed={to_string(group in @cal_places)}
-            >
-              {group}
-            </button>
-            <button
-              :for={place <- Events.places_of(all)}
-              type="button"
-              phx-click="cal_place"
-              phx-value-place={place}
-              class={[
-                place in @cal_places && "selected",
-                Events.region(place) == :abroad && "is-abroad"
-              ]}
-              aria-pressed={to_string(place in @cal_places)}
-            >
-              {place}
-            </button>
-          </div>
-          <p class="muted-note">
-            この月に {length(shown)} 件。<span class="event-chip is-high">注目度 高</span>
-            <span class="event-chip is-mid">中</span>
-            を並べ、低いものは件数だけ出します。日を押すと、その日の{Chidori.Topics.item_word(@topic)}が全部並びます。
+          <p :if={@cal_events in [nil, :loading]} class="muted-note">読み込んでいます…</p>
+          <p :if={match?({:error, _}, @cal_events)} class="muted-note">
+            {cal_error(@cal_events)}
           </p>
 
-          <table class="event-grid">
-            <thead>
-              <tr>
-                <th :for={name <- ~w(日 月 火 水 木 金 土)} scope="col">{name}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={week <- Events.weeks(@cal_month, shown)}>
-                <td
-                  :for={cell <- week}
-                  class={[
-                    !cell.in_month && "is-outside",
-                    cell.date == Chidori.Jst.today() && "is-today",
-                    cell.date == @cal_day && "is-picked"
-                  ]}
-                >
-                  <button
-                    type="button"
-                    class="event-day"
-                    phx-click="cal_day"
-                    phx-value-date={Date.to_iso8601(cell.date)}
-                    disabled={cell.events == []}
-                    aria-pressed={to_string(cell.date == @cal_day)}
-                    aria-label={"#{cell.date.month}月#{cell.date.day}日 #{length(cell.events)} 件"}
-                  >
-                    <span class="event-day-num">{cell.date.day}</span>
-                    <%!-- **開催地を先に出す**（どこで開かれるかで行けるかが決まる）。
-                       海外は色を変えて「海外」と添える --%>
-                    <span
-                      :for={entry <- cal_prominent(cell.events)}
-                      class={[
-                        "event-chip",
-                        "is-#{entry.attention}",
-                        Events.abroad?(entry) && "is-abroad"
-                      ]}
-                      title={"#{entry.title}（#{cal_where(entry)}）"}
-                    >
-                      <span :if={entry.places != []} class="event-where">{cal_where(entry)}</span>
-                      {entry.title}
-                    </span>
-                    <span :if={cal_rest(cell.events) > 0} class="event-more">
-                      {if cal_prominent(cell.events) == [], do: "", else: "ほか "}{cal_rest(
-                        cell.events
-                      )} 件
-                    </span>
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <section
-            :if={@cal_day}
-            class="event-day-list"
-            aria-label={"#{day_label(@cal_day)} の#{Chidori.Topics.item_word(@topic)}"}
-          >
-            <h3>{day_label(@cal_day)} の{Chidori.Topics.item_word(@topic)}</h3>
-            <ul>
-              <%!-- 作品（映画・アニメ）の札は**押すと詳細が開く**（`ChidoriWeb.WorkModal`）。
-                 作品のページへのリンクは詳細の中に置く（記事の札と同じ） --%>
-              <li
-                :for={entry <- Events.sort(Enum.filter(shown, &(&1.date == @cal_day)))}
+          <%= if match?({:ok, _}, @cal_events) do %>
+            <% {:ok, all} = @cal_events %>
+            <% shown = Events.only_places(all, @cal_places) %>
+            <div
+              :if={Events.places_of(all) != []}
+              class="event-places"
+              role="group"
+              aria-label="開催地で絞る"
+            >
+              <button
+                type="button"
+                phx-click="cal_all_places"
+                class={@cal_places == [] && "selected"}
+                aria-pressed={to_string(@cal_places == [])}
+              >
+                すべて
+              </button>
+              <%!-- 国内か海外かで「行けるか」の読み方がまるで違うので、まとめて選べる口を置く --%>
+              <button
+                :for={group <- cal_groups(all)}
+                type="button"
+                phx-click="cal_place"
+                phx-value-place={group}
+                class={["event-place-group", group in @cal_places && "selected"]}
+                aria-pressed={to_string(group in @cal_places)}
+              >
+                {group}
+              </button>
+              <button
+                :for={place <- Events.places_of(all)}
+                type="button"
+                phx-click="cal_place"
+                phx-value-place={place}
                 class={[
-                  "event-item",
-                  "is-#{entry.attention}",
-                  Chidori.Topics.works(@topic) && "is-work"
+                  place in @cal_places && "selected",
+                  Events.region(place) == :abroad && "is-abroad"
                 ]}
-                phx-click={Chidori.Topics.works(@topic) && "open_work"}
-                phx-value-title={entry.title}
-                role={Chidori.Topics.works(@topic) && "button"}
-                tabindex={Chidori.Topics.works(@topic) && "0"}
+                aria-pressed={to_string(place in @cal_places)}
               >
-                <img
-                  :if={entry_thumb(entry)}
-                  class="event-thumb"
-                  src={entry_thumb(entry)}
-                  alt=""
-                  loading="lazy"
-                />
-                <div class="event-item-head">
-                  <span :if={entry.attention} class={["event-chip", "is-#{entry.attention}"]}>
-                    注目度 {attention_label(entry.attention)}
-                  </span>
-                  <a
-                    :if={entry.url && !Chidori.Topics.works(@topic)}
-                    href={SafeUrl.href(entry.url)}
-                    target="_blank"
-                    rel="noreferrer"
+                {place}
+              </button>
+            </div>
+            <p class="muted-note">
+              この月に {length(shown)} 件。<span class="event-chip is-high">注目度 高</span>
+              <span class="event-chip is-mid">中</span>
+              を並べ、低いものは件数だけ出します。日を押すと、その日の{Chidori.Topics.item_word(@topic)}が全部並びます。
+            </p>
+
+            <table class="event-grid">
+              <thead>
+                <tr>
+                  <th :for={name <- ~w(日 月 火 水 木 金 土)} scope="col">{name}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={week <- Events.weeks(@cal_month, shown)}>
+                  <td
+                    :for={cell <- week}
+                    class={[
+                      !cell.in_month && "is-outside",
+                      cell.date == Chidori.Jst.today() && "is-today",
+                      cell.date == @cal_day && "is-picked"
+                    ]}
                   >
-                    {entry.title}
-                  </a>
-                  <strong :if={!entry.url || Chidori.Topics.works(@topic)}>{entry.title}</strong>
-                  <%!-- 見た作品は見出しの横に印（詳細を開かなくても分かる） --%>
-                  <span :if={seen_work?(@work_marks, entry.title)} class="seen-badge">見た</span>
-                </div>
-                <%= if Chidori.Topics.works(@topic) do %>
-                  <p class="event-item-facts">
-                    {work_facts(entry, Chidori.Topics.works(@topic))}
-                  </p>
-                <% else %>
-                  <p class="event-item-facts">
-                    <span :if={Events.abroad?(entry)} class="event-abroad-mark">海外</span>
-                    {event_facts(entry)}
-                  </p>
-                  <%!-- **説明は開いたまま出す**（行くかどうかを、ページを開かずに決められるように） --%>
-                  <p :if={Events.description(entry) != ""} class="event-item-detail">
-                    {Events.description(entry)}
-                  </p>
-                <% end %>
-              </li>
-            </ul>
-          </section>
-        <% end %>
-      </section>
+                    <button
+                      type="button"
+                      class="event-day"
+                      phx-click="cal_day"
+                      phx-value-date={Date.to_iso8601(cell.date)}
+                      disabled={cell.events == []}
+                      aria-pressed={to_string(cell.date == @cal_day)}
+                      aria-label={"#{cell.date.month}月#{cell.date.day}日 #{length(cell.events)} 件"}
+                    >
+                      <span class="event-day-num">{cell.date.day}</span>
+                      <%!-- **開催地を先に出す**（どこで開かれるかで行けるかが決まる）。
+                       海外は色を変えて「海外」と添える --%>
+                      <span
+                        :for={entry <- cal_prominent(cell.events)}
+                        class={[
+                          "event-chip",
+                          "is-#{entry.attention}",
+                          Events.abroad?(entry) && "is-abroad"
+                        ]}
+                        title={"#{entry.title}（#{cal_where(entry)}）"}
+                      >
+                        <span :if={entry.places != []} class="event-where">{cal_where(entry)}</span>
+                        {entry.title}
+                      </span>
+                      <span :if={cal_rest(cell.events) > 0} class="event-more">
+                        {if cal_prominent(cell.events) == [], do: "", else: "ほか "}{cal_rest(
+                          cell.events
+                        )} 件
+                      </span>
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
-      <%!-- 注目作（映画）。**公開中とこれからに分ける** —— 公開中のものは口コミで
-         観るかを決め、これからのものは公開日で予定を立てる --%>
-      <section
-        :if={@topic && Chidori.Topics.works(@topic)}
-        class="event-calendar works-list"
-        aria-label="注目作"
-      >
-        <h2 class="news-section-title">注目作</h2>
-        <p :if={@works in [nil, :loading]} class="muted-note">読み込んでいます…</p>
-        <p :if={match?({:error, _}, @works)} class="muted-note">{cal_error(@works)}</p>
-        <%= if match?({:ok, _}, @works) do %>
-          <% {:ok, all} = @works %>
-          <p
-            :if={works_groups(all, Chidori.Jst.today(), Chidori.Topics.works(@topic)) == []}
-            class="muted-note"
-          >
-            注目度が中以上の作品はまだありません（情報収集と整理が回ると並びます）。
-          </p>
-          <%!-- **既定は畳んでおく**（公開中とこれからで数十本ずつあり、開いたままだと下の
-             映画館の欄や設定まで長くスクロールすることになる）。見出しを押すと開く --%>
-          <details
-            :for={
-              {label, list} <-
-                works_groups(all, Chidori.Jst.today(), Chidori.Topics.works(@topic))
-            }
-            id={"works-group-#{:erlang.phash2(label)}"}
-            class="event-day-list works-group"
-          >
-            <summary>
-              <h3>{label}（{length(list)} 本）</h3>
-            </summary>
-            <ul>
-              <%!-- **押すと詳細が開く**（説明・出典・上映館・見た記録。`ChidoriWeb.WorkModal`）。
-                 札は見渡すためのものなので、見出しと事実の 1 行だけ --%>
-              <li
-                :for={entry <- list}
-                class={["event-item", "is-#{entry.attention}", "is-work"]}
-                phx-click="open_work"
-                phx-value-title={entry.title}
-                role="button"
-                tabindex="0"
-              >
-                <img
-                  :if={entry_thumb(entry)}
-                  class="event-thumb"
-                  src={entry_thumb(entry)}
-                  alt=""
-                  loading="lazy"
-                />
-                <div class="event-item-head">
-                  <span :if={entry.attention} class={["event-chip", "is-#{entry.attention}"]}>
-                    注目度 {attention_label(entry.attention)}
-                  </span>
-                  <strong>{entry.title}</strong>
-                  <%!-- 見た作品は見出しの横に印（詳細を開かなくても分かる） --%>
-                  <span :if={seen_work?(@work_marks, entry.title)} class="seen-badge">見た</span>
-                </div>
-                <p class="event-item-facts">{work_facts(entry, Chidori.Topics.works(@topic))}</p>
-              </li>
-            </ul>
-          </details>
-        <% end %>
-      </section>
+            <section
+              :if={@cal_day}
+              class="event-day-list"
+              aria-label={"#{day_label(@cal_day)} の#{Chidori.Topics.item_word(@topic)}"}
+            >
+              <h3>{day_label(@cal_day)} の{Chidori.Topics.item_word(@topic)}</h3>
+              <ul>
+                <%!-- 作品（映画・アニメ）の札は**押すと詳細が開く**（`ChidoriWeb.WorkModal`）。
+                 作品のページへのリンクは詳細の中に置く（記事の札と同じ） --%>
+                <li
+                  :for={entry <- Events.sort(Enum.filter(shown, &(&1.date == @cal_day)))}
+                  class={[
+                    "event-item",
+                    "is-#{entry.attention}",
+                    Chidori.Topics.works(@topic) && "is-work"
+                  ]}
+                  phx-click={Chidori.Topics.works(@topic) && "open_work"}
+                  phx-value-title={entry.title}
+                  role={Chidori.Topics.works(@topic) && "button"}
+                  tabindex={Chidori.Topics.works(@topic) && "0"}
+                >
+                  <img
+                    :if={entry_thumb(entry)}
+                    class="event-thumb"
+                    src={entry_thumb(entry)}
+                    alt=""
+                    loading="lazy"
+                  />
+                  <div class="event-item-head">
+                    <span :if={entry.attention} class={["event-chip", "is-#{entry.attention}"]}>
+                      注目度 {attention_label(entry.attention)}
+                    </span>
+                    <a
+                      :if={entry.url && !Chidori.Topics.works(@topic)}
+                      href={SafeUrl.href(entry.url)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {entry.title}
+                    </a>
+                    <strong :if={!entry.url || Chidori.Topics.works(@topic)}>{entry.title}</strong>
+                    <%!-- 見た作品は見出しの横に印（詳細を開かなくても分かる） --%>
+                    <span :if={seen_work?(@work_marks, entry.title)} class="seen-badge">見た</span>
+                  </div>
+                  <%= if Chidori.Topics.works(@topic) do %>
+                    <p class="event-item-facts">
+                      {work_facts(entry, Chidori.Topics.works(@topic))}
+                    </p>
+                  <% else %>
+                    <p class="event-item-facts">
+                      <span :if={Events.abroad?(entry)} class="event-abroad-mark">海外</span>
+                      {event_facts(entry)}
+                    </p>
+                    <%!-- **説明は開いたまま出す**（行くかどうかを、ページを開かずに決められるように） --%>
+                    <p :if={Events.description(entry) != ""} class="event-item-detail">
+                      {Events.description(entry)}
+                    </p>
+                  <% end %>
+                </li>
+              </ul>
+            </section>
+          <% end %>
+        </section>
 
-      <%!-- 映画館（映画の話題だけ）。近くの館を探してお気に入りに入れ、お気に入りの館で上映時刻を調べる。
-         調べる映画は**公開中の注目作**から選ぶ（これからの作品はまだどこも上映していない） --%>
+        <%!-- **これからの作品**（公開日で予定を立てる。公開中はカレンダーの上） --%>
+        <.works_part
+          :if={@topic && Chidori.Topics.works(@topic)}
+          part={:upcoming}
+          topic={@topic}
+          works={@works}
+          work_marks={@work_marks}
+        />
+      <% end %>
+
+      <%!-- 映画館（映画の話題の「映画館」の切り替え）。近くの館を探してお気に入りに入れ、お気に入りの館で
+         上映時刻を調べる。調べる映画は**公開中の注目作**から選ぶ（これからの作品はまだどこも上映していない） --%>
       <ChidoriWeb.TheaterPanel.panel
-        :if={@topic && Chidori.Topics.works(@topic) == Chidori.News.Movies}
+        :if={
+          @topic != nil and Chidori.Topics.works(@topic) == Chidori.News.Movies and
+            @movie_section == :theaters
+        }
         search={@theater_search}
         search_form={@theater_form}
         here={@theater_here}
@@ -435,145 +395,152 @@
         form={@showtime_form}
       />
 
-      <%!-- 全画面の要約。**左右のスワイプで前後の要約へ**（`digest_viewer/1`） --%>
-      <.digest_viewer
-        news={@news}
-        open={@digest_open}
-        full={@digest_full}
-        kind={@digest_kind}
-        section={@digest_section}
-        label={if @digest_kind == :interest, do: "興味トピック", else: @topic && @topic.name}
-        hero={hero?(@topic)}
-        open_work_event={Chidori.Topics.works(@topic) && "open_work"}
-        keys={@opened_work == nil}
-      />
+      <%= if @movie_section != :theaters do %>
+        <%!-- 全画面の要約。**左右のスワイプで前後の要約へ**（`digest_viewer/1`） --%>
+        <.digest_viewer
+          news={@news}
+          open={@digest_open}
+          full={@digest_full}
+          kind={@digest_kind}
+          section={@digest_section}
+          label={if @digest_kind == :interest, do: "興味トピック", else: @topic && @topic.name}
+          hero={hero?(@topic)}
+          open_work_event={Chidori.Topics.works(@topic) && "open_work"}
+          keys={@opened_work == nil}
+        />
 
-      <%!-- 記事から育った話題の網。**まとめのすぐ下** —— まとめが「この期間に何が
+        <%!-- 記事から育った話題の網。**まとめのすぐ下** —— まとめが「この期間に何が
          あったか」を文で言うのに対して、図は同じことを語のつながりで見せる。
          育てるのは Chiezo で、Chidori は依頼文を渡して読むだけ --%>
-      <.topic_map
-        :if={@topic && Chidori.Topics.themes?(@topic)}
-        state={@themes}
-        interests={@interests}
-        picked={@picked_theme}
-        query={@theme_query}
-        matches={theme_hits(@themes.themes, @theme_query)}
-      />
+        <.topic_map
+          :if={@topic && Chidori.Topics.themes?(@topic)}
+          state={@themes}
+          interests={@interests}
+          picked={@picked_theme}
+          query={@theme_query}
+          matches={theme_hits(@themes.themes, @theme_query)}
+        />
 
-      <%!-- 選んだトピックの記事と、興味トピックに入れる口。**図のすぐ下** —— 札を押したら
+        <%!-- 選んだトピックの記事と、興味トピックに入れる口。**図のすぐ下** —— 札を押したら
          その話題の記事を読みに行ける（押すと網の線も濃くなる） --%>
-      <section :if={@picked_theme} class="theme-pick" aria-label={"「#{@picked_theme}」の記事"}>
-        <header class="theme-pick-head">
-          <h2 class="news-section-title">「{@picked_theme}」の記事</h2>
-          <button
-            type="button"
-            class={["interest-toggle", @picked_theme in @interests && "is-on"]}
-            phx-click="toggle_interest"
-            phx-value-name={@picked_theme}
-            aria-pressed={to_string(@picked_theme in @interests)}
-          >
-            {if @picked_theme in @interests, do: "★ 興味トピックから外す", else: "☆ 興味トピックに入れる"}
-          </button>
-          <button type="button" class="theme-pick-close" phx-click="pick_theme" phx-value-name="">
-            閉じる
-          </button>
-        </header>
-        <%= case @theme_articles do %>
-          <% :loading -> %>
-            <p class="muted-note">記事を探しています…</p>
-          <% {:error, reason} -> %>
-            <p class="muted-note">記事を引けませんでした（{ask_error(reason)}）</p>
-          <% [] -> %>
-            <p class="muted-note">この語の付いた記事は、いま溜まっていません。</p>
-          <% articles when is_list(articles) -> %>
-            <p class="muted-note">
-              {length(articles)} 件（新しい順）。トピックの語と、畳んだ言い換えのタグで引いています。
-            </p>
-            <div class="news-list">
-              <.article_card
-                :for={article <- articles}
-                article={article}
-                favorite={favorite?(@favorite_urls, article)}
-                interests={@interests}
-                near={near_tags(@themes.themes, @interests)}
-              />
-            </div>
-          <% _none -> %>
-        <% end %>
-      </section>
-
-      <%!-- 選んでいる興味トピック。**整理の回が付ける「興味度」と、興味トピックの要約の
-         材料**。札を押して選び、ここから外せる --%>
-      <section :if={@interests != []} class="interest-list" aria-label="興味トピック">
-        <h2 class="news-section-title">興味トピック</h2>
-        <ul>
-          <li :for={name <- @interests}>
+        <section :if={@picked_theme} class="theme-pick" aria-label={"「#{@picked_theme}」の記事"}>
+          <header class="theme-pick-head">
+            <h2 class="news-section-title">「{@picked_theme}」の記事</h2>
             <button
               type="button"
-              class="interest-chip"
-              phx-click="pick_theme"
-              phx-value-name={name}
-            >
-              ★ {name}
-            </button>
-            <button
-              type="button"
-              class="interest-remove"
+              class={["interest-toggle", @picked_theme in @interests && "is-on"]}
               phx-click="toggle_interest"
-              phx-value-name={name}
-              aria-label={"「#{name}」を興味トピックから外す"}
+              phx-value-name={@picked_theme}
+              aria-pressed={to_string(@picked_theme in @interests)}
             >
-              ×
+              {if @picked_theme in @interests, do: "★ 興味トピックから外す", else: "☆ 興味トピックに入れる"}
             </button>
-          </li>
-        </ul>
-        <p class="muted-note">
-          整理の回が、これから入る記事に興味度（0〜100）を付け、要約とは別に興味トピックの要約を書きます。
-          選び直すと依頼文を Chiezo へ送り直します（付け終えた点は動かしません）。
-        </p>
-      </section>
-
-      <%!-- 記事の一覧。**ふだんは畳んでおく** —— 読むのは要約と話題の網で、1 件ずつを
-         拾いに行くのは気になったときだけ。開いたままだと画面の大半を占める --%>
-      <%!-- **並び替えで閉じない**（開いているかはブラウザが持つ。描き直しで open を
-         外されると、押した並び替えのたびに一覧が畳まれる） --%>
-      <details
-        :if={!@favorites_view and Chidori.Topics.articles?(@topic)}
-        id="news-articles"
-        class="news-articles"
-        phx-mounted={Phoenix.LiveView.JS.ignore_attributes(["open"])}
-      >
-        <summary>
-          <h2 class="news-section-title">記事一覧（直近 3 日・{length(@news.articles)} 件）</h2>
-        </summary>
-        <%!-- 並びの切り替え。**反応の多い順ははてブ数の実数**（AI の話題度ではない）。
-           **興味の近い順は、興味トピックを選んでいるときだけ** --%>
-        <div class="article-sort" role="group" aria-label="並び">
-          <button
-            :for={
-              {by, label} <-
-                [{"importance", "重要度順"}, {"newest", "新しい順"}, {"bookmarks", "反応の多い順"}] ++
-                  if(@interests != [], do: [{"interest", "興味の近い順"}], else: [])
-            }
-            type="button"
-            class={Atom.to_string(@article_sort) == by && "selected"}
-            phx-click="sort_articles"
-            phx-value-by={by}
-          >
-            {label}
-          </button>
-        </div>
-        <% near = near_tags(@themes.themes, @interests) %>
-        <section class="news-list" aria-live="polite">
-          <.article_card
-            :for={article <- sorted_articles(@news, @article_sort)}
-            article={article}
-            favorite={favorite?(@favorite_urls, article)}
-            interests={@interests}
-            near={near}
-          />
+            <button
+              type="button"
+              class="theme-pick-close"
+              phx-click="pick_theme"
+              phx-value-name=""
+            >
+              閉じる
+            </button>
+          </header>
+          <%= case @theme_articles do %>
+            <% :loading -> %>
+              <p class="muted-note">記事を探しています…</p>
+            <% {:error, reason} -> %>
+              <p class="muted-note">記事を引けませんでした（{ask_error(reason)}）</p>
+            <% [] -> %>
+              <p class="muted-note">この語の付いた記事は、いま溜まっていません。</p>
+            <% articles when is_list(articles) -> %>
+              <p class="muted-note">
+                {length(articles)} 件（新しい順）。トピックの語と、畳んだ言い換えのタグで引いています。
+              </p>
+              <div class="news-list">
+                <.article_card
+                  :for={article <- articles}
+                  article={article}
+                  favorite={favorite?(@favorite_urls, article)}
+                  interests={@interests}
+                  near={near_tags(@themes.themes, @interests)}
+                />
+              </div>
+            <% _none -> %>
+          <% end %>
         </section>
-      </details>
+
+        <%!-- 選んでいる興味トピック。**整理の回が付ける「興味度」と、興味トピックの要約の
+         材料**。札を押して選び、ここから外せる --%>
+        <section :if={@interests != []} class="interest-list" aria-label="興味トピック">
+          <h2 class="news-section-title">興味トピック</h2>
+          <ul>
+            <li :for={name <- @interests}>
+              <button
+                type="button"
+                class="interest-chip"
+                phx-click="pick_theme"
+                phx-value-name={name}
+              >
+                ★ {name}
+              </button>
+              <button
+                type="button"
+                class="interest-remove"
+                phx-click="toggle_interest"
+                phx-value-name={name}
+                aria-label={"「#{name}」を興味トピックから外す"}
+              >
+                ×
+              </button>
+            </li>
+          </ul>
+          <p class="muted-note">
+            整理の回が、これから入る記事に興味度（0〜100）を付け、要約とは別に興味トピックの要約を書きます。
+            選び直すと依頼文を Chiezo へ送り直します（付け終えた点は動かしません）。
+          </p>
+        </section>
+
+        <%!-- 記事の一覧。**ふだんは畳んでおく** —— 読むのは要約と話題の網で、1 件ずつを
+         拾いに行くのは気になったときだけ。開いたままだと画面の大半を占める --%>
+        <%!-- **並び替えで閉じない**（開いているかはブラウザが持つ。描き直しで open を
+         外されると、押した並び替えのたびに一覧が畳まれる） --%>
+        <details
+          :if={!@favorites_view and Chidori.Topics.articles?(@topic)}
+          id="news-articles"
+          class="news-articles"
+          phx-mounted={Phoenix.LiveView.JS.ignore_attributes(["open"])}
+        >
+          <summary>
+            <h2 class="news-section-title">記事一覧（直近 3 日・{length(@news.articles)} 件）</h2>
+          </summary>
+          <%!-- 並びの切り替え。**反応の多い順ははてブ数の実数**（AI の話題度ではない）。
+           **興味の近い順は、興味トピックを選んでいるときだけ** --%>
+          <div class="article-sort" role="group" aria-label="並び">
+            <button
+              :for={
+                {by, label} <-
+                  [{"importance", "重要度順"}, {"newest", "新しい順"}, {"bookmarks", "反応の多い順"}] ++
+                    if(@interests != [], do: [{"interest", "興味の近い順"}], else: [])
+              }
+              type="button"
+              class={Atom.to_string(@article_sort) == by && "selected"}
+              phx-click="sort_articles"
+              phx-value-by={by}
+            >
+              {label}
+            </button>
+          </div>
+          <% near = near_tags(@themes.themes, @interests) %>
+          <section class="news-list" aria-live="polite">
+            <.article_card
+              :for={article <- sorted_articles(@news, @article_sort)}
+              article={article}
+              favorite={favorite?(@favorite_urls, article)}
+              interests={@interests}
+              near={near}
+            />
+          </section>
+        </details>
+      <% end %>
     <% end %>
 
     <%!-- 設定は 1 つの枠にまとめる（関連図と同じ形）。状態を見る場所と、直す場所と、

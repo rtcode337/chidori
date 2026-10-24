@@ -168,6 +168,12 @@ defmodule ChidoriWeb.NewsLive do
       assign(socket,
         collect_mode: collect_mode,
         events_mode: events_mode,
+        # 映画のタブの中の切り替え（最新・映画館。関連図は関連図の画面）
+        movie_section:
+          if(not collect_mode and movies?(topic) and params["section"] == "theaters",
+            do: :theaters,
+            else: :latest
+          ),
         # 話題のタブ（ニュースかイベントか。趣味の話題は趣味の段に並べる）
         topics: if(events_mode, do: Topics.events(), else: Topics.news()),
         base_path: base_path,
@@ -1727,6 +1733,95 @@ defmodule ChidoriWeb.NewsLive do
   end
 
   def showing_works(_works), do: []
+
+  attr :part, :atom, required: true, doc: "`:started`（公開中・放送中）か `:upcoming`（これから）"
+  attr :topic, :map, required: true
+  attr :works, :any, required: true
+  attr :work_marks, :any, default: nil
+
+  @doc """
+  作品（映画・アニメ）の組の 1 つ。**公開中はカレンダーの上、これからはカレンダーの下**に置く
+  （公開中は口コミで観るかを決めるもの、これからは公開日で予定を立てるもの）。「注目作」の
+  見出しは付けない —— 組の名前（公開中・これから）がそのまま見出しになる。読み込み中・
+  読めない・まだ無い、の一言は公開中の側にだけ出す。
+  """
+  def works_part(assigns) do
+    ~H"""
+    <section
+      class="event-calendar works-list"
+      aria-label={if @part == :started, do: "公開中の作品", else: "これからの作品"}
+    >
+      <p :if={@part == :started and @works in [nil, :loading]} class="muted-note">読み込んでいます…</p>
+      <p :if={@part == :started and match?({:error, _}, @works)} class="muted-note">
+        {cal_error(@works)}
+      </p>
+      <%= if match?({:ok, _}, @works) do %>
+        <% {:ok, all} = @works %>
+        <p
+          :if={
+            @part == :started and
+              works_groups(all, Chidori.Jst.today(), Chidori.Topics.works(@topic)) == []
+          }
+          class="muted-note"
+        >
+          注目度が中以上の作品はまだありません（情報収集と整理が回ると並びます）。
+        </p>
+        <%!-- **既定は畳んでおく**（公開中とこれからで数十本ずつあり、開いたままだと下の
+         映画館の欄や設定まで長くスクロールすることになる）。見出しを押すと開く --%>
+        <details
+          :for={{label, list} <- works_part_groups(all, @topic, @part)}
+          id={"works-group-#{:erlang.phash2(label)}"}
+          class="event-day-list works-group"
+        >
+          <summary>
+            <h3>{label}（{length(list)} 本）</h3>
+          </summary>
+          <ul>
+            <%!-- **押すと詳細が開く**（説明・出典・上映館・見た記録。`ChidoriWeb.WorkModal`）。
+             札は見渡すためのものなので、見出しと事実の 1 行だけ --%>
+            <li
+              :for={entry <- list}
+              class={["event-item", "is-#{entry.attention}", "is-work"]}
+              phx-click="open_work"
+              phx-value-title={entry.title}
+              role="button"
+              tabindex="0"
+            >
+              <img
+                :if={entry_thumb(entry)}
+                class="event-thumb"
+                src={entry_thumb(entry)}
+                alt=""
+                loading="lazy"
+              />
+              <div class="event-item-head">
+                <span :if={entry.attention} class={["event-chip", "is-#{entry.attention}"]}>
+                  注目度 {attention_label(entry.attention)}
+                </span>
+                <strong>{entry.title}</strong>
+                <%!-- 見た作品は見出しの横に印（詳細を開かなくても分かる） --%>
+                <span :if={seen_work?(@work_marks, entry.title)} class="seen-badge">見た</span>
+              </div>
+              <p class="event-item-facts">
+                {work_facts(entry, Chidori.Topics.works(@topic))}
+              </p>
+            </li>
+          </ul>
+        </details>
+      <% end %>
+    </section>
+    """
+  end
+
+  @doc "その組（公開中かこれから）だけを取り出す。"
+  def works_part_groups(all, topic, part) do
+    works = Chidori.Topics.works(topic)
+    {started, _upcoming} = works.group_labels()
+
+    all
+    |> works_groups(Chidori.Jst.today(), works)
+    |> Enum.filter(fn {label, _list} -> label == started == (part == :started) end)
+  end
 
   @doc """
   注目作の一覧の並び。**公開中（新しい順）とこれから（近い順）に分けます** ——

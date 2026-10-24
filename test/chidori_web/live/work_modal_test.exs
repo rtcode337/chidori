@@ -54,6 +54,13 @@ defmodule ChidoriWeb.WorkModalTest do
     {:ok, live, _html} = live(conn, ~p"/news?view=chidori_movies")
     html = render_async(live)
 
+    # 「注目作」の見出しは付けず、公開中の作品はカレンダーの上
+    refute html =~ ~s(>注目作<)
+    {started, _} = :binary.match(html, ~s(aria-label="公開中の作品"))
+    {calendar, _} = :binary.match(html, "のカレンダー")
+    {upcoming, _} = :binary.match(html, ~s(aria-label="これからの作品"))
+    assert started < calendar and calendar < upcoming
+
     # 札は見出しと事実だけ。本文と記録の欄は詳細の中
     assert html =~ ~s(phx-click="open_work")
     refute html =~ "口コミ: よかった"
