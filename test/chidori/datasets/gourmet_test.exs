@@ -851,6 +851,18 @@ defmodule Chidori.Datasets.GourmetTest do
       assert Gourmet.survey_prompt() =~ ~s("#{why}:" の付いていない店の 1 件はこの段で見直します)
     end
 
+    test "代表店はその品を看板にしている店を先に（いろいろな品を並べる店・産地の外の店は後回し）" do
+      for prompt <- [Gourmet.survey_prompt(), Gourmet.scan_prompt()] do
+        assert prompt =~ "**その品を看板にしている店を選んでください。**"
+        assert prompt =~ "アンテナショップ・物産館・百貨店"
+        assert prompt =~ "ほかに買える・食べられる店が無いときだけ"
+        assert prompt =~ "産地や発祥の町に店があればそちら"
+      end
+
+      # 前の決まりで選んだ代表店は、確かめた日が新しくても選び直させる
+      assert Gourmet.survey_prompt() =~ "`extra.checked_on` が新しくても、下の「代表店の決め方」で選び直して"
+    end
+
     test "種類の語彙は店のぶん（和食・洋食・中華）を足しても 20 を超えない" do
       kinds = Gourmet.kinds()
 
