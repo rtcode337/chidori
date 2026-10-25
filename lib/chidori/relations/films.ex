@@ -353,6 +353,57 @@ defmodule Chidori.Relations.Films do
       ]
     }
 
+  # 絵を探させる 1 回に名指しする上限（Chiezo の割り込みの名指しの上限）
+  @image_titles 50
+
+  @doc """
+  **名指しした作品に絵を探させます**（見た映画のページの「絵を探してもらう」。割り込み 1 回で、
+  押した人の 1 回なので止めている収集でも走る）。Wikipedia にはポスターがほとんど無いので、
+  AI に公式サイトや映画の情報サイトのポスターの URL を探させ、Chiezo が縮めて持つ（`thumbs`）。
+  `{:ok, 名指しした数}` / `{:error, 理由}`。
+  """
+  def fill_images(_base, []), do: {:ok, 0}
+
+  def fill_images(base, titles) when is_list(titles) do
+    titles = Enum.take(titles, @image_titles)
+
+    result =
+      Chidori.Chiezo.by_hand(fn ->
+        Chidori.Chiezo.focus(
+          base,
+          collection(),
+          "名指しした作品に、絵（image）を付けてください。",
+          titles,
+          Chidori.SweepNames.tidy(),
+          nil,
+          image_prompt()
+        )
+      end)
+
+    case result do
+      :ok -> {:ok, length(titles)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "絵を探させる回の依頼文（その回だけの依頼文。定義の文は変わらない）。"
+  def image_prompt do
+    """
+    下に並んでいる映画それぞれについて、**ポスターかキービジュアルの画像の URL** を探して
+    image に入れて返してください。
+
+    {current}
+
+    - image は**画像そのものの URL**（ページの URL ではなく）。公式サイトのページの og:image、
+      無ければ配給会社や映画の情報サイトの作品ページのもの。Wikipedia の記事に絵があればそれでも構いません。
+      **確かめられなければ入れないでください**（その作品は返さなくて構いません）
+    - **title と tags は上のまま、tags は全部返してください** —— 返した tags がそのまま
+      付け替わります（1 つでも落とすと、監督・主演・公開年・国・ジャンルが消えます）
+    - **body は返さないでください**（本文は今のまま残ります）
+    - **next_cursor は返さないでください**
+    """
+  end
+
   @doc "収集の巡回（画家・芸能人と同じ 3 本。名簿 → 主演を埋める → 区画ごとに仕上げる）。"
   def sweeps do
     [
@@ -391,6 +442,10 @@ defmodule Chidori.Relations.Films do
       sweeps: with_choices(sweeps(), choices),
       extract: extract(),
       kind: "stock",
+      # 作品の絵（ポスター）は AI が返した URL から Chiezo が縮めて持つ（`fill_images/2`。
+      # ページの og:image は拾わない —— 作品の URL は Wikipedia の記事なので、拾うと千数百本の
+      # 記事を読みに行く）
+      thumbs: true,
       # 名簿にいない作品を指す関連と、記事の無い主演は、Chiezo が焼く前に落とす
       verify_tags: [
         %{prefix: Graph.related_tag(), source: "jawiki"},

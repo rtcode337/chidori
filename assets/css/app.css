@@ -931,6 +931,8 @@ body.digest-open #page-scroll { overflow: hidden; }
 /* 絵は左に小さく（ポスターは縦長。説明の読みを邪魔しない大きさ）。右に置くと、広い画面では
    見出しから絵が遠い */
 .event-thumb { float: left; width: 96px; max-height: 136px; object-fit: cover; margin: 0 .6rem .3rem 0; border-radius: 4px; background: #eef0f7; }
+/* 絵の無い作品の枠（見た映画の一覧。行の並びをそろえる） */
+.event-thumb.is-empty { display: block; height: 136px; }
 /* 絵のある札が 1 つでも並ぶ一覧は、**絵の列と文の列に分ける**（絵の無い札も絵の列を空ける）。
    回り込みのままだと、絵の無い札と、絵が読めずに高さを持たない札で、題名と公開日の頭が
    札ごとに左右へずれて縦に見比べられない。絵の高さの余りは最後の行が受ける（文の行の間は空かない） */

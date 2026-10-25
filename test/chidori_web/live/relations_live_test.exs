@@ -1845,6 +1845,17 @@ defmodule ChidoriWeb.RelationsLiveTest do
       assert Enum.map(unseen.nodes, & &1.name) == ["まだの作品"]
     end
 
+    test "映画の図は見た作品を隠して開く（名前を指して開いたときは隠さない）", %{conn: conn} do
+      {:ok, live, _html} = live(conn, ~p"/relations?view=films")
+      assert :sys.get_state(live.pid).socket.assigns.unseen_only
+
+      {:ok, live, _html} = live(conn, ~p"/relations?view=films&focus=七人の侍")
+      refute :sys.get_state(live.pid).socket.assigns.unseen_only
+
+      {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
+      refute :sys.get_state(live.pid).socket.assigns.unseen_only
+    end
+
     test "日付を書いていない印は後ろに回る" do
       relation = %{nodes: [%{name: "あ"}, %{name: "い"}]}
       marks = %{"あ" => %Mark{note: "行きたい"}, "い" => %Mark{seen: true, seen_on: ~D[2020-01-01]}}

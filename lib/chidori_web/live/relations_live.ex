@@ -61,7 +61,8 @@ defmodule ChidoriWeb.RelationsLive do
        edge: nil,
        style_filter: nil,
        # 見た作品を除いた図にしているか（見た印の数の横のボタン。ほかの絞り込みと重ねられる ——
-       # 「見ていないホラー」のように、見ていない中から選びたい）
+       # 「見ていないホラー」のように、見ていない中から選びたい）。映画の図は隠した状態で開く
+       # （`unseen_by_default?/2`。図を開くたびに handle_params が決める）
        unseen_only: false,
        # 直近の巡回で動いたものだけを出しているか。**様式の絞り込みとは排他** ——
        # 2 つ重ねると、出ていないものが「動かなかった」のか「別の様式」なのか読めない
@@ -217,7 +218,10 @@ defmodule ChidoriWeb.RelationsLive do
         settings: nil,
         recent_runs: [],
         unseen_only:
-          if(socket.assigns[:view] == view, do: socket.assigns[:unseen_only], else: false),
+          if(socket.assigns[:view] == view,
+            do: socket.assigns[:unseen_only],
+            else: unseen_by_default?(view, params)
+          ),
         pending_focus: params["focus"],
         detail: nil,
         edge: nil
@@ -909,6 +913,15 @@ defmodule ChidoriWeb.RelationsLive do
   様式は AI が足していくので、増えるほど凡例が図より長くなります。
   """
   def style_legend(relation), do: Enum.take(relation[:styles] || [], @legend_max)
+
+  @doc """
+  開いたときに見た作品を隠しておく図か。**映画の図は隠しておく**（見に来るのは次に見る作品を
+  探すときなので、見た作品が並ぶと選ぶ邪魔になる。「見た作品も出す」で戻せる）。
+  **名前を指して開いたときは隠さない**（`focus`。芸能人の図から作品へ飛んだとき、その作品を
+  見ていると図に居なくなる）。
+  """
+  def unseen_by_default?("films", params), do: params["focus"] in [nil, ""]
+  def unseen_by_default?(_view, _params), do: false
 
   @doc """
   いま描く図。**絞り込みが掛かっていれば、その人たちだけで置き直したもの**を返します。

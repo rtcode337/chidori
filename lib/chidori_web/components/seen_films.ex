@@ -8,6 +8,12 @@ defmodule ChidoriWeb.SeenFilms do
   AI が監督・主演を調べて足すので、載るのは取り込みが終わってから）。図にもうある作品は
   記録を付けるだけで頼まない。一覧の作品を押すと、作品の詳細（`ChidoriWeb.WorkModal`。置く画面の
   `open_work`）が開く。
+
+  **作品の絵は、最新の映画の収集（置く画面の話題の `collection`）にあればそれ、無ければ映画の
+  目録（`Films.collection/0`。見出しか `記録:` で引く）のものを出す**（Chiezo が縮めて持っている
+  `thumb`。開いたあとに 1 本ずつ引く）。昔の作品は Wikipedia にポスターが無く、目録にも初めは
+  絵が無いので、**「絵を探してもらう」で AI に探させる**（`Films.fill_images/2`。目録にある作品
+  だけを名指しする）。絵が付くまでは枠だけを出す。
   """
 
   use Phoenix.LiveComponent
@@ -17,13 +23,117 @@ defmodule ChidoriWeb.SeenFilms do
   alias Chidori.Relations.Films
   alias Chidori.Relations.Marks
 
+  # 絵を引くのを並べる数（13 本なら 4 本ずつ）
+  @thumb_concurrency 4
+
   @impl true
   def mount(socket),
     do:
-      {:ok, assign(socket, marks: Marks.for_view(Films.mark_view()), message: nil, adding: false)}
+      {:ok,
+       assign(socket,
+         marks: Marks.for_view(Films.mark_view()),
+         message: nil,
+         adding: false,
+         thumbs: %{},
+         collection: nil,
+         # 目録にあって絵の無い作品（目録の見出し）。「絵を探してもらう」で名指しする
+         imageless: [],
+         asking_images: false,
+         images_message: nil
+       )}
 
   @impl true
-  def update(assigns, socket), do: {:ok, assign(socket, assigns)}
+  def update(assigns, socket) do
+    socket = assign(socket, assigns)
+
+    # つながってから 1 度だけ絵を引く（最初の描画では引かない）
+    if connected?(socket) and socket.assigns.thumbs == %{} and socket.assigns.collection,
+      do: {:ok, load_thumbs(socket)},
+      else: {:ok, socket}
+  end
+
+  defp load_thumbs(socket) do
+    titles = socket.assigns.marks |> seen() |> Enum.map(& &1.node_name)
+    collection = socket.assigns.collection
+
+    case {titles, Chidori.News.chiezo_base_url()} do
+      {[], _base} ->
+        socket
+
+      {_titles, nil} ->
+        socket
+
+      {titles, base} ->
+        socket
+        |> assign(thumbs: Map.new(titles, &{&1, nil}))
+        |> start_async(:thumbs, fn -> thumbs(base, collection, titles) end)
+    end
+  end
+
+  @doc """
+  見た作品の絵。`{見出し → 絵の道（/thumbs/…）, 目録にあって絵の無い作品の目録の見出し}`。
+  最新の映画の収集を先に見て、無ければ映画の目録（見出しか `記録:` の見出し）を見る。
+  """
+  def thumbs(base, collection, titles) do
+    found =
+      titles
+      |> Task.async_stream(&thumb_of(base, collection, &1),
+        max_concurrency: @thumb_concurrency,
+        timeout: 10_000,
+        on_timeout: :kill_task
+      )
+      |> Enum.flat_map(fn
+        {:ok, found} -> [found]
+        _exit -> []
+      end)
+
+    {
+      for({title, {:thumb, path}} <- found, into: %{}, do: {title, path}),
+      for({_title, {:missing, catalog_title}} <- found, uniq: true, do: catalog_title)
+    }
+  end
+
+  defp thumb_of(base, collection, title) do
+    with nil <- thumb_in(Chidori.Chiezo.doc(base, collection, title, "title,extra")) do
+      case catalog_doc(base, title) do
+        %{"title" => catalog_title} = doc ->
+          case thumb_in({:ok, doc}) do
+            nil -> {title, {:missing, catalog_title}}
+            path -> {title, {:thumb, path}}
+          end
+
+        _none ->
+          {title, :none}
+      end
+    else
+      path -> {title, {:thumb, path}}
+    end
+  end
+
+  defp thumb_in({:ok, %{"extra" => %{"thumb" => thumb}}}) when is_binary(thumb),
+    do: Chidori.Chiezo.thumb_path(thumb)
+
+  defp thumb_in(_doc), do: nil
+
+  # 目録の 1 件（見出しで、無ければ `記録:` の見出しで）
+  defp catalog_doc(base, title) do
+    case Chidori.Chiezo.doc(base, Films.collection(), title, "title,extra") do
+      {:ok, doc} ->
+        doc
+
+      _missing ->
+        case Chidori.Chiezo.spot_docs(
+               base,
+               Films.collection(),
+               Films.record_tag() <> ":" <> title,
+               0,
+               1
+             ) do
+          {:ok, %{docs: [doc | _]}} -> doc
+          _none -> nil
+        end
+    end
+  end
 
   # 見た映画を足す。**記録はその場で書き**、図に無ければ図へは AI に足させる
   @impl true
@@ -56,6 +166,24 @@ defmodule ChidoriWeb.SeenFilms do
           {:error, _changeset} ->
             {:noreply, assign(socket, message: "記録を保存できませんでした。")}
         end
+    end
+  end
+
+  # 目録にあって絵の無い作品に、絵を探させる（AI を 1 回使う。重ねて押しても 1 本）
+  def handle_event("fill_images", _params, socket) do
+    titles = socket.assigns.imageless
+
+    case Chidori.News.chiezo_base_url() do
+      base when is_binary(base) and titles != [] ->
+        {:noreply,
+         socket
+         |> assign(asking_images: true, images_message: nil)
+         |> start_async(:images, fn ->
+           Chidori.SingleFlight.run({:film_images}, fn -> Films.fill_images(base, titles) end)
+         end)}
+
+      _none ->
+        {:noreply, socket}
     end
   end
 
@@ -94,6 +222,36 @@ defmodule ChidoriWeb.SeenFilms do
   def handle_async(:carry, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, adding: false, message: "映画の図に足すよう頼めませんでした。")}
 
+  def handle_async(:thumbs, {:ok, {found, imageless}}, socket),
+    do:
+      {:noreply,
+       assign(socket, thumbs: Map.merge(socket.assigns.thumbs, found), imageless: imageless)}
+
+  def handle_async(:images, {:ok, result}, socket) do
+    message =
+      case result do
+        {:ok, count} ->
+          "#{count} 本の絵を探すよう頼みました（Chiezo が取り込んだあと、開き直すと出ます）。"
+
+        {:error, :busy} ->
+          "いま頼んでいるところです。"
+
+        {:error, reason} ->
+          "絵を探すよう頼めませんでした: " <> ChidoriWeb.Collect.reason_text(reason)
+      end
+
+    # 頼めたら口を引っ込める（取り込みが終わるまで絵は付かないので、続けて押すと AI の回が重なる）
+    imageless = if match?({:ok, _}, result), do: [], else: socket.assigns.imageless
+
+    {:noreply,
+     assign(socket, asking_images: false, images_message: message, imageless: imageless)}
+  end
+
+  def handle_async(:images, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, asking_images: false, images_message: "絵を探すよう頼めませんでした。")}
+
+  def handle_async(:thumbs, {:exit, _reason}, socket), do: {:noreply, socket}
+
   @doc "見た映画（見た日の新しい順。日付の無いものは後ろに名前順。見ていない記録は入れない）。"
   def seen(marks) when is_map(marks) do
     {dated, undated} =
@@ -127,6 +285,15 @@ defmodule ChidoriWeb.SeenFilms do
           role="button"
           tabindex="0"
         >
+          <%!-- 絵の無い作品も枠だけ出す（行の並びをそろえる） --%>
+          <img
+            :if={@thumbs[mark.node_name]}
+            class="event-thumb"
+            src={@thumbs[mark.node_name]}
+            alt=""
+            loading="lazy"
+          />
+          <span :if={!@thumbs[mark.node_name]} class="event-thumb is-empty" aria-hidden="true"></span>
           <div class="event-item-head">
             <strong>{mark.node_name}</strong>
             <span class="muted-note">
@@ -136,6 +303,21 @@ defmodule ChidoriWeb.SeenFilms do
           <p :if={mark.note != ""} class="event-item-facts">{mark.note}</p>
         </li>
       </ul>
+
+      <%!-- 絵の無い作品に絵を探させる口（目録にある作品だけ。AI を 1 回使う） --%>
+      <p :if={@imageless != []} class="seen-images">
+        <button
+          type="button"
+          phx-click="fill_images"
+          phx-target={@myself}
+          disabled={@asking_images}
+          phx-disable-with="頼んでいます…"
+        >
+          絵の無い {length(@imageless)} 本の絵を探してもらう
+        </button>
+        <span class="muted-note">AI が公式サイトなどでポスターを探し、Chiezo が縮めて持ちます。</span>
+      </p>
+      <p :if={@images_message} class="muted-note" aria-live="polite">{@images_message}</p>
 
       <%!-- **見た映画を足す**（関連図の画面から移した）。図に無い作品は、図の収集に足すよう頼む --%>
       <details class="seen-mark film-add">

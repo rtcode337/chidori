@@ -391,6 +391,7 @@
         :if={@movie_section == :seen}
         module={ChidoriWeb.SeenFilms}
         id="seen-films"
+        collection={@topic.collection}
       />
 
       <%!-- 映画館（映画の話題の「映画館」の切り替え）。近くの館を探してお気に入りに入れ、お気に入りの館で

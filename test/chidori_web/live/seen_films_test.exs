@@ -25,6 +25,12 @@ defmodule ChidoriWeb.SeenFilmsTest do
           url =~ "/v1/chidori_movie_catalog/doc?" ->
             {:ok, %{status: 404, body: ~s({"error":"not found"})}}
 
+          # 最新の映画の収集に残っている作品は絵を持つ
+          url =~ "/v1/chidori_movies/doc?" and url =~ URI.encode_www_form("新しい映画") ->
+            Chidori.HttpStub.ok(
+              ~s({"title":"新しい映画","extra":{"thumb":"/v1/thumbs/#{String.duplicate("a", 40)}.webp"}})
+            )
+
           url =~ "/v1/chidori_movies/doc?" ->
             {:ok, %{status: 404, body: ~s({"error":"not found"})}}
 
@@ -51,13 +57,18 @@ defmodule ChidoriWeb.SeenFilmsTest do
     {:ok, _} = Marks.put(Films.mark_view(), "新しい映画", %{"seen" => true, "seen_on" => "2026-10-01"})
     {:ok, _} = Marks.put(Films.mark_view(), "日付なし", %{"seen" => true})
 
-    {:ok, _live, html} = live(conn, ~p"/news?view=chidori_movies&section=seen")
+    {:ok, live, html} = live(conn, ~p"/news?view=chidori_movies&section=seen")
 
     assert html =~ "見た映画（3 本）"
     {new, _} = :binary.match(html, "新しい映画")
     {old, _} = :binary.match(html, "古い映画")
     {undated, _} = :binary.match(html, "日付なし")
     assert new < old and old < undated
+
+    # 絵は最新の映画の収集にある作品だけ（無い作品は枠だけ）
+    html = render_async(live)
+    assert html =~ ~s(src="/thumbs/#{String.duplicate("a", 40)}.webp")
+    assert html =~ ~s(event-thumb is-empty)
 
     # 切り替えは「見た映画」を選んだ状態。最新の要約は出さない
     [_, tabs] = String.split(html, ~s(id="movie-tabs"), parts: 2)
@@ -112,5 +123,22 @@ defmodule ChidoriWeb.SeenFilmsTest do
     assert html =~ "1980年 公開"
     assert html =~ "監督: ある監督"
     assert html =~ "主演: 主演A・主演B"
+  end
+
+  test "目録にあって絵の無い見た作品は、絵を探してもらえる", %{conn: conn} do
+    # 七人の侍は目録にあるが絵が無い
+    {:ok, _} = Marks.put(Films.mark_view(), "七人の侍", %{"seen" => true})
+    {:ok, live, _html} = live(conn, ~p"/news?view=chidori_movies&section=seen")
+
+    html = render_async(live)
+    assert html =~ "絵の無い 1 本の絵を探してもらう"
+
+    live |> element("button[phx-click=fill_images]") |> render_click()
+    html = render_async(live)
+
+    assert_received {:posted, url}
+    assert url =~ "/v1/collect/chidori_movie_catalog/focus?manual=true"
+    assert html =~ "1 本の絵を探すよう頼みました"
+    refute html =~ "絵の無い 1 本の絵を探してもらう"
   end
 end
