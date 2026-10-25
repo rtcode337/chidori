@@ -13,6 +13,7 @@ paths:
   - "lib/chidori_web/components/collect_tabs.ex"
   - "lib/chidori_web/components/collect_switch.ex"
   - "lib/chidori_web/components/doc_diff.ex"
+  - "lib/chidori_web/components/doc_view.ex"
   - "lib/chidori_web/components/recent_runs.ex"
   - "lib/chidori_web/components/run_sweep_button.ex"
   - "test/chidori/collect_*_test.exs"
@@ -47,7 +48,8 @@ Chidori は Chiezo の「集める」層に収集を頼み、溜まったもの�
   ワーカーを止める / 動かす / 起こす）は収集の画面から頼む（`Chidori.Chiezo.operate/3`・`queries/2`・`forget_queries/3`・
   `pause_worker/3`・`wake_worker/2`）。断られたら Chiezo の言い分をそのまま出す。取り消せない操作は Chiezo の管理画面だけ
 - 各収集の設定の枠にも止める・動かす（`ChidoriWeb.CollectSwitch`）。Chiezo が外部からの有効化を許していなければ（`outside_switch_allowed`）、動かす代わりに Chiezo の収集の面へのリンク。切り替えたら画面へ `{:collection_switched, 名前}` を送り、画面は状態を読み直す
-- 最近の回・依頼の結果の見出しを押したら、1 件の変更を Chidori の画面の上に開く（`ChidoriWeb.DocDiff`・`Chiezo.doc_diff/3` → Chiezo の `GET /v1/collect/{name}/diff`）。Chiezo の管理画面へは飛ばさない
+- 最近の回・依頼の結果の見出しを押したら、1 件の変更を Chidori の画面の上に開く（`ChidoriWeb.DocDiff`・`Chiezo.doc_diff/3` → Chiezo の `GET /v1/collect/{name}/diff`）。Chiezo の管理画面へは飛ばさない。
+  1 件のいまの中身（本文・タグ・脇書き。直す前の控え `before` は出さない）は `ChidoriWeb.DocView`（`id="doc-view"`・`phx-target="#doc-view"`。空いている欄を埋める口の一覧の名前から開く）
 - 巡回を今すぐ 1 回走らせるのは各収集の画面の巡回の表（`ChidoriWeb.RunSweepButton`。状態は部品が持つ。人が押した 1 回として `by_hand/1`）
 - 整理を自動で回さない収集は `by_caller`（Chiezo の巡回の時計だけを外す）。選んだものは表 `tidy_stops` に覚え、送り直すたびに載せる
 - 巡回の名前は `Chidori.SweepNames` から選ぶ。仕事が同じなら同じ名前にし、当てはまらない仕事が出たときだけ足す

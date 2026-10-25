@@ -950,6 +950,56 @@
                   </button>
                 </div>
               </form>
+              <%!-- **どれの何が空いているか**（選んだ欄が空いているものだけ、空いている欄の多い順）。
+                 数だけでは、どの店の話なのか分からない。開け閉めはブラウザに任せる（欄を選ぶたびに描き直す） --%>
+              <% blank_list =
+                blank_rows(report.shops, @dataset.module.blank_fields(), @fill_fields) %>
+              <details
+                id="blank-list"
+                class="blank-list"
+                phx-mounted={Phoenix.LiveView.JS.ignore_attributes(["open"])}
+              >
+                <summary>
+                  選んだ欄が空いているもの（{length(blank_list)} {@dataset.module.blank_unit()}）
+                </summary>
+                <p :if={blank_list == []} class="muted-note">選んだ欄が空いているものはありません。</p>
+                <p :if={length(blank_list) > @blank_list_max} class="muted-note">
+                  空いている欄の多い {@blank_list_max} {@dataset.module.blank_unit()}だけを並べています。
+                </p>
+                <table :if={blank_list != []} class="blank-table">
+                  <thead>
+                    <tr>
+                      <th>名前</th>
+                      <th>空いている欄（太字は選んだ欄）</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr :for={{title, labels} <- Enum.take(blank_list, @blank_list_max)}>
+                      <td>
+                        <%!-- 押すと、Chiezo にいま入っている中身を開く（`ChidoriWeb.DocView`） --%>
+                        <button
+                          type="button"
+                          class="doc-diff-link"
+                          phx-click="open"
+                          phx-target="#doc-view"
+                          phx-value-collection={@dataset.collection}
+                          phx-value-title={title}
+                        >
+                          {title}
+                        </button>
+                      </td>
+                      <td>
+                        <span
+                          :for={{label, picked} <- labels}
+                          class={["blank-field", picked && "is-picked"]}
+                        >
+                          {label}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </details>
           <% end %>
           <p :if={fill_message(@filled)} class="muted-note" aria-live="polite">
             {fill_message(@filled)}
@@ -1349,5 +1399,6 @@
     </div>
     <%!-- 最近の回・依頼の結果の見出しを押したときの、1 件の変更（この画面の上に重ねて開く） --%>
     <.live_component module={ChidoriWeb.DocDiff} id="doc-diff" />
+    <.live_component module={ChidoriWeb.DocView} id="doc-view" />
   </div>
 </main>

@@ -98,7 +98,8 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
     assert String.split(table, "<td>東京都</td>") |> hd() |> String.contains?("<td>") == false
 
     # 溜まったものそのものは見せない（読むのは travel-log）
-    refute html =~ "秘密の名前"
+    # 名前を出すのは片付いていないものの一覧（空いている欄の一覧）だけ
+    refute without_blank_list(html) =~ "秘密の名前"
     # 区画の地図は出さない（鍵が矩形ではない）
     refute html =~ "partition-map"
     # travel-log 用の ZIP は出す
@@ -129,7 +130,7 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
     assert sent["prompt"] =~ "- 東京の名店（秘密の名前）: 代表店の営業時間\n"
     assert sent["prompt"] =~ "代表店（`extra.shop`）は変えないでください"
     # 名前は頼む中身に入るだけで、画面には出さない
-    refute render(live) =~ "秘密の名前"
+    refute live |> render() |> without_blank_list() =~ "秘密の名前"
   end
 
   test "県を選ぶと、その県を選んだ巡回で 1 回走らせられる（押しただけでは走らない）", %{conn: conn} do
@@ -185,7 +186,8 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
     assert html =~ "引き当てできずがある"
     assert html =~ "Natural Earth"
     # 料理の名前は地図にも出さない
-    refute html =~ "秘密の名前"
+    # 名前を出すのは片付いていないものの一覧（空いている欄の一覧）だけ
+    refute without_blank_list(html) =~ "秘密の名前"
   end
 
   test "地図の県を押すと選ばれ、フォームがその県になる（押しただけでは走らない）", %{conn: conn} do
@@ -249,5 +251,18 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
   test "読む画面で開くと、収集の画面へ送る（読むのは travel-log）", %{conn: conn} do
     assert {:error, {:live_redirect, %{to: "/collect/apps?view=gourmet"}}} =
              live(conn, ~p"/datasets?view=gourmet")
+  end
+
+  # 空いている欄の一覧（`#blank-list`）を除いた画面。片付いていないものを確かめるための一覧なので、
+  # そこには名前が出る（代表店まだ・なしの一覧と同じ例外）
+  defp without_blank_list(html) do
+    case String.split(html, ~s(id="blank-list"), parts: 2) do
+      [before, rest] ->
+        [_list, after_list] = String.split(rest, "</details>", parts: 2)
+        before <> after_list
+
+      [whole] ->
+        whole
+    end
   end
 end

@@ -866,6 +866,19 @@ defmodule ChidoriWeb.DatasetsLiveTest do
         %{method: :get, url: "http://chiezo.test:7010/v1/chidori_dining_1/filter?" <> _query} ->
           Chidori.HttpStub.ok(Jason.encode!(%{"total" => 3, "results" => shops}))
 
+        # 名前を押したときの 1 件（いまの中身）
+        %{method: :get, url: "http://chiezo.test:7010/v1/chidori_dining_1/doc?" <> query} ->
+          title = URI.decode_query(query)["title"]
+
+          Chidori.HttpStub.ok(
+            Jason.encode!(%{
+              "title" => title,
+              "tags" => ["食事処", "特徴:ランチ営業"],
+              "body" => "所在地: 東京都千代田区",
+              "extra" => %{"lat" => 35.66, "before" => %{"body" => "直す前"}}
+            })
+          )
+
         %{url: "http://chiezo.test:7010/v1/ai/backends"} ->
           Chidori.HttpStub.ok(~s({"backends":[{"id":"antigravity","label":"Antigravity"}]}))
 
@@ -886,11 +899,29 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
       assert html =~ "AI が目を通した 3 店のうち、空いている欄のあるものは 2 店です"
       assert html =~ "営業時間 2 店"
+
       # 「空いている欄を埋める」は既定で畳み、開け閉めはブラウザに任せる（欄を変えるたびの描き直しで畳まない）
       assert html =~
                ~r|<details id="blank-report" class="settings-block blank-report"[^>]*>\s*<summary><h3>空いている欄を埋める</h3>|
 
       assert html =~ ~r|<details id="blank-report"[^>]*phx-mounted="[^"]*ignore_attrs|
+
+      # どれの何が空いているかを並べる（選んだ欄の多く空いている順。選んだ欄は太字）
+      [_, list] = String.split(html, ~s(id="blank-list"), parts: 2)
+      [list, _] = String.split(list, "</details>", parts: 2)
+      assert list =~ "選んだ欄が空いているもの（2 店）"
+      {far, _} = :binary.match(list, "遠くの店")
+      {soba, _} = :binary.match(list, "そば屋")
+      assert far < soba
+      assert list =~ ~r|class="blank-field is-picked">\s*営業時間|
+
+      # 名前を押すと、Chiezo にいま入っている中身を開く（直す前の控えは出さない）
+      live |> element(~s(#blank-list button[phx-value-title="そば屋"])) |> render_click()
+      opened = render_async(live)
+      assert opened =~ ~s(id="doc-view-title">そば屋)
+      assert opened =~ "所在地: 東京都千代田区"
+      assert opened =~ "特徴:ランチ営業"
+      refute opened =~ "直す前"
 
       # 区画の一覧に、その区画の空いている欄のある店の数（どれか 1 つでも空いている店）
       assert html =~ ~r|<td>35.6,139.7/35.7,139.8</td>\s*<td>\d+</td>\s*<td>\s*1\s*</td>|
@@ -1275,6 +1306,25 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
       assert html =~ "travel-log からの依頼"
       refute html =~ ~s(phx-submit="ask")
+    end
+  end
+
+  describe "空いている欄の一覧" do
+    test "選んだ欄が空いているものだけを、選んだ欄の多く空いている順に" do
+      fields = [opening_hours: "営業時間", feature: "特徴", url: "出典の URL"]
+
+      items = [
+        %{title: "い", missing: [:feature]},
+        %{title: "あ", missing: [:opening_hours, :url]},
+        %{title: "う", missing: [:url]}
+      ]
+
+      assert DatasetsLive.blank_rows(items, fields, [:opening_hours, :url]) == [
+               {"あ", [{"営業時間", true}, {"出典の URL", true}]},
+               {"う", [{"出典の URL", true}]}
+             ]
+
+      assert [{"あ", _}, {"い", _}, {"う", _}] = DatasetsLive.blank_rows(items, fields, [])
     end
   end
 

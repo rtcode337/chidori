@@ -117,6 +117,8 @@ defmodule ChidoriWeb.DatasetsLive do
        # 埋めてほしい欄（覚えるのはサーバー側。巡回の表と同じ理由）・頼んだ結果の一言
        blank_report: nil,
        fill_fields: [],
+       # 「選んだ欄が空いているもの」に並べる数の上限（範囲によっては数百になり、表が画面を埋める）
+       blank_list_max: 200,
        fill_count: elem(Chidori.Datasets.Dining.fill_counts(), 0),
        # 空欄を埋める 1 回の相手（空なら情報収集の設定のまま）
        fill_backend: nil,
@@ -918,6 +920,23 @@ defmodule ChidoriWeb.DatasetsLive do
   end
 
   def fills_blanks?(_dataset), do: false
+
+  @doc """
+  空いている欄のあるものの一覧（`[{名前, [{欄の名前, 選んだ欄か}]}]`）。選んだ欄（`selected`）が
+  1 つでも空いているものだけを、選んだ欄が多く空いている順（同じなら空いている欄の多い順・名前順）に。
+  欄の並びは `fields`（対象の `blank_fields/0`）の順。何も選んでいなければ全部。
+  """
+  def blank_rows(items, fields, selected) do
+    for item <- items,
+        selected == [] or Enum.any?(item.missing, &(&1 in selected)),
+        labels =
+          for({field, label} <- fields, field in item.missing, do: {label, field in selected}),
+        picked = Enum.count(labels, &elem(&1, 1)) do
+      {picked, length(labels), item.title, labels}
+    end
+    |> Enum.sort_by(fn {picked, total, title, _labels} -> {-picked, -total, title} end)
+    |> Enum.map(fn {_picked, _total, title, labels} -> {title, labels} end)
+  end
 
   defp fill_fields_default(dataset) do
     if fills_blanks?(dataset), do: Keyword.keys(dataset.module.blank_fields()), else: []
