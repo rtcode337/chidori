@@ -238,10 +238,25 @@ defmodule Chidori.Relations.FilmsTest do
       assert apply.("テレビドラマを原作とする映画") == []
       assert apply.("人形を題材としたホラー映画") == []
       # 既にいる作品にも付くように（Chiezo の `fill`）
-      assert Enum.all?(rules, &(&1[:fill] != true or String.starts_with?(&1.format, "ジャンル:")))
+      assert Enum.all?(
+               rules,
+               &(&1[:fill] != true or String.starts_with?(&1.format, ["ジャンル:", "国:"]))
+             )
+
       assert Enum.any?(rules, &(&1[:fill] == true))
       # 監督の分類を国に読まない
       refute "国:黒澤明" in apply.("黒澤明の監督映画")
+
+      # 主な 20 か国の外の国も拾う（表で引く）。表に無い頭（会社・年）は国にしない
+      assert apply.("ルーマニアのドラマ映画") == ["国:ルーマニア", "ジャンル:ドラマ"]
+      assert apply.("2019年の日本のアニメ映画") == ["年代:2019"]
+      assert apply.("ワーナー・ブラザースの作品の映画") == []
+      # 既にいる作品にも国が付くように（Chiezo の `fill`）
+      assert Enum.any?(rules, &(&1[:fill] == true and String.starts_with?(&1.format, "国:")))
+      # 国の表の国は、主な国の外も「ほかの国」の帯に入る
+      bands = Map.new(Films.graph_spec().bands)
+      assert "ルーマニア" in bands["ほかの国"]
+      refute "日本" in bands["ほかの国"]
 
       # Chiezo の規則の上限（20）に収まる
       assert length(rules) <= 20
