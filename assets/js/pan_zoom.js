@@ -75,6 +75,12 @@ const base = {
   },
 
   updated() {
+    // **広げている印は描き直しで消える**（器の class は画面の側が持っていて、札を押した印
+    // `has-pick` のように中身で変わる）。消えたら付け直す —— 付け直さないと、iPhone では
+    // 全画面にした直後、見ている範囲を知らせた返りの描き直しで元の大きさへ戻っていた
+    if (this.faux && !this.el.classList.contains("faux-fullscreen")) {
+      this.el.classList.add("faux-fullscreen")
+    }
     // 描き直されると svg の要素が入れ替わるので、持ち直してから当て直す
     this.svg = this.el.querySelector(":scope > svg")
     const now = this.svg && this.svg.getAttribute("viewBox")
@@ -277,7 +283,8 @@ const base = {
       document.exitFullscreen()
       return
     }
-    if (this.el.classList.contains("faux-fullscreen")) {
+    if (this.faux) {
+      this.faux = false
       this.el.classList.remove("faux-fullscreen")
       this.onFullscreen()
       return
@@ -289,9 +296,16 @@ const base = {
     }
   },
 
+  // 広げているかはここで持つ（器の class は描き直しで消えるので、印を正にしない）
   fauxFullscreen() {
+    this.faux = true
     this.el.classList.add("faux-fullscreen")
     this.onFullscreen()
+  },
+
+  // 全画面（本物か、器を広げた代わりの形）か
+  inFullscreen() {
+    return !!document.fullscreenElement || !!this.faux
   },
 
   // 埋め込みの枠（親の画面の iframe）を画面いっぱいにする・戻す。器は枠の中で

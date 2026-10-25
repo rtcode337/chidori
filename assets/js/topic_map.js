@@ -59,7 +59,7 @@ export default panZoom({
       this.pick(null)
       return
     }
-    if (touchLike() && !document.fullscreenElement) {
+    if (touchLike() && !this.inFullscreen()) {
       this.fullscreen()
     }
   },

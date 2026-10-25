@@ -67,4 +67,5 @@ paths:
   印のある札は橙の枠（`marked`）、「見た」の印のある札は札の右上に上の縁から垂らした黄色いしおり（`is-seen`・`seen?/2`・`flag_path/1`。名前はそのぶん左へ寄せる `name_x/2`）、図の下に見た数（`seen_count/2`）と「見ていない作品だけにする」（`unseen_only`。`Graph.without/2` で除いて置き直し、共通項の鎖は残った札でつなぎ直す。ほかの絞り込みと重ねられる）
 - 札は 2 回押して開く。1 回目は札・線・線の先を立たせ（`picked`。名前で持つ。`pick_of/2`）、共通項の線（`shared`。線は `value` と、同じ 2 本が共にする共通項の全部 `values` を持つ）は鎖ごと立たせる。立たせた札（`pick.near`）は小さくても重なっても描き、押した札をいちばん先に置く（`drawn_nodes/3`）。線も 2 回押して開く。1 回目はその線と両端（共通項の線ならその鎖だけ）を立たせる（`picked_edge`。`pick_of(relation, {from, to, kind})`。札は選ばない）。2 回目で詳細。余白で戻す（`unpick`）
 - 図の操作は `assets/js/pan_zoom.js` を関連図・トピックの網・区画の地図・県の地図で共有する。拡大は `viewBox` を動かす（CSS の transform で引き伸ばさない）。
-  図ごとの事情だけを `relation_map.js` に足す
+  図ごとの事情だけを `relation_map.js` に足す。本物の全画面が使えない端末（iPhone）の代わりの形（器の `faux-fullscreen`）は、
+  広げているかを hook が持ち（`this.faux`）、描き直しで class が消えたら `updated()` で付け直す（器の class は `has-pick` のように中身で変わる）

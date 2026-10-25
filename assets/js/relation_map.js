@@ -85,7 +85,8 @@ export default panZoom({
       this.pushEvent("unpick", {})
       return
     }
-    if (touchLike() && !onNode && !document.fullscreenElement) {
+    // 全画面の中の余白は何もしない（代わりの形の全画面で押すと、全画面を抜けていた）
+    if (touchLike() && !onNode && !this.inFullscreen()) {
       this.fullscreen()
     }
   },
