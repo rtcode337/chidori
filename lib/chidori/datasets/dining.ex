@@ -634,6 +634,8 @@ defmodule Chidori.Datasets.Dining do
   消えた店を既定で外す）。目を通していない店は情報収集の 2 で 1 件ずつ確かめるので、
   ここで頼む相手ではありません。
   """
+  def blank_report(%{area: area}), do: blank_report(area)
+
   def blank_report(area) do
     with {:ok, base} <- Chidori.Datasets.base_url(),
          {:ok, docs} <- shop_docs(base, collection(area)) do
@@ -706,11 +708,10 @@ defmodule Chidori.Datasets.Dining do
   欄ごとの空いている店の数（`blank_fields/0` の並び。`[{鍵, 名前, 数}]`）。
   **空いている店の無い欄は出しません**（0 店の欄を選べても頼むものが無い）。
   """
-  def blank_counts(shops) do
-    for {field, label} <- @blank_fields,
-        (count = Enum.count(shops, &(field in &1.missing))) > 0,
-        do: {field, label, count}
-  end
+  def blank_counts(shops), do: Chidori.Datasets.Blanks.counts(shops, @blank_fields)
+
+  @doc "画面で数えるときの単位。"
+  def blank_unit, do: "店"
 
   @doc """
   空欄を埋める 1 回の頼みごと（`Chidori.Datasets.fill_blanks/3` に渡すもの）。
@@ -729,15 +730,7 @@ defmodule Chidori.Datasets.Dining do
   """
   def fill_request(shops, fields, count) do
     wanted = for {field, _label} <- @blank_fields, field in fields, do: field
-    count = count |> max(1) |> min(@fill_max)
-
-    picked =
-      shops
-      |> Enum.map(&%{&1 | missing: Enum.filter(&1.missing, fn field -> field in wanted end)})
-      |> Enum.reject(&(&1.missing == []))
-      |> Enum.shuffle()
-      |> Enum.sort_by(&{if(:opening_hours in &1.missing, do: 0, else: 1), -length(&1.missing)})
-      |> Enum.take(count)
+    picked = Chidori.Datasets.Blanks.pick(shops, wanted, count, @fill_max, :opening_hours)
 
     case picked do
       [] ->
@@ -1077,6 +1070,8 @@ defmodule Chidori.Datasets.Dining do
       24 時間制の時刻で書いてください。定休日は `off`、昼と夜で分かれていれば `,` で並べ、
       日付をまたぐ閉店は `18:00-02:00` のように書きます。
       例: `Mo-Fr 11:00-14:30,17:30-22:00; Sa,Su,PH 11:00-21:00; We off`。
+      年末年始の休み（`Dec 31-Jan 03 off`）・季節ごとの営業時間（`Apr-Oct 11:00-21:00; Nov-Mar 11:00-20:00`）・
+      第何曜日の定休日（`We[2,4] off`）もこの書き方で書けます。
       **ここから朝食営業・ランチ営業・深夜営業の印が機械で付く**ので、書式を崩さないでください
     - tags: **いま付いているタグは、直すもの以外そのまま残してください**
       （返した内容で丸ごと置き換わるので、書かなかったタグは消えます）

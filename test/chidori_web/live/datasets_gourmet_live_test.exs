@@ -105,6 +105,33 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
     assert html =~ "/datasets/gourmet/travel-log.zip"
   end
 
+  test "代表店のある 1 件の空いている欄（営業時間・代表店の理由）を、県に縛らず名指しして埋めてもらう", %{conn: conn} do
+    {:ok, live, _html} = live(conn, ~p"/collect/apps?view=gourmet")
+    html = render_async(live)
+
+    # 代表店のある 1 件だけを数える（まだ目を通していないものも、代表店の無いものも数えない）
+    assert html =~ "AI が目を通した 1 件のうち、空いている欄のあるものは 1 件です"
+    assert html =~ "代表店の営業時間 1 件"
+    assert html =~ "代表店の理由 1 件"
+
+    live
+    |> form("#fill-blanks-form", %{"fields" => ["opening_hours"], "count" => "5"})
+    |> render_submit()
+
+    assert render_async(live) =~ "1 件の空欄を埋める 1 回を頼みました"
+
+    assert_receive {:posted, url, sent}, 2_000
+    assert url =~ "/v1/collect/chidori_gourmet/focus"
+    assert sent["titles"] == ["東京の名店（秘密の名前）"]
+    assert sent["sweep"] == "情報収集"
+    # 県を渡すと情報収集の印が付き、その県の見直しが一周先へ回る
+    refute Map.has_key?(sent, "partition")
+    assert sent["prompt"] =~ "- 東京の名店（秘密の名前）: 代表店の営業時間\n"
+    assert sent["prompt"] =~ "代表店（`extra.shop`）は変えないでください"
+    # 名前は頼む中身に入るだけで、画面には出さない
+    refute render(live) =~ "秘密の名前"
+  end
+
   test "県を選ぶと、その県を選んだ巡回で 1 回走らせられる（押しただけでは走らない）", %{conn: conn} do
     {:ok, live, _html} = live(conn, ~p"/collect/apps?view=gourmet")
     render_async(live)

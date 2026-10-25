@@ -863,6 +863,31 @@ defmodule Chidori.Datasets.GourmetTest do
       assert Gourmet.survey_prompt() =~ "`extra.checked_on` が新しくても、下の「代表店の決め方」で選び直して"
     end
 
+    test "空いている欄は代表店のある 1 件だけ数え、営業時間の無いものから名指しする" do
+      placed = %{"tags" => ["ご当地グルメ"], "extra" => %{"lat" => 35.6, "lon" => 139.7}}
+      assert Gourmet.blanks(placed) == [:opening_hours, :shop_reason]
+
+      assert Gourmet.blanks(put_in(placed, ["extra", "opening_hours"], "Mo-Su 10:00-18:00")) ==
+               [:shop_reason]
+
+      # 代表店が無ければ、営業時間も理由も書きようがない
+      assert Gourmet.blanks(%{"tags" => ["ご当地グルメ"], "extra" => %{}}) == []
+
+      items = [
+        %{title: "理由だけ空", missing: [:shop_reason]},
+        %{title: "両方空", missing: [:opening_hours, :shop_reason]}
+      ]
+
+      {:ok, request} = Gourmet.fill_request(items, [:opening_hours, :shop_reason], 20)
+      assert request.titles == ["両方空", "理由だけ空"]
+      assert request.prompt =~ "{current}"
+      # travel-log が読める書き方（年末年始・季節・第何曜日）も教える
+      assert request.prompt =~ "Dec 31-Jan 03 off"
+      assert request.prompt =~ "We[2,4] off"
+      assert Gourmet.fill_request(items, [:nothing], 20) == :nothing
+      assert Gourmet.fill_counts() == {20, 50}
+    end
+
     test "種類の語彙は店のぶん（和食・洋食・中華）を足しても 20 を超えない" do
       kinds = Gourmet.kinds()
 

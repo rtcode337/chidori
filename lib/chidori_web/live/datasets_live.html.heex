@@ -843,13 +843,13 @@
           </details>
         </section>
 
-        <%!-- **空いている欄のある店を数え、埋めてもらう**（食事処の範囲だけ）。区画には縛らない ——
+        <%!-- **空いている欄のあるものを数え、埋めてもらう**（食事処の範囲・ご当地グルメ。`fills_blanks?/1`）。区画には縛らない ——
            名指しした店だけが AI の一覧に並ぶので、1 回の量は頼む数で決まる。区画を渡さないので
            情報収集の印も付かない。区画の一覧のすぐ上に置く（地図で区画を見たあとに読む） --%>
         <%!-- **既定で畳む**（区画の一覧のすぐ上で場所を取るため。開いて頼む）。開け閉めはブラウザに任せる
            （欄を変えるたびに描き直すので、任せないと数を打つたびに畳まれた） --%>
         <details
-          :if={@dataset[:area]}
+          :if={fills_blanks?(@dataset)}
           id="blank-report"
           class="settings-block blank-report"
           aria-label="空いている欄を埋める"
@@ -867,14 +867,16 @@
               <p class="muted-note">数えられませんでした。{reason_text(reason)}</p>
             <% {:ok, %{shops: []} = report} -> %>
               <p class="muted-note">
-                AI が目を通した {report.total} 店に、空いている欄はありません。
+                AI が目を通した {report.total} {@dataset.module.blank_unit()}に、空いている欄はありません。
               </p>
             <% {:ok, report} -> %>
               <p class="muted-note">
-                AI が目を通した {report.total} 店のうち、空いている欄のある店は {length(report.shops)} 店です。
+                AI が目を通した {report.total} {@dataset.module.blank_unit()}のうち、空いている欄のあるものは {length(
+                  report.shops
+                )} {@dataset.module.blank_unit()}です。
                 情報収集も回るたびに埋めますが、ここから先に頼めます。
               </p>
-              <% {_default, max} = Chidori.Datasets.Dining.fill_counts() %>
+              <% {_default, max} = @dataset.module.fill_counts() %>
               <form
                 id="fill-blanks-form"
                 phx-submit="fill_blanks"
@@ -882,9 +884,9 @@
                 class="collect-form"
               >
                 <fieldset class="fill-fields">
-                  <legend>埋めてほしい欄（数は空いている店）</legend>
+                  <legend>埋めてほしい欄（数は空いているもの）</legend>
                   <label :for={
-                    {field, label, count} <- Chidori.Datasets.Dining.blank_counts(report.shops)
+                    {field, label, count} <- @dataset.module.blank_counts(report.shops)
                   }>
                     <input
                       type="checkbox"
@@ -892,7 +894,7 @@
                       value={field}
                       checked={field in @fill_fields}
                     />
-                    {label} {count} 店
+                    {label} {count} {@dataset.module.blank_unit()}
                   </label>
                 </fieldset>
                 <% {plain, hands} = by_kind(@backends) %>
@@ -929,13 +931,13 @@
                 </p>
                 <p>
                   <label>
-                    1 回に頼む店の数（1〜{max}）<br />
+                    1 回に頼む数（1〜{max}）<br />
                     <input type="number" name="count" min="1" max={max} value={@fill_count} />
                   </label>
                 </p>
                 <p class="muted-note">
-                  選んだ欄が空いている店を、営業時間の無い店から順に（同じ順の中は毎回混ぜて）名指しし、選んだ相手（選ばなければ情報収集の相手）に 1 回頼みます。
-                  1 店ずつ web で確かめるので、多いほど 1 回が長くなります（20 店で情報収集の 1 区画ぶん）。
+                  選んだ欄が空いているものを、営業時間の無いものから順に（同じ順の中は毎回混ぜて）名指しし、選んだ相手（選ばなければ情報収集の相手）に 1 回頼みます。
+                  1 件ずつ web で確かめるので、多いほど 1 回が長くなります（20 件で情報収集の 1 区画ぶん）。
                   区画の印は付かず、進み具合も次の予定も動きません。確かめられなかった欄は空いたまま残ります。
                 </p>
                 <div class="button-row">

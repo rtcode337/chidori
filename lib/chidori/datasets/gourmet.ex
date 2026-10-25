@@ -1554,6 +1554,138 @@ defmodule Chidori.Datasets.Gourmet do
     is_number(extra["lat"]) and is_number(extra["lon"])
   end
 
+  # ── 空いている欄を埋める 1 回（`Chidori.Datasets.Blanks`。食事処と同じ形） ──
+
+  # 空いていたら埋めてもらう欄。**代表店のある 1 件だけ**を数える（代表店が無ければ、
+  # 営業時間も理由も書きようがない）。営業時間が無いと travel-log の「今営業中」に
+  # かからないので先頭に置く
+  @blank_fields [opening_hours: "代表店の営業時間", shop_reason: "代表店の理由"]
+  @fill_default 20
+  # 上限は Chiezo の割り込みが名指しを受け取る数（`MAX_FOCUS_TITLES`）
+  @fill_max 50
+
+  @doc "空いていたら埋めてもらう欄（鍵 → 画面の名前。並びが画面の並び）。"
+  def blank_fields, do: @blank_fields
+
+  @doc "空欄を埋める 1 回に名指しする数の既定と上限（`{既定, 上限}`）。"
+  def fill_counts, do: {@fill_default, @fill_max}
+
+  @doc "画面で数えるときの単位。"
+  def blank_unit, do: "件"
+
+  @doc "1 件の空いている欄（`blank_fields/0` の鍵の並び）。代表店の無い 1 件は空にしない。"
+  def blanks(doc) do
+    extra = doc["extra"] || %{}
+
+    if placed?(doc) do
+      for {field, _label} <- @blank_fields, text(extra[Atom.to_string(field)]) == "", do: field
+    else
+      []
+    end
+  end
+
+  @doc """
+  代表店のある 1 件のうち、空いている欄のあるもの。`{:ok, %{total: 代表店のある数, shops: [...]}}`。
+  **読むのは AI が目を通した 1 件だけ**（Chiezo の読み口が、まだのものと消えたものを外す）。
+  """
+  def blank_report(_dataset) do
+    with {:ok, base} <- Chidori.Datasets.base_url(),
+         {:ok, docs} <- reviewed_docs(base) do
+      placed = Enum.filter(docs, &placed?/1)
+
+      shops =
+        for doc <- placed,
+            (missing = blanks(doc)) != [],
+            do: %{title: doc["title"], missing: missing}
+
+      {:ok, %{total: length(placed), shops: shops}}
+    end
+  end
+
+  defp reviewed_docs(base, offset \\ 0, acc \\ []) do
+    case Chiezo.spot_docs(base, @collection, kind_tag(), offset, @page_limit) do
+      {:ok, %{docs: []}} ->
+        {:ok, acc}
+
+      {:ok, %{total: total, docs: docs}} ->
+        got = acc ++ docs
+        if length(got) >= total, do: {:ok, got}, else: reviewed_docs(base, length(got), got)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc "欄ごとの空いている数（`blank_fields/0` の並び。空いているものの無い欄は出さない）。"
+  def blank_counts(items), do: Chidori.Datasets.Blanks.counts(items, @blank_fields)
+
+  @doc """
+  空欄を埋める 1 回の頼みごと（`Chidori.Datasets.fill_blanks/3` に渡すもの）。
+  **県に縛らず、全国から名指しします**（Chiezo の割り込みの `titles`。県を渡すと情報収集の印が
+  付き、その県の見直しが一周先へ回る）。営業時間の無いものを先に、空いている欄の多いものから
+  `count` 件（同じ並びの中は毎回混ぜる。`Chidori.Datasets.Blanks.pick/5`）。当てはまるものが無ければ `:nothing`。
+  """
+  def fill_request(items, fields, count) do
+    wanted = for {field, _label} <- @blank_fields, field in fields, do: field
+    picked = Chidori.Datasets.Blanks.pick(items, wanted, count, @fill_max, :opening_hours)
+
+    case picked do
+      [] ->
+        :nothing
+
+      _some ->
+        {:ok,
+         %{
+           titles: Enum.map(picked, & &1.title),
+           note: "挙げた #{length(picked)} 件の代表店について、空いている欄（#{blank_labels(wanted)}）だけを調べて埋めてください。",
+           prompt: fill_prompt(picked)
+         }}
+    end
+  end
+
+  defp blank_labels(fields), do: Enum.map_join(fields, "・", &@blank_fields[&1])
+
+  @doc """
+  空欄を埋める 1 回の依頼文（`fill_request/3`）。**保存しない**（その回だけ Chiezo に渡す）。
+  代表店は変えさせない（選び直すのは情報収集の仕事で、ここは空欄を埋めるだけ）。
+  """
+  def fill_prompt(items) do
+    list =
+      Enum.map_join(items, "\n", fn item -> "- #{item.title}: #{blank_labels(item.missing)}" end)
+
+    """
+    「ご当地グルメ」の一覧のうち、**下に挙げた 1 件の空いている欄だけ**を埋めてください。
+    travel-log という地図アプリのスポットとして使います。どれも代表店（`extra.shop`）が決まっています。
+
+    **埋めてほしい 1 件と、空いている欄**
+    #{list}
+
+    {current}
+
+    **1 件ずつ、代表店の公式の頁・県や観光協会の紹介・地図サービスの店の情報を開いて調べてください。**
+    **確かめられたものだけ**書き、分からない欄は空けたままにしてください（当てずっぽうで埋めると、
+    正しい情報に見えてしまいます）。この回に時間の制限はありません。
+
+    - 代表店の営業時間（`extra.opening_hours`）…… 代表店の営業日と営業時間を OpenStreetMap の
+      `opening_hours` の書き方で（例 `Mo-Fr 11:00-14:30,17:30-22:00; Sa,Su,PH 11:00-21:00; We off`）。
+      **travel-log の「今営業中」の絞り込みはここから読む**ので、いちばん大事です。
+      年末年始などの休み（`Dec 31-Jan 03 off`）、季節ごとの営業時間（`Apr-Oct 09:00-17:00; Nov-Mar 09:00-16:00`）、
+      第何曜日の定休日（`We[2,4] off`）もこの書き方で書けます
+    - 代表店の理由（`extra.#{@shop_reason_key}`）…… その店を代表店にした理由を 1 行。**確かめた頁に書いてある
+      事実だけ**（創業の年・発祥や本店であること・公的な紹介・駅からの近さ）で、口コミの評点や感想は書かない
+
+    **代表店（`extra.shop`）は変えないでください**（選び直すのは別の回の仕事です）。調べている途中で
+    代表店が閉店していると分かったら、その 1 件は返さずに、`checked` にそう書いてください。**返すときは、いま付いているタグと本文をそのまま残してください**
+    （返した内容で置き換わります）。書いてよい脇書きは上の 2 つと `extra.sources`（確かめた頁の URL の
+    並び。5 つまで）だけです。
+
+    **埋めた 1 件だけを返してください。** 1 つも埋まらなかった 1 件は返さなくて構いません。
+
+    **何を調べたかを、答えの `checked` に 1 行ずつ書いてください**（items と並べて
+    `"checked": ["…", "…"]`）。埋まらなかった欄も、どこを見て見つからなかったかを残してください。
+    """
+  end
+
   # ── travel-log への書き出し（`Chidori.Datasets.TravelLog` が呼ぶ） ──
 
   @csv_header ~w(name lat lng region rank series categories description available_months opening_hours key)

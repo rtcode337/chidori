@@ -884,7 +884,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
       {live, html} = shown(conn)
 
-      assert html =~ "AI が目を通した 3 店のうち、空いている欄のある店は 2 店です"
+      assert html =~ "AI が目を通した 3 店のうち、空いている欄のあるものは 2 店です"
       assert html =~ "営業時間 2 店"
       # 「空いている欄を埋める」は既定で畳み、開け閉めはブラウザに任せる（欄を変えるたびの描き直しで畳まない）
       assert html =~
@@ -903,7 +903,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       })
       |> render_submit()
 
-      assert render_async(live) =~ "1 店の空欄を埋める 1 回を頼みました"
+      assert render_async(live) =~ "1 件の空欄を埋める 1 回を頼みました"
 
       assert_receive {:posted, url, sent}, 2_000
       assert url =~ "/v1/collect/chidori_dining_1/focus"

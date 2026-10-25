@@ -116,7 +116,7 @@ defmodule ChidoriWeb.DatasetsLive do
        # 食事処の範囲の、空いている欄のある店（設定を開いたときに Chiezo から数える）と、
        # 埋めてほしい欄（覚えるのはサーバー側。巡回の表と同じ理由）・頼んだ結果の一言
        blank_report: nil,
-       fill_fields: Keyword.keys(Chidori.Datasets.Dining.blank_fields()),
+       fill_fields: [],
        fill_count: elem(Chidori.Datasets.Dining.fill_counts(), 0),
        # 空欄を埋める 1 回の相手（空なら情報収集の設定のまま）
        fill_backend: nil,
@@ -203,6 +203,8 @@ defmodule ChidoriWeb.DatasetsLive do
         prefecture_progress: nil,
         prefecture_map: nil,
         blank_report: nil,
+        # 埋めてほしい欄は対象ごとに違うので、対象を替えたら全部を選び直す
+        fill_fields: fill_fields_default(dataset),
         filled: nil,
         # 範囲ごとの食事処の、情報収集を起こす時刻（`Chidori.Datasets.SurveyClock`）。
         # 収集の画面（`/collect`）の表と同じ値（同じ表を読み書きする）
@@ -494,8 +496,8 @@ defmodule ChidoriWeb.DatasetsLive do
     do:
       {:noreply,
        assign(socket,
-         fill_fields: fill_fields_of(params),
-         fill_count: fill_count_of(params, socket.assigns.fill_count),
+         fill_fields: fill_fields_of(params, socket.assigns.dataset),
+         fill_count: fill_count_of(params, socket.assigns.fill_count, socket.assigns.dataset),
          fill_backend: params["fill|backend"] || socket.assigns.fill_backend,
          fill_model: params["fill|model"] || socket.assigns.fill_model
        )}
@@ -505,8 +507,8 @@ defmodule ChidoriWeb.DatasetsLive do
   # もう一度頼むことがある
   def handle_event("fill_blanks", params, socket) do
     dataset = socket.assigns.dataset
-    fields = fill_fields_of(params)
-    count = fill_count_of(params, socket.assigns.fill_count)
+    fields = fill_fields_of(params, socket.assigns.dataset)
+    count = fill_count_of(params, socket.assigns.fill_count, socket.assigns.dataset)
     flight = {:fill_blanks, dataset.key}
 
     # 相手は区画を走らせる欄と同じ読み方（ワーカーならモデルを持たせない）
@@ -517,7 +519,7 @@ defmodule ChidoriWeb.DatasetsLive do
 
     with {:ok, report} <- socket.assigns.blank_report,
          false <- SingleFlight.busy?(flight),
-         {:ok, request} <- Chidori.Datasets.Dining.fill_request(report.shops, fields, count) do
+         {:ok, request} <- dataset.module.fill_request(report.shops, fields, count) do
       {:noreply,
        socket
        |> assign(fill_fields: fields, fill_count: count, filled: :sending)
@@ -896,13 +898,30 @@ defmodule ChidoriWeb.DatasetsLive do
 
   # **空いている欄のある店**（食事処の範囲だけ）。数えるのに範囲の全件を読むので、
   # 設定を開いたときと読み直したときだけ（県ごとの進み具合と同じ）
-  defp load_blank_report(socket, %{area: area}) do
-    socket
-    |> assign(blank_report: :loading)
-    |> start_async(:blank_report, fn -> Chidori.Datasets.Dining.blank_report(area) end)
+  defp load_blank_report(socket, dataset) do
+    if fills_blanks?(dataset) do
+      socket
+      |> assign(blank_report: :loading)
+      |> start_async(:blank_report, fn -> dataset.module.blank_report(dataset) end)
+    else
+      socket
+    end
   end
 
-  defp load_blank_report(socket, _dataset), do: socket
+  @doc """
+  空いている欄を埋める 1 回を頼める対象か（食事処の範囲・ご当地グルメ）。対象のモジュールが
+  `blank_report/1` を持っていれば頼める（`Chidori.Datasets.Blanks`）。
+  """
+  def fills_blanks?(%{module: module}) do
+    Code.ensure_loaded(module)
+    function_exported?(module, :blank_report, 1)
+  end
+
+  def fills_blanks?(_dataset), do: false
+
+  defp fill_fields_default(dataset) do
+    if fills_blanks?(dataset), do: Keyword.keys(dataset.module.blank_fields()), else: []
+  end
 
   @doc "地名の候補を見分ける一言（地域と種別）。"
   def place_label(place) do
@@ -1026,31 +1045,31 @@ defmodule ChidoriWeb.DatasetsLive do
   def fill_message(:sending), do: "頼んでいます…"
 
   def fill_message(:nothing),
-    do: "選んだ欄が空いている店はありません（欄を選び直してください）。"
+    do: "選んだ欄が空いているものはありません（欄を選び直してください）。"
 
   def fill_message({count, :ok}),
     do:
-      "#{count} 店の空欄を埋める 1 回を頼みました（情報収集の相手で走ります。区画の印は付きません）。" <>
+      "#{count} 件の空欄を埋める 1 回を頼みました（区画の印は付きません）。" <>
         "終わったら「最新の情報を取得」で数え直せます。"
 
   def fill_message({_count, {:error, reason}}), do: reason_text(reason)
   def fill_message({:error, reason}), do: reason_text(reason)
   def fill_message(_filled), do: nil
 
-  # フォームの欄の鍵を、決まった欄（`Dining.blank_fields/0`）にだけ読み替える
-  # （画面から来た文字列で atom を作らない）
-  # 名指しする店の数（読めなければ前の値のまま。上限への丸めは `Dining.fill_request/3`）
-  defp fill_count_of(params, current) do
+  # 名指しする数（読めなければ前の値のまま。上限への丸めは対象の `fill_request/3` も行う）
+  defp fill_count_of(params, current, dataset) do
     case Integer.parse(to_string(params["count"] || "")) do
-      {count, ""} -> count |> max(1) |> min(elem(Chidori.Datasets.Dining.fill_counts(), 1))
+      {count, ""} -> count |> max(1) |> min(elem(dataset.module.fill_counts(), 1))
       _unreadable -> current
     end
   end
 
-  defp fill_fields_of(params) do
+  # フォームの欄の鍵を、対象の決まった欄（`blank_fields/0`）にだけ読み替える
+  # （画面から来た文字列で atom を作らない）
+  defp fill_fields_of(params, dataset) do
     picked = List.wrap(params["fields"])
 
-    for {field, _label} <- Chidori.Datasets.Dining.blank_fields(),
+    for {field, _label} <- dataset.module.blank_fields(),
         Atom.to_string(field) in picked,
         do: field
   end
