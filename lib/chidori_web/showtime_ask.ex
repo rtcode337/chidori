@@ -180,12 +180,17 @@ defmodule ChidoriWeb.ShowtimeAsk do
 
   # 押した画面は数分待つことになるので、**答えが返ったら通知でも知らせる**（ntfy と登録した端末。
   # 話題の「知らせる」は見ない —— 頼んだ本人に返すもの。`Chidori.Notify.deliver_notice/4`）
-  @movies_path "/news?view=chidori_movies"
+  # 通知を押したときに開く先。**調べた答えは映画の「映画館」の切り替えの中**にある
+  # （最新の画面を開いても答えが無い）
+  @movies_path "/news?view=chidori_movies&section=theaters"
+
+  @doc "調べた答えを知らせる通知を押したときに開く先（映画の「映画館」）。"
+  def notice_path, do: @movies_path
 
   @doc false
   def notify_done(key, result) do
     {title, text} = notice(key, result)
-    Chidori.Notify.deliver_notice(title, text, @movies_path, "ask-" <> to_string(key))
+    Chidori.Notify.deliver_notice(title, text, notice_path(), "ask-" <> to_string(key))
   end
 
   @doc "答えが返ったときの通知の見出しと本文。"

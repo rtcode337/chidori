@@ -224,11 +224,19 @@ defmodule Chidori.Notify do
   end
 
   @doc """
-  通知を押したときに開く画面（その話題の最新情報で、**いちばん新しいまとめを全画面で開く**）。
+  通知を押したときに開く画面（その話題の画面で、**いちばん新しいまとめを全画面で開く**）。
   Web Push はこのまま使います（同じ場所の画面を開くので、相対の行き先で足りる）。
+  **イベントの話題はイベントの道**（`/events`）—— ニュースの道で開くと送り直しになり、
+  送り直しで `digest` が落ちていた（ニュースからイベントを分けたとき）。
   """
-  def open_path(collection),
-    do: "/news?" <> URI.encode_query(view: collection, digest: "latest")
+  def open_path(collection) do
+    base =
+      if Chidori.Topics.event?(Chidori.Topics.get(collection) || %{}),
+        do: "/events?",
+        else: "/news?"
+
+    base <> URI.encode_query(view: collection, digest: "latest")
+  end
 
   @doc false
   # ntfy で押したときに開く先。**通知の 1 行だけでは足りない**ので、続きを読む場所を添える。

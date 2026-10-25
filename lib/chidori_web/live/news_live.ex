@@ -207,10 +207,12 @@ defmodule ChidoriWeb.NewsLive do
         digest_wanted: params["digest"] == "latest"
       )
 
-    # **イベントの話題をニュースの道で開いたら、イベントの道へ送る**（前のリンク・通知）
+    # **イベントの話題をニュースの道で開いたら、イベントの道へ送る**（前のリンク・通知）。
+    # **ほかの指定はそのまま運ぶ** —— 落とすと、前の通知の `digest=latest` でまとめが開かない
     if not events_mode and topic != nil and Topics.event?(topic) do
       to = if collect_mode, do: "/collect/events", else: "/events"
-      {:noreply, push_navigate(socket, to: "#{to}?view=#{topic.collection}", replace: true)}
+      query = URI.encode_query(Map.put(params, "view", topic.collection))
+      {:noreply, push_navigate(socket, to: "#{to}?#{query}", replace: true)}
     else
       {:noreply,
        socket

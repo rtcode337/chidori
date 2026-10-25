@@ -252,6 +252,12 @@ defmodule Chidori.NotifyTest do
 
     test "押すと開くのは、その話題のいちばん新しいまとめ" do
       assert Notify.open_path(@collection) == "/news?view=chidori_tech&digest=latest"
+
+      # イベントの話題はイベントの道（ニュースの道だと送り直しになる）
+      assert Notify.open_path("chidori_events") == "/events?view=chidori_events&digest=latest"
+
+      # 映画館を探した答え・上映時刻の通知は、映画の「映画館」の切り替えを開く
+      assert ChidoriWeb.ShowtimeAsk.notice_path() == "/news?view=chidori_movies&section=theaters"
     end
 
     test "端末の通知には要旨だけを短く載せる（出典の URL は載せない）" do

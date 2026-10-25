@@ -29,6 +29,25 @@ defmodule ChidoriWeb.PwaTest do
     assert app =~ "url.origin !== window.location.origin"
   end
 
+  test "通知の行き先を書き置き、画面が前に出たときに読んで移る（裏で止まっていて頼みが届かないとき）" do
+    sw = File.read!(Application.app_dir(:chidori, "priv/static/sw.js"))
+    # 開いている画面を探すより先に書き置く
+    {note, _} = :binary.match(sw, "await leaveNote(url)")
+    {find, _} = :binary.match(sw, "self.clients.matchAll")
+    assert note < find
+    assert sw =~ ~s(const NAV_CACHE = "chidori-nav")
+
+    app = File.read!(Path.expand("../../assets/js/app.js", __DIR__))
+    assert app =~ ~s(const NAV_CACHE = "chidori-nav")
+    assert app =~ ~s|window.addEventListener("pageshow", takeNavigation)|
+    assert app =~ ~s|document.visibilityState === "visible"|
+    # 古い書き置き・よそのサイト・いまの画面そのものへは移らない
+    assert app =~ "Date.now() - note.at > NAV_FRESH_MS"
+
+    assert app =~
+             "url.pathname + url.search === window.location.pathname + window.location.search"
+  end
+
   test "manifest が指すアイコンは、実際に配れる", %{conn: _conn} do
     %{"icons" => icons} =
       :chidori

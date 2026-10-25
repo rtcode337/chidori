@@ -58,6 +58,22 @@ function askToGo(client, url) {
   })
 }
 
+// 押した通知の行き先の**書き置き**（画面の側は app.js の takeNavigation）。iPhone のホーム画面アプリは
+// 裏に回ると止まっていて、askToGo の頼みが届かない・返事が間に合わないことがあり、代わりの
+// `client.navigate` も何もせずに終わる —— アプリが前に出るだけで、前に見ていた画面のままだった。
+// 書き置いておけば、画面が前に出たときに自分で読んで移れる（使ったら消す。古いものは画面が捨てる）
+const NAV_CACHE = "chidori-nav"
+const NAV_KEY = "/__chidori_nav"
+
+async function leaveNote(url) {
+  try {
+    const cache = await caches.open(NAV_CACHE)
+    await cache.put(NAV_KEY, new Response(JSON.stringify({url, at: Date.now()})))
+  } catch (_error) {
+    // 書き置けなくても、ほかの手で移ってもらう
+  }
+}
+
 // 押したら、**開いている Chidori があればそれを前に出して行き先へ移す**。
 // 無ければ新しく開く（ホーム画面から入れた端末では、アプリとして開く）
 self.addEventListener("notificationclick", event => {
@@ -65,6 +81,7 @@ self.addEventListener("notificationclick", event => {
   const url = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin).href
 
   event.waitUntil((async () => {
+    await leaveNote(url)
     const windows = await self.clients.matchAll({type: "window", includeUncontrolled: true})
     const same = windows.find(client => new URL(client.url).origin === self.location.origin)
 

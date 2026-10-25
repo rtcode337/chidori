@@ -86,6 +86,15 @@ defmodule ChidoriWeb.NewsLiveTest do
     assert {:error, {:live_redirect, %{to: "/events?view=chidori_events"}}} =
              live(conn, ~p"/news?view=chidori_events")
 
+    # 前の通知（ニュースの道）から開いても、まとめを開く指定は運ぶ
+    assert {:error, {:live_redirect, %{to: to}}} =
+             live(conn, ~p"/news?view=chidori_events&digest=latest")
+
+    assert URI.decode_query(URI.parse(to).query) == %{
+             "view" => "chidori_events",
+             "digest" => "latest"
+           }
+
     # 収集の画面も同じ（頭の段の「イベント」）
     {:ok, _live, html} = live(conn, ~p"/collect/events?view=chidori_comedy")
     [_, collect_tabs] = String.split(html, ~s(id="collect-tabs"), parts: 2)
