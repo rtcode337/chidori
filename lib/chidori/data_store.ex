@@ -13,6 +13,14 @@ defmodule Chidori.DataStore do
   読めるまでは空として扱います（書くのは断る —— 読めていない状態で書くと、
   知らずに同じ記録をもう 1 件作る）。
 
+  **画面を開いたときに読み直します**（`refresh/0`。`ChidoriWeb.FreshData` が画面の
+  mount の前に呼ぶ）。同じ置き場を別の Chidori（本番と手元）が書くので、起動したときに
+  1 度読むだけだと、ほかで付けた記録がいつまでも出なかった（手元で見た映画が本番より
+  2 本少なかった）。**全部を読み直すのは、置き場が変わっていたときだけ** —— 開くたびに
+  聞くのは置き場の件数と最後に書かれた時刻（Chiezo の `GET /v1/stores`。`signature/0`）で、
+  読んだときのものと同じなら写しのまま開く。違えば全部を読み直して写しを丸ごと入れ替える
+  （ほかで消した記録も消える。消すと件数が変わる）。聞けなかったら前の写しのまま開く。
+
   1 件は Chiezo の文書 1 つで、`%{doc_id, title, tags, extra}` の形で持ちます。
   何の記録かはタグで分けます（`interest_tag/0`・`mark_tag/0`）。
 
@@ -28,6 +36,8 @@ defmodule Chidori.DataStore do
   @interest_tag "興味トピック"
   @mark_tag "見た・読んだ"
   @retry_ms 30_000
+  # 画面を開くのを待たせる上限（Chiezo が遅ければ前の写しのまま開く）
+  @refresh_timeout 3_000
 
   @doc "置き場の名前（Chiezo の置き場の名前）。"
   def store, do: @store
@@ -40,6 +50,16 @@ defmodule Chidori.DataStore do
 
   @doc "記録の種類のタグ（全部読むときに引く）。"
   def kind_tags, do: [@interest_tag, @mark_tag]
+
+  @doc """
+  画面を開いたときに読み直します。置き場の件数と最後に書かれた時刻が、読んだときと
+  同じなら何もしません。聞けなかった・読めなかったら前の写しのまま（`:ok` を返す。画面は開く）。
+  """
+  def refresh do
+    GenServer.call(__MODULE__, :refresh, @refresh_timeout)
+  catch
+    :exit, _reason -> :ok
+  end
 
   @doc "Chiezo との読み書きを受け持つもの。"
   def backend, do: Application.get_env(:chidori, :data_store, Chidori.DataStore.Chiezo)
@@ -82,14 +102,17 @@ defmodule Chidori.DataStore do
   @impl true
   def init(_opts) do
     send(self(), :load)
-    {:ok, %{docs: %{}, ready: false}}
+    {:ok, %{docs: %{}, ready: false, signature: nil}}
   end
 
   @impl true
   def handle_info(:load, state) do
+    # 目印は読む前に聞く（読んでいる間に書かれたら、次に開いたときに読み直される）
+    signature = current_signature()
+
     case backend().load() do
       {:ok, docs} ->
-        {:noreply, %{state | docs: Map.new(docs, &{&1.doc_id, &1}), ready: true}}
+        {:noreply, loaded(state, docs, signature)}
 
       {:error, reason} ->
         Logger.warning("chidori_data を読めませんでした（#{inspect(reason)}）。読み直します")
@@ -111,9 +134,32 @@ defmodule Chidori.DataStore do
 
   def handle_call(:ready?, _from, state), do: {:reply, state.ready, state}
 
+  # 読めていない間は、起動時の読み込み（30 秒おきに読み直している）に任せる
+  def handle_call(:refresh, _from, %{ready: false} = state), do: {:reply, :ok, state}
+
+  def handle_call(:refresh, _from, state) do
+    case backend().signature() do
+      {:ok, signature} when signature != nil and signature == state.signature ->
+        {:reply, :ok, state}
+
+      {:ok, signature} ->
+        case backend().load() do
+          {:ok, docs} ->
+            {:reply, :ok, loaded(state, docs, signature)}
+
+          {:error, reason} ->
+            Logger.warning("chidori_data を読み直せませんでした（#{inspect(reason)}）。前の写しのまま開きます")
+            {:reply, :ok, state}
+        end
+
+      {:error, _reason} ->
+        {:reply, :ok, state}
+    end
+  end
+
   def handle_call(:reset, _from, state) do
     backend().reset()
-    {:reply, :ok, %{state | docs: %{}, ready: true}}
+    {:reply, :ok, loaded(state, [], current_signature())}
   end
 
   def handle_call(_request, _from, %{ready: false} = state),
@@ -141,6 +187,17 @@ defmodule Chidori.DataStore do
       error -> {:reply, error, state}
     end
   end
+
+  defp loaded(state, docs, signature) do
+    %{state | docs: Map.new(docs, &{&1.doc_id, &1}), ready: true, signature: signature}
+  end
+
+  defp current_signature do
+    case backend().signature() do
+      {:ok, signature} -> signature
+      _error -> nil
+    end
+  end
 end
 
 defmodule Chidori.DataStore.Chiezo do
@@ -166,6 +223,34 @@ defmodule Chidori.DataStore.Chiezo do
       |> case do
         {:ok, docs} -> {:ok, Enum.uniq_by(docs, & &1.doc_id)}
         error -> error
+      end
+    end
+  end
+
+  @doc """
+  置き場が変わったかの目印（`{件数, 最後に書かれた時刻}`）。`GET /v1/stores` の 1 行で、
+  件数は Chiezo が読むたびに数え、時刻は索引の端を見るだけなので軽い。置き場がまだ無ければ nil。
+  """
+  def signature do
+    with {:ok, base} <- base() do
+      case Chiezo.get(base <> "/v1/stores") do
+        {:ok, %{status: 200, body: body}} ->
+          case Jason.decode(body) do
+            {:ok, %{"stores" => stores}} when is_list(stores) ->
+              case Enum.find(stores, &(&1["name"] == DataStore.store())) do
+                %{"docs" => docs, "updated_at" => at} -> {:ok, {docs, at}}
+                _none -> {:ok, nil}
+              end
+
+            _other ->
+              {:error, :chiezo_unexpected_body}
+          end
+
+        {:ok, %{status: status}} ->
+          {:error, {:chiezo_status, status}}
+
+        {:error, _reason} ->
+          {:error, :chiezo_unavailable}
       end
     end
   end

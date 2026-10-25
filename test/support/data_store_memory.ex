@@ -8,6 +8,9 @@ defmodule Chidori.DataStore.Memory do
 
   def load, do: {:ok, Enum.map(:ets.tab2list(table()), &elem(&1, 1))}
 
+  # 中身が変われば変わる目印（Chiezo の件数と最後に書かれた時刻の代わり）
+  def signature, do: {:ok, :erlang.phash2(Enum.sort(:ets.tab2list(table())))}
+
   def add(attrs) do
     doc = %{
       doc_id: System.unique_integer([:positive, :monotonic]),

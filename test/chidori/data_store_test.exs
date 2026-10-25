@@ -65,4 +65,34 @@ defmodule Chidori.DataStoreTest do
       assert_received {:posted, %{"tags" => "見た・読んだ,種類:books", "extra" => %{"key" => "本"}}}
     end
   end
+
+  describe "読み直し" do
+    test "読み直すと、ほかの Chidori が書いた記録も入り、消した記録は消える" do
+      DataStore.reset()
+      {:ok, mine} = DataStore.add(%{title: "手元", tags: [DataStore.mark_tag()], extra: %{}})
+
+      # 同じ置き場を、別の Chidori が書き換えた（手元の写しは知らない）
+      backend = DataStore.backend()
+      {:ok, _} = backend.add(%{title: "ほかで足した", tags: [DataStore.mark_tag()], extra: %{}})
+      :ok = backend.delete(mine.doc_id)
+      assert ["手元"] = Enum.map(DataStore.docs(DataStore.mark_tag()), & &1.title)
+
+      # 開いたときに、置き場が変わっていれば読み直す
+      :ok = DataStore.refresh()
+      assert ["ほかで足した"] = Enum.map(DataStore.docs(DataStore.mark_tag()), & &1.title)
+    end
+
+    test "置き場の目印は件数と最後に書かれた時刻" do
+      System.put_env("CHIEZO_BASE_URL", @base)
+      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+
+      HttpStub.stub(fn %{method: :get, url: @base <> "/v1/stores"} ->
+        HttpStub.ok(
+          ~s({"stores": [{"name": "ほか", "docs": 1, "updated_at": "x"}, {"name": "chidori_data", "docs": 24, "updated_at": "2026-10-25T02:15:58+00:00"}]})
+        )
+      end)
+
+      assert DataStore.Chiezo.signature() == {:ok, {24, "2026-10-25T02:15:58+00:00"}}
+    end
+  end
 end

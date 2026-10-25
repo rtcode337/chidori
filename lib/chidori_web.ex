@@ -52,6 +52,9 @@ defmodule ChidoriWeb do
     quote do
       use Phoenix.LiveView
 
+      # 開いたときに、利用者が書いた記録を読み直す（別の Chidori が書いたものも出るように）
+      on_mount ChidoriWeb.FreshData
+
       unquote(html_helpers())
     end
   end

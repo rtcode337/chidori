@@ -106,7 +106,9 @@ defmodule ChidoriWeb.WorkModal do
                  Films.collection(),
                  Films.record_tag() <> ":" <> title,
                  0,
-                 1, body: true) do
+                 1,
+                 body: true
+               ) do
             {:ok, %{docs: [doc | _]}} -> doc
             _none -> nil
           end
