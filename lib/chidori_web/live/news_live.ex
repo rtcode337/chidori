@@ -1926,6 +1926,7 @@ defmodule ChidoriWeb.NewsLive do
   def ask_error(:collection_disabled), do: "この収集は Chiezo 側で止まっています。"
   def ask_error(:not_requested), do: "まだ収集を依頼していません。"
   def ask_error(:busy), do: reason_text(:busy)
+  def ask_error(:chiezo_busy_queued), do: ChidoriWeb.Collect.reason_text(:chiezo_busy_queued)
   def ask_error(:chiezo_busy), do: "Chiezo がいま別の依頼を抱えています。少し待ってください。"
   def ask_error(:chiezo_not_configured), do: "Chiezo の場所が設定されていません。"
   def ask_error({:chiezo_refused, _status, reason}) when is_binary(reason), do: reason

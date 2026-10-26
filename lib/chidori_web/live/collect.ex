@@ -357,6 +357,13 @@ defmodule ChidoriWeb.Collect do
   end
 
   @doc """
+  頼めなかったときの一文（「〜頼めませんでした: 理由」）。**空きしだい頼み直す（`:chiezo_busy_queued`）
+  ときは、頼めなかったとは書かない**（まだ頼んでいないだけで、Chidori が待っている）。
+  """
+  def failed_text(_prefix, :chiezo_busy_queued), do: reason_text(:chiezo_busy_queued)
+  def failed_text(prefix, reason), do: prefix <> reason_text(reason)
+
+  @doc """
   断られた理由の一文。**どの画面でも同じことが起きる**ので、ここに 1 つだけ置きます
   —— 画面ごとに書くと、同じ理由の説明が食い違ったまま片方だけ直ります。
 
@@ -376,6 +383,12 @@ defmodule ChidoriWeb.Collect do
   # 同じ依頼がこの Chidori の中でまだ走っている（`Chidori.SingleFlight`）
   def reason_text(:busy),
     do: "同じ依頼がまだ走っています。終わってからもう一度押してください。"
+
+  # 人が押した割り込みを、取り込みが空くまで Chidori が待って頼み直す（`Chiezo.focus/8`）
+  def reason_text(:chiezo_busy_queued),
+    do:
+      "いま Chiezo が取り込み中なので、空きしだい Chidori が頼み直します" <>
+        "（この画面を閉じても構いません。1 時間待っても空かなければ諦めます）。"
 
   def reason_text(:chiezo_busy),
     do:

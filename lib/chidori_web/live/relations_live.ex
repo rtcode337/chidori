@@ -780,6 +780,7 @@ defmodule ChidoriWeb.RelationsLive do
       case result do
         {:ok, 0} -> "引き継ぐ作品はありませんでした。"
         {:ok, n} -> "#{n} 本を図に足すよう頼みました（取り込みが終わって図を取り直すと載ります）。"
+        {:error, :chiezo_busy_queued} -> relation_reason(:chiezo_busy_queued)
         {:error, reason} -> "頼めませんでした: " <> relation_reason(reason)
       end
 

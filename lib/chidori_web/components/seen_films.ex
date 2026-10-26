@@ -212,8 +212,10 @@ defmodule ChidoriWeb.SeenFilms do
           "「#{title}」を記録しました。映画の図に足すよう頼みました（取り込みが終わって図を取り直すと載ります）。"
 
         {:error, reason} ->
-          "「#{title}」を記録しましたが、映画の図に足すよう頼めませんでした: " <>
-            ChidoriWeb.Collect.reason_text(reason) <> "（あとで自動でもう一度頼みます）"
+          ChidoriWeb.Collect.failed_text(
+            "「#{title}」を記録しましたが、映画の図に足すよう頼めませんでした: ",
+            reason
+          ) <> if(reason == :chiezo_busy_queued, do: "", else: "（あとで自動でもう一度頼みます）")
       end
 
     {:noreply, assign(socket, adding: false, message: message)}
@@ -237,7 +239,7 @@ defmodule ChidoriWeb.SeenFilms do
           "いま頼んでいるところです。"
 
         {:error, reason} ->
-          "絵を探すよう頼めませんでした: " <> ChidoriWeb.Collect.reason_text(reason)
+          ChidoriWeb.Collect.failed_text("絵を探すよう頼めませんでした: ", reason)
       end
 
     # 頼めたら口を引っ込める（取り込みが終わるまで絵は付かないので、続けて押すと AI の回が重なる）

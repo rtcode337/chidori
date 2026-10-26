@@ -233,6 +233,10 @@ defmodule Chidori.Relations.FilmCarry do
   end
 
   defp reason_text(:ok), do: :ok
+
+  defp reason_text({:error, :chiezo_busy_queued}),
+    do: {:queued, ChidoriWeb.Collect.reason_text(:chiezo_busy_queued)}
+
   defp reason_text({:error, reason}), do: {:error, ChidoriWeb.Collect.reason_text(reason)}
 
   @doc """

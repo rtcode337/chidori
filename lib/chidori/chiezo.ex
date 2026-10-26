@@ -11,6 +11,8 @@ defmodule Chidori.Chiezo do
 
   alias Chidori.Http
 
+  require Logger
+
   @user_agent "chidori"
   @timeout 15_000
   # 本の表紙を取らせるときに待つ長さ（Chiezo が外へ取りに行って縮めるぶん）
@@ -20,6 +22,10 @@ defmodule Chidori.Chiezo do
   @page_limit 500
   # 取り込みが空くのを待つあいだ、確かめ直す間隔
   @busy_poll_ms 60_000
+  # 人が押した割り込みを、取り込みが空くまで待つ長さ（`wait_focus/3`）
+  @focus_wait_ms 60 * 60_000
+  # 待つのを自分で持つ呼び手の印（`when_free/2` の中）
+  @waits_key {__MODULE__, :waits_itself}
   # 地名を引く辞典と、候補の数
   @place_source "osm_japan"
   @place_limit 8
@@ -554,7 +560,22 @@ defmodule Chidori.Chiezo do
       |> Map.merge(Map.new(choice))
       |> Jason.encode!()
 
-    case post(base <> "/v1/collect/" <> name <> "/focus" <> manual_query("?"), body, @timeout) do
+    url = base <> "/v1/collect/" <> name <> "/focus" <> manual_query("?")
+
+    case post_focus(url, body) do
+      # **人が押した 1 回は、取り込みが空くまで Chidori が待って頼み直す**（`wait_focus/3`）。
+      # Chiezo は取り込み中の割り込みを積まずに断るので、断られたままだと押した人が
+      # 終わるのを見計らって押し直すことになる。待つのを自分で持つ呼び手（`when_free/2` の中）は除く
+      {:error, :chiezo_busy} = busy ->
+        if by_hand?() and not waits_itself?(), do: wait_focus(name, url, body), else: busy
+
+      other ->
+        other
+    end
+  end
+
+  defp post_focus(url, body) do
+    case post(url, body, @timeout) do
       {:ok, %{status: status}} when status in 200..299 -> :ok
       {:ok, %{status: 403}} -> {:error, :collection_disabled}
       {:ok, %{status: 404}} -> {:error, :not_requested}
@@ -568,6 +589,27 @@ defmodule Chidori.Chiezo do
       {:ok, %{status: status, body: raw}} -> {:error, {:chiezo_refused, status, reason_of(raw)}}
       {:error, _reason} -> {:error, :chiezo_unavailable}
     end
+  end
+
+  # 割り込みを、取り込みが空くまで裏で待って頼み直す（`Chidori.TaskSupervisor` の下。押した画面を
+  # 閉じても続く）。待つのは `focus_wait_ms` まで（既定 1 時間）。同じ依頼を重ねて押しても待つのは 1 本
+  # （`SingleFlight`。AI の回が重ならないように）。返すのは `{:error, :chiezo_busy_queued}`
+  # —— 頼めたわけではないので `:ok` にはしない（画面は「空いたら頼み直す」と出す）
+  defp wait_focus(name, url, body) do
+    deadline =
+      System.monotonic_time(:millisecond) +
+        Application.get_env(:chidori, :focus_wait_ms, @focus_wait_ms)
+
+    Chidori.SingleFlight.start({:focus_wait, name, :erlang.phash2(body)}, fn ->
+      result = when_free(fn -> post_focus(url, body) end, deadline)
+
+      case result do
+        :ok -> Logger.info("取り込みが空いたので、待っていた割り込みを頼みました（#{name}）")
+        other -> Logger.warning("待っていた割り込みを頼めませんでした（#{name}）: #{inspect(other)}")
+      end
+    end)
+
+    {:error, :chiezo_busy_queued}
   end
 
   @doc false
@@ -601,6 +643,8 @@ defmodule Chidori.Chiezo do
       if previous, do: Process.put(@by_hand_key, previous), else: Process.delete(@by_hand_key)
     end
   end
+
+  defp waits_itself?, do: Process.get(@waits_key) == true
 
   @doc "人が押した操作として頼んでいる最中か（`by_hand/1` の中か）。"
   def by_hand?, do: Process.get(@by_hand_key) == true
@@ -677,13 +721,24 @@ defmodule Chidori.Chiezo do
   次の予定まで待てば、同じ回を二重に走らせることもありません。
   """
   def when_free(ask, deadline) when is_function(ask, 0) do
+    # 待つのはこちらが持つので、中の割り込みに裏で待たせない（`focus/8` の `wait_focus/3`）
+    previous = Process.put(@waits_key, true)
+
+    try do
+      free_loop(ask, deadline)
+    after
+      if previous, do: Process.put(@waits_key, previous), else: Process.delete(@waits_key)
+    end
+  end
+
+  defp free_loop(ask, deadline) do
     case ask.() do
       {:error, :chiezo_busy} = busy ->
         if System.monotonic_time(:millisecond) >= deadline do
           busy
         else
           Process.sleep(Application.get_env(:chidori, :chiezo_busy_poll_ms, @busy_poll_ms))
-          when_free(ask, deadline)
+          free_loop(ask, deadline)
         end
 
       other ->

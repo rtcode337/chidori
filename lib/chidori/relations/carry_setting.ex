@@ -78,13 +78,15 @@ defmodule Chidori.Relations.CarrySetting do
 
   @doc """
   頼んだ結果を残します。`by` は `"時計"` か `"画面"`、`result` は `:ok`・`:nothing`
-  （まだのものが無かった）・`{:error, 理由の文}`。
+  （まだのものが無かった）・`{:queued, 文}`（取り込みが空くのを待って頼み直す）・`{:error, 理由の文}`。
   """
   def record(by, titles, result) do
     text =
       case result do
         :ok -> @asked
         :nothing -> @nothing
+        # 取り込みが空くのを Chidori が待っている（まだ頼めていないが、断られてもいない）
+        {:queued, text} -> text
         {:error, reason} -> "頼めませんでした: " <> reason
       end
 
