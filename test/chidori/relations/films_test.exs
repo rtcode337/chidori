@@ -176,7 +176,7 @@ defmodule Chidori.Relations.FilmsTest do
                "https://www.google.com/search?q=%E5%88%A5%E9%9B%A2+%E3%82%B5%E3%83%96%E3%82%B9%E3%82%AF"
     end
 
-    test "閲覧数の無い作品は、最新の映画の注目度で大きさを決める（閲覧数のある作品には触らない）" do
+    test "閲覧数の無い作品は Wikipedia の閲覧数、記事も無ければ注目度で控えめに大きさを決める" do
       nodes =
         for {name, views} <- [
               {"一", 900},
@@ -191,21 +191,30 @@ defmodule Chidori.Relations.FilmsTest do
       nodes =
         nodes ++
           [
+            %{name: "記事のある新作", views: 0, tags: ["記録:記事のある新作"]},
             %{name: "新作 (映画)", views: 0, tags: ["記録:新作"]},
-            %{name: "話題作", views: 0, tags: ["注目度:中"]},
-            %{name: "地味な新作", views: 0, tags: []},
+            %{name: "話題作", views: 0, tags: ["注目度:中", "記録:話題作"]},
+            %{name: "手で足した作品", views: 0, tags: ["記録:手で足した作品"]},
+            %{name: "名簿の作品", views: 0, tags: []},
             %{name: "閲覧数あり", views: 50, tags: ["注目度:高"]}
           ]
 
       sized =
         nodes
-        |> Films.with_attention_views(%{"新作" => :high, "地味な新作" => :low})
+        |> Films.with_new_film_views(%{"新作" => :high}, %{"記事のある新作" => 4000, "閲覧数あり" => 9})
         |> Map.new(&{&1.name, &1.views})
 
-      # 高は基準（多い順で 5 番目 = 500）と同じ、中は半分の大きさになる閲覧数（記録: の見出しでも引く）
-      assert sized["新作 (映画)"] == 500
-      assert sized["話題作"] == round(500 * :math.pow(0.5, 1 / 0.65))
-      assert sized["地味な新作"] == 0
+      ratio = &round(500 * :math.pow(&1, 1 / 0.65))
+      # Wikipedia の閲覧数があればそれ（最大にもなりうる）
+      assert sized["記事のある新作"] == 4000
+
+      # 記事が無ければ注目度で控えめに（高 4 割・中 3 割・引き継いだ・足した作品は 2 割の大きさ）
+      assert sized["新作 (映画)"] == ratio.(0.4)
+      assert sized["話題作"] == ratio.(0.3)
+      assert sized["手で足した作品"] == ratio.(0.2)
+
+      # 名簿の作品で何も無ければ、いちばん小さいまま。閲覧数のある作品には触らない
+      assert sized["名簿の作品"] == 0
       assert sized["閲覧数あり"] == 50
     end
 

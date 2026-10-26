@@ -25,6 +25,40 @@ defmodule Chidori.RelationsTest do
   # 表示例をそのまま下敷きにする（本番と同じく、失敗したらこれが残る）
   defp fallback, do: Relations.current("painters")
 
+  describe "映画の図の閲覧数の無い作品" do
+    test "日本語版 Wikipedia の記事の閲覧数を引いて大きさに使う" do
+      title = "引き継いだ新作 #{System.unique_integer([:positive])}"
+
+      HttpStub.stub(fn %{method: :get, url: url} ->
+        cond do
+          url =~ "/v1/chidori_movie_catalog/filter" ->
+            HttpStub.ok(
+              docs_body([
+                %{
+                  "title" => title,
+                  "body" => "",
+                  "tags" => ["映画", "年代:2026", "国:日本", "記録:#{title}"]
+                }
+              ])
+            )
+
+          url =~ "/v1/jawiki/doc?" ->
+            HttpStub.ok(
+              Jason.encode!(%{"title" => title, "extra" => %{"pageviews_month" => 1234}})
+            )
+
+          true ->
+            HttpStub.ok(docs_body([]))
+        end
+      end)
+
+      assert {:ok, %{nodes: [node]}} =
+               Relations.fetch_view("films", @base, Relations.current("films"))
+
+      assert node.views == 1234
+    end
+  end
+
   describe "読み込み中の印が残ったとき" do
     @tag :capture_log
     test "その図を読むタスクがもう無ければ、残った印とみなして読み直す" do

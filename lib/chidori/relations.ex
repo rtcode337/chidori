@@ -971,8 +971,9 @@ defmodule Chidori.Relations do
   # `Chidori.Relations.Faces`）。記事の画像を運んでいない図（画家）は何もしない。
   # **Chiezo が縮めて持っている絵（`thumb`）があれば、そちらを先に使う** —— 映画の記事の画像は
   # ポスターでないことが多く（ロゴ・関係者の写真）、整理の回に探させたポスターはこちらに入る
-  # 映画の図だけ、閲覧数の無い作品の大きさを最新の映画の注目度で決める（`Films.with_attention_views/2`）。
-  # 注目度は最新の映画の収集から 1 回まとめて引く（高と中だけ。引けなければ注目度の無い扱い）
+  # 映画の図だけ、閲覧数の無い作品の大きさを決める（`Films.with_new_film_views/3`）。Wikipedia の記事の
+  # 閲覧数（`wiki_views/2`）と、最新の映画の収集から 1 回まとめて引いた注目度（高と中だけ。引けなければ
+  # 注目度の無い扱い）
   defp with_attention(nodes, "films", base_url) do
     collection =
       Enum.find_value(
@@ -991,10 +992,68 @@ defmodule Chidori.Relations do
         _none -> %{}
       end
 
-    Films.with_attention_views(nodes, attention)
+    Films.with_new_film_views(nodes, attention, wiki_views(nodes, base_url))
   end
 
   defp with_attention(nodes, _key, _base_url), do: nodes
+
+  # 閲覧数の無い作品の、日本語版 Wikipedia の記事の閲覧数（作品名 → 月の閲覧数）。Chiezo の jawiki から
+  # 1 本ずつ引く（8 本ずつ並べる）。**半日は覚えておく**（映画の図は開くたびに読むので、毎回引かない。
+  # 閲覧数は月ごとの値で、Chiezo の取り込みが新しくなるまで変わらない）
+  @wiki_views_ttl_ms 12 * 60 * 60_000
+
+  defp wiki_views(nodes, base_url) do
+    names = for node <- nodes, (node[:views] || 0) == 0, do: node.name
+    now = System.monotonic_time(:millisecond)
+    cache = :persistent_term.get({__MODULE__, :wiki_views}, %{})
+
+    fresh =
+      for name <- names,
+          {views, at} = cache[name] || {nil, nil},
+          at && now - at < @wiki_views_ttl_ms,
+          into: %{},
+          do: {name, views}
+
+    missing = names -- Map.keys(fresh)
+
+    looked =
+      missing
+      |> Task.async_stream(
+        fn name ->
+          case Chiezo.doc(base_url, "jawiki", name, "title,extra") do
+            {:ok, %{"extra" => %{"pageviews_month" => views}}} when is_integer(views) ->
+              {name, views}
+
+            {:ok, _doc} ->
+              {name, 0}
+
+            # 引けなかった（つながらない）ものは覚えない（次に開いたときに引き直す）
+            {:error, :not_found} ->
+              {name, 0}
+
+            _error ->
+              nil
+          end
+        end,
+        max_concurrency: 8,
+        timeout: 10_000,
+        on_timeout: :kill_task
+      )
+      |> Enum.flat_map(fn
+        {:ok, {name, views}} -> [{name, views}]
+        _other -> []
+      end)
+      |> Map.new()
+
+    if looked != %{} do
+      :persistent_term.put(
+        {__MODULE__, :wiki_views},
+        Map.merge(cache, Map.new(looked, fn {name, views} -> {name, {views, now}} end))
+      )
+    end
+
+    Map.merge(fresh, looked)
+  end
 
   defp with_faces(nodes) do
     {thumbed, rest} = Enum.split_with(nodes, &is_binary(&1[:thumb]))

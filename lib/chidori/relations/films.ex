@@ -358,29 +358,50 @@ defmodule Chidori.Relations.Films do
   defp attention_word(_level), do: nil
 
   @doc """
-  **閲覧数の無い作品の大きさを、最新の映画の注目度で決めます**（`Chidori.Relations` が図を読むときに、
-  大きさを付ける前に呼ぶ）。最新の映画から引き継いだ新作は、Wikipedia に記事がまだ無いか、
-  名簿を引く回で閲覧数が運ばれないので、閲覧数 0 のいちばん小さい札になっていた。
+  **閲覧数の無い作品の大きさを決めます**（`Chidori.Relations` が図を読むときに、大きさを付ける前に呼ぶ）。
+  最新の映画から引き継いだ作品や手で足した作品は、名簿を引く回で閲覧数が運ばれないので、
+  閲覧数 0 のいちばん小さい札になっていた（月 40 万の閲覧がある作品まで）。
 
-  注目度は、作品の `注目度:` のタグ（引き継ぐときに写させる）か、最新の映画の収集の注目度
-  （`attention`。見出し → `:high` / `:mid`。札の名前か `記録:` の見出しで引く）。高は閲覧数の
-  基準（多い順で 5 番目）と同じ大きさ、中はその半分の大きさになる閲覧数に置く。
-  **閲覧数のある作品には触らない**（閲覧数のほうが客観的）。
+  1. **日本語版 Wikipedia の記事の閲覧数**（`wiki_views`。作品名 → 月の閲覧数。Chiezo の jawiki から引いたもの）
+     があれば、それを使う（名簿の作品と同じ物差し）
+  2. 記事も無ければ、**最新の映画の注目度で控えめに**決める。注目度は作品の `注目度:` のタグか、
+     最新の映画の収集の注目度（`attention`。見出し → `:high` / `:mid`。札の名前か `記録:` の見出しで引く）。
+     大きさは閲覧数の基準（多い順で 5 番目）に対して、高 4 割・中 3 割・低や印なし（引き継いだ・足した作品）2 割。
+     **最大にはしない** —— 引き継ぐのは注目度が高い作品ばかりなので、高を最大にすると、新作が軒並み
+     いちばん流行った作品と肩を並べた
+
+  **閲覧数のある作品には触らない。** 引き継いでも足してもいない作品（`記録:` の無い名簿の作品）で
+  記事も注目度も無いものは、いちばん小さいまま。
   """
-  def with_attention_views(nodes, attention) when is_list(nodes) and is_map(attention) do
+  def with_new_film_views(nodes, attention, wiki_views)
+      when is_list(nodes) and is_map(attention) and is_map(wiki_views) do
     top = nodes |> Enum.map(&(&1[:views] || 0)) |> Enum.sort(:desc) |> Enum.at(4, 0)
 
     Enum.map(nodes, fn node ->
-      level = if (node[:views] || 0) > 0, do: nil, else: attention_of(node, attention)
+      cond do
+        (node[:views] || 0) > 0 ->
+          node
 
-      case level do
-        :high when top > 0 -> Map.put(node, :views, top)
-        # 大きさは閲覧数の比の 0.65 乗（`Graph`）なので、半分の大きさになる閲覧数は基準の 0.5^(1/0.65)
-        :mid when top > 0 -> Map.put(node, :views, max(round(top * :math.pow(0.5, 1 / 0.65)), 1))
-        _other -> node
+        (views = wiki_views[node.name]) && views > 0 ->
+          Map.put(node, :views, views)
+
+        top > 0 ->
+          case size_ratio(attention_of(node, attention), record_titles(node) != []) do
+            nil -> node
+            # 大きさは閲覧数の比の 0.65 乗（`Graph`）なので、その大きさになる閲覧数は基準の ratio^(1/0.65)
+            ratio -> Map.put(node, :views, max(round(top * :math.pow(ratio, 1 / 0.65)), 1))
+          end
+
+        true ->
+          node
       end
     end)
   end
+
+  defp size_ratio(:high, _carried?), do: 0.4
+  defp size_ratio(:mid, _carried?), do: 0.3
+  defp size_ratio(_level, true), do: 0.2
+  defp size_ratio(_level, false), do: nil
 
   defp attention_of(node, attention) do
     by_tag =
