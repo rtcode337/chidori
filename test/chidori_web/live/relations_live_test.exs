@@ -1673,7 +1673,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
       assert html =~ "ゴッホ"
     end
 
-    test "選んだ人へ寄るときは、札の大きさも渡す（倍率は札が読める大きさで決める）", %{conn: conn} do
+    test "選んだ人へ寄るときは、いま描いている図の上の位置を渡す（倍率は画面の側で変えない）", %{conn: conn} do
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
       node = hd(Chidori.Relations.current("painters").nodes)
 
@@ -1843,6 +1843,16 @@ defmodule ChidoriWeb.RelationsLiveTest do
       unseen = RelationsLive.shown(relation, Map.put(base, :unseen_only, true))
       # メモだけの記録は「見た」に入らない
       assert Enum.map(unseen.nodes, & &1.name) == ["まだの作品"]
+
+      # 探して選んだ作品・押した札は、見た作品でも隠さない
+      seen_id = Enum.find(relation.nodes, &(&1.name == "見た作品")).id
+
+      for picked <- [%{focus: seen_id}, %{picked: "見た作品"}] do
+        shown =
+          RelationsLive.shown(relation, base |> Map.put(:unseen_only, true) |> Map.merge(picked))
+
+        assert "見た作品" in Enum.map(shown.nodes, & &1.name)
+      end
     end
 
     test "映画の図は見た作品を隠して開く（名前を指して開いたときは隠さない）", %{conn: conn} do

@@ -646,11 +646,17 @@ defmodule ChidoriWeb.RelationsLive do
         socket
 
       node ->
-        socket
-        |> assign(focus: node.id, query: name, matches: [])
-        # 札の大きさ（`r`）も渡す。**寄る倍率は札の大きさで決まる** —— 知られていない人ほど
-        # 札が小さく、決め打ちの倍率では描かれる大きさに届かず、探しても何も出なかった
-        |> push_event("focus", %{x: node.x, y: node.y, r: radius_of(node)})
+        socket = assign(socket, focus: node.id, query: name, matches: [])
+
+        # **寄せる先は、いま描いている図の上の位置**（絞り込みで置き直していれば、もとの位置と違う。
+        # 見た作品を隠していても、選んだ作品は出す `revealed_names/2`）
+        placed =
+          Enum.find(shown(socket.assigns.relation, socket.assigns).nodes, &(&1.id == node.id)) ||
+            node
+
+        # **拡大率は変えずに、真ん中へ寄せるだけ**（画面の側）。小さい札でも選んだ札は描く
+        # （`drawn_nodes/3` が選んだ札を大きさに関わらず残す）
+        push_event(socket, "focus", %{x: placed.x, y: placed.y, r: radius_of(placed)})
     end
   end
 
@@ -930,7 +936,10 @@ defmodule ChidoriWeb.RelationsLive do
   読めません（絞った意味が無い）。
   """
   def shown(relation, %{unseen_only: true, marks: marks} = assigns) do
-    seen = for {name, %{seen: true}} <- marks, do: name
+    # **選んだ作品は、見た作品でも隠さない**（探して選んだ・見た作品の一覧から選んだ・押した札）。
+    # 隠したままだと、選んでも図に何も出ない
+    revealed = revealed_names(relation, assigns)
+    seen = for {name, %{seen: true}} <- marks, name not in revealed, do: name
     relation |> Graph.without(seen) |> shown(%{assigns | unseen_only: false})
   end
 
@@ -938,6 +947,17 @@ defmodule ChidoriWeb.RelationsLive do
   def shown(relation, %{review_filter: "reviewed"}), do: Graph.only_reviewed(relation)
   def shown(relation, %{changed_only: true}), do: Graph.only_changed(relation)
   def shown(relation, %{style_filter: style}), do: Graph.only(relation, style)
+
+  @doc "見た作品を隠していても出す作品の名前（探して選んだ作品と、1 回押した札）。"
+  def revealed_names(relation, assigns) do
+    focus =
+      case assigns[:focus] do
+        nil -> []
+        id -> for node <- relation.nodes || [], node.id == id, do: node.name
+      end
+
+    focus ++ List.wrap(assigns[:picked])
+  end
 
   @doc """
   割り込み（この画家を詳しく調べて）の届き具合。**断られたことも出します**。

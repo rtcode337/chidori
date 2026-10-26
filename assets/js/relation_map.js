@@ -5,7 +5,7 @@
 //   ・年代と地域の札を画面の端に留める（図と一緒に流すと、少し引きずっただけで
 //     年表が画面の外へ出て、いま何時代を見ているのか読めなくなる）
 //   ・見ている範囲をサーバーへ知らせる（**サーバーはそこだけを描く**）
-//   ・探して選んだ人へ寄る
+//   ・探して選んだ人を真ん中に置く（倍率は変えない）
 //   ・札を目立たせている間に余白を押したら、目立たせるのをやめる
 import {panZoom} from "./pan_zoom"
 
@@ -21,16 +21,7 @@ const LABEL_TOP = 52
 // 毎フレーム送ると、往復のたびに描き直しが挟まってかえって固まる
 const REPORT_DELAY = 140
 
-// 探した人へ寄るときの最低倍率。**全体表示のままでは寄った意味が無い**
-// （周りの関連図を読むために探しているので、線の相手まで見える近さが要る）
-const FOCUS_SCALE = 4
-
-// 探した人の札を、画面の上でこの直径（px）以上にして見せる。**倍率を決め打ちにしない**
-// —— 札は知られている度合いで大きさが違い、小さい札の人は 4 倍でも名前が読めず、
-// 描く下限（サーバーの `@min_drawn_px`）にも届かずに何も出なかった
-const FOCUS_PX = 32
-
-// 拡大の上限。探した人の札を読める大きさにするのに、小さい札では 8 倍では足りない
+// 拡大の上限。小さい札を読める大きさまで寄るには、8 倍では足りない
 const MAX_SCALE = 40
 
 // 指で触る画面か。**画面の幅ではなく入力の種類で見る** —— 幅で分けると、
@@ -50,18 +41,10 @@ export default panZoom({
   skip: "[data-zoom], .relation-tools, .relation-find",
 
   started() {
-    // 探して選んだ人を真ん中へ。**倍率はサーバーが決めない** —— 器が何 px かは
-    // こちらしか知らないので、図の座標だけ受け取って寄せ方はここで決める
-    this.handleEvent("focus", ({x, y, r}) => this.centerOn(x, y, this.focusScale(r)))
-  },
-
-  // 札（半径 r、図の座標）が画面の上で FOCUS_PX になる倍率。器の幅で変わるので、ここで測る
-  focusScale(r) {
-    const box = this.el.getBoundingClientRect()
-    const width = this.base && this.base[2]
-    if (!(r > 0) || !(width > 0) || !(box.width > 0)) { return FOCUS_SCALE }
-    const needed = FOCUS_PX / (2 * r * (box.width / width))
-    return Math.max(FOCUS_SCALE, needed)
+    // 探して選んだ人を真ん中へ。**倍率は変えない**（いま見ている広さのまま、選んだ札を真ん中に置く）。
+    // 札が読める大きさまで寄せていた頃は、選ぶたびに図が大きく寄って、周りとの位置関係が見えなくなった。
+    // 小さい札も、選んだ札はサーバーが大きさに関わらず描く
+    this.handleEvent("focus", ({x, y}) => this.centerOn(x, y))
   },
 
   painted() {

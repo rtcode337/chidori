@@ -355,6 +355,9 @@ defmodule Chidori.Relations.Films do
       style_prefix: @country_prefix,
       # 札の国の後ろに添えるもの（「アメリカ合衆国・ホラー・サスペンス」）。凡例と色は国だけ
       note_prefix: @genre_prefix,
+      # Wikipedia の相互リンク（続編・シリーズ）の薄い線は引かない。同じ監督・同じ主演の線で
+      # 読む図なので、リンクの線が混ざると、どの線が何のつながりか読みにくい
+      related: false,
       band_prefix: @country_prefix,
       bands: @country_bands,
       works?: false,

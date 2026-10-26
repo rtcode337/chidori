@@ -133,6 +133,16 @@ defmodule Chidori.Relations.FilmsTest do
       assert Graph.without(graph, ["図に無い作品"]) == graph
     end
 
+    test "Wikipedia の相互リンクの線は引かない（同じ監督・同じ主演の線で読む図）" do
+      docs = [
+        doc("一作目", ~w(映画 年代:1990 国:日本 監督:甲 関連:二作目)),
+        doc("二作目", ~w(映画 年代:1995 国:日本 監督:乙 関連:一作目))
+      ]
+
+      graph = Graph.from_docs(docs, Films.graph_spec())
+      refute Enum.any?(graph.edges, &(&1.kind == :related))
+    end
+
     test "縦は作品ごとの公開年の順で、上が新しい", %{graph: graph} do
       # 見に来るのは最近の作品のほう。古い順だと、新しい作品が図の下の端に溜まる
       y = Map.new(graph.nodes, &{&1.name, &1.y})

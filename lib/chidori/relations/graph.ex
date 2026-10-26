@@ -1007,7 +1007,12 @@ defmodule Chidori.Relations.Graph do
 
   defp edges(docs, by_name, spec) do
     labelled = Enum.flat_map(spec.edge_rules, &rule_edges(docs, by_name, &1))
-    labelled ++ related(docs, by_name, labelled)
+
+    # 記事どうしの相互リンクの薄い線は、図ごとに外せる（`related: false`。映画の図は
+    # 同じ監督・同じ主演の線で読むので、続編やシリーズのリンクの線は邪魔になる）
+    if Map.get(spec, :related, true),
+      do: labelled ++ related(docs, by_name, labelled),
+      else: labelled
   end
 
   # **同じ値を持つ文書どうしの線**（`shared: true`。映画の図の「同じ監督」「同じ主演」、芸能人の図の「同じグループ」）。タグの値は
