@@ -133,6 +133,14 @@ main.relations-page > div { padding-top: 0; }
 .relations-intro > p:first-child { color: #6254d6; font-size: .75rem; font-weight: 800; letter-spacing: .1em; }
 .relations-intro h1 { margin-bottom: .5rem; font-size: clamp(1.5rem, 3vw, 2.1rem); }
 .relations-intro > p:last-child { max-width: 42rem; color: #52607a; font-size: .9rem; line-height: 1.7; }
+/* 読む画面と収集の画面を行き来するリンク。地の文のリンクと見分けられるように札の形と色を分ける
+   （収集へは橙 = Chiezo に頼む側、読む画面へは水色）。行の頭に回り込まないよう、ひとまとまりで折り返す */
+.mode-link { display: inline-block; margin-left: .3rem; padding: .05rem .6rem; border-radius: 999px; font-size: .82rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.mode-link::after { content: " →"; }
+.mode-link.is-collect { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
+.mode-link.is-collect:hover { background: #ffedd5; }
+.mode-link.is-read { background: #ecfeff; color: #0e7490; border: 1px solid #67e8f9; }
+.mode-link.is-read:hover { background: #cffafe; }
 /* 図の種類のタブ。**選んでいるタブが下の面とつながって見える**形にする
    （下線の上に乗せ、選んだものだけ枠と地の色を持たせる）。丸い押しボタンの
    並びだと、「切り替える口」ではなく「何かを実行する口」に見える */

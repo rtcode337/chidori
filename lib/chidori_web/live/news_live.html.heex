@@ -86,12 +86,24 @@
       </h1>
       <p :if={!@favorites_view and !@collect_mode}>
         集めるのは Chiezo です。Chidori は収集を依頼して、溜まったものを読みます。
-        <.link :if={@topic} navigate={"/collect/news?view=#{@topic.collection}"}>この話題の収集の画面へ</.link>
+        <.link
+          :if={@topic}
+          navigate={"#{if @events_mode, do: "/collect/events", else: "/collect/news"}?view=#{@topic.collection}"}
+          class="mode-link is-collect"
+        >
+          この話題の収集の画面へ
+        </.link>
       </p>
       <p :if={@collect_mode}>
         この話題の収集を Chiezo に頼む画面です。依頼して作られる収集は止まった状態なので、
         動かすまで AI が勝手に動くことはありません。
-        <.link :if={@topic} navigate={"/news?view=#{@topic.collection}"}>読む画面へ</.link>
+        <.link
+          :if={@topic}
+          navigate={"#{if @events_mode, do: "/events", else: "/news"}?view=#{@topic.collection}"}
+          class="mode-link is-read"
+        >
+          読む画面へ
+        </.link>
       </p>
       <p :if={@favorites_view}>
         記事の詳細から ☆ を押した記事です。残しているのは見出しと URL だけで、

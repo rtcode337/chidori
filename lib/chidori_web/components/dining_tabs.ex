@@ -244,11 +244,11 @@ defmodule ChidoriWeb.DiningTabs do
       <h1>映画</h1>
       <p :if={@mode != :collect}>
         集めるのは Chiezo です。Chidori は収集を依頼して、溜まったものを読みます。
-        <.link navigate={@collect_path}>この話題の収集の画面へ</.link>
+        <.link navigate={@collect_path} class="mode-link is-collect">この話題の収集の画面へ</.link>
       </p>
       <p :if={@mode == :collect}>
         この話題の収集を Chiezo に頼む画面です。依頼して作られる収集は止まった状態なので、
-        動かすまで AI が勝手に動くことはありません。 <.link navigate={@read_path}>読む画面へ</.link>
+        動かすまで AI が勝手に動くことはありません。 <.link navigate={@read_path} class="mode-link is-read">読む画面へ</.link>
       </p>
     </section>
     """

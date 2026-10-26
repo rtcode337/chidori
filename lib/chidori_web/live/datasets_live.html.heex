@@ -40,13 +40,19 @@
       <h1>{@dataset.title}</h1>
       <p :if={!@collect_mode}>
         {@dataset.description}
-        <.link navigate={"#{Chidori.Datasets.collect_path(@dataset)}?view=#{@view}"}>この収集の画面へ</.link>
+        <.link
+          navigate={"#{Chidori.Datasets.collect_path(@dataset)}?view=#{@view}"}
+          class="mode-link is-collect"
+        >
+          この収集の画面へ
+        </.link>
       </p>
       <p :if={@collect_mode}>
         {@dataset.description}
         <.link
           :if={Chidori.Datasets.listed?(@dataset)}
           navigate={Chidori.Datasets.read_path(@dataset)}
+          class="mode-link is-read"
         >
           読む画面へ
         </.link>

@@ -86,6 +86,15 @@ defmodule ChidoriWeb.NewsLiveTest do
     assert {:error, {:live_redirect, %{to: "/events?view=chidori_events"}}} =
              live(conn, ~p"/news?view=chidori_events")
 
+    # 読む画面と収集の画面を行き来するリンクは札の形で目立たせ、イベントはイベントの道を指す
+    {:ok, _live, html} = live(conn, ~p"/events?view=chidori_events")
+
+    assert html =~
+             ~r|href="/collect/events\?view=chidori_events"[^>]*class="mode-link is-collect"|
+
+    {:ok, _live, html} = live(conn, ~p"/collect/events?view=chidori_events")
+    assert html =~ ~r|href="/events\?view=chidori_events"[^>]*class="mode-link is-read"|
+
     # 前の通知（ニュースの道）から開いても、まとめを開く指定は運ぶ
     assert {:error, {:live_redirect, %{to: to}}} =
              live(conn, ~p"/news?view=chidori_events&digest=latest")

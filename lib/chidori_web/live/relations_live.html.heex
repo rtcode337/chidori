@@ -88,13 +88,14 @@
         <.link
           :if={Chidori.Relations.chiezo_view?(@view)}
           navigate={"/collect/relations?view=#{@view}"}
+          class="mode-link is-collect"
         >
           この図の収集の画面へ
         </.link>
       </p>
       <p :if={@collect_mode}>
         この図の収集を Chiezo に頼む画面です。名簿・巡回・区画・依頼文はここで決めます。
-        <.link navigate={"/relations?view=#{@view}"}>図を見る画面へ</.link>
+        <.link navigate={"/relations?view=#{@view}"} class="mode-link is-read">図を見る画面へ</.link>
       </p>
 
       <%!-- **収集の画面には出さない**（図を描かないので、図を取り直す口は要らない。
