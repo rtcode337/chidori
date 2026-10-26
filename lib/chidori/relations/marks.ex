@@ -50,7 +50,16 @@ defmodule Chidori.Relations.Marks do
   end
 
   defp save(%Mark{} = mark, changeset) do
-    fields = %{done: mark.seen, on: mark.seen_on, note: mark.note}
+    fields = %{
+      done: mark.seen,
+      on: mark.seen_on,
+      note: mark.note,
+      # いまは見られない印は、記録の脇書き（`detail`）に持つ（見た・読んだの形を変えずに足す）
+      detail:
+        if(mark.unavailable_on,
+          do: %{"unavailable_on" => Date.to_iso8601(mark.unavailable_on)}
+        )
+    }
 
     case MarkRecords.put(mark.view, mark.node_name, fields, mark.doc_id) do
       {:ok, doc_id} ->
@@ -73,7 +82,29 @@ defmodule Chidori.Relations.Marks do
   end
 
   defp mark_of(view, name, doc) do
-    %{done: done, on: on, note: note} = MarkRecords.fields(doc)
-    %Mark{doc_id: doc.doc_id, view: view, node_name: name, seen: done, seen_on: on, note: note}
+    %{done: done, on: on, note: note, detail: detail} = MarkRecords.fields(doc)
+
+    %Mark{
+      doc_id: doc.doc_id,
+      view: view,
+      node_name: name,
+      seen: done,
+      seen_on: on,
+      note: note,
+      unavailable_on: unavailable_on(detail)
+    }
   end
+
+  defp unavailable_on(%{"unavailable_on" => text}) when is_binary(text) do
+    case Date.from_iso8601(text) do
+      {:ok, date} -> date
+      _error -> nil
+    end
+  end
+
+  defp unavailable_on(_detail), do: nil
+
+  @doc "いまは見られない印が付いているか。"
+  def unavailable?(%Mark{unavailable_on: %Date{}}), do: true
+  def unavailable?(_mark), do: false
 end

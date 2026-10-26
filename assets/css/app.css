@@ -333,6 +333,15 @@ main.relations-page > div { padding-top: 0; }
 .edge-person-films { margin: .3rem 0 0; padding-left: 1.2rem; font-size: .88rem; line-height: 1.7; }
 .seen-toggle { margin-left: .5rem; padding: .15rem .6rem; border: 1px solid #ca8a04; border-radius: 999px; background: #fff; color: #854d0e; font-size: .8rem; cursor: pointer; }
 .seen-toggle.is-on { background: #facc15; color: #422006; }
+/* いまは見られない印の作品（出しているとき）。灰色の破線の枠で、見られる作品と見分ける */
+.relation-node.is-unavailable > rect { stroke: #94a3b8; stroke-width: 3; stroke-dasharray: 6 4; opacity: .7; }
+.unavailable-row { margin: .5rem 0; }
+.sub-search-link { margin-left: .5rem; font-size: .85rem; }
+.unavailable-list { padding-left: 1.2rem; line-height: 2; }
+.unavailable-list button { margin-left: .4rem; }
+.unavailable-list .doc-diff-link { margin-left: 0; padding: 0; border: 0; background: none; color: #4338a8; font: inherit; text-decoration: underline; cursor: pointer; }
+.seen-unavailable { margin: .4rem 0; }
+.seen-unavailable > summary { cursor: pointer; font-size: .9rem; }
 .seen-legend-flag { width: .8em; height: 1.1em; vertical-align: -0.2em; overflow: visible; }
 /* AI がまだ目を通していない人。**札ごと薄くする** —— 縁は「動いた」「見た」「選んだ」に
    使っているので、重ねても読み分けられるように形ではなく濃さで示す */

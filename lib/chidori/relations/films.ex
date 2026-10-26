@@ -173,6 +173,16 @@ defmodule Chidori.Relations.Films do
   @doc "図に載せる文書の印。"
   def kind_tag, do: @kind_tag
 
+  @doc """
+  配信（サブスク）を探す Google 検索の URL（「<題名> サブスク」）。題名の括弧書き
+  （「(映画)」「(2011年の映画)」）は外す —— 記事名の見分けの札で、検索の邪魔になる。
+  開くのは見る人のブラウザ（サーバーからは引かない）。
+  """
+  def subscription_search_url(title) when is_binary(title) do
+    name = title |> String.replace(~r/\s*\([^)]*\)$/u, "") |> String.trim()
+    "https://www.google.com/search?" <> URI.encode_query(%{"q" => name <> " サブスク"})
+  end
+
   @doc "ジャンルのタグの頭（札の国の後ろに添える）。"
   def genre_prefix, do: @genre_prefix
 

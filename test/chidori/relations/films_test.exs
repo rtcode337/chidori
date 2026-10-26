@@ -148,6 +148,11 @@ defmodule Chidori.Relations.FilmsTest do
                ChidoriWeb.RelationsLive.edge_people(graph, costar, :costar)
     end
 
+    test "サブスクを探す Google 検索（題名の括弧書きは外す）" do
+      assert Films.subscription_search_url("別離 (2011年の映画)") ==
+               "https://www.google.com/search?q=%E5%88%A5%E9%9B%A2+%E3%82%B5%E3%83%96%E3%82%B9%E3%82%AF"
+    end
+
     test "上映時間（整理の回が書く extra.runtime_minutes）を持つ" do
       docs = [
         %{

@@ -22,9 +22,13 @@ defmodule Chidori.Relations.Mark do
     field(:seen, :boolean, default: false)
     field(:seen_on, :date)
     field(:note, :string, default: "")
+
+    # **いまは見られない**と印を付けた日（映画。配信にも上映にも無い作品を、次に見るものの
+    # 候補から外しておく）。nil なら付いていない
+    field(:unavailable_on, :date)
   end
 
-  @fields ~w(view node_name seen seen_on note)a
+  @fields ~w(view node_name seen seen_on note unavailable_on)a
 
   def changeset(mark, attrs) do
     mark
@@ -40,7 +44,7 @@ defmodule Chidori.Relations.Mark do
   **空になった印は残さない**ので、消してよいかの判断をここに置く ——
   印も日付もメモも無い行が残っていると、図の上では「見た」と区別が付かない。
   """
-  def blank?(%__MODULE__{seen: false, seen_on: nil, note: note}),
+  def blank?(%__MODULE__{seen: false, seen_on: nil, unavailable_on: nil, note: note}),
     do: String.trim(note || "") == ""
 
   def blank?(%__MODULE__{}), do: false

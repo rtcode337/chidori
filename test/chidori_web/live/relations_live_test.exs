@@ -1844,6 +1844,32 @@ defmodule ChidoriWeb.RelationsLiveTest do
       # メモだけの記録は「見た」に入らない
       assert Enum.map(unseen.nodes, & &1.name) == ["まだの作品"]
 
+      # いまは見られない印の作品も隠す（出すと決めたときだけ出す）
+      marks2 = Map.put(marks, "まだの作品", %Mark{unavailable_on: ~D[2026-10-26]})
+      base2 = %{base | marks: marks2}
+
+      relation3 =
+        Chidori.Relations.Graph.from_docs(
+          [
+            %{"title" => "見た作品", "tags" => ~w(映画 年代:1990 国:日本), "body" => ""},
+            %{"title" => "まだの作品", "tags" => ~w(映画 年代:2000 国:日本), "body" => ""},
+            %{"title" => "見られる作品", "tags" => ~w(映画 年代:2010 国:日本), "body" => ""}
+          ],
+          Chidori.Relations.Films.graph_spec()
+        )
+
+      names = &Enum.sort(Enum.map(RelationsLive.shown(relation3, &1).nodes, fn n -> n.name end))
+      assert names.(Map.put(base2, :unseen_only, true)) == ["見られる作品"]
+
+      assert names.(base2 |> Map.put(:unseen_only, true) |> Map.put(:unavailable_shown, true)) ==
+               ["まだの作品", "見られる作品"]
+
+      shown = RelationsLive.shown(relation, base2)
+      assert length(shown.nodes) == 2
+      assert RelationsLive.unavailable?(marks2, "まだの作品")
+      assert RelationsLive.unavailable_count(marks2, relation.nodes) == 1
+      assert RelationsLive.unavailable_rows(marks2, relation.nodes) == [{"まだの作品", ~D[2026-10-26]}]
+
       # 探して選んだ作品・押した札は、見た作品でも隠さない
       seen_id = Enum.find(relation.nodes, &(&1.name == "見た作品")).id
 
@@ -1864,6 +1890,19 @@ defmodule ChidoriWeb.RelationsLiveTest do
 
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
       refute :sys.get_state(live.pid).socket.assigns.unseen_only
+    end
+
+    test "いまは見られない印は、付けた日ごと残り、外すと（ほかに何も無ければ）記録ごと消える" do
+      {:ok, mark} = Marks.put("movies", "見られない映画", %{"unavailable_on" => "2026-10-26"})
+      assert mark.unavailable_on == ~D[2026-10-26]
+      assert Marks.get("movies", "見られない映画").unavailable_on == ~D[2026-10-26]
+
+      # 見た記録を書いても印は残る（フォームは印を送らない）
+      {:ok, _} = Marks.put("movies", "見られない映画", %{"note" => "メモ"})
+      assert Marks.unavailable?(Marks.get("movies", "見られない映画"))
+
+      {:ok, _} = Marks.put("movies", "見られない映画", %{"unavailable_on" => nil, "note" => ""})
+      assert Marks.get("movies", "見られない映画") == nil
     end
 
     test "日付を書いていない印は後ろに回る" do

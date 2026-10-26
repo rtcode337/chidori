@@ -66,6 +66,8 @@ defmodule ChidoriWeb.RelationsLive do
        # 「見ていないホラー」のように、見ていない中から選びたい）。映画の図は隠した状態で開く
        # （`unseen_by_default?/2`。図を開くたびに handle_params が決める）
        unseen_only: false,
+       # 見ていない作品だけの図で、いまは見られない印の作品も出すか（既定は隠す）
+       unavailable_shown: false,
        # 直近の巡回で動いたものだけを出しているか。**様式の絞り込みとは排他** ——
        # 2 つ重ねると、出ていないものが「動かなかった」のか「別の様式」なのか読めない
        changed_only: false,
@@ -493,6 +495,36 @@ defmodule ChidoriWeb.RelationsLive do
         # 書けなかったことは黙って捨てない。押した人には確かめようがない
         {:noreply, put_flash(socket, :error, "メモを保存できませんでした。")}
     end
+  end
+
+  # 「いまは見られない」の印を付ける・外す（映画の図。配信にも上映にも無い作品を、見ていない
+  # 作品だけの図から隠しておく）。付けた日を残す（しばらく経ったら見直せるように）
+  def handle_event("toggle_unavailable", %{"name" => name}, socket) do
+    key = mark_key(socket, name)
+    on = if unavailable?(socket.assigns.marks, name), do: nil, else: Date.to_iso8601(Jst.today())
+
+    case Marks.put(mark_view(socket.assigns.view), key, %{"unavailable_on" => on}) do
+      {:ok, mark} ->
+        raw =
+          if mark,
+            do: Map.put(socket.assigns.raw_marks, key, mark),
+            else: Map.delete(socket.assigns.raw_marks, key)
+
+        {:noreply, with_marks(socket, raw)}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "印を保存できませんでした。")}
+    end
+  end
+
+  # 見られない印の作品も図に出す・隠す（見ていない作品だけの図のとき）
+  def handle_event("toggle_unavailable_shown", _params, socket) do
+    {:noreply,
+     assign(socket,
+       unavailable_shown: not socket.assigns.unavailable_shown,
+       viewport: nil,
+       focus: nil
+     )}
   end
 
   # 閉じ方は3つとも同じところへ来る（ボタン・図の外を押す・Esc）
@@ -957,8 +989,17 @@ defmodule ChidoriWeb.RelationsLive do
     # **選んだ作品は、見た作品でも隠さない**（探して選んだ・見た作品の一覧から選んだ・押した札）。
     # 隠したままだと、選んでも図に何も出ない
     revealed = revealed_names(relation, assigns)
-    seen = for {name, %{seen: true}} <- marks, name not in revealed, do: name
-    relation |> Graph.without(seen) |> shown(%{assigns | unseen_only: false})
+
+    # **いまは見られない印の作品も隠す**（次に見るものを選ぶ図なので）。出すと決めたときだけ出す
+    hide_unavailable = not Map.get(assigns, :unavailable_shown, false)
+
+    hidden =
+      for {name, mark} <- marks,
+          name not in revealed,
+          mark.seen or (hide_unavailable and Marks.unavailable?(mark)),
+          do: name
+
+    relation |> Graph.without(hidden) |> shown(%{assigns | unseen_only: false})
   end
 
   def shown(relation, %{review_filter: "unreviewed"}), do: Graph.only_unreviewed(relation)
@@ -1220,6 +1261,27 @@ defmodule ChidoriWeb.RelationsLive do
     shift = if seen?, do: label_height_of(node) * (0.75 * 0.5 + 0.2) / 2, else: 0
     face_slot(node) / 2 - shift
   end
+
+  @doc "いまは見られない印が付いているか（見た作品は数えない）。"
+  def unavailable?(marks, name) do
+    case Map.get(marks, name) do
+      %{seen: false} = mark -> Marks.unavailable?(mark)
+      _other -> false
+    end
+  end
+
+  @doc "図にある、いまは見られない印の作品（`[{名前, 付けた日}]`。付けた日の古い順 = 見直す順）。"
+  def unavailable_rows(marks, nodes) do
+    rows =
+      for node <- nodes || [],
+          unavailable?(marks, node.name),
+          do: {node.name, marks[node.name].unavailable_on}
+
+    Enum.sort_by(rows, fn {name, on} -> {Date.to_gregorian_days(on), name} end)
+  end
+
+  @doc "図に出ている札のうち、いまは見られない印の付いた数（見ていない作品だけの図の下に添える）。"
+  def unavailable_count(marks, nodes), do: Enum.count(nodes || [], &unavailable?(marks, &1.name))
 
   @doc "図に出ている札のうち、見た印の付いた数（凡例に添える）。"
   def seen_count(marks, nodes), do: Enum.count(nodes || [], &seen?(marks, &1.name))

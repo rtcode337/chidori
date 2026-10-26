@@ -328,6 +328,7 @@
                 node[:unreviewed?] && "unreviewed",
                 marked?(@marks, node.name) && "marked",
                 seen?(@marks, node.name) && "is-seen",
+                unavailable?(@marks, node.name) && "is-unavailable",
                 node.id == @focus && "focused",
                 pick && node.id == pick.id && "is-picked",
                 pick && MapSet.member?(pick.near, node.id) && "is-near"
@@ -502,6 +503,58 @@
             else: "見ていない#{if @view == "films", do: "作品", else: "人"}だけにする"}
         </button>
       </p>
+      <%!-- いまは見られない印の作品（見ていない作品だけの図では一緒に隠す。出すこともできる） --%>
+      <p
+        :if={!@embed and @view == "films" and unavailable_count(@marks, @relation[:nodes]) > 0}
+        class="seen-legend muted-note"
+      >
+        いまは見られない印の作品が {unavailable_count(@marks, @relation[:nodes])} 本あります{if @unseen_only and
+                                                                                !@unavailable_shown,
+                                                                              do: "（いまは隠しています）",
+                                                                              else: ""}。
+        <button
+          :if={@unseen_only}
+          type="button"
+          class={["seen-toggle", @unavailable_shown && "is-on"]}
+          phx-click="toggle_unavailable_shown"
+          aria-pressed={to_string(@unavailable_shown)}
+        >
+          {if @unavailable_shown, do: "見られない作品を隠す", else: "見られない作品も出す"}
+        </button>
+      </p>
+      <%!-- **いまは見られない作品の一覧**（畳む）。付けた日の古い順（見直す順）。名前で図のその作品へ寄り、
+         「サブスクを探す」で配信の有無を確かめ、見られるようになったら外す --%>
+      <% unavailable = unavailable_rows(@marks, @relation[:nodes]) %>
+      <details
+        :if={!@embed and @view == "films" and unavailable != []}
+        id="unavailable-list"
+        class="seen-unavailable"
+        phx-mounted={Phoenix.LiveView.JS.ignore_attributes(["open"])}
+      >
+        <summary>いまは見られない作品（{length(unavailable)} 本）</summary>
+        <ul class="unavailable-list">
+          <li :for={{name, on} <- unavailable}>
+            <button
+              type="button"
+              class="doc-diff-link"
+              phx-click="focus_marked"
+              phx-value-name={name}
+            >
+              {name}
+            </button>
+            <span class="muted-note">（{Date.to_iso8601(on)} から）</span>
+            <a
+              href={Chidori.Relations.Films.subscription_search_url(name)}
+              target="_blank"
+              rel="noreferrer"
+              class="sub-search-link"
+            >
+              サブスクを探す ↗
+            </a>
+            <button type="button" phx-click="toggle_unavailable" phx-value-name={name}>外す</button>
+          </li>
+        </ul>
+      </details>
       <section
         :if={!@embed and Chidori.Relations.chiezo_view?(@view) and style_legend(@relation) != []}
         class="style-legend"
@@ -1276,6 +1329,34 @@
             <span :if={@mark_saved == @detail.name} class="muted-note">保存しました。</span>
           </form>
         </details>
+
+        <%!-- **いまは見られない**（映画。配信にも上映にも無い作品を、見ていない作品だけの図から隠す）。
+           押すたびに付ける・外す。付けた日は見た映画のページの一覧に出る --%>
+        <p :if={@view == "films" and not mark.seen} class="unavailable-row">
+          <button
+            type="button"
+            class={["seen-toggle", unavailable?(@marks, @detail.name) && "is-on"]}
+            phx-click="toggle_unavailable"
+            phx-value-name={@detail.name}
+            aria-pressed={to_string(unavailable?(@marks, @detail.name))}
+          >
+            {if unavailable?(@marks, @detail.name),
+              do: "見られない印を外す",
+              else: "いまは見られない（候補から外す）"}
+          </button>
+          <span :if={mark.unavailable_on} class="muted-note">
+            {Date.to_iso8601(mark.unavailable_on)} に付けた印
+          </span>
+          <%!-- 配信の有無は「題名 サブスク」で Google を引くとたいてい出る（見る人のブラウザで開く） --%>
+          <a
+            href={Chidori.Relations.Films.subscription_search_url(@detail.name)}
+            target="_blank"
+            rel="noreferrer"
+            class="sub-search-link"
+          >
+            サブスクを探す ↗
+          </a>
+        </p>
 
         <%!-- **この人を詳しく調べて、を頼める。** 巡回は 8,000 人を順に回るので、
              気になった 1 人に当たるのは何日も先になる。割り込みは定時の巡回の
