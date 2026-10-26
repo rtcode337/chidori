@@ -629,7 +629,10 @@ main.relations-page > div { padding-top: 0; }
 .style-legend .muted-note { margin-left: 0.2rem; }
 
 /* 影響の線の押す的。**見えないが太い** —— 線そのものは細くて当たらない */
-.edge-target { stroke: transparent; stroke-width: 14; cursor: pointer; fill: none; }
+/* 線の当たり判定。**太さは画面の px で決める**（`non-scaling-stroke`）—— 図の単位で決めると、引いて
+   見ているときは数 px しかなく、2 回目に同じ線を押し当てられなかった。指で触る画面はさらに太く */
+.edge-target { stroke: transparent; stroke-width: 22px; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: pointer; fill: none; }
+@media (pointer: coarse) { .edge-target { stroke-width: 34px; } }
 .edge-target:hover { stroke: rgba(67, 56, 168, .12); }
 
 .edge-reason { margin: 0 0 0.7rem; }
