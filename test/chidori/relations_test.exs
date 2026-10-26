@@ -25,6 +25,31 @@ defmodule Chidori.RelationsTest do
   # 表示例をそのまま下敷きにする（本番と同じく、失敗したらこれが残る）
   defp fallback, do: Relations.current("painters")
 
+  describe "読み込み中の印が残ったとき" do
+    @tag :capture_log
+    test "その図を読むタスクがもう無ければ、残った印とみなして読み直す" do
+      System.put_env("CHIEZO_BASE_URL", @base)
+      on_exit(fn -> System.delete_env("CHIEZO_BASE_URL") end)
+      me = self()
+
+      HttpStub.stub(fn %{method: :get, url: url} ->
+        send(me, {:read, url})
+        HttpStub.ok(docs_body([]))
+      end)
+
+      # 読み込み中の印だけが残り、タスクはもう無い（コードを読み直した拍子に取りこぼした形）
+      :sys.replace_state(Relations, fn state ->
+        state
+        |> put_in([:statuses, "films"], :loading)
+        |> Map.update!(:tasks, &Map.reject(&1, fn {_ref, key} -> key == "films" end))
+      end)
+
+      Relations.refresh("films")
+      assert_receive {:read, url}, 2_000
+      assert url =~ "chidori_movie_catalog"
+    end
+  end
+
   describe "画家の図を Chiezo から読む" do
     test "読むだけのときは、何も作りに行かない" do
       # 画面を開くたびに呼ぶ経路。開いただけで向こうに何かが作られるのは驚きが大きい

@@ -1265,7 +1265,7 @@
              説明が出ないのは片手落ち** —— 押したのは画家のほう --%>
         <p :if={@detail[:summary]} class="artwork-extract">{@detail.summary}</p>
         <%!-- 上映時間（映画の図。整理の回に AI が確かめて書く） --%>
-        <p :if={@detail[:runtime]} class="muted-note">上映時間 {@detail.runtime} 分</p>
+        <p :if={@detail[:runtime]} class="muted-note runtime-note">上映時間 {@detail.runtime} 分</p>
 
         <%!-- Chiezo に入っているタグ。**どういう条件でこの人が名簿に入り、
              何が分かっているのか**が、ここを見ないと読み取れない --%>

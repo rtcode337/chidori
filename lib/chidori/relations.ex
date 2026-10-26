@@ -515,6 +515,8 @@ defmodule Chidori.Relations do
     state = %{
       relations: @views,
       statuses: Map.new(keys(), &{&1, :sample}),
+      # 読み込みを始めた時刻（`:loading` にした時刻。`stale_loading?/2`）
+      loading_since: %{},
       collected_at: %{},
       checked_at: %{},
       # Chiezo 側で取り込みが走っているか。**ボタンは止めない** —— 押しても
@@ -546,7 +548,7 @@ defmodule Chidori.Relations do
   # 読むだけ。**間隔の制限を掛けない**（AI は動かず、相手は手元にいる）
   @impl true
   def handle_cast({:refresh, key}, state) when key in @chiezo_views do
-    if state.statuses[key] == :loading do
+    if state.statuses[key] == :loading and not stale_loading?(state, key) do
       {:noreply, state}
     else
       fallback = Map.fetch!(state.relations, key)
@@ -563,6 +565,7 @@ defmodule Chidori.Relations do
         state =
           state
           |> put_in([:statuses, key], :loading)
+          |> put_in([:loading_since, key], System.monotonic_time(:millisecond))
           |> put_in([:tasks, task.ref], key)
 
         {:noreply, broadcast(state, key)}
@@ -658,6 +661,7 @@ defmodule Chidori.Relations do
         state =
           state
           |> put_in([:statuses, key], :loading)
+          |> put_in([:loading_since, key], System.monotonic_time(:millisecond))
           |> put_in([:reasons, key], nil)
           |> put_in([:tasks, task.ref], key)
           |> put_in([:pushing, key], true)
@@ -744,6 +748,26 @@ defmodule Chidori.Relations do
   end
 
   def handle_info(_message, state), do: {:noreply, state}
+
+  # **「読み込み中」の印が残っただけか**（読み直しを素通りさせないため）。その図を読むタスクが
+  # もう無いか、印を付けてから `@stale_loading_ms` を過ぎていれば残った印とみなす。読み込みは
+  # 普通は数秒で終わる。開発サーバーでコードを読み直した拍子にタスクの終わりを取りこぼし、
+  # 「取得しています…」のまま何日も古い図を出し続けていた
+  @stale_loading_ms 5 * 60_000
+
+  defp stale_loading?(state, key) do
+    no_task? = not Enum.any?(state.tasks, fn {_ref, k} -> k == key end)
+
+    old? =
+      case state.loading_since[key] do
+        nil -> true
+        since -> System.monotonic_time(:millisecond) - since > @stale_loading_ms
+      end
+
+    stale? = no_task? or old?
+    if stale?, do: Logger.warning("関連図（#{key}）の読み込み中の印が残っていたので、読み直します")
+    stale?
+  end
 
   # 割り込みの結果。**成否どちらも残す** —— 押した人が知りたいのは「届いたか」で、
   # 届かなかったときこそ知らせる必要がある

@@ -337,6 +337,8 @@ main.relations-page > div { padding-top: 0; }
 /* いまは見られない印の作品（出しているとき）。灰色の破線の枠で、見られる作品と見分ける */
 .relation-node.is-unavailable > rect { stroke: #94a3b8; stroke-width: 3; stroke-dasharray: 6 4; opacity: .7; }
 .unavailable-row { margin: .5rem 0; }
+/* 作品の詳細の上映時間（説明のすぐ下に右寄せ） */
+.runtime-note { text-align: right; }
 .sub-search-link { margin-left: .5rem; font-size: .85rem; }
 .unavailable-list { padding-left: 1.2rem; line-height: 2; }
 .unavailable-list button { margin-left: .4rem; }
