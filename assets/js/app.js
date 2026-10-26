@@ -63,6 +63,52 @@ window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 // connect if there are any LiveViews on the page
 liveSocket.connect()
 
+// 押したボタンの `data-copy` を写す（映画の詳細の題名など。travel-log の CopyTextButton と同じ形）。
+// 写せたら 2 秒ほどチェックの印と「コピーしました」を出す。**成功の表示は実際に写せたときだけ**。
+// `navigator.clipboard` は https（か localhost）でしか使えないので、使えなければ選択して写す昔のやり方へ落とす
+async function copyText(text) {
+  if (navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch (_error) {
+      // 権限を断られたときなどは下のやり方を試す
+    }
+  }
+  try {
+    const area = document.createElement("textarea")
+    area.value = text
+    area.setAttribute("readonly", "")
+    area.style.position = "fixed"
+    area.style.top = "0"
+    area.style.opacity = "0"
+    document.body.appendChild(area)
+    area.select()
+    const ok = document.execCommand("copy")
+    document.body.removeChild(area)
+    return ok
+  } catch (_error) {
+    return false
+  }
+}
+
+window.addEventListener("chidori:copy", async event => {
+  const button = event.target.closest("button")
+  const text = button && button.dataset.copy
+  if (!text) return
+  const box = button.parentElement
+  const status = box.querySelector(".copy-status")
+  const ok = await copyText(text)
+  box.classList.remove("is-copied", "is-failed")
+  box.classList.add(ok ? "is-copied" : "is-failed")
+  if (status) status.textContent = ok ? "コピーしました" : "コピーできませんでした"
+  clearTimeout(box._copyTimer)
+  box._copyTimer = setTimeout(() => {
+    box.classList.remove("is-copied", "is-failed")
+    if (status) status.textContent = ""
+  }, 2000)
+})
+
 // 通知（Web Push）を受けて出す service worker。**どの画面からも入れておく** ——
 // 通知を押して開いた画面を、すでに開いている Chidori へ移すには、その画面を
 // service worker が受け持っている必要がある。https（か localhost）でないと入らない

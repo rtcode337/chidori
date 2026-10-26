@@ -1182,6 +1182,26 @@
         <div class="artwork-head">
           <span class="head-title">
             <strong id="artwork-name">{@detail.name}</strong>
+            <%!-- 映画の題名をコピーする（題名のすぐ右上の小さなアイコン。配信サービスなどで探すため、
+               記事名の「(映画)」の札は外す）。写すのは見る人のブラウザ（app.js の chidori:copy） --%>
+            <span :if={@view == "films"} class="copy-title">
+              <button
+                type="button"
+                data-copy={Chidori.Relations.Films.plain_title(@detail.name)}
+                phx-click={Phoenix.LiveView.JS.dispatch("chidori:copy")}
+                aria-label="題名をコピー"
+                title="題名をコピー"
+              >
+                <svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="9" y="9" width="11" height="11" rx="2" />
+                  <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+                </svg>
+                <svg class="check-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 12.5 9.5 18 20 6.5" />
+                </svg>
+              </button>
+              <span class="copy-status" role="status"></span>
+            </span>
             <%!-- 記事へのリンクは題名の右にアイコンで。**行き先は押した人・作品の記事**（代表作の記事へ
                飛ばすと「この人のことを知りたい」に答えていない） --%>
             <.wiki_link

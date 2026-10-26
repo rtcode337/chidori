@@ -179,9 +179,15 @@ defmodule Chidori.Relations.Films do
   開くのは見る人のブラウザ（サーバーからは引かない）。
   """
   def subscription_search_url(title) when is_binary(title) do
-    name = title |> String.replace(~r/\s*\([^)]*\)$/u, "") |> String.trim()
-    "https://www.google.com/search?" <> URI.encode_query(%{"q" => name <> " サブスク"})
+    "https://www.google.com/search?" <> URI.encode_query(%{"q" => plain_title(title) <> " サブスク"})
   end
+
+  @doc """
+  題名から記事名の見分けの札（末尾の「(映画)」「(2011年の映画)」）を外したもの。配信サービスなどで
+  探すときに使う（札が付いたままだと当たらない）。
+  """
+  def plain_title(title) when is_binary(title),
+    do: title |> String.replace(~r/\s*\([^)]*\)$/u, "") |> String.trim()
 
   @doc "ジャンルのタグの頭（札の国の後ろに添える）。"
   def genre_prefix, do: @genre_prefix

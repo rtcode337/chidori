@@ -165,6 +165,12 @@ defmodule Chidori.Relations.FilmsTest do
                ChidoriWeb.RelationsLive.edge_people(graph, costar, :costar)
     end
 
+    test "コピーする題名は、記事名の見分けの札を外したもの" do
+      assert Films.plain_title("別離 (2011年の映画)") == "別離"
+      assert Films.plain_title("シャイニング (映画)") == "シャイニング"
+      assert Films.plain_title("七人の侍") == "七人の侍"
+    end
+
     test "サブスクを探す Google 検索（題名の括弧書きは外す）" do
       assert Films.subscription_search_url("別離 (2011年の映画)") ==
                "https://www.google.com/search?q=%E5%88%A5%E9%9B%A2+%E3%82%B5%E3%83%96%E3%82%B9%E3%82%AF"
