@@ -1273,10 +1273,12 @@
         <%= if !@dataset[:derived] do %>
           <.search_queries queries={@search_queries} />
 
+          <%!-- 区画の地図のある対象（食事処の範囲・県で割る対象）は、回った区画を押すと地図で選ぶ --%>
           <.recent_runs
             runs={@recent_runs}
             collection={@dataset.collection}
             reload="reload_recent_runs"
+            pick={if @dataset[:area] || @dataset[:prefectures], do: "pick_partition"}
           />
         <% end %>
 

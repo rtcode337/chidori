@@ -1313,6 +1313,11 @@ a.top-book-cover { display: block; }
    枠の中の一覧として指定を強くする */
 .request-changes .doc-diff-link { display: inline; padding: 0; border: 0; border-radius: 0; background: none; color: #4338a8; font: inherit; font-weight: 400; line-height: inherit; text-align: left; text-decoration: underline; cursor: pointer; overflow-wrap: anywhere; }
 .request-changes .doc-diff-link:hover { color: #28235e; }
+/* 最近の回の「回った区画」。見送った区画は薄く。区画を押すと地図で選ぶ（選べる画面だけ） */
+.run-partitions { font-size: .85rem; line-height: 1.8; }
+.run-partition { display: inline-block; margin-right: .6rem; }
+.run-partition.is-skipped { opacity: .6; }
+.run-partitions .doc-diff-link { display: inline; padding: 0; border: 0; border-radius: 0; background: none; color: #4338a8; font: inherit; font-weight: 400; text-decoration: underline; cursor: pointer; }
 .doc-diff-detail .removed { color: #b42318; }
 .doc-diff-body { max-height: 50vh; overflow: auto; padding: .6rem; border-radius: .5rem; background: #f6f7fb; font-size: .82rem; white-space: pre-wrap; }
 .doc-diff-body .added { display: block; background: #e8f6ec; color: #1d6b38; }

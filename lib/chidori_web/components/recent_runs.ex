@@ -23,9 +23,22 @@ defmodule ChidoriWeb.RecentRuns do
   def run_scope(%{scope: [_ | _] = scope}), do: "区画 #{length(scope)} つ"
   def run_scope(_run), do: ""
 
+  @doc """
+  回った区画の並び（`[{区画の鍵, 見終えたか}]`）。見終えた区画を記録していない古い回
+  （`visited` が nil）は、どれも見終えたとして出す（記録が無いことと見送ったことを混ぜない）。
+  """
+  def scope_rows(%{scope: scope, visited: visited}) when is_list(visited),
+    do: for(key <- scope, do: {key, key in visited})
+
+  def scope_rows(%{scope: scope}), do: for(key <- scope, do: {key, true})
+
   attr :runs, :list, required: true
   attr :collection, :string, required: true
   attr :reload, :string, required: true, doc: "読み直すイベントの名前"
+
+  attr :pick, :string,
+    default: nil,
+    doc: "区画を押したときのイベントの名前（区画を選べる画面だけ。無ければ区画は文字で出す）"
 
   @doc """
   **最近の回**（自動で回った回も、依頼で走った回も）。依頼の結果は依頼ごとに回を引き当てるので、
@@ -56,6 +69,24 @@ defmodule ChidoriWeb.RecentRuns do
         </summary>
         <p :if={run.status == "ok" and run.error != ""} class="muted-note">
           Chiezo の控え: {run.error}
+        </p>
+        <%!-- **どの区画を回った結果か**（見る予定だった区画。途中で止まって見送った区画には印）。
+           数だけでは、どこを見た回なのか分からない。区画を選べる画面では押すと地図で選ぶ --%>
+        <p :if={run.scope != []} class="run-partitions">
+          回った区画:
+          <span :for={{key, done} <- scope_rows(run)} class={["run-partition", !done && "is-skipped"]}>
+            <button
+              :if={@pick}
+              type="button"
+              class="doc-diff-link"
+              phx-click={@pick}
+              phx-value-key={key}
+            >
+              {key}
+            </button>
+            <span :if={!@pick}>{key}</span>
+            <span :if={!done} class="muted-note">（見送り）</span>
+          </span>
         </p>
         <p class="muted-note">
           {if run.backend,
