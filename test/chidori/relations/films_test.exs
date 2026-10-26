@@ -176,6 +176,45 @@ defmodule Chidori.Relations.FilmsTest do
                "https://www.google.com/search?q=%E5%88%A5%E9%9B%A2+%E3%82%B5%E3%83%96%E3%82%B9%E3%82%AF"
     end
 
+    test "閲覧数の無い作品は、最新の映画の注目度で大きさを決める（閲覧数のある作品には触らない）" do
+      nodes =
+        for {name, views} <- [
+              {"一", 900},
+              {"二", 800},
+              {"三", 700},
+              {"四", 600},
+              {"五", 500},
+              {"六", 100}
+            ],
+            do: %{name: name, views: views, tags: []}
+
+      nodes =
+        nodes ++
+          [
+            %{name: "新作 (映画)", views: 0, tags: ["記録:新作"]},
+            %{name: "話題作", views: 0, tags: ["注目度:中"]},
+            %{name: "地味な新作", views: 0, tags: []},
+            %{name: "閲覧数あり", views: 50, tags: ["注目度:高"]}
+          ]
+
+      sized =
+        nodes
+        |> Films.with_attention_views(%{"新作" => :high, "地味な新作" => :low})
+        |> Map.new(&{&1.name, &1.views})
+
+      # 高は基準（多い順で 5 番目 = 500）と同じ、中は半分の大きさになる閲覧数（記録: の見出しでも引く）
+      assert sized["新作 (映画)"] == 500
+      assert sized["話題作"] == round(500 * :math.pow(0.5, 1 / 0.65))
+      assert sized["地味な新作"] == 0
+      assert sized["閲覧数あり"] == 50
+    end
+
+    test "引き継ぐときに、最新の映画の注目度をタグに写させる" do
+      prompt = Films.carry_prompt([%{title: "新作", attention: :high}])
+      assert prompt =~ "新作（注目度 高）"
+      assert prompt =~ ~s("注目度:<高・中・低>")
+    end
+
     test "上映時間（整理の回が書く extra.runtime_minutes）を持つ" do
       docs = [
         %{

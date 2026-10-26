@@ -956,7 +956,11 @@ defmodule Chidori.Relations do
           # ここで外へ引きに行かない
           {:ok,
            fallback
-           |> Map.merge(%{graph | nodes: graph.nodes |> Graph.sized() |> with_faces()})
+           |> Map.merge(%{
+             graph
+             | nodes:
+                 graph.nodes |> with_attention(key, base_url) |> Graph.sized() |> with_faces()
+           })
            |> Map.put(:collection, nil)
            |> Map.put(:sample?, false)}
         end
@@ -967,6 +971,31 @@ defmodule Chidori.Relations do
   # `Chidori.Relations.Faces`）。記事の画像を運んでいない図（画家）は何もしない。
   # **Chiezo が縮めて持っている絵（`thumb`）があれば、そちらを先に使う** —— 映画の記事の画像は
   # ポスターでないことが多く（ロゴ・関係者の写真）、整理の回に探させたポスターはこちらに入る
+  # 映画の図だけ、閲覧数の無い作品の大きさを最新の映画の注目度で決める（`Films.with_attention_views/2`）。
+  # 注目度は最新の映画の収集から 1 回まとめて引く（高と中だけ。引けなければ注目度の無い扱い）
+  defp with_attention(nodes, "films", base_url) do
+    collection =
+      Enum.find_value(
+        Chidori.Topics.list(),
+        &(&1[:works] == Chidori.News.Movies && &1.collection)
+      )
+
+    tags = Enum.map_join([:high, :mid], ",", &Chidori.News.Events.attention_tag/1)
+
+    attention =
+      case collection &&
+             Chidori.News.Events.fetch_tagged(base_url, collection, tags,
+               date_tag: Chidori.News.Movies.date_tag()
+             ) do
+        {:ok, entries} -> Map.new(entries, &{&1.title, &1.attention})
+        _none -> %{}
+      end
+
+    Films.with_attention_views(nodes, attention)
+  end
+
+  defp with_attention(nodes, _key, _base_url), do: nodes
+
   defp with_faces(nodes) do
     {thumbed, rest} = Enum.split_with(nodes, &is_binary(&1[:thumb]))
     thumbed = Enum.map(thumbed, &Map.put(&1, :face, &1.thumb))

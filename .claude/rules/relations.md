@@ -43,7 +43,7 @@ paths:
   （「〜の監督映画」の `tag_suffix` と主な賞の受賞作の `tag`、知名度で下を切る）、主演だけ AI（`verify_tags` で実在の記事に限る）。
   同じ監督と同じ主演は、どちらも公開年順に隣どうしを結ぶ線（`edge_rules` の `shared`。種類 `:director` と `:costar` で色を分ける）。
   監督の枠は使わない（枠は 1 つの高さにしか置けず、縦の公開年が崩れた）。縦は上が新しい（`newest_first`。置き終えた図を `Graph` が上下に裏返す。目盛りも）。横は国の帯（`@country_bands`。合作は先に当たる帯）。
-  受賞作は知名度の下限を免除する（Chiezo の `min_extra_unless_tag`）。Wikipedia の相互リンクの線（`関連:`）は映画の図では引かない（`graph_spec` の `related: false`）。作品の詳細の主演・監督の名前は、詳細を閉じてその人の作品の鎖を立たせる（`pick_person` → `picked_edge` に `{:chain, {頭, 名前}}`・`pick_of/2`）。同じ監督・同じ主演の線の詳細はその人（jawiki の冒頭・芸能人の図で探す `?view=people&focus=`（札が無ければ名前で探した形 `apply_pending_focus`）・図にある作品（押すと `focus_film`）。`edge_people/3`）。札の絵は Chiezo の `thumb` を記事の画像より先に使い（`with_faces`）、ポスターと上映時間（`extra.runtime_minutes`）は整理の回に探させる（`show_blanks: ["thumb", "runtime_minutes"]`）。主演の名前は芸能人の図へ飛ぶ（`?view=people&focus=<名前>`）。
+  受賞作は知名度の下限を免除する（Chiezo の `min_extra_unless_tag`）。Wikipedia の相互リンクの線（`関連:`）は映画の図では引かない（`graph_spec` の `related: false`）。作品の詳細の主演・監督の名前は、詳細を閉じてその人の作品の鎖を立たせる（`pick_person` → `picked_edge` に `{:chain, {頭, 名前}}`・`pick_of/2`）。同じ監督・同じ主演の線の詳細はその人（jawiki の冒頭・芸能人の図で探す `?view=people&focus=`（札が無ければ名前で探した形 `apply_pending_focus`）・図にある作品（押すと `focus_film`）。`edge_people/3`）。閲覧数の無い作品の大きさは最新の映画の注目度で決める（高 = 基準と同じ・中 = 半分の大きさ。作品の `注目度:` タグか、図を読むときに最新の映画の収集から引いた注目度。`Films.with_attention_views/2`・引き継ぎの依頼文でタグを写させる）。札の絵は Chiezo の `thumb` を記事の画像より先に使い（`with_faces`）、ポスターと上映時間（`extra.runtime_minutes`）は整理の回に探させる（`show_blanks: ["thumb", "runtime_minutes"]`）。主演の名前は芸能人の図へ飛ぶ（`?view=people&focus=<名前>`）。
   芸能人の名簿は海外の俳優も（「〜の男優」「〜の女優」の `tag_suffix`）
 - 映画の図には新しい作品も引き継ぐ（`Chidori.Relations.FilmCarry`）。最新情報の映画のうち見た記録を付けたものと注目度が高く公開済みのもの、
   見た映画のページ（`ChidoriWeb.SeenFilms`）の「見た映画を足す」で書いたものを、図の収集への割り込みで AI に足させる（Chidori の時計が決めた時刻に。画面からは押した 1 回で）。

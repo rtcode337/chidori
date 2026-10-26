@@ -118,6 +118,8 @@ defmodule Chidori.Relations.Films do
   # 前の語と後ろの語の両方を拾う（`genre_rules/0`）。「〜を題材とした」「〜を原作とする」の
   # 分類は拾わない（「テレビドラマを原作とする映画」がドラマに、「人形を題材とした」が人形に読める）
   @genre_prefix "ジャンル"
+  # 注目度（最新の映画の印。引き継いだ作品の大きさに使う `with_attention_views/2`）
+  @attention_prefix "注目度"
   @genres %{
     "コメディ" => "コメディ",
     "ホラー" => "ホラー",
@@ -312,6 +314,7 @@ defmodule Chidori.Relations.Films do
         facts =
           [
             item[:date] && "公開日 #{Date.to_iso8601(item.date)}",
+            attention_word(item[:attention]) && "注目度 #{attention_word(item[:attention])}",
             present(item[:summary]),
             present(item[:url])
           ]
@@ -337,6 +340,8 @@ defmodule Chidori.Relations.Films do
       見た記録と結び付ける印です）
     - tags には "#{@kind_tag}"・"#{Graph.years_tag()}:<公開年>"・"#{@country_prefix}:<製作国>"・"#{@director_prefix}:<監督>"
       （監督の日本語版 Wikipedia の記事名。記事の無い監督は書かない）を付けてください
+    - 上で「注目度」が書いてある作品には、"#{@attention_prefix}:<高・中・低>" のタグも付けてください（書いてあるとおりに写す。
+      図の札の大きさに使います —— 新しい作品は Wikipedia の閲覧数がまだ無いため）
 
     #{stars_rule()}
     返す形は次のとおりです。
@@ -345,6 +350,48 @@ defmodule Chidori.Relations.Films do
     - url: 日本語版 Wikipedia の記事の URL（無ければ公式サイト）
     - tags: 上のとおり
     """
+  end
+
+  defp attention_word(:high), do: "高"
+  defp attention_word(:mid), do: "中"
+  defp attention_word(:low), do: "低"
+  defp attention_word(_level), do: nil
+
+  @doc """
+  **閲覧数の無い作品の大きさを、最新の映画の注目度で決めます**（`Chidori.Relations` が図を読むときに、
+  大きさを付ける前に呼ぶ）。最新の映画から引き継いだ新作は、Wikipedia に記事がまだ無いか、
+  名簿を引く回で閲覧数が運ばれないので、閲覧数 0 のいちばん小さい札になっていた。
+
+  注目度は、作品の `注目度:` のタグ（引き継ぐときに写させる）か、最新の映画の収集の注目度
+  （`attention`。見出し → `:high` / `:mid`。札の名前か `記録:` の見出しで引く）。高は閲覧数の
+  基準（多い順で 5 番目）と同じ大きさ、中はその半分の大きさになる閲覧数に置く。
+  **閲覧数のある作品には触らない**（閲覧数のほうが客観的）。
+  """
+  def with_attention_views(nodes, attention) when is_list(nodes) and is_map(attention) do
+    top = nodes |> Enum.map(&(&1[:views] || 0)) |> Enum.sort(:desc) |> Enum.at(4, 0)
+
+    Enum.map(nodes, fn node ->
+      level = if (node[:views] || 0) > 0, do: nil, else: attention_of(node, attention)
+
+      case level do
+        :high when top > 0 -> Map.put(node, :views, top)
+        # 大きさは閲覧数の比の 0.65 乗（`Graph`）なので、半分の大きさになる閲覧数は基準の 0.5^(1/0.65)
+        :mid when top > 0 -> Map.put(node, :views, max(round(top * :math.pow(0.5, 1 / 0.65)), 1))
+        _other -> node
+      end
+    end)
+  end
+
+  defp attention_of(node, attention) do
+    by_tag =
+      Enum.find_value(node[:tags] || [], fn
+        @attention_prefix <> ":高" -> :high
+        @attention_prefix <> ":中" -> :mid
+        @attention_prefix <> ":低" -> :low
+        _other -> nil
+      end)
+
+    by_tag || Enum.find_value([node.name | record_titles(node)], &Map.get(attention, &1))
   end
 
   defp present(value) when is_binary(value) do
