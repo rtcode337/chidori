@@ -1684,6 +1684,30 @@ defmodule ChidoriWeb.RelationsLiveTest do
       assert r == RelationsLive.radius_of(node)
     end
 
+    test "名指しで開いた名前の札が無ければ、名前で探した形にする（主演の詳細の「芸能人の図で探す」）", %{
+      conn: conn
+    } do
+      {:ok, live, _html} = live(conn, ~p"/relations?#{%{"view" => "people", "focus" => "三船"}}")
+
+      graph =
+        Chidori.Relations.Graph.from_docs(
+          [%{"title" => "三船敏郎", "tags" => ~w(芸能人 種別:俳優 年代:1920-1997)}],
+          Chidori.Relations.People.graph_spec()
+        )
+
+      relation =
+        Chidori.Relations.current("people")
+        |> Map.merge(graph)
+        |> Map.put(:checked_at, DateTime.utc_now())
+
+      send(live.pid, {:relation_updated, relation})
+      render(live)
+      assigns = :sys.get_state(live.pid).socket.assigns
+
+      assert assigns.query == "三船"
+      assert [_ | _] = assigns.matches
+    end
+
     test "空の検索では候補を出さない", %{conn: conn} do
       {:ok, live, _html} = live(conn, ~p"/relations?view=painters")
 
@@ -1903,6 +1927,18 @@ defmodule ChidoriWeb.RelationsLiveTest do
 
       {:ok, _} = Marks.put("movies", "見られない映画", %{"unavailable_on" => nil, "note" => ""})
       assert Marks.get("movies", "見られない映画") == nil
+    end
+
+    test "Wikipedia の記事へのリンクは W のアイコンで、何の記事かは読み上げと説明に持たせる" do
+      html =
+        render_component(&RelationsLive.wiki_link/1,
+          href: "https://ja.wikipedia.org/wiki/x",
+          label: "シャイニング (映画)"
+        )
+
+      assert html =~ ~s(class="wiki-link")
+      assert html =~ ~s|aria-label="シャイニング (映画) を Wikipedia で見る"|
+      assert html =~ ">W</text>"
     end
 
     test "日付を書いていない印は後ろに回る" do

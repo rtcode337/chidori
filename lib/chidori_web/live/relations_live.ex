@@ -246,7 +246,20 @@ defmodule ChidoriWeb.RelationsLive do
   # URL の `focus` で名指しされた人へ寄り、詳細を開く（映画の図の主演から飛んできたとき）。
   # **図がまだ読めていなければ待つ**（読めたら `:relation_updated` でもう一度試す）
   defp apply_pending_focus(%{assigns: %{pending_focus: name}} = socket) when is_binary(name) do
-    case Enum.find(socket.assigns.relation[:nodes] || [], &(&1.name == name)) do
+    nodes = socket.assigns.relation[:nodes] || []
+    loaded? = socket.assigns.relation[:checked_at] != nil
+
+    case Enum.find(nodes, &(&1.name == name)) do
+      # 図にその名前の札が無ければ、**名前で探した形にする**（探す欄に名前を入れて候補を出す。
+      # 記事名と書き方が少し違う人も候補に出る）。**Chiezo から読めた図でだけ**（読む前の図で
+      # 決めると、届いた図にその人がいても寄らなくなる）。読めていなければ待つ
+      nil when nodes != [] and loaded? ->
+        assign(socket,
+          pending_focus: nil,
+          query: name,
+          matches: search(socket.assigns.relation, name)
+        )
+
       nil ->
         socket
 
@@ -527,6 +540,28 @@ defmodule ChidoriWeb.RelationsLive do
      )}
   end
 
+  # 線の詳細（人物）の作品を押したら、**詳細を閉じて、その作品を探して選んだときと同じにする**
+  def handle_event("focus_film", %{"name" => name}, socket) do
+    {:noreply,
+     socket |> assign(edge: nil, detail: nil, artwork: nil, portrait: nil) |> focus_node(name)}
+  end
+
+  # 作品の詳細で主演・監督の名前を押したら、**詳細を閉じて、その人の作品の鎖を立たせる**
+  # （その人の線を 1 回押したときと同じ。`pick_of(relation, {:chain, {頭, 名前}})`）
+  def handle_event("pick_person", %{"prefix" => prefix, "name" => name}, socket)
+      when prefix in ["主演", "監督"] do
+    {:noreply,
+     assign(socket,
+       detail: nil,
+       artwork: nil,
+       portrait: nil,
+       edge: nil,
+       mark_saved: nil,
+       picked: nil,
+       picked_edge: {:chain, {prefix, name}}
+     )}
+  end
+
   # 閉じ方は3つとも同じところへ来る（ボタン・図の外を押す・Esc）
   def handle_event("close_work", _params, socket) do
     {:noreply,
@@ -658,6 +693,31 @@ defmodule ChidoriWeb.RelationsLive do
 
   @doc "作品の主演（映画の図。タグ「主演:<名前>」）。"
   def stars_of(node), do: for(t <- node[:tags] || [], v = strip(t, "主演:"), do: v)
+
+  attr :href, :string, required: true
+  attr :label, :string, required: true, doc: "何の記事か（読み上げと、マウスを乗せたときの説明）"
+
+  @doc """
+  Wikipedia の記事へのリンク（W のアイコン）。文で「〜を Wikipedia で見る」と書くと詳細の中で
+  場所を取るので、アイコン 1 つにする。何の記事かは `aria-label` と `title` に持たせる。
+  """
+  def wiki_link(assigns) do
+    ~H"""
+    <a
+      href={@href}
+      target="_blank"
+      rel="noreferrer"
+      class="wiki-link"
+      aria-label={"#{@label} を Wikipedia で見る"}
+      title={"#{@label} を Wikipedia で見る"}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="11" />
+        <text x="12" y="16.6" text-anchor="middle">W</text>
+      </svg>
+    </a>
+    """
+  end
 
   @doc """
   主演の名前の行き先。**芸能人の図に載っていればその人へ**（図の中で寄って詳細を開く）、
@@ -1580,6 +1640,18 @@ defmodule ChidoriWeb.RelationsLive do
   図に出ていない（絞り込みで外れた）札なら nil。
   """
   def pick_of(_relation, nil), do: nil
+
+  # 1 人の作品の鎖（`{:chain, {頭, 名前}}`。作品の詳細で主演・監督の名前を押したとき）。札は選ばず、
+  # その人の作品と、その人の線だけを立たせる（2 人の主演を共にする線でも、もう 1 人の鎖は立てない）
+  def pick_of(relation, {:chain, {prefix, value}}) do
+    tag = "#{prefix}:#{value}"
+
+    near = for node <- relation.nodes, tag in (node[:tags] || []), into: MapSet.new(), do: node.id
+
+    if MapSet.size(near) == 0,
+      do: nil,
+      else: %{id: nil, near: near, chains: MapSet.new([{prefix, value}])}
+  end
 
   # 1 回押した線（`{from, to, kind}`）。札は選ばず、その線と両端を立たせる。共通項の線
   # （同じ監督・同じ主演）なら、その人の作品だけを鎖ごと立たせる。図に無い線なら nil

@@ -63,6 +63,23 @@ defmodule Chidori.Relations.FilmsTest do
       assert Enum.any?(lit, &(&1.from == ids["用心棒"] and &1.to == ids["赤ひげ"]))
     end
 
+    test "作品の詳細で主演の名前を押すと、その人の作品と線だけが立つ（その人の線を押したときと同じ）",
+         %{graph: graph} do
+      ids = Map.new(graph.nodes, &{&1.name, &1.id})
+      pick = ChidoriWeb.RelationsLive.pick_of(graph, {:chain, {"主演", "三船敏郎"}})
+
+      assert pick.id == nil
+      assert pick.near == MapSet.new([ids["七人の侍"], ids["用心棒"], ids["赤ひげ"]])
+
+      lit = Enum.filter(graph.edges, &ChidoriWeb.RelationsLive.lit?(pick, &1))
+      assert lit != []
+      # 同じ 2 本を結ぶ黒澤明（監督）の鎖は立てない
+      assert Enum.all?(lit, &(&1.kind == :costar))
+
+      # 図に作品の無い人は選ばない
+      assert ChidoriWeb.RelationsLive.pick_of(graph, {:chain, {"主演", "誰でもない人"}}) == nil
+    end
+
     test "共通項の線を押すと、その人の作品だけが立つ（札を押したときのように全部の共通項は立てない）",
          %{graph: graph} do
       ids = Map.new(graph.nodes, &{&1.name, &1.id})

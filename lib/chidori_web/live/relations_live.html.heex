@@ -995,13 +995,27 @@
         <%!-- **映画の図の同じ監督・同じ主演の線は、その人を出す**（線が言えるのは「2 本が同じ人の作品」だけ） --%>
         <%= if @edge[:people] do %>
           <div class="artwork-head">
-            <strong id="edge-name">
-              {Enum.map_join(@edge.people, "・", & &1.name)}（{hd(@edge.people).role}）
-            </strong>
+            <span class="head-title">
+              <strong id="edge-name">
+                {Enum.map_join(@edge.people, "・", & &1.name)}（{hd(@edge.people).role}）
+              </strong>
+              <%!-- 1 人なら記事へのアイコンを題名の右に（2 人なら各人の見出しの右） --%>
+              <.wiki_link
+                :if={length(@edge.people) == 1}
+                href={"https://ja.wikipedia.org/wiki/" <> URI.encode(hd(@edge.people).name)}
+                label={hd(@edge.people).name}
+              />
+            </span>
             <button type="button" phx-click="close_work">閉じる</button>
           </div>
           <section :for={person <- @edge.people} class="edge-person">
-            <h3 :if={length(@edge.people) > 1} class="edge-heading">{person.name}</h3>
+            <h3 :if={length(@edge.people) > 1} class="edge-heading">
+              {person.name}
+              <.wiki_link
+                href={"https://ja.wikipedia.org/wiki/" <> URI.encode(person.name)}
+                label={person.name}
+              />
+            </h3>
             <%= case @edge_people[person.name] do %>
               <% :loading -> %>
                 <p class="muted-note">説明を読んでいます…</p>
@@ -1010,18 +1024,25 @@
               <% _none -> %>
                 <p class="muted-note">Wikipedia の説明が見つかりませんでした。</p>
             <% end %>
+            <%!-- 芸能人の図でその人を探す（図に載っていればその人へ寄り、無ければ名前で探した形で開く） --%>
             <p>
-              <%= case star_href(person.name, @star_people) do %>
-                <% {:inside, href} -> %>
-                  <.link patch={href}>芸能人の図で見る</.link>
-                <% {:outside, href} -> %>
-                  <a href={href} target="_blank" rel="noreferrer">Wikipedia で見る ↗</a>
-              <% end %>
+              <.link patch={"/relations?" <> URI.encode_query(%{"view" => "people", "focus" => person.name})}>
+                芸能人の図で探す
+              </.link>
             </p>
             <h4 class="edge-heading">図にある{person.role}作品（{length(person.films)} 本）</h4>
             <ul class="edge-person-films">
+              <%!-- 押すと詳細を閉じて、その作品を探して選んだときと同じにする --%>
               <li :for={{title, years} <- person.films}>
-                {title}<span :if={years} class="muted-note">（{years}）</span>
+                <button
+                  type="button"
+                  class="doc-diff-link"
+                  phx-click="focus_film"
+                  phx-value-name={title}
+                >
+                  {title}
+                </button>
+                <span :if={years} class="muted-note">（{years}）</span>
               </li>
             </ul>
           </section>
@@ -1134,14 +1155,11 @@
           <% end %>
           <ul class="edge-links">
             <li :if={article_url(@edge.from)}>
-              <a href={article_url(@edge.from)} target="_blank" rel="noreferrer">
-                {@edge.from.name} を Wikipedia で見る
-              </a>
+              {@edge.from.name}
+              <.wiki_link href={article_url(@edge.from)} label={@edge.from.name} />
             </li>
             <li :if={article_url(@edge.to)}>
-              <a href={article_url(@edge.to)} target="_blank" rel="noreferrer">
-                {@edge.to.name} を Wikipedia で見る
-              </a>
+              {@edge.to.name} <.wiki_link href={article_url(@edge.to)} label={@edge.to.name} />
             </li>
           </ul>
         <% end %>
@@ -1162,7 +1180,16 @@
         phx-click-away="close_work"
       >
         <div class="artwork-head">
-          <strong id="artwork-name">{@detail.name}</strong>
+          <span class="head-title">
+            <strong id="artwork-name">{@detail.name}</strong>
+            <%!-- 記事へのリンクは題名の右にアイコンで。**行き先は押した人・作品の記事**（代表作の記事へ
+               飛ばすと「この人のことを知りたい」に答えていない） --%>
+            <.wiki_link
+              :if={article_url(@detail)}
+              href={article_url(@detail)}
+              label={@detail[:article] || @detail.name}
+            />
+          </span>
           <span :if={@detail[:unreviewed?]} class="review-badge">未レビュー</span>
           <button type="button" phx-click="close_work">閉じる</button>
         </div>
@@ -1214,14 +1241,6 @@
           <figcaption>Wikipedia より</figcaption>
         </figure>
 
-        <%!-- **行き先は画家の記事。** 押したのは画家なので、代表作の記事へ飛ばすと
-             「この人のことを知りたい」に答えていない --%>
-        <p :if={article_url(@detail)} class="artwork-source">
-          <a href={article_url(@detail)} target="_blank" rel="noreferrer">
-            {@detail[:article] || @detail.name} を Wikipedia で見る
-          </a>
-        </p>
-
         <%!-- その画家の短い説明（記事の冒頭）。**絵の説明だけが出て、描いた人の
              説明が出ないのは片手落ち** —— 押したのは画家のほう --%>
         <p :if={@detail[:summary]} class="artwork-extract">{@detail.summary}</p>
@@ -1235,7 +1254,23 @@
             <dt>{label}</dt>
             <%!-- 主演は押せる名前にする。芸能人の図に載っている人はその人へ飛び、
                  載っていない人は Wikipedia の記事へ --%>
-            <dd :if={label == "主演"} class="star-links">
+            <%!-- 映画の図の主演・監督は、押すと詳細を閉じてその人の作品の鎖を立たせる
+                 （その人の線を 1 回押したときと同じ）。その人のことは線をもう一度押すと開く --%>
+            <dd :if={@view == "films" and label in ["主演", "監督"]} class="star-links">
+              <%= for {name, index} <- Enum.with_index(values) do %>
+                {if index > 0, do: "、"}
+                <button
+                  type="button"
+                  class="doc-diff-link"
+                  phx-click="pick_person"
+                  phx-value-prefix={label}
+                  phx-value-name={name}
+                >
+                  {name}
+                </button>
+              <% end %>
+            </dd>
+            <dd :if={@view != "films" and label == "主演"} class="star-links">
               <%= for {name, index} <- Enum.with_index(values) do %>
                 {if index > 0, do: "、"}
                 <%= case star_href(name, @star_people) do %>
@@ -1246,7 +1281,9 @@
                 <% end %>
               <% end %>
             </dd>
-            <dd :if={label != "主演"}>{Enum.join(values, "、")}</dd>
+            <dd :if={label != "主演" and not (@view == "films" and label == "監督")}>
+              {Enum.join(values, "、")}
+            </dd>
           <% end %>
         </dl>
 
@@ -1262,14 +1299,7 @@
                 <figcaption>
                   <span class="artwork-title">{work.title}</span>
                   <span :if={work[:extract]} class="artwork-extract">{work.extract}</span>
-                  <a
-                    :if={work[:page]}
-                    href={SafeUrl.href(work.page)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    この絵を Wikipedia で見る
-                  </a>
+                  <.wiki_link :if={work[:page]} href={SafeUrl.href(work.page)} label={work.title} />
                 </figcaption>
               </figure>
               <%!-- **Wikipedia に絵が無い作品は、画像検索へつなぐ。** 記事の無い作品の
@@ -1293,10 +1323,38 @@
             <p class="muted-note">代表作を読み込めませんでした。</p>
         <% end %>
 
+        <% mark = mark_of(@marks, @detail.name) %>
+        <%!-- **いまは見られない**（映画。配信にも上映にも無い作品を、見ていない作品だけの図から隠す）。
+           押すたびに付ける・外す。付けた日は図の下の「いまは見られない作品」に出る。見た記録の上に置く --%>
+        <p :if={@view == "films" and not mark.seen} class="unavailable-row">
+          <button
+            type="button"
+            class={["seen-toggle", unavailable?(@marks, @detail.name) && "is-on"]}
+            phx-click="toggle_unavailable"
+            phx-value-name={@detail.name}
+            aria-pressed={to_string(unavailable?(@marks, @detail.name))}
+          >
+            {if unavailable?(@marks, @detail.name),
+              do: "見られない印を外す",
+              else: "いまは見られない（候補から外す）"}
+          </button>
+          <span :if={mark.unavailable_on} class="muted-note">
+            {Date.to_iso8601(mark.unavailable_on)} に付けた印
+          </span>
+          <%!-- 配信の有無は「題名 サブスク」で Google を引くとたいてい出る（見る人のブラウザで開く） --%>
+          <a
+            href={Chidori.Relations.Films.subscription_search_url(@detail.name)}
+            target="_blank"
+            rel="noreferrer"
+            class="sub-search-link"
+          >
+            サブスクを探す ↗
+          </a>
+        </p>
+
         <%!-- 見に行った記録。**図に出ているのは Chiezo から読んだものだけ**で、
              利用者が自分で書いたことはどこにも残せなかった。展覧会で実物を見た、
              という記録は Chiezo には置けない（あちらは題材も好みも持たない側） --%>
-        <% mark = mark_of(@marks, @detail.name) %>
         <details class="seen-mark" open={marked?(@marks, @detail.name)}>
           <summary>
             見た記録 <span :if={mark_summary(mark)} class="seen-badge">{mark_summary(mark)}</span>
@@ -1329,34 +1387,6 @@
             <span :if={@mark_saved == @detail.name} class="muted-note">保存しました。</span>
           </form>
         </details>
-
-        <%!-- **いまは見られない**（映画。配信にも上映にも無い作品を、見ていない作品だけの図から隠す）。
-           押すたびに付ける・外す。付けた日は見た映画のページの一覧に出る --%>
-        <p :if={@view == "films" and not mark.seen} class="unavailable-row">
-          <button
-            type="button"
-            class={["seen-toggle", unavailable?(@marks, @detail.name) && "is-on"]}
-            phx-click="toggle_unavailable"
-            phx-value-name={@detail.name}
-            aria-pressed={to_string(unavailable?(@marks, @detail.name))}
-          >
-            {if unavailable?(@marks, @detail.name),
-              do: "見られない印を外す",
-              else: "いまは見られない（候補から外す）"}
-          </button>
-          <span :if={mark.unavailable_on} class="muted-note">
-            {Date.to_iso8601(mark.unavailable_on)} に付けた印
-          </span>
-          <%!-- 配信の有無は「題名 サブスク」で Google を引くとたいてい出る（見る人のブラウザで開く） --%>
-          <a
-            href={Chidori.Relations.Films.subscription_search_url(@detail.name)}
-            target="_blank"
-            rel="noreferrer"
-            class="sub-search-link"
-          >
-            サブスクを探す ↗
-          </a>
-        </p>
 
         <%!-- **この人を詳しく調べて、を頼める。** 巡回は 8,000 人を順に回るので、
              気になった 1 人に当たるのは何日も先になる。割り込みは定時の巡回の
