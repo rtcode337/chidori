@@ -133,6 +133,57 @@ defmodule Chidori.Relations.FilmsTest do
       assert Graph.without(graph, ["図に無い作品"]) == graph
     end
 
+    test "線の人（同じ監督・同じ主演）と、図にあるその人の作品を新しい順に", %{graph: graph} do
+      edge = Enum.find(graph.edges, &(&1.kind == :director and &1.label == "黒澤明"))
+
+      assert [%{name: "黒澤明", role: "監督", films: films}] =
+               ChidoriWeb.RelationsLive.edge_people(graph, edge, :director)
+
+      assert Enum.map(films, &elem(&1, 0)) == ["赤ひげ", "用心棒", "七人の侍"]
+
+      # 2 人の主演を共にする線は 2 人とも
+      costar = %{value: "甲", values: ["甲", "乙"], label: "甲"}
+
+      assert [%{name: "甲", role: "主演"}, %{name: "乙"}] =
+               ChidoriWeb.RelationsLive.edge_people(graph, costar, :costar)
+    end
+
+    test "上映時間（整理の回が書く extra.runtime_minutes）を持つ" do
+      docs = [
+        %{
+          "title" => "長い映画",
+          "tags" => ~w(映画 年代:1990 国:日本),
+          "body" => "",
+          "extra" => %{"runtime_minutes" => 207}
+        },
+        doc("まだの映画", ~w(映画 年代:1991 国:日本))
+      ]
+
+      nodes = Map.new(Graph.from_docs(docs, Films.graph_spec()).nodes, &{&1.name, &1})
+      assert nodes["長い映画"].runtime == 207
+      assert nodes["まだの映画"].runtime == nil
+      assert Films.attrs().show_blanks == ["thumb", "runtime_minutes"]
+      assert Films.survey_prompt() =~ "〔空: runtime_minutes〕"
+    end
+
+    test "Chiezo が縮めて持っている絵（ポスター）を、記事の画像より先に持つ" do
+      thumb = "/v1/thumbs/" <> String.duplicate("c", 40) <> ".webp"
+
+      docs = [
+        %{
+          "title" => "ポスターあり",
+          "tags" => ~w(映画 年代:1990 国:日本),
+          "body" => "",
+          "extra" => %{"thumb" => thumb, "image" => "https://upload.wikimedia.org/x/logo.png"}
+        },
+        doc("ポスターなし", ~w(映画 年代:1991 国:日本))
+      ]
+
+      nodes = Map.new(Graph.from_docs(docs, Films.graph_spec()).nodes, &{&1.name, &1})
+      assert nodes["ポスターあり"].thumb == "/thumbs/" <> String.duplicate("c", 40) <> ".webp"
+      assert nodes["ポスターなし"].thumb == nil
+    end
+
     test "Wikipedia の相互リンクの線は引かない（同じ監督・同じ主演の線で読む図）" do
       docs = [
         doc("一作目", ~w(映画 年代:1990 国:日本 監督:甲 関連:二作目)),
@@ -204,6 +255,11 @@ defmodule Chidori.Relations.FilmsTest do
 
       # 作品の絵は AI が返した URL から Chiezo が縮めて持つ（ページの og:image は拾わない）
       assert attrs.thumbs == true
+
+      # 整理の回がポスターを探す（どれに絵が無いかを一覧に添えてもらう）
+      assert attrs.show_blanks == ["thumb", "runtime_minutes"]
+      assert Films.survey_prompt() =~ "〔空: thumb〕"
+      assert Films.survey_prompt() =~ "作品のロゴや出演者の写真は入れないでください"
       assert Films.image_prompt() =~ "{current}"
       assert Films.image_prompt() =~ "tags は全部返してください"
       extract = attrs.extract

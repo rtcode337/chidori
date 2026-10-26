@@ -940,8 +940,19 @@ defmodule Chidori.Relations do
   end
 
   # 顔写真の写しがある人に、配る道を付ける（無い人は取りに行く列に並ぶ。
-  # `Chidori.Relations.Faces`）。記事の画像を運んでいない図（画家）は何もしない
+  # `Chidori.Relations.Faces`）。記事の画像を運んでいない図（画家）は何もしない。
+  # **Chiezo が縮めて持っている絵（`thumb`）があれば、そちらを先に使う** —— 映画の記事の画像は
+  # ポスターでないことが多く（ロゴ・関係者の写真）、整理の回に探させたポスターはこちらに入る
   defp with_faces(nodes) do
+    {thumbed, rest} = Enum.split_with(nodes, &is_binary(&1[:thumb]))
+    thumbed = Enum.map(thumbed, &Map.put(&1, :face, &1.thumb))
+    order = Map.new(Enum.with_index(nodes), fn {node, i} -> {node.id, i} end)
+
+    (thumbed ++ with_article_faces(rest))
+    |> Enum.sort_by(&order[&1.id])
+  end
+
+  defp with_article_faces(nodes) do
     case for(node <- nodes, url = node[:image], is_binary(url), do: url) do
       [] ->
         nodes

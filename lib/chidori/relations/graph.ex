@@ -870,6 +870,11 @@ defmodule Chidori.Relations.Graph do
           tags: tags,
           # 記事の画像（顔写真の手掛かり。名簿を引くときに運んだもの。無ければ nil）
           image: image_in(doc),
+          # Chiezo が縮めて持っている絵（`/thumbs/…`。映画の図は整理の回に探させたポスター）。
+          # あれば記事の画像より先に使う（`Chidori.Relations` の `with_faces`）
+          thumb: thumb_in(doc),
+          # 上映時間（分。映画の図。整理の回に AI が書く `extra.runtime_minutes`）
+          runtime: runtime_in(doc),
           # **どれくらい知られているか。** 丸の大きさに使う。集める回が長期記憶の
           # 月次ページビューを写してくるので、ここで外へ引きに行かない
           views: views_in(doc),
@@ -934,6 +939,17 @@ defmodule Chidori.Relations.Graph do
 
   defp image_in(%{"extra" => %{"image" => url}}) when is_binary(url) and url != "", do: url
   defp image_in(_doc), do: nil
+
+  defp thumb_in(%{"extra" => %{"thumb" => thumb}}) when is_binary(thumb),
+    do: Chidori.Chiezo.thumb_path(thumb)
+
+  defp thumb_in(_doc), do: nil
+
+  defp runtime_in(%{"extra" => %{"runtime_minutes" => minutes}})
+       when is_integer(minutes) and minutes > 0,
+       do: minutes
+
+  defp runtime_in(_doc), do: nil
 
   # 知名度の倍率。**書かれていなければ 1.0**（ほとんどの画家には要らない）。
   # 読めない値も 1.0 —— 図が壊れるより、補正が効かないほうがまし

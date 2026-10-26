@@ -939,124 +939,159 @@
         aria-labelledby="edge-name"
         phx-click-away="close_work"
       >
-        <div class="artwork-head">
-          <strong id="edge-name">{@edge.from.name} → {@edge.to.name}</strong>
-          <button type="button" phx-click="close_work">閉じる</button>
-        </div>
-        <%= if @edge.kind == :influence do %>
-          <p class="edge-reason">
-            <strong>{@edge.to.name}</strong>は<strong>{@edge.from.name}</strong>から影響を受けた、と AI が書いています。
-          </p>
-          <h3 class="edge-heading">何を受けたか</h3>
-          <p :if={@edge.label} class="edge-label-text">{@edge.label}</p>
-          <p :if={!@edge.label} class="muted-note">AI は中身を書いていません（線だけがあります）。</p>
+        <%!-- **映画の図の同じ監督・同じ主演の線は、その人を出す**（線が言えるのは「2 本が同じ人の作品」だけ） --%>
+        <%= if @edge[:people] do %>
+          <div class="artwork-head">
+            <strong id="edge-name">
+              {Enum.map_join(@edge.people, "・", & &1.name)}（{hd(@edge.people).role}）
+            </strong>
+            <button type="button" phx-click="close_work">閉じる</button>
+          </div>
+          <section :for={person <- @edge.people} class="edge-person">
+            <h3 :if={length(@edge.people) > 1} class="edge-heading">{person.name}</h3>
+            <%= case @edge_people[person.name] do %>
+              <% :loading -> %>
+                <p class="muted-note">説明を読んでいます…</p>
+              <% text when is_binary(text) -> %>
+                <p class="artwork-extract">{text}</p>
+              <% _none -> %>
+                <p class="muted-note">Wikipedia の説明が見つかりませんでした。</p>
+            <% end %>
+            <p>
+              <%= case star_href(person.name, @star_people) do %>
+                <% {:inside, href} -> %>
+                  <.link patch={href}>芸能人の図で見る</.link>
+                <% {:outside, href} -> %>
+                  <a href={href} target="_blank" rel="noreferrer">Wikipedia で見る ↗</a>
+              <% end %>
+            </p>
+            <h4 class="edge-heading">図にある{person.role}作品（{length(person.films)} 本）</h4>
+            <ul class="edge-person-films">
+              <li :for={{title, years} <- person.films}>
+                {title}<span :if={years} class="muted-note">（{years}）</span>
+              </li>
+            </ul>
+          </section>
         <% else %>
-          <p :if={@edge.kind == :spouse} class="edge-reason">
-            <strong>{@edge.from.name}と{@edge.to.name}は{if @edge.label == "元配偶者", do: "以前夫婦でした", else: "夫婦です"}</strong>（{@edge.label ||
-              "配偶者"}）。AI が公表されている情報から書いています。
-          </p>
-          <p :if={@edge.kind == :family} class="edge-reason">
-            <strong>{@edge.from.name}と{@edge.to.name}は家族です</strong>（{@edge.label || "家族"}）。AI が公表されている情報から書いています。
-          </p>
-          <p :if={@edge.kind == :group} class="edge-reason">
-            <strong>{@edge.from.name}と{@edge.to.name}は、どちらも{@edge.label}のメンバーです。</strong>AI が公表されている情報から書いています。
-          </p>
-          <p :if={@edge.kind == :duo} class="edge-reason">
-            <strong>{@edge.to.name}は{@edge.from.name}の{@edge.label || "メンバー"}です。</strong>AI が公表されている情報から書いています。
-          </p>
-          <p :if={@edge.kind == :related} class="edge-reason">
-            <strong>{@edge.from.name}と{@edge.to.name}は、記事どうしが互いにリンクしています。</strong>
-          </p>
-        <% end %>
+          <div class="artwork-head">
+            <strong id="edge-name">{@edge.from.name} → {@edge.to.name}</strong>
+            <button type="button" phx-click="close_work">閉じる</button>
+          </div>
+          <%= if @edge.kind == :influence do %>
+            <p class="edge-reason">
+              <strong>{@edge.to.name}</strong>は<strong>{@edge.from.name}</strong>から影響を受けた、と AI が書いています。
+            </p>
+            <h3 class="edge-heading">何を受けたか</h3>
+            <p :if={@edge.label} class="edge-label-text">{@edge.label}</p>
+            <p :if={!@edge.label} class="muted-note">AI は中身を書いていません（線だけがあります）。</p>
+          <% else %>
+            <p :if={@edge.kind == :spouse} class="edge-reason">
+              <strong>{@edge.from.name}と{@edge.to.name}は{if @edge.label == "元配偶者", do: "以前夫婦でした", else: "夫婦です"}</strong>（{@edge.label ||
+                "配偶者"}）。AI が公表されている情報から書いています。
+            </p>
+            <p :if={@edge.kind == :family} class="edge-reason">
+              <strong>{@edge.from.name}と{@edge.to.name}は家族です</strong>（{@edge.label || "家族"}）。AI が公表されている情報から書いています。
+            </p>
+            <p :if={@edge.kind == :group} class="edge-reason">
+              <strong>{@edge.from.name}と{@edge.to.name}は、どちらも{@edge.label}のメンバーです。</strong>AI が公表されている情報から書いています。
+            </p>
+            <p :if={@edge.kind == :duo} class="edge-reason">
+              <strong>{@edge.to.name}は{@edge.from.name}の{@edge.label || "メンバー"}です。</strong>AI が公表されている情報から書いています。
+            </p>
+            <p :if={@edge.kind == :related} class="edge-reason">
+              <strong>{@edge.from.name}と{@edge.to.name}は、記事どうしが互いにリンクしています。</strong>
+            </p>
+          <% end %>
 
-        <%!-- **説明の中で相手に触れているところ。** AI の一言だけでは根拠が読めない
+          <%!-- **説明の中で相手に触れているところ。** AI の一言だけでは根拠が読めない
              ので、本文から相手の名前が出てくる文を拾って出す --%>
-        <%= if @edge.excerpt != [] do %>
-          <h3 class="edge-heading">
-            {if @edge.kind == :influence, do: @edge.to.name, else: @edge.from.name}の説明より
-          </h3>
-          <blockquote class="edge-excerpt">
-            <p :for={sentence <- @edge.excerpt}>{sentence}</p>
-          </blockquote>
-        <% end %>
+          <%= if @edge.excerpt != [] do %>
+            <h3 class="edge-heading">
+              {if @edge.kind == :influence, do: @edge.to.name, else: @edge.from.name}の説明より
+            </h3>
+            <blockquote class="edge-excerpt">
+              <p :for={sentence <- @edge.excerpt}>{sentence}</p>
+            </blockquote>
+          <% end %>
 
-        <%!-- 2 人を並べて比べる。**時代と地域と様式が並ぶと、線の意味が読める**
+          <%!-- 2 人を並べて比べる。**時代と地域と様式が並ぶと、線の意味が読める**
              （同じ国の師弟なのか、時代を越えた私淑なのか） --%>
-        <table class="edge-compare">
-          <thead>
-            <tr>
-              <th></th>
-              <th>{@edge.from.name}</th>
-              <th>{@edge.to.name}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <th>年代</th>
-              <td>{@edge.from[:years] || "—"}</td>
-              <td>{@edge.to[:years] || "—"}</td>
-            </tr>
-            <tr :if={@view == "painters"}>
-              <th>地域</th>
-              <td>{regions_of(@edge.from) |> Enum.join("、") |> blank_dash()}</td>
-              <td>{regions_of(@edge.to) |> Enum.join("、") |> blank_dash()}</td>
-            </tr>
-            <tr>
-              <th>{style_heading(@view)}</th>
-              <td>{Enum.join(@edge.from[:styles] || [], "、") |> blank_dash()}</td>
-              <td>{Enum.join(@edge.to[:styles] || [], "、") |> blank_dash()}</td>
-            </tr>
-          </tbody>
-        </table>
-        <p :if={shared_styles(@edge) != []} class="muted-note">
-          共通する様式: {Enum.join(shared_styles(@edge), "、")}
-        </p>
-        <p :if={@edge.kind == :influence and @edge.mutual} class="muted-note">
-          逆向き（{@edge.to.name} → {@edge.from.name}）の影響も書かれています。互いに影響し合った組です。
-        </p>
-        <p :if={@edge.kind == :influence and @edge.others != []} class="muted-note">
-          {@edge.to.name}の影響元はほかに: {Enum.join(@edge.others, "、")}
-        </p>
+          <table class="edge-compare">
+            <thead>
+              <tr>
+                <th></th>
+                <th>{@edge.from.name}</th>
+                <th>{@edge.to.name}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>年代</th>
+                <td>{@edge.from[:years] || "—"}</td>
+                <td>{@edge.to[:years] || "—"}</td>
+              </tr>
+              <tr :if={@view == "painters"}>
+                <th>地域</th>
+                <td>{regions_of(@edge.from) |> Enum.join("、") |> blank_dash()}</td>
+                <td>{regions_of(@edge.to) |> Enum.join("、") |> blank_dash()}</td>
+              </tr>
+              <tr>
+                <th>{style_heading(@view)}</th>
+                <td>{Enum.join(@edge.from[:styles] || [], "、") |> blank_dash()}</td>
+                <td>{Enum.join(@edge.to[:styles] || [], "、") |> blank_dash()}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p :if={shared_styles(@edge) != []} class="muted-note">
+            共通する様式: {Enum.join(shared_styles(@edge), "、")}
+          </p>
+          <p :if={@edge.kind == :influence and @edge.mutual} class="muted-note">
+            逆向き（{@edge.to.name} → {@edge.from.name}）の影響も書かれています。互いに影響し合った組です。
+          </p>
+          <p :if={@edge.kind == :influence and @edge.others != []} class="muted-note">
+            {@edge.to.name}の影響元はほかに: {Enum.join(@edge.others, "、")}
+          </p>
 
-        <p :if={@edge.kind == :director} class="muted-note">
-          どちらも<strong>{@edge.label}</strong>が監督した作品です（Wikipedia の分類から機械的に引いたもの）。
-        </p>
-        <p :if={@edge.kind == :costar} class="muted-note">
-          どちらも<strong>{@edge.label}</strong>が主演した作品です。
-        </p>
-        <%= if @edge.kind in [:spouse, :family, :duo, :group, :costar] do %>
-          <p class="muted-note">
-            <strong>AI が書いたものです。</strong> 確かめるには、それぞれの記事を読んでください。
+          <p :if={@edge.kind == :director} class="muted-note">
+            どちらも<strong>{@edge.label}</strong>が監督した作品です（Wikipedia の分類から機械的に引いたもの）。
           </p>
-        <% end %>
-        <%= if @edge.kind == :influence do %>
-          <p class="muted-note">
-            <strong>これは AI の判断です。</strong>
-            名簿・年代・様式・相互リンクは Wikipedia から機械的に引いていますが、 <strong>誰が誰から何を受けたのかは記事に書いていない</strong>ので引けません。
-            確かめるには、それぞれの記事を読んでください。
+          <p :if={@edge.kind == :costar} class="muted-note">
+            どちらも<strong>{@edge.label}</strong>が主演した作品です。
           </p>
+          <%= if @edge.kind in [:spouse, :family, :duo, :group, :costar] do %>
+            <p class="muted-note">
+              <strong>AI が書いたものです。</strong> 確かめるには、それぞれの記事を読んでください。
+            </p>
+          <% end %>
+          <%= if @edge.kind == :influence do %>
+            <p class="muted-note">
+              <strong>これは AI の判断です。</strong>
+              名簿・年代・様式・相互リンクは Wikipedia から機械的に引いていますが、 <strong>誰が誰から何を受けたのかは記事に書いていない</strong>ので引けません。
+              確かめるには、それぞれの記事を読んでください。
+            </p>
+          <% end %>
+          <%= if @edge.kind == :related do %>
+            <p class="muted-note">
+              これは Wikipedia から機械的に引いた線で、<strong>{related_not(@view)}ではありません</strong>。
+              <strong>片側だけのリンクは採りません</strong>
+              —— 有名な人は多くの記事から
+              名前を出されるので、片側で繋ぐと有名どうしが軒並み繋がって図が読めなくなります。
+              互いに名前を出している組だけを残しています。 <strong>何の関係かまでは、リンクの有無からは分かりません</strong>。
+            </p>
+          <% end %>
+          <ul class="edge-links">
+            <li :if={article_url(@edge.from)}>
+              <a href={article_url(@edge.from)} target="_blank" rel="noreferrer">
+                {@edge.from.name} を Wikipedia で見る
+              </a>
+            </li>
+            <li :if={article_url(@edge.to)}>
+              <a href={article_url(@edge.to)} target="_blank" rel="noreferrer">
+                {@edge.to.name} を Wikipedia で見る
+              </a>
+            </li>
+          </ul>
         <% end %>
-        <%= if @edge.kind == :related do %>
-          <p class="muted-note">
-            これは Wikipedia から機械的に引いた線で、<strong>{related_not(@view)}ではありません</strong>。
-            <strong>片側だけのリンクは採りません</strong>
-            —— 有名な人は多くの記事から
-            名前を出されるので、片側で繋ぐと有名どうしが軒並み繋がって図が読めなくなります。
-            互いに名前を出している組だけを残しています。 <strong>何の関係かまでは、リンクの有無からは分かりません</strong>。
-          </p>
-        <% end %>
-        <ul class="edge-links">
-          <li :if={article_url(@edge.from)}>
-            <a href={article_url(@edge.from)} target="_blank" rel="noreferrer">
-              {@edge.from.name} を Wikipedia で見る
-            </a>
-          </li>
-          <li :if={article_url(@edge.to)}>
-            <a href={article_url(@edge.to)} target="_blank" rel="noreferrer">
-              {@edge.to.name} を Wikipedia で見る
-            </a>
-          </li>
-        </ul>
       </section>
     </div>
 
@@ -1137,6 +1172,8 @@
         <%!-- その画家の短い説明（記事の冒頭）。**絵の説明だけが出て、描いた人の
              説明が出ないのは片手落ち** —— 押したのは画家のほう --%>
         <p :if={@detail[:summary]} class="artwork-extract">{@detail.summary}</p>
+        <%!-- 上映時間（映画の図。整理の回に AI が確かめて書く） --%>
+        <p :if={@detail[:runtime]} class="muted-note">上映時間 {@detail.runtime} 分</p>
 
         <%!-- Chiezo に入っているタグ。**どういう条件でこの人が名簿に入り、
              何が分かっているのか**が、ここを見ないと読み取れない --%>

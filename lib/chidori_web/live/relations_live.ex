@@ -59,6 +59,8 @@ defmodule ChidoriWeb.RelationsLive do
        # 押した画家の記事の先頭画像（自画像や写真）。nil / :loading / 見つかったもの / :none
        portrait: nil,
        edge: nil,
+       # 線の人の説明（映画の図の同じ監督・同じ主演の線。名前 → 説明 / :loading / :none）
+       edge_people: %{},
        style_filter: nil,
        # 見た作品を除いた図にしているか（見た印の数の横のボタン。ほかの絞り込みと重ねられる ——
        # 「見ていないホラー」のように、見ていない中から選びたい）。映画の図は隠した状態で開く
@@ -687,6 +689,21 @@ defmodule ChidoriWeb.RelationsLive do
     do: {:noreply, assign(socket, recent_runs: runs)}
 
   def handle_async(:recent_runs, _result, socket), do: {:noreply, socket}
+
+  # 線の人の説明。**開いている線の答えだけ受け取る**（続けて押すと、前の線の答えが後から届く）
+  def handle_async(:edge_people, {:ok, {names, texts}}, socket) do
+    case socket.assigns.edge do
+      %{people: people} when is_list(people) ->
+        if Enum.map(people, & &1.name) == names,
+          do: {:noreply, assign(socket, edge_people: texts)},
+          else: {:noreply, socket}
+
+      _other ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_async(:edge_people, {:exit, _reason}, socket), do: {:noreply, socket}
 
   def handle_async(:settings, {:ok, {:ok, loaded}}, socket),
     do: {:noreply, assign(socket, settings: loaded)}
@@ -1412,6 +1429,23 @@ defmodule ChidoriWeb.RelationsLive do
   end
 
   # 線の詳細（2 回目に押したとき）
+  # 映画の図の同じ監督・同じ主演の線は、**線ではなくその人を出す**（`edge_people/3`）。
+  # 線が言えるのは「2 本が同じ人の作品」だけで、知りたいのはその人のほう
+  defp open_edge(socket, %{value: _} = edge, nodes, from, to, kind)
+       when kind in [:director, :costar] do
+    people = edge_people(socket.assigns.relation, edge, kind)
+
+    socket
+    |> assign(
+      edge: %{from: nodes[from], to: nodes[to], label: edge.label, kind: kind, people: people},
+      edge_people: Map.new(people, &{&1.name, :loading}),
+      detail: nil,
+      artwork: nil,
+      portrait: nil
+    )
+    |> start_async(:edge_people, fn -> {Enum.map(people, & &1.name), people_texts(people)} end)
+  end
+
   defp open_edge(socket, edge, nodes, from, to, kind) do
     edges = socket.assigns.relation.edges
 
@@ -1438,6 +1472,45 @@ defmodule ChidoriWeb.RelationsLive do
       artwork: nil,
       portrait: nil
     )
+  end
+
+  @doc """
+  線が結ぶ人（同じ監督・同じ主演。2 人の主演を共にする線は 2 人）。`[%{name, role, films}]`。
+  `films` はその人の図にある作品（`[{見出し, 公開年}]`。新しい順）。
+  """
+  def edge_people(relation, edge, kind) do
+    {role, prefix} = if kind == :director, do: {"監督", "監督"}, else: {"主演", "主演"}
+
+    for value <- edge[:values] || [edge.value] do
+      films =
+        for node <- relation.nodes || [],
+            "#{prefix}:#{value}" in (node[:tags] || []),
+            do: {node.name, node[:years]}
+
+      %{
+        name: value,
+        role: role,
+        films: Enum.sort_by(films, fn {_name, years} -> years || "" end, :desc)
+      }
+    end
+  end
+
+  # 線の人の説明（日本語版 Wikipedia の冒頭。Chiezo の jawiki から引く。引けなければ :none）
+  defp people_texts(people) do
+    base = Chidori.Chiezo.base_url()
+
+    Map.new(people, fn %{name: name} ->
+      text =
+        with base when is_binary(base) <- base,
+             {:ok, %{"opening" => opening}} when is_binary(opening) and opening != "" <-
+               Chidori.Chiezo.doc(base, "jawiki", name, "title,opening") do
+          opening
+        else
+          _none -> :none
+        end
+
+      {name, text}
+    end)
   end
 
   @doc """
