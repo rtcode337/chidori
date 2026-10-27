@@ -1,6 +1,6 @@
 // 関連図の操作。**共通の仕組み**（`./pan_zoom`）に、この図だけの事情を足したものです。
 //
-// 足しているのは 6 つ ——
+// 足しているのは 7 つ ——
 //
 //   ・年代と地域の札を画面の端に留める（図と一緒に流すと、少し引きずっただけで
 //     年表が画面の外へ出て、いま何時代を見ているのか読めなくなる）
@@ -8,6 +8,7 @@
 //   ・探して選んだ人を真ん中に置く（倍率は変えない）
 //   ・札を目立たせている間に余白を押したら、目立たせるのをやめる
 //   ・札のすぐ近くの押し込みは、線より札を押したことにする
+//   ・地域の札は下端に留め、図の上下は道具の段と地域の札のぶん空ける（`insets`）
 //   ・全画面の中で詳細を開いたら、詳細が見える形の全画面に切り替える
 import {panZoom} from "./pan_zoom"
 
@@ -15,9 +16,11 @@ import {panZoom} from "./pan_zoom"
 const LABEL_INSET = 8
 const LABEL_PX = 11
 
-// 帯の名前を貼り付ける高さ。**探す欄と道具の下**に出す —— 同じ高さに置くと、
-// 左端の帯の名前が探す欄の裏に入って読めない
-const LABEL_TOP = 52
+// 全画面のとき、図に重ねた道具の段と図の上端のあいだ（px）
+const BAR_GAP = 6
+
+// 帯の名前（「日本」と本数の 2 行）が取る高さ（px）。図の下にこのぶん空ける
+const LABEL_BAND = 2 * LABEL_PX + 6
 
 // 見ている範囲を知らせるまでの落ち着き待ち（ミリ秒）。引きずっている最中に
 // 毎フレーム送ると、往復のたびに描き直しが挟まってかえって固まる
@@ -42,10 +45,14 @@ export default panZoom({
   // 下のほうが器からはみ出して全体が見えなかった
   minScale: 0.02,
   fitFloor: true,
+  // 全画面では高さいっぱいに広げる（縦長の画面で、幅に合わせたままだと下が大きく余った）
+  fillOnFullscreen: true,
+  // 普段は道具の段を図の外（器の中の上）に置くので、器ではなく図の大きさで測る
+  measureSvg: true,
   maxScale: MAX_SCALE,
 
   // 探す欄と道具の上では図を動かさない（字を打つ口・選ぶ口なので）
-  skip: "[data-zoom], .relation-tools, .relation-find",
+  skip: "[data-zoom], .relation-bar, .relation-hint",
 
   started() {
     // 探して選んだ人を真ん中へ。**倍率は変えない**（いま見ている広さのまま、選んだ札を真ん中に置く）。
@@ -76,6 +83,9 @@ export default panZoom({
   // 押すたびに全画面へ飛ぶのは邪魔なだけ（ボタンからは PC でも入れる）。
   // 丸を押したときは代表作が開くので邪魔しない
   tapped(ev) {
+    // **図の外（道具の段・案内）の押し込みは図の操作にしない**（段は器の中にあるので、ここへ届く。
+    // 探す欄を押しただけで全画面へ飛んでいた）
+    if (!this.svg || !this.svg.contains(ev.target)) { return }
     // **札のすぐ近くの押し込みは札を押したことにする。** 線の当たり判定は指で触る画面では 34px あり、
     // 線は札の真ん中へ入っていくので、小さな札の縁を押すと線の側に取られる（1 回目で立たせた札の
     // 線が、2 回目の押し込みを横取りして詳細が開かなかった）
@@ -118,7 +128,21 @@ export default panZoom({
     return best
   },
 
-  // 年代の札を画面の左端に、帯の名前を上端に留める。
+  // 図の端に空ける幅（px）。**上は図に重ねた探す欄の段の下**（全画面のとき。普段は段が図の外にあるので 0）、
+  // **下は帯の名前**（下端に貼り付ける）。図の端の札が道具や帯の名前の裏に入らないように
+  // **右は、全画面の狭い画面で道具を右端に縦に並べたときだけ**、その幅（右上の札がボタンの裏に入った）
+  insets() {
+    const frame = this.frameBox()
+    const full = this.el.classList.contains("is-full")
+    const bar = full && this.el.querySelector(".relation-find")
+    const tools = full && this.el.querySelector(".relation-tools")
+    const top = bar ? Math.max(0, bar.getBoundingClientRect().bottom - frame.top + BAR_GAP) : 0
+    const column = tools && getComputedStyle(tools).flexDirection === "column"
+    const right = column ? Math.max(0, frame.right - tools.getBoundingClientRect().left + BAR_GAP) : 0
+    return {top, bottom: LABEL_BAND + LABEL_INSET, right}
+  },
+
+  // 年代の札を画面の左端に、帯の名前を下端に留める。
   //
   // **縦（年代）と横（地域）は図と一緒に動かす** —— そこがずれたら軸の意味が無い。
   // 留めるのは反対側だけ。字の大きさは倍率で割り戻して、拡大しても同じ大きさに見せる
@@ -137,7 +161,9 @@ export default panZoom({
 
     const top = this.svg.querySelector("[data-pinned-top]")
     if (top) {
-      top.setAttribute("transform", `translate(0, ${view.y + LABEL_TOP / view.ppu})`)
+      // 2 行目（本数）の下端が下から LABEL_INSET px に来るように、1 行目の位置を決める
+      const baseline = view.h * view.ppu - LABEL_INSET - LABEL_PX * 1.4
+      top.setAttribute("transform", `translate(0, ${view.y + baseline / view.ppu})`)
       top.style.fontSize = `${LABEL_PX / view.ppu}px`
     }
   },

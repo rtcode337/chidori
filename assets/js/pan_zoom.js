@@ -2,12 +2,13 @@
 // —— 図ごとに操作が違うと、画面を移るたびに覚え直すことになります。
 //
 // 図ごとの事情は `panZoom({...})` で足します（関連図は `relation_map.js`）。
-// 足せる口は 4 つ ——
+// 足せる口は 5 つ ——
 //
 //   started()    起き上がったあと（サーバーからの知らせを受ける口を開けるなど）
 //   painted()    当て直したあと（札を画面へ留める、見ている範囲を知らせる）
 //   tapped(ev)   引きずりでも道具でもない押し込み
 //   stopped()    片付け
+//   insets()     図の上下に空ける高さ（px。重ねた道具・貼り付けた札にかぶらないように）
 //
 // **素のホイールは横取りしません。** 図はページの中に埋まっているので、素で拡大に
 // すると、読み進めようとスクロールしただけで図が動いてページが進まなくなります。
@@ -39,6 +40,12 @@ const base = {
   // 図（関連図）で使う。縦に長い図では全体表示が 1 倍より小さくなるので、
   // 決まった値を下限にすると、開いたときに全体が収まらない
   fitFloor: false,
+  // 全画面に入ったら、高さいっぱいに図を合わせる（はみ出す横は引きずって見る）。
+  // 付けない図は、全画面に入っても今の倍率のまま
+  fillOnFullscreen: false,
+  // 倍率と位置を、器ではなく図（svg）の大きさで測る。器の中に図の外の段（道具など）を
+  // 置く図で使う。付けない図は器で測る（図が器いっぱい）
+  measureSvg: false,
 
   // ここから始まった引きずりは図を動かさない（押す口・入力の口がこれに当たる）
   skip: "[data-zoom]",
@@ -53,6 +60,9 @@ const base = {
   painted() {},
   tapped() {},
   stopped() {},
+  // 図の端に空ける幅（px。`{top, bottom, right}`）。図の上に重ねた道具や貼り付けた札に、図の端の
+  // 札がかぶらないように、引きずって端まで寄せてもその内側に止める
+  insets() { return {top: 0, bottom: 0, right: 0} },
 
   mounted() {
     this.scale = 1
@@ -81,6 +91,7 @@ const base = {
     if (this.faux && !this.el.classList.contains("faux-fullscreen")) {
       this.el.classList.add("faux-fullscreen")
     }
+    this.markFull()
     // 描き直されると svg の要素が入れ替わるので、持ち直してから当て直す
     this.svg = this.el.querySelector(":scope > svg")
     const now = this.svg && this.svg.getAttribute("viewBox")
@@ -105,6 +116,25 @@ const base = {
     return this.fitFloor && this.fitted > 0 ? Math.min(this.fitted, 1) : this.minScale
   },
 
+  // 図を映している枠の大きさ（`measureSvg` なら svg、そうでなければ器）
+  frameBox() {
+    const target = this.measureSvg && this.svg ? this.svg : this.el
+    return target.getBoundingClientRect()
+  },
+
+  // 端に空ける幅を、枠の半分までに抑えたもの
+  margins(box) {
+    const {top = 0, bottom = 0, right = 0} = this.insets() || {}
+    const within = (v, size) => Math.max(0, Math.min(v, size / 2))
+    return {top: within(top, box.height), bottom: within(bottom, box.height), right: within(right, box.width)}
+  },
+
+  // 全画面かを器の印（`is-full`）にも出す。**描き直しで消える**ので、当て直すたびに付け直す
+  markFull() {
+    const full = this.inFullscreen() || document.documentElement.classList.contains("in-frame-fullscreen")
+    this.el.classList.toggle("is-full", full)
+  },
+
   // いまの viewBox（`[x, y, 幅, 高さ]`）。読めなければ null
   viewBox() {
     const view = (this.svg && this.svg.getAttribute("viewBox") || "").split(/\s+/).map(parseFloat)
@@ -124,7 +154,7 @@ const base = {
       this.ty = 0
       this.scale = 1
     }
-    const box = this.el.getBoundingClientRect()
+    const box = this.frameBox()
     const ppu = this.perUnit(box)
     if (!(ppu > 0)) { return }
     // 器に映る範囲を、図の座標で書き直す。**寄るほど狭くなる** —— 描き直されるので
@@ -164,7 +194,7 @@ const base = {
   // **SVG に offsetWidth は使えない。** SVGElement は HTMLElement ではないので
   // 値が undefined になり、掛けた先が NaN になって見え方ごと壊れる。
   metrics() {
-    const box = this.el.getBoundingClientRect()
+    const box = this.frameBox()
     const [, , vw, vh] = this.base || [0, 0, 0, 0]
     const width = box.width
     const height = vw > 0 && vh > 0 ? width * (vh / vw) : box.height
@@ -174,9 +204,18 @@ const base = {
   range() {
     const {box, width, height} = this.metrics()
     if (!isFinite(width) || !isFinite(height)) { return null }
+    // **上下の端は空ける高さの内側までしか寄せない**（`insets`）—— 図の端の札が、図の上に重ねた
+    // 道具や貼り付けた札の裏に入って読めなかった
+    const {top, bottom, right} = this.margins(box)
+    const room = box.height - top - bottom
     return {
-      x: width <= box.width ? centre(box.width - width) : [box.width - width, 0],
-      y: height <= box.height ? centre(box.height - height) : [box.height - height, 0],
+      // 右に空ける図は、右端をその内側まで寄せられる（右に重ねた道具の裏の札を出せる）
+      x: width <= box.width - right ? centre(box.width - right - width) : [box.width - right - width, 0],
+      // 上下を空ける図は、余りを下にまとめて上の道具のすぐ下に寄せる（真ん中に置くと、全画面で
+      // 道具と図のあいだに余りの半分が空いて、画面を使い切れなかった）
+      y: height <= room
+        ? (top > 0 ? [top, top] : centre(room - height).map((v) => v + top))
+        : [box.height - bottom - height, top],
     }
   },
 
@@ -221,7 +260,7 @@ const base = {
   zoomAt(factor, clientX, clientY) {
     const next = Math.min(this.maxScale, Math.max(this.lowest(), this.scale * factor))
     if (next === this.scale) { return }
-    const box = this.el.getBoundingClientRect()
+    const box = this.frameBox()
     const px = clientX - box.left
     const py = clientY - box.top
     const ratio = next / this.scale
@@ -235,7 +274,7 @@ const base = {
   // 図の座標 (x, y) を器の真ん中に置く。**倍率は器の大きさを知っている側で決める**
   // —— 何 px の器に映しているかはサーバーからは見えない
   centerOn(x, y, least) {
-    const box = this.el.getBoundingClientRect()
+    const box = this.frameBox()
     if (!(this.perUnit(box) > 0)) { return }
     this.scale = Math.min(this.maxScale, Math.max(this.scale, least || this.scale))
     const ppu = this.perUnit(box)
@@ -247,7 +286,7 @@ const base = {
 
   // 全体を見せる。**器に収まる倍率**まで縮めて、真ん中に置く
   fit() {
-    const box = this.el.getBoundingClientRect()
+    const box = this.frameBox()
     const [, , vw, vh] = this.base || [0, 0, 0, 0]
     this.scale = 1
     this.tx = 0
@@ -255,11 +294,34 @@ const base = {
 
     if (vw > 0 && vh > 0 && box.width > 0 && box.height > 0) {
       const height = box.width * (vh / vw)
-      this.scale = Math.max(this.minScale, Math.min(1, box.height / height))
+      // 上下を空けた高さに収まる倍率（`insets`）
+      const {top, bottom} = this.margins(box)
+      const room = box.height - top - bottom
+      this.scale = Math.max(this.minScale, Math.min(1, room / height))
     }
     // 全体表示の倍率を覚える（`fitFloor` の図ではこれが縮める下限になる）
     this.fitted = this.scale
 
+    this.clamp()
+    this.apply()
+  },
+
+  // 画面いっぱいに合わせる（`fillOnFullscreen`）。**幅いっぱいと高さいっぱいの大きいほう** ——
+  // 縦長の画面では高さに、横長の画面では幅に合わせ、はみ出すほうは引きずって見る（全体が収まる
+  // 倍率にすると、どちらかの向きに大きな余白が残る）。横にはみ出したぶんは真ん中に置く
+  fill() {
+    this.fit()
+    const box = this.frameBox()
+    const [, , vw, vh] = this.base || [0, 0, 0, 0]
+    if (!(vw > 0 && vh > 0 && box.width > 0 && box.height > 0)) { return }
+    const {top, bottom} = this.margins(box)
+    const room = box.height - top - bottom
+    const height = box.width * (vh / vw)
+    this.scale = Math.min(this.maxScale, Math.max(1, room / height))
+    const {width} = this.metrics()
+    // 右を空ける図は、空けた幅を除いた真ん中に置く（右に重ねた道具に、最初から札がかぶらないように）
+    this.tx = (box.width - this.margins(box).right - width) / 2
+    this.ty = top
     this.clamp()
     this.apply()
   },
@@ -417,7 +479,7 @@ const base = {
         return
       }
       ev.preventDefault()
-      const box = this.el.getBoundingClientRect()
+      const box = this.frameBox()
       const middle = [box.left + box.width / 2, box.top + box.height / 2]
       const how = button.dataset.zoom
       if (how === "in") { this.zoomAt(1.4, ...middle) }
@@ -427,7 +489,17 @@ const base = {
     }
 
     // 全画面に入る・出ると器の大きさが変わるので、はみ出しを測り直す
-    this.onFullscreen = () => { this.clamp(); this.apply() }
+    // **全画面に入ったら測り直す**（`fillOnFullscreen`）。今の倍率のまま広げると、器の幅に
+    // 合わせた倍率のままなので、縦長の画面では下に大きな余りが残って画面を使い切れなかった
+    this.onFullscreen = () => {
+      this.markFull()
+      if (this.fillOnFullscreen) {
+        this.inFullscreen() ? this.fill() : this.fit()
+        return
+      }
+      this.clamp()
+      this.apply()
+    }
 
     // **子より先に受け取る**（capture）—— 図の要素が握っていても、引きずりは
     // 画面移動として先に効く

@@ -126,64 +126,67 @@
         aria-label={@relation.title}
         id={"relation-canvas-#{@view}"}
         phx-hook="RelationMap"
-        style={canvas_style(@relation, shown)}
       >
         <%!-- 行き先を選ぶ口。**名前で探す**のと、**前に見た印から選ぶ**のを並べて置く ——
            名前を思い出せないときに使うのが後者なので、探す欄の中には入れられない --%>
         <% seen = seen_options(@relation, @marks) %>
-        <div class="relation-find">
-          <form
-            id={"relation-search-#{@view}"}
-            class="relation-search"
-            phx-change="search"
-            phx-submit="search"
-            autocomplete="off"
-          >
-            <input
-              type="search"
-              name="q"
-              value={@query}
-              placeholder={"#{unit_of(@view)}を探す"}
-              aria-label={"#{unit_of(@view)}を探す"}
-            />
-            <button
-              :if={@query != ""}
-              type="button"
-              phx-click="clear_search"
-              aria-label="検索をやめる"
+        <%!-- **道具の段。** 普段は図の外（器の中の上）に置き、全画面では図の上に重ねる
+           （図に重ねたままだと、狭い画面でボタンが重なり、いちばん上の札が裏に入った） --%>
+        <div class="relation-bar">
+          <div class="relation-find">
+            <form
+              id={"relation-search-#{@view}"}
+              class="relation-search"
+              phx-change="search"
+              phx-submit="search"
+              autocomplete="off"
             >
-              ×
-            </button>
-            <ul :if={@matches != []} class="relation-matches">
-              <li :for={match <- @matches}>
-                <button type="button" phx-click="focus" phx-value-name={match.name}>
-                  {match.name}
-                  <span :if={match.years} class="match-years">{match.years}</span>
-                </button>
-              </li>
-            </ul>
-          </form>
-          <form
-            :if={seen != []}
-            id={"relation-seen-#{@view}"}
-            class="relation-seen"
-            phx-change="focus_marked"
-          >
-            <select name="name" aria-label={"見た#{unit_of(@view)}を探す"}>
-              <%!-- 先頭は行き先ではなく口の名前。**選ばれている行き先が分かる**ように、
+              <input
+                type="search"
+                name="q"
+                value={@query}
+                placeholder={"#{unit_of(@view)}を探す"}
+                aria-label={"#{unit_of(@view)}を探す"}
+              />
+              <button
+                :if={@query != ""}
+                type="button"
+                phx-click="clear_search"
+                aria-label="検索をやめる"
+              >
+                ×
+              </button>
+              <ul :if={@matches != []} class="relation-matches">
+                <li :for={match <- @matches}>
+                  <button type="button" phx-click="focus" phx-value-name={match.name}>
+                    {match.name}
+                    <span :if={match.years} class="match-years">{match.years}</span>
+                  </button>
+                </li>
+              </ul>
+            </form>
+            <form
+              :if={seen != []}
+              id={"relation-seen-#{@view}"}
+              class="relation-seen"
+              phx-change="focus_marked"
+            >
+              <select name="name" aria-label={"見た#{unit_of(@view)}を探す"}>
+                <%!-- 先頭は行き先ではなく口の名前。**選ばれている行き先が分かる**ように、
                寄っているものはそのまま選ばれた状態で残す --%>
-              <option value="">見た{unit_of(@view)}（{length(seen)}）</option>
-              <option :for={{name, label} <- seen} value={name} selected={@query == name}>
-                {label}
-              </option>
-            </select>
-          </form>
-        </div>
-        <div class="relation-tools">
-          <button type="button" data-zoom="in" aria-label="拡大">＋</button>
-          <button type="button" data-zoom="out" aria-label="縮小">−</button>
-          <button type="button" data-zoom="reset" aria-label="全体を表示">全体</button>
-          <ChidoriWeb.FullscreenButton.fullscreen_button />
+                <option value="">見た{unit_of(@view)}（{length(seen)}）</option>
+                <option :for={{name, label} <- seen} value={name} selected={@query == name}>
+                  {label}
+                </option>
+              </select>
+            </form>
+          </div>
+          <div class="relation-tools">
+            <button type="button" data-zoom="in" aria-label="拡大">＋</button>
+            <button type="button" data-zoom="out" aria-label="縮小">−</button>
+            <button type="button" data-zoom="reset" aria-label="全体を表示">全体</button>
+            <ChidoriWeb.FullscreenButton.fullscreen_button />
+          </div>
         </div>
         <%!-- 案内は端末で変える。押しても全画面にならない PC に「押すと全画面」と
            書くと嘘になる（全画面はボタンからいつでも入れる） --%>
@@ -199,6 +202,7 @@
         <svg
           :if={!@relation[:sample?]}
           viewBox={"0 0 #{shown.width} #{shown.height}"}
+          style={canvas_style(@relation, shown)}
           role="img"
           aria-label={shown.title}
         >

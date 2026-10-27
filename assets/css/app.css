@@ -274,11 +274,23 @@ main.relations-page > div { padding-top: 0; }
 /* **幅は決め打ちにする**（`width: 100%`）。図の縦横比（`aspect-ratio`。描くときに付く）と
    `min-height` が両方効くと、幅が auto のままでは最低の高さから幅が逆算され、縦長の図
    （芸能人のつながり）は狭い画面で枠ごと右へはみ出していた */
-.relation-canvas { position: relative; overflow: hidden; width: 100%; margin-bottom: 1.5rem; height: auto; min-height: 28rem; border: 1px solid #e4e7f0; border-radius: 1.5rem; background: radial-gradient(circle at 45% 25%, #ffffff 0, #fafafe 42%, #eef0f9 100%); box-shadow: 0 14px 32px rgba(31, 41, 55, .08); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.relation-canvas { position: relative; display: flex; flex-direction: column; overflow: hidden; width: 100%; margin-bottom: 1.5rem; height: auto; border: 1px solid #e4e7f0; border-radius: 1.5rem; background: radial-gradient(circle at 45% 25%, #ffffff 0, #fafafe 42%, #eef0f9 100%); box-shadow: 0 14px 32px rgba(31, 41, 55, .08); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 /* **器いっぱいに置く** —— 拡大は viewBox を動かして行うので、要素の大きさは変えない。
    映す範囲は器と同じ縦横比で切り出すので、縦長の図が潰れることはない
    （図は器より高いので、はみ出したぶんは引きずって見る） */
-.relation-canvas > svg { display: block; width: 100%; height: 100%; }
+/* 縦横比は図（svg）が持つ（`canvas_style/2`）。器は「道具の段 → 図 → 案内」の縦並び */
+.relation-canvas > svg { order: 1; flex: none; display: block; width: 100%; height: auto; min-height: 20rem; }
+.relation-canvas > .canvas-empty { order: 1; min-height: 20rem; }
+/* 道具の段。**普段は図の外**（器の中の上）に置く —— 図に重ねると、狭い画面でボタンが重なり、
+   いちばん上の札が段の裏に入った。全画面では図の上に重ねる（下の is-full） */
+.relation-bar { order: 0; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: .4rem; padding: .6rem .75rem; border-bottom: 1px solid #eceef6; background: rgba(255, 255, 255, .75); cursor: default; }
+/* 全画面。図を画面いっぱいに描き、道具の段はその上に重ねる（図の上下は `relation_map.js` の
+   `insets` で空け、端の札が段や帯の名前の裏に入らないようにする）。下の案内は出さない */
+.relation-canvas.is-full { display: block; }
+.relation-canvas.is-full > svg { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; }
+.relation-canvas.is-full .relation-bar { position: absolute; top: .75rem; left: .75rem; right: .75rem; z-index: 3; padding: 0; border: 0; background: none; pointer-events: none; }
+.relation-canvas.is-full .relation-bar > * { pointer-events: auto; }
+.relation-canvas.is-full .relation-hint { display: none; }
 .relation-canvas:active { cursor: grabbing; }
 .relation-canvas:fullscreen { height: 100vh; aspect-ratio: auto; border: 0; border-radius: 0; }
 /* 全画面が使えない端末（iOS の Safari は動画以外を全画面にできない）向けの代替。
@@ -291,6 +303,20 @@ main.relations-page > div { padding-top: 0; }
   .relation-tools button { padding: .5rem .8rem; font-size: .9rem; }
   .relation-search input { width: 8.5rem; }
 }
+/* **器が狭いとき**は、探す欄と見た作品の選ぶ口を幅に合わせて縮める（折り返してよい）。
+   全画面では操作の口を右端に縦に並べ、探す欄はその左に収める —— 横 1 段に重ねると、
+   スマホの幅では「見た作品」の選ぶ口が拡大・縮小のボタンの上に重なって押せなかった。
+   画面の幅ではなく器の幅で見る（全画面にしたときと埋め込みで幅が違う） */
+.relation-canvas { container-type: inline-size; }
+@container (max-width: 640px) {
+  .relation-find { flex: 1 1 14rem; min-width: 0; }
+  .relation-search { flex: 1 1 8rem; min-width: 0; }
+  .relation-search input { width: 100%; min-width: 0; }
+  .relation-seen { flex: 1 1 8rem; min-width: 0; }
+  .relation-seen select { width: 100%; max-width: none; }
+  .relation-canvas.is-full .relation-tools { position: absolute; top: 0; right: 0; flex-direction: column; align-items: stretch; }
+  .relation-canvas.is-full .relation-find { margin-right: 4.6rem; }
+}
 
 /* いつ読んだか と 取り直す口。**開くたびには取りに行かない**ので、
    いま見ているものの古さがここで読める */
@@ -301,7 +327,7 @@ main.relations-page > div { padding-top: 0; }
 .relation-checked button.is-loading::before { content: ""; display: inline-block; width: .8em; height: .8em; margin-right: .4em; vertical-align: -.1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: download-spin .8s linear infinite; }
 
 /* 行き先を選ぶ口。操作の口と同じく図の上に重ねる（全画面でも一緒に出したい） */
-.relation-find { position: absolute; top: .75rem; left: .75rem; z-index: 3; display: flex; flex-wrap: wrap; align-items: flex-start; gap: .3rem; }
+.relation-find { position: relative; z-index: 3; display: flex; flex-wrap: wrap; align-items: flex-start; gap: .3rem; }
 .relation-search { position: relative; display: flex; align-items: center; gap: .3rem; }
 /* 見た印から選ぶ。**探す欄と同じ見た目**にする —— どちらも行き先を決める口なので、
    片方だけ器の作りが違うと、別の機能に見える */
@@ -367,10 +393,10 @@ main.relations-page > div { padding-top: 0; }
 @media (prefers-reduced-motion: reduce) { .relation-node.focused .focus-ring { animation: none; opacity: .8; } }
 
 /* 操作の口。図の上に重ねる（図の外に置くと、全画面のときに一緒に出せない） */
-.relation-tools { position: absolute; top: .75rem; right: .75rem; z-index: 2; display: flex; gap: .35rem; }
+.relation-tools { position: relative; z-index: 2; display: flex; gap: .35rem; margin-left: auto; }
 .relation-tools button { padding: .3rem .7rem; border: 1px solid #dcdff0; border-radius: .6rem; background: rgba(255, 255, 255, .92); color: #3b4463; font-size: .78rem; font-weight: 700; box-shadow: 0 2px 6px rgba(31, 41, 55, .08); }
 .relation-tools button:hover { border-color: #a9a2e6; color: #4338a8; }
-.relation-hint { position: absolute; left: .9rem; bottom: .7rem; z-index: 2; margin: 0; color: #8a93ad; font-size: .72rem; }
+.relation-hint { order: 2; margin: 0; padding: .35rem .9rem .55rem; color: #8a93ad; font-size: .72rem; }
 /* 指で触る画面でだけ出す案内。**幅ではなく入力の種類で分ける**（窓を狭くした PC を
    スマホ扱いしない）。フックの touchLike() と同じ条件にそろえてある */
 .only-touch { display: none; }
