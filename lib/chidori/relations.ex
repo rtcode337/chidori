@@ -997,7 +997,7 @@ defmodule Chidori.Relations do
 
   defp with_attention(nodes, _key, _base_url), do: nodes
 
-  # 閲覧数の無い作品の、日本語版 Wikipedia の記事の閲覧数（作品名 → 月の閲覧数）。Chiezo の jawiki から
+  # 閲覧数の無い作品の、日本語版 Wikipedia の記事（作品名 → `%{views: 月の閲覧数, kind: 原作の種類か nil}`）。Chiezo の jawiki から
   # 1 本ずつ引く（8 本ずつ並べる）。**半日は覚えておく**（映画の図は開くたびに読むので、毎回引かない。
   # 閲覧数は月ごとの値で、Chiezo の取り込みが新しくなるまで変わらない）
   @wiki_views_ttl_ms 12 * 60 * 60_000
@@ -1005,7 +1005,7 @@ defmodule Chidori.Relations do
   defp wiki_views(nodes, base_url) do
     names = for node <- nodes, (node[:views] || 0) == 0, do: node.name
     now = System.monotonic_time(:millisecond)
-    cache = :persistent_term.get({__MODULE__, :wiki_views}, %{})
+    cache = :persistent_term.get({__MODULE__, :wiki_articles}, %{})
 
     fresh =
       for name <- names,
@@ -1020,16 +1020,21 @@ defmodule Chidori.Relations do
       missing
       |> Task.async_stream(
         fn name ->
-          case Chiezo.doc(base_url, "jawiki", name, "title,extra") do
-            {:ok, %{"extra" => %{"pageviews_month" => views}}} when is_integer(views) ->
-              {name, views}
+          # **1 文目も引く** —— 引き継いだ作品の記事名は、原作の記事への転送のことが多い（「映画〇〇」が
+          # 漫画の記事へ飛ぶ）。名簿の作品と同じ規則で原作の記事を見分け、閲覧数を割り引く（`Films.source_kind_of/1`）
+          case Chiezo.doc(base_url, "jawiki", name, "title,extra,opening") do
+            {:ok, doc} ->
+              views =
+                case doc["extra"] do
+                  %{"pageviews_month" => views} when is_integer(views) -> views
+                  _extra -> 0
+                end
 
-            {:ok, _doc} ->
-              {name, 0}
+              {name, %{views: views, kind: Films.source_kind_of(doc["opening"])}}
 
             # 引けなかった（つながらない）ものは覚えない（次に開いたときに引き直す）
             {:error, :not_found} ->
-              {name, 0}
+              {name, %{views: 0, kind: nil}}
 
             _error ->
               nil
@@ -1047,7 +1052,7 @@ defmodule Chidori.Relations do
 
     if looked != %{} do
       :persistent_term.put(
-        {__MODULE__, :wiki_views},
+        {__MODULE__, :wiki_articles},
         Map.merge(cache, Map.new(looked, fn {name, views} -> {name, {views, now}} end))
       )
     end

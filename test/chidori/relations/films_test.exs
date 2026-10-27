@@ -6,6 +6,8 @@ defmodule Chidori.Relations.FilmsTest do
 
   use ExUnit.Case, async: true
 
+  doctest Chidori.Relations.Films, only: [source_kind_of: 1]
+
   alias Chidori.Relations
   alias Chidori.Relations.Films
   alias Chidori.Relations.Graph
@@ -198,15 +200,18 @@ defmodule Chidori.Relations.FilmsTest do
             %{name: "名簿の作品", views: 0, tags: []},
             %{name: "閲覧数あり", views: 50, tags: ["注目度:高"]},
             %{name: "原作の漫画", views: 1000, tags: ["記事:漫画"]},
-            %{name: "原作の小説の新作", views: 0, tags: ["記事:小説", "記録:原作の小説の新作"]}
+            %{name: "原作の小説の新作", views: 0, tags: ["記事:小説", "記録:原作の小説の新作"]},
+            %{name: "転送の新作", views: 0, tags: ["記録:転送の新作"]}
           ]
 
       sized =
         nodes
         |> Films.with_new_film_views(%{"新作" => :high}, %{
-          "記事のある新作" => 4000,
-          "閲覧数あり" => 9,
-          "原作の小説の新作" => 600
+          "記事のある新作" => %{views: 4000, kind: nil},
+          "閲覧数あり" => %{views: 9, kind: nil},
+          "原作の小説の新作" => %{views: 600, kind: nil},
+          # 引き継いだ作品の記事名が、原作の漫画の記事へ転送されている
+          "転送の新作" => %{views: 2000, kind: "漫画"}
         })
         |> Map.new(&{&1.name, &1.views})
 
@@ -227,6 +232,9 @@ defmodule Chidori.Relations.FilmsTest do
       # 原作の記事の閲覧数は、漫画などは 2 割・小説は 5 割に（名簿の閲覧数でも、引いた記事の閲覧数でも）
       assert sized["原作の漫画"] == 200
       assert sized["原作の小説の新作"] == 300
+
+      # 引いた記事が原作の記事なら、その種類で割り引く（名簿を通らないのでタグは無い）
+      assert sized["転送の新作"] == 400
     end
 
     test "閲覧数の当てにならない作品は、AI の話題度があればそれで大きさを決める" do
@@ -244,7 +252,7 @@ defmodule Chidori.Relations.FilmsTest do
 
       sized =
         nodes
-        |> Films.with_new_film_views(%{}, %{"引き継いだ新作" => 90_000})
+        |> Films.with_new_film_views(%{}, %{"引き継いだ新作" => %{views: 90_000, kind: nil}})
         |> Map.new(&{&1.name, &1.views})
 
       # 基準は話題度で決める作品を除いた多い順で 5 番目（500）。話題度 8 は基準の 8 割の大きさ
@@ -300,6 +308,17 @@ defmodule Chidori.Relations.FilmsTest do
           ] do
         assert kind_of.(lead) == nil, lead
       end
+    end
+
+    test "1 文目の取り出し方は Chiezo の抽出と同じ" do
+      assert Films.lead_sentence("『君の名は。』（きみのなは。）は、日本の映画。続き。") == "『君の名は。』は、日本の映画"
+      assert Films.lead_sentence("A (B (C) D) E。F") == "A  E"
+      assert Films.lead_sentence("") == ""
+
+      table = "|-\n| colspan=\"2\" style=\"padding: 0;\"|\n映画\n|-\n\n『作品』は、日本の漫画。"
+      assert Films.lead_sentence(table) == "『作品』は、日本の漫画"
+      assert Films.source_kind_of(table) == "漫画"
+      assert Films.source_kind_of(nil) == nil
     end
 
     test "引き継ぐときに、最新の映画の注目度をタグに写させる" do

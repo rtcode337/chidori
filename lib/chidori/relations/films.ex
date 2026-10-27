@@ -371,7 +371,8 @@ defmodule Chidori.Relations.Films do
 
   @doc """
   **札の大きさに使う閲覧数を、日本語版 Wikipedia の記事に合わせて直します**（`Chidori.Relations` が図を読むときに、
-  大きさを付ける前に呼ぶ）。`wiki_views` は閲覧数の無い作品の作品名 → 記事の月の閲覧数（Chiezo の jawiki から引いたもの）。
+  大きさを付ける前に呼ぶ）。`wiki_views` は閲覧数の無い作品の作品名 → `%{views: 記事の月の閲覧数, kind: 原作の種類か nil}`
+  （Chiezo の jawiki から引いたもの。`kind` は記事の 1 文目から `source_kind_of/1`）。
 
   1. **原作の記事（`#{@source_work_prefix}:<原作の種類>` のタグ。名簿を引くときに機械が記事の 1 文目から付ける
      `source_work_pattern/0`）の閲覧数は、小説なら #{round(@source_work_shares["小説"] * 100)}%、漫画・ライトノベル・アニメ・ドラマ・
@@ -443,19 +444,30 @@ defmodule Chidori.Relations.Films do
     end)
   end
 
-  # 原作の記事の閲覧数を割り引き、閲覧数の無い作品には記事の閲覧数を入れる
-  defp with_wiki(node, views) do
-    views =
+  # 原作の記事の閲覧数を割り引き、閲覧数の無い作品には記事の閲覧数を入れる。引いた記事が原作の記事なら
+  # （引き継いだ作品の記事名が原作の記事へ転送されている）、そちらの種類でも割り引く
+  defp with_wiki(node, article) do
+    {views, article_kind} =
       cond do
-        (node[:views] || 0) > 0 -> node.views
-        is_integer(views) and views > 0 -> views
-        true -> 0
+        (node[:views] || 0) > 0 ->
+          {node.views, nil}
+
+        match?(%{views: v} when is_integer(v) and v > 0, article) ->
+          {article.views, article[:kind]}
+
+        true ->
+          {0, nil}
       end
 
     cond do
-      views == 0 -> node
-      kind = source_kind(node) -> Map.put(node, :views, max(round(views * share_of(kind)), 1))
-      true -> Map.put(node, :views, views)
+      views == 0 ->
+        node
+
+      kind = source_kind(node) || article_kind ->
+        Map.put(node, :views, max(round(views * share_of(kind)), 1))
+
+      true ->
+        Map.put(node, :views, views)
     end
   end
 
@@ -486,6 +498,93 @@ defmodule Chidori.Relations.Films do
 
     # 頭を欲張りにして、1 文目の最後に出てくる種類を捕まえる（「小説を原作とした漫画」は漫画）
     "(?s)^(?:(?!#{cut}).)*(#{source})(?:(?!#{film}|#{cut}).)*(?:(?:#{cut}).*)?$"
+  end
+
+  @doc """
+  記事の冒頭から、原作の記事ならその種類（`"小説"`・`"漫画"` など。名簿の `記事:` のタグと同じ名前）を、
+  映画の記事なら nil を返します。名簿の回に Chiezo が付けるタグと同じ規則（`source_work_pattern/0` を
+  `lead_sentence/1` の 1 文目に当てる）で、名簿を通らない引き継いだ作品に使う。
+
+      iex> Chidori.Relations.Films.source_kind_of("『ちいかわ』（ちいかわ）は、ナガノによる日本の漫画。2026年に映画化。")
+      "漫画"
+      iex> Chidori.Relations.Films.source_kind_of("『君の名は。』は、2016年公開の日本のアニメーション映画。")
+      nil
+  """
+  def source_kind_of(opening) when is_binary(opening) do
+    case Regex.run(Regex.compile!(source_work_pattern(), "u"), lead_sentence(opening)) do
+      [_ | [kind | _]] -> @source_kinds[kind]
+      _none -> nil
+    end
+  end
+
+  def source_kind_of(_opening), do: nil
+
+  # 1 文目の取り出し方は Chiezo の抽出（`extract.lead_sentence`）と同じにする —— 名簿の作品と引き継いだ作品で
+  # 見分け方がずれないように。括弧の中の句点で切らず（『君の名は。』）、丸括弧の中身と、冒頭に残った
+  # 情報欄の表の行（`|` で始まる行と、そのすぐ後ろの短い見出しの行）は除く
+  @lead_chars 400
+  @lead_pairs %{"『" => "』", "「" => "」", "【" => "】", "(" => ")", "（" => "）"}
+  @lead_dropped ["(", "（"]
+
+  @doc false
+  def lead_sentence(text) when is_binary(text) do
+    text
+    |> String.slice(0, @lead_chars * 8)
+    |> String.split("\n")
+    |> without_table_rows()
+    |> Enum.join("\n")
+    |> String.slice(0, @lead_chars * 4)
+    |> String.graphemes()
+    |> Enum.reduce_while({[], []}, &lead_char/2)
+    |> elem(0)
+    |> Enum.reverse()
+    |> Enum.join()
+    |> String.trim()
+    |> String.slice(0, @lead_chars)
+  end
+
+  defp lead_char(ch, {out, stack}) do
+    hidden? = Enum.any?(stack, &(&1 in @lead_dropped))
+
+    cond do
+      stack != [] and ch == @lead_pairs[hd(stack)] ->
+        [opener | rest] = stack
+        shown? = opener not in @lead_dropped and not Enum.any?(rest, &(&1 in @lead_dropped))
+        {:cont, {if(shown?, do: [ch | out], else: out), rest}}
+
+      Map.has_key?(@lead_pairs, ch) ->
+        {:cont, {if(hidden? or ch in @lead_dropped, do: out, else: [ch | out]), [ch | stack]}}
+
+      stack == [] and ch == "。" ->
+        {:halt, {out, stack}}
+
+      hidden? ->
+        {:cont, {out, stack}}
+
+      true ->
+        {:cont, {[ch | out], stack}}
+    end
+  end
+
+  defp without_table_rows(lines) do
+    lines
+    |> Enum.reduce({[], false}, fn line, {kept, after_row?} ->
+      bare = String.trim(line)
+
+      cond do
+        String.starts_with?(bare, ["|", "!", "{|"]) ->
+          {kept, true}
+
+        after_row? and bare != "" and String.length(bare) <= 20 and
+            not String.contains?(bare, ["。", "、"]) ->
+          {kept, true}
+
+        true ->
+          {[line | kept], after_row? and bare == ""}
+      end
+    end)
+    |> elem(0)
+    |> Enum.reverse()
   end
 
   defp source_work_rule,
