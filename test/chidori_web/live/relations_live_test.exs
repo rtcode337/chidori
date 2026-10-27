@@ -854,6 +854,22 @@ defmodule ChidoriWeb.RelationsLiveTest do
 
     defp graph(nodes), do: %{nodes: nodes, edges: []}
 
+    test "押した札はいちばん上（いちばん後ろ）に描く" do
+      # 置く順（drawn_nodes）では押した札が先頭だが、SVG は後に描いたものが上に重なる。
+      # 下にあると 2 回目の押し込みが重なった鎖の相手に取られる
+      nodes = [node("picked", 0, 0, 10), node("a", 1, 0, 10), node("b", 2, 0, 10)]
+
+      assert Enum.map(
+               RelationsLive.paint_order(nodes, %{id: "picked", near: MapSet.new()}),
+               & &1.id
+             ) ==
+               ["a", "b", "picked"]
+
+      # 線を選んでいるとき（id は無い）と何も選んでいないときは、そのまま
+      assert RelationsLive.paint_order(nodes, %{id: nil, near: MapSet.new()}) == nodes
+      assert RelationsLive.paint_order(nodes, nil) == nodes
+    end
+
     test "見えている範囲の外は描かない" do
       far = node("far", 5_000, 5_000, 30)
       near = node("near", 100, 100, 30)

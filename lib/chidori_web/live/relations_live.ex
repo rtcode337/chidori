@@ -431,7 +431,8 @@ defmodule ChidoriWeb.RelationsLive do
 
       # もう一度押したら詳細
       true ->
-        {:noreply, open_edge(socket, edge, nodes, from, to, kind)}
+        {:noreply,
+         socket |> open_edge(edge, nodes, from, to, kind) |> push_event("modal_open", %{})}
     end
   end
 
@@ -668,8 +669,11 @@ defmodule ChidoriWeb.RelationsLive do
     end
   end
 
+  # 詳細を開いたら図に知らせる（`modal_open`）。**本物の全画面の中では、全画面の要素の外は描かれない**ので、
+  # 図の側が器を広げる代わりの形の全画面に切り替える（`relation_map.js`）
   defp open_detail(socket, node) do
     socket
+    |> push_event("modal_open", %{})
     |> assign(detail: node, edge: nil, focus_sent: nil, mark_saved: nil)
     |> assign(star_people: star_people(socket.assigns.view, node))
     |> with_portrait(node)
@@ -1498,6 +1502,19 @@ defmodule ChidoriWeb.RelationsLive do
       must ++ Enum.take(rest, max(@max_drawn - length(must), 0))
     end)
   end
+
+  @doc """
+  札を描く順。**押した札（`pick`）をいちばん後ろ = いちばん上に**描きます。`drawn_nodes/3` は押した札を
+  先頭に置く（置く順が場所を取る順なので）が、SVG は後に描いたものが上に重なる。押した札の鎖の相手は
+  重なっても描くので、押した札が下にあると、2 回目の押し込みが上に重なった相手に取られて詳細が開かなかった
+  （引いて見ているスマホで起きやすい）。
+  """
+  def paint_order(nodes, %{id: id}) do
+    {picked, rest} = Enum.split_with(nodes, &(&1.id == id))
+    rest ++ picked
+  end
+
+  def paint_order(nodes, _pick), do: nodes
 
   # 夫婦の組（id → 相手の id の並び）。夫婦の線を持たない図では空
   defp couples(relation) do

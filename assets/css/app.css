@@ -478,7 +478,8 @@ main.relations-page > div { padding-top: 0; }
   pointer-events: none;
 }
 
-.artwork-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 1.5rem; background: rgba(24, 22, 51, .55); }
+/* 詳細は**図の全画面（z-index 60）より手前**に出す —— 全画面の図から開いたとき、図の裏に隠れて見えなかった */
+.artwork-backdrop { position: fixed; inset: 0; z-index: 65; display: flex; align-items: center; justify-content: center; padding: 1.5rem; background: rgba(24, 22, 51, .55); }
 .artwork { margin: 0; width: min(34rem, 100%); max-height: 86vh; overflow-y: auto; padding: 1rem 1.2rem; border: 1px solid #dedcf5; border-radius: 1rem; background: #f8f8ff; box-shadow: 0 1.4rem 3rem rgba(24, 22, 51, .3); }
 .artwork-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .artwork-head strong { color: #332c75; }
