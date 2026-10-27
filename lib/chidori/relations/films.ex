@@ -63,6 +63,17 @@ defmodule Chidori.Relations.Films do
   # 線を組む材料（値は主演の日本語版 Wikipedia の記事名。AI が書く）
   @star_prefix "主演"
 
+  # 原作の記事を指す作品の閲覧数の割引（`with_new_film_views/3`）。記事の閲覧数は原作・アニメ・映画の合計で、
+  # 映画の分は原作の種類で違う。**小説は映画で知られることが多く**（映画化で読まれる）、**漫画・ライトノベル・
+  # アニメ・ドラマは原作やテレビの人気で読まれ、映画はその後に作られることが多い**。率は目安で、AI の話題度が
+  # 入れば使わない
+  @source_work_shares %{"小説" => 0.5}
+  @source_work_share 0.2
+  # 映画としての話題度（1〜10）を AI が書く脇書きの鍵（`fame_rule/0`・`with_new_film_views/3`）
+  @fame_level_key "fame_level"
+  # 名簿が原作の記事を指している作品の印（`記事:<原作の種類>`。機械が記事の 1 文目から付ける `source_work_rule/0`）
+  @source_work_prefix "記事"
+
   # 見た記録の見出し（引き継いだ作品の、最新情報や画面で書いたときの見出し）
   @record_prefix "記録"
 
@@ -342,6 +353,7 @@ defmodule Chidori.Relations.Films do
       （監督の日本語版 Wikipedia の記事名。記事の無い監督は書かない）を付けてください
     - 上で「注目度」が書いてある作品には、"#{@attention_prefix}:<高・中・低>" のタグも付けてください（書いてあるとおりに写す。
       図の札の大きさに使います —— 新しい作品は Wikipedia の閲覧数がまだ無いため）
+    - 足す作品にも、既にある作品として返す作品にも、#{fame_rule()}
 
     #{stars_rule()}
     返す形は次のとおりです。
@@ -358,38 +370,54 @@ defmodule Chidori.Relations.Films do
   defp attention_word(_level), do: nil
 
   @doc """
-  **閲覧数の無い作品の大きさを決めます**（`Chidori.Relations` が図を読むときに、大きさを付ける前に呼ぶ）。
-  最新の映画から引き継いだ作品や手で足した作品は、名簿を引く回で閲覧数が運ばれないので、
-  閲覧数 0 のいちばん小さい札になっていた（月 40 万の閲覧がある作品まで）。
+  **札の大きさに使う閲覧数を、日本語版 Wikipedia の記事に合わせて直します**（`Chidori.Relations` が図を読むときに、
+  大きさを付ける前に呼ぶ）。`wiki_views` は閲覧数の無い作品の作品名 → 記事の月の閲覧数（Chiezo の jawiki から引いたもの）。
 
-  1. **日本語版 Wikipedia の記事の閲覧数**（`wiki_views`。作品名 → 月の閲覧数。Chiezo の jawiki から引いたもの）
-     があれば、それを使う（名簿の作品と同じ物差し）
-  2. 記事も無ければ、**最新の映画の注目度で控えめに**決める。注目度は作品の `注目度:` のタグか、
+  1. **原作の記事（`#{@source_work_prefix}:<原作の種類>` のタグ。名簿を引くときに機械が記事の 1 文目から付ける
+     `source_work_pattern/0`）の閲覧数は、小説なら #{round(@source_work_shares["小説"] * 100)}%、漫画・ライトノベル・アニメ・ドラマ・
+     ゲームなら #{round(@source_work_share * 100)}% に割り引く。** 映画だけの記事が無い作品は、
+     名簿が原作（小説・漫画）の記事を指していて、閲覧数は原作・アニメ・映画をまとめたものになる
+     （漫画の記事の作品が、映画として月 5 万の閲覧がある扱いになっていた。目録の 2 割近くがこれ）。
+     原作の記事のうち映画の占める割合は作品で違うので、割合は目安
+  2. **閲覧数の無い作品**（最新の映画から引き継いだ作品・手で足した作品。名簿を引く回で閲覧数が運ばれず、
+     月 40 万の閲覧がある作品までいちばん小さい札になっていた）は、記事の閲覧数を使う（名簿の作品と同じ物差し）
+  3. 記事も無ければ、**最新の映画の注目度で控えめに**決める。注目度は作品の `注目度:` のタグか、
      最新の映画の収集の注目度（`attention`。見出し → `:high` / `:mid`。札の名前か `記録:` の見出しで引く）。
      大きさは閲覧数の基準（多い順で 5 番目）に対して、高 4 割・中 3 割・低や印なし（引き継いだ・足した作品）2 割。
      **最大にはしない** —— 引き継ぐのは注目度が高い作品ばかりなので、高を最大にすると、新作が軒並み
      いちばん流行った作品と肩を並べた
 
-  **閲覧数のある作品には触らない。** 引き継いでも足してもいない作品（`記録:` の無い名簿の作品）で
-  記事も注目度も無いものは、いちばん小さいまま。
+  **AI が書いた話題度（`extra.fame_level`。1〜10）があれば、1〜3 より先にそれを使う**（基準に対して 10 分の話題度の大きさ）。
+  使うのは閲覧数の当てにならない作品 —— 原作の記事の作品と、引き継いだ・足した作品 —— だけで、映画だけの記事を持つ作品は
+  機械の閲覧数のほうを信じる。原作の記事のうち映画の分は作品でまったく違い（アニメ映画の閲覧が大半の記事も、
+  漫画とアニメの閲覧が大半の記事もある）、閲覧数からは見分けられないので、興行や受賞を知っている AI に決めさせる。
+  基準（多い順で 5 番目）は話題度で決める作品を除いて数える。
+
+  引き継いでも足してもいない作品（`記録:` の無い名簿の作品）で記事も注目度も無いものは、いちばん小さいまま。
   """
   def with_new_film_views(nodes, attention, wiki_views)
       when is_list(nodes) and is_map(attention) and is_map(wiki_views) do
-    top = nodes |> Enum.map(&(&1[:views] || 0)) |> Enum.sort(:desc) |> Enum.at(4, 0)
+    nodes = Enum.map(nodes, &with_wiki(&1, wiki_views[&1.name]))
+
+    top =
+      nodes
+      |> Enum.reject(&judged?/1)
+      |> Enum.map(&(&1[:views] || 0))
+      |> Enum.sort(:desc)
+      |> Enum.at(4, 0)
 
     Enum.map(nodes, fn node ->
       cond do
+        top > 0 and judged?(node) ->
+          Map.put(node, :views, views_for(top, node.fame_level / 10))
+
         (node[:views] || 0) > 0 ->
           node
-
-        (views = wiki_views[node.name]) && views > 0 ->
-          Map.put(node, :views, views)
 
         top > 0 ->
           case size_ratio(attention_of(node, attention), record_titles(node) != []) do
             nil -> node
-            # 大きさは閲覧数の比の 0.65 乗（`Graph`）なので、その大きさになる閲覧数は基準の ratio^(1/0.65)
-            ratio -> Map.put(node, :views, max(round(top * :math.pow(ratio, 1 / 0.65)), 1))
+            ratio -> Map.put(node, :views, views_for(top, ratio))
           end
 
         true ->
@@ -397,6 +425,77 @@ defmodule Chidori.Relations.Films do
       end
     end)
   end
+
+  # 大きさは閲覧数の比の 0.65 乗（`Graph`）なので、基準に対して ratio の大きさになる閲覧数は基準の ratio^(1/0.65)
+  defp views_for(top, ratio), do: max(round(top * :math.pow(ratio, 1 / 0.65)), 1)
+
+  # AI の話題度で大きさを決める作品か。**閲覧数の当てにならない作品だけ**（原作の記事・引き継いだ・足した作品）。
+  # 映画だけの記事を持つ作品は、機械の閲覧数のほうを信じる
+  defp judged?(node),
+    do: is_integer(node[:fame_level]) and (source_work?(node) or record_titles(node) != [])
+
+  defp source_work?(node), do: source_kind(node) != nil
+
+  defp source_kind(node) do
+    Enum.find_value(node[:tags] || [], fn
+      @source_work_prefix <> ":" <> kind -> kind
+      _tag -> nil
+    end)
+  end
+
+  # 原作の記事の閲覧数を割り引き、閲覧数の無い作品には記事の閲覧数を入れる
+  defp with_wiki(node, views) do
+    views =
+      cond do
+        (node[:views] || 0) > 0 -> node.views
+        is_integer(views) and views > 0 -> views
+        true -> 0
+      end
+
+    cond do
+      views == 0 -> node
+      kind = source_kind(node) -> Map.put(node, :views, max(round(views * share_of(kind)), 1))
+      true -> Map.put(node, :views, views)
+    end
+  end
+
+  defp share_of(kind), do: Map.get(@source_work_shares, kind, @source_work_share)
+
+  # 原作の記事を見分ける読み替え（Chiezo の `on: "lead"` = 記事の 1 文目に当てる）。**主語は 1 文目の最後に
+  # 出てくる作品の種類で読む**（「〜を原作とした日本映画」は映画、「〜による日本の漫画」は漫画）。「、また」
+  # 「および」の後ろ（「小説、またそれを原作とした映画」）は読まない。**分類では見分けない** —— 映画の記事にも
+  # 小説版・漫画版の分類が付く（ヒットしたアニメ映画ほど付いている）。目録 1598 本のうち 287 本が当たる
+  # （小説 166・漫画 109・ドラマ 6・ほか 6）。捕まえた種類はタグの名前に読み替える（ライト文芸はライトノベルに）
+  @source_kinds %{
+    "小説" => "小説",
+    "漫画" => "漫画",
+    "ライト文芸" => "ライトノベル",
+    "ライトノベル" => "ライトノベル",
+    "テレビアニメ" => "アニメ",
+    "ドラマ" => "ドラマ",
+    "ゲーム" => "ゲーム"
+  }
+  @film_kinds ~w(映画 劇場用?アニメ)
+  @lead_cut ~w(、また および 及び ならびに 並びに)
+
+  @doc "原作の記事を見分ける正規表現（Chiezo の読み替えに渡す。Python の正規表現。200 字まで）。"
+  def source_work_pattern do
+    source = @source_kinds |> Map.keys() |> Enum.sort_by(&(-String.length(&1))) |> Enum.join("|")
+    film = Enum.join(@film_kinds, "|")
+    cut = Enum.join(@lead_cut, "|")
+
+    # 頭を欲張りにして、1 文目の最後に出てくる種類を捕まえる（「小説を原作とした漫画」は漫画）
+    "(?s)^(?:(?!#{cut}).)*(#{source})(?:(?!#{film}|#{cut}).)*(?:(?:#{cut}).*)?$"
+  end
+
+  defp source_work_rule,
+    do: %{
+      pattern: source_work_pattern(),
+      format: "#{@source_work_prefix}:{1}",
+      map: @source_kinds,
+      on: "lead",
+      fill: true
+    }
 
   defp size_ratio(:high, _carried?), do: 0.4
   defp size_ratio(:mid, _carried?), do: 0.3
@@ -544,7 +643,7 @@ defmodule Chidori.Relations.Films do
       kind: "stock",
       # 一覧の 1 行に、縮めた絵（ポスター）が無いことを添えてもらう（Chiezo の `show_blanks`。
       # 一覧は見出し・タグ・本文だけで、AI にはどれに絵が無いか見えない）。整理の回がポスターを探す
-      show_blanks: ["thumb", "runtime_minutes"],
+      show_blanks: ["thumb", "runtime_minutes", @fame_level_key],
       # 作品の絵（ポスター）は AI が返した URL から Chiezo が縮めて持つ（`fill_images/2`。
       # ページの og:image は拾わない —— 作品の URL は Wikipedia の記事なので、拾うと千数百本の
       # 記事を読みに行く）
@@ -591,6 +690,7 @@ defmodule Chidori.Relations.Films do
           country_rules() ++
           genre_rules() ++
           [
+            source_work_rule(),
             # 続編・同じ題材のように記事どうしが互いにリンクしている組は、薄い線で引く
             %{linked: "mutual", format: "#{Graph.related_tag()}:{1}"}
           ],
@@ -647,6 +747,22 @@ defmodule Chidori.Relations.Films do
     """
   end
 
+  # 話題度の書き方（整理の回と引き継ぎの回で共有）。**物差しは例で決める** —— 数だけ渡すと相手ごとに
+  # 付け方が揃わない。10 段にするのは、3 段の注目度では新作の差が付かなかったため
+  defp fame_rule do
+    """
+    **映画としての話題度**を extra に `"#{@fame_level_key}": 1〜10 の整数` で入れてください
+    （例: `"extra": {"#{@fame_level_key}": 6}`）。日本でどれくらい知られ、見られた映画かで、原作や
+    シリーズ全体の人気ではなく**その映画 1 本**の話題度です。興行収入・観客動員・受賞・社会的な話題で決めてください。
+      - 10: 誰もが知る作品（歴代の興行記録に並ぶ大ヒット・国民的な作品）
+      - 8: その年を代表する大ヒット（日本の興行収入がおよそ 50 億円以上、社会現象になった）
+      - 6: ヒット作（興行収入がおよそ 10〜50 億円、広く話題になった）
+      - 4: 映画好きには知られている（興行収入が数億円、公開は限られても評判になった）
+      - 2: あまり知られていない
+    古い作品は公開当時の話題と今の知られ方の両方で決めてください。確かめられなければ入れないでください。
+    """
+  end
+
   # 機械で付けたタグ（触らせない）
   defp machine_rule do
     """
@@ -656,6 +772,7 @@ defmodule Chidori.Relations.Films do
     機械では付けられなかった作品です）。"#{@country_prefix}:<国名>" で、国名は日本語版 Wikipedia の表記
     （アメリカ合衆国・イギリス・フランス・日本など）。合作は主な製作国から順に、確かめられた国だけ。
     **"#{@record_prefix}:" のタグも、そのまま残してください**（見た記録と結び付ける印です）。
+    **"#{@source_work_prefix}:" のタグも機械が記事から付けたものです。そのまま残してください**。
     """
   end
 
@@ -703,7 +820,7 @@ defmodule Chidori.Relations.Films do
 
     **上に並んでいるのが、この範囲の全部です。** 範囲は「国」と「公開年」で区切ってあります。
 
-    やってほしいことは 4 つです。
+    やってほしいことは 5 つです。
 
     **1. 主演を確かめる。** 主演のタグが空のものを埋め、明らかに違うもの（助演を主演にしている・
     名前の書き方が記事名と違う）だけ直してください。**確かめられなかったものは触らないでください。**
@@ -726,6 +843,11 @@ defmodule Chidori.Relations.Films do
     extra に `"runtime_minutes": 分の整数` で入れて返してください（例: `"extra": {"runtime_minutes": 125}`）。
     公式サイトや映画の情報サイト・Wikipedia の記事で確かめた数だけ（版によって違うときは劇場公開版）。
     確かめられなければ入れないでください。3 と同じく、title と tags（全部）と extra だけで構いません。
+
+    **5. 話題度を書く。** 行の後ろに「〔空: #{@fame_level_key}〕」と付いていて、**"#{@source_work_prefix}:" か
+    "#{@record_prefix}:" のタグがある作品だけ**（Wikipedia の閲覧数では映画の知名度が測れない作品です。
+    "#{@source_work_prefix}:" は記事が原作（小説・漫画など）の記事、"#{@record_prefix}:" は最近足した作品）、#{fame_rule()}
+    3 と同じく、title と tags（全部）と extra だけで構いません。ほかの作品には書かなくて構いません。
 
     #{machine_rule()}
     **触ったものだけ返してください。** いま付いているタグは、直すもの以外そのまま残してください

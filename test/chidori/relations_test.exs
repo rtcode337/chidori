@@ -57,6 +57,38 @@ defmodule Chidori.RelationsTest do
 
       assert node.views == 1234
     end
+
+    test "名簿が原作の記事を指している作品は、閲覧数を割り引く" do
+      title = "原作の漫画 #{System.unique_integer([:positive])}"
+
+      HttpStub.stub(fn %{method: :get, url: url} ->
+        cond do
+          url =~ "/v1/chidori_movie_catalog/filter" ->
+            HttpStub.ok(
+              docs_body([
+                %{
+                  "title" => title,
+                  "body" => "",
+                  "tags" => ["映画", "年代:2020", "国:日本", "記事:漫画"],
+                  "extra" => %{"pageviews_month" => 1000}
+                }
+              ])
+            )
+
+          # 閲覧数のある作品の記事は引きに行かない
+          url =~ "/v1/jawiki/doc?" ->
+            flunk("閲覧数のある作品の記事を引いた")
+
+          true ->
+            HttpStub.ok(docs_body([]))
+        end
+      end)
+
+      assert {:ok, %{nodes: [node]}} =
+               Relations.fetch_view("films", @base, Relations.current("films"))
+
+      assert node.views == 200
+    end
   end
 
   describe "読み込み中の印が残ったとき" do

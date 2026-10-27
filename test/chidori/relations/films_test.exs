@@ -176,7 +176,7 @@ defmodule Chidori.Relations.FilmsTest do
                "https://www.google.com/search?q=%E5%88%A5%E9%9B%A2+%E3%82%B5%E3%83%96%E3%82%B9%E3%82%AF"
     end
 
-    test "閲覧数の無い作品は Wikipedia の閲覧数、記事も無ければ注目度で控えめに大きさを決める" do
+    test "原作の記事は割り引き、閲覧数の無い作品は Wikipedia の閲覧数、記事も無ければ注目度で控えめに大きさを決める" do
       nodes =
         for {name, views} <- [
               {"一", 900},
@@ -196,15 +196,22 @@ defmodule Chidori.Relations.FilmsTest do
             %{name: "話題作", views: 0, tags: ["注目度:中", "記録:話題作"]},
             %{name: "手で足した作品", views: 0, tags: ["記録:手で足した作品"]},
             %{name: "名簿の作品", views: 0, tags: []},
-            %{name: "閲覧数あり", views: 50, tags: ["注目度:高"]}
+            %{name: "閲覧数あり", views: 50, tags: ["注目度:高"]},
+            %{name: "原作の漫画", views: 1000, tags: ["記事:漫画"]},
+            %{name: "原作の小説の新作", views: 0, tags: ["記事:小説", "記録:原作の小説の新作"]}
           ]
 
       sized =
         nodes
-        |> Films.with_new_film_views(%{"新作" => :high}, %{"記事のある新作" => 4000, "閲覧数あり" => 9})
+        |> Films.with_new_film_views(%{"新作" => :high}, %{
+          "記事のある新作" => 4000,
+          "閲覧数あり" => 9,
+          "原作の小説の新作" => 600
+        })
         |> Map.new(&{&1.name, &1.views})
 
-      ratio = &round(500 * :math.pow(&1, 1 / 0.65))
+      # 基準は記事の閲覧数を入れたあとの多い順で 5 番目（4000・900・800・700・600）
+      ratio = &round(600 * :math.pow(&1, 1 / 0.65))
       # Wikipedia の閲覧数があればそれ（最大にもなりうる）
       assert sized["記事のある新作"] == 4000
 
@@ -216,6 +223,83 @@ defmodule Chidori.Relations.FilmsTest do
       # 名簿の作品で何も無ければ、いちばん小さいまま。閲覧数のある作品には触らない
       assert sized["名簿の作品"] == 0
       assert sized["閲覧数あり"] == 50
+
+      # 原作の記事の閲覧数は、漫画などは 2 割・小説は 5 割に（名簿の閲覧数でも、引いた記事の閲覧数でも）
+      assert sized["原作の漫画"] == 200
+      assert sized["原作の小説の新作"] == 300
+    end
+
+    test "閲覧数の当てにならない作品は、AI の話題度があればそれで大きさを決める" do
+      roster =
+        for {name, views} <- [{"一", 900}, {"二", 800}, {"三", 700}, {"四", 600}, {"五", 500}],
+            do: %{name: name, views: views, tags: []}
+
+      nodes =
+        roster ++
+          [
+            %{name: "原作の記事の名作", views: 1000, tags: ["記事:小説"], fame_level: 8},
+            %{name: "引き継いだ新作", views: 0, tags: ["記録:新作"], fame_level: 3},
+            %{name: "映画の記事の作品", views: 400, tags: [], fame_level: 10}
+          ]
+
+      sized =
+        nodes
+        |> Films.with_new_film_views(%{}, %{"引き継いだ新作" => 90_000})
+        |> Map.new(&{&1.name, &1.views})
+
+      # 基準は話題度で決める作品を除いた多い順で 5 番目（500）。話題度 8 は基準の 8 割の大きさ
+      ratio = &round(500 * :math.pow(&1, 1 / 0.65))
+      assert sized["原作の記事の名作"] == ratio.(0.8)
+      # 引き継いだ作品は、記事の閲覧数があっても話題度を使う
+      assert sized["引き継いだ新作"] == ratio.(0.3)
+
+      # 映画だけの記事を持つ作品は、話題度があっても機械の閲覧数のまま
+      assert sized["映画の記事の作品"] == 400
+    end
+
+    test "整理の回と引き継ぎの回に、話題度を書かせる" do
+      assert Films.survey_prompt() =~ "〔空: fame_level〕"
+      assert Films.survey_prompt() =~ ~s("fame_level": 1〜10 の整数)
+      assert Films.carry_prompt([%{title: "新作"}]) =~ ~s("fame_level": 1〜10 の整数)
+      assert "fame_level" in Films.attrs().show_blanks
+    end
+
+    test "名簿を引くときに、記事の 1 文目の主語で原作の記事に印を付けさせる" do
+      rule = Enum.find(Films.extract().tags, &(&1[:on] == "lead"))
+      assert %{format: "記事:{1}", fill: true} = rule
+      assert String.length(rule.pattern) <= 200
+
+      # Chiezo と同じ読み方（捕まえた種類を表で読み替える）
+      kind_of = fn lead ->
+        case Regex.run(Regex.compile!(rule.pattern, "u"), lead) do
+          [_ | [kind | _]] -> rule.map[kind]
+          _none -> nil
+        end
+      end
+
+      # Chiezo が渡す 1 文目（句点の手前まで。丸括弧の中は除いてある）
+      for {lead, kind} <- [
+            {"『白夜行』は、東野圭吾の小説", "小説"},
+            {"『永遠の0』は、百田尚樹による日本の小説、またそれを原作とした漫画・映画・テレビドラマ", "小説"},
+            {"『東のエデン』は、2009年に放送されたテレビアニメ", "アニメ"},
+            {"『鬼の花嫁』は、クレハによる日本のライト文芸", "ライトノベル"},
+            {"『あの星が降る丘で、君とまた出会いたい。』は、汐見夏衛による日本の小説", "小説"},
+            # 1 文目の最後に出てくる種類（小説を原作とした漫画は漫画）
+            {"『作品』は、作家の小説を原作とした日本の漫画作品", "漫画"},
+            {"映画\n\n『作品』は、日本の漫画作品", "漫画"}
+          ] do
+        assert kind_of.(lead) == kind, lead
+      end
+
+      for lead <- [
+            "『クローズZERO』は、髙橋ヒロシの漫画『クローズ』を原案とした2007年公開の日本映画",
+            "『キングダム』は、2019年4月19日に公開の日本の映画",
+            "『探偵はBARにいる』は、日本の探偵映画のシリーズ",
+            "『作品』は、日本の劇場アニメ作品",
+            "記事の冒頭に作品の種類が無い"
+          ] do
+        assert kind_of.(lead) == nil, lead
+      end
     end
 
     test "引き継ぐときに、最新の映画の注目度をタグに写させる" do
@@ -238,7 +322,7 @@ defmodule Chidori.Relations.FilmsTest do
       nodes = Map.new(Graph.from_docs(docs, Films.graph_spec()).nodes, &{&1.name, &1})
       assert nodes["長い映画"].runtime == 207
       assert nodes["まだの映画"].runtime == nil
-      assert Films.attrs().show_blanks == ["thumb", "runtime_minutes"]
+      assert Films.attrs().show_blanks == ["thumb", "runtime_minutes", "fame_level"]
       assert Films.survey_prompt() =~ "〔空: runtime_minutes〕"
     end
 
@@ -333,7 +417,7 @@ defmodule Chidori.Relations.FilmsTest do
       assert attrs.thumbs == true
 
       # 整理の回がポスターを探す（どれに絵が無いかを一覧に添えてもらう）
-      assert attrs.show_blanks == ["thumb", "runtime_minutes"]
+      assert attrs.show_blanks == ["thumb", "runtime_minutes", "fame_level"]
       assert Films.survey_prompt() =~ "〔空: thumb〕"
       assert Films.survey_prompt() =~ "作品のロゴや出演者の写真は入れないでください"
       assert Films.image_prompt() =~ "{current}"
@@ -351,7 +435,8 @@ defmodule Chidori.Relations.FilmsTest do
     end
 
     test "監督・公開年・国・ジャンルは分類から機械で付ける", %{attrs: attrs} do
-      rules = attrs.extract.tags
+      # 分類に当てる読み替え（記事の 1 文目に当てる `on: "lead"` は別のテスト）
+      rules = Enum.reject(attrs.extract.tags, &(&1[:on] == "lead"))
 
       # Chiezo と同じ読み方（`map` があれば捕まえた値を表で読み替え、表に無ければ作らない。同じタグは 1 本）
       apply = fn tag ->

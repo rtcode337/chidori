@@ -875,6 +875,9 @@ defmodule Chidori.Relations.Graph do
           thumb: thumb_in(doc),
           # 上映時間（分。映画の図。整理の回に AI が書く `extra.runtime_minutes`）
           runtime: runtime_in(doc),
+          # 映画としての話題度（1〜10。映画の図。整理の回に AI が書く `extra.fame_level`。
+          # 閲覧数の当てにならない作品の大きさに使う `Films.with_new_film_views/3`）
+          fame_level: fame_level_in(doc),
           # **どれくらい知られているか。** 丸の大きさに使う。集める回が長期記憶の
           # 月次ページビューを写してくるので、ここで外へ引きに行かない
           views: views_in(doc),
@@ -950,6 +953,12 @@ defmodule Chidori.Relations.Graph do
        do: minutes
 
   defp runtime_in(_doc), do: nil
+
+  defp fame_level_in(%{"extra" => %{"fame_level" => level}})
+       when is_integer(level) and level in 1..10,
+       do: level
+
+  defp fame_level_in(_doc), do: nil
 
   # 知名度の倍率。**書かれていなければ 1.0**（ほとんどの画家には要らない）。
   # 読めない値も 1.0 —— 図が壊れるより、補正が効かないほうがまし
