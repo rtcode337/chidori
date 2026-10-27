@@ -404,15 +404,23 @@ defmodule Chidori.Relations.Graph do
     end
   end
 
+  # 読ませる置き方（`fitted_columns` と `refit`）にする絞り込みの上限。これより多く残る絞り方は全体の図と同じ置き方
+  @fitted_max 150
+
   defp relaid(relation, kept, edges) do
     # 升目が変わるので、大きさも付け直す（知名度は `sized` が残しておいたものを使う）
     bare = Enum.map(kept, &Map.drop(&1, [:cell]))
+
+    # **数十人に絞った図だけ、読ませる置き方にする**（いちばん長い名前に合わせた列の数・大きい字）。
+    # 数百残る絞り方（見ていない作品だけ・知名度の下限）にそれを当てると、列が数本しか取れず、
+    # 縦に何千と伸びて札が読めない大きさになった。多いときは全体の図と同じ置き方（升目と知名度）
+    fitted? = length(bare) <= @fitted_max
 
     laid =
       arrange(
         bare,
         edges,
-        fitted_columns(bare),
+        if(fitted?, do: fitted_columns(bare)),
         relation[:band_order] || region_bands(),
         relation[:cluster_rule]
       )
@@ -422,7 +430,7 @@ defmodule Chidori.Relations.Graph do
 
     relation
     |> Map.merge(%{
-      nodes: refit(laid.nodes, fame),
+      nodes: if(fitted?, do: refit(laid.nodes, fame), else: sized(laid.nodes)),
       edges: mark_framed(edges, laid[:clusters] || []),
       ticks: laid.ticks,
       bands: laid.bands,

@@ -509,6 +509,26 @@
             else: "見ていない#{if @view == "films", do: "作品", else: "人"}だけにする"}
         </button>
       </p>
+      <%!-- 知名度の下限。**図に出す作品を閲覧数で絞る**（目録は 2,500 本を超え、全部を描くとスマホでは重い）。
+         見た記録・印のある作品、引き継いだ作品、選んだ作品は下限に満たなくても出す（`below_floor/3`） --%>
+      <form
+        :if={!@embed and @view == "films"}
+        id="fame-floor"
+        class="seen-legend muted-note fame-floor"
+        phx-change="fame_floor"
+      >
+        <label>
+          知名度
+          <select name="floor">
+            <option :for={floor <- fame_floors()} value={floor} selected={floor == @fame_floor}>
+              {fame_floor_label(floor)}
+            </option>
+          </select>
+        </label>
+        <span :if={@fame_floor > 0}>
+          （閲覧数の少ない {length(below_floor(@relation, assigns))} 本を隠しています。見た作品・引き継いだ作品は出します）
+        </span>
+      </form>
       <%!-- いまは見られない印の作品（見ていない作品だけの図では一緒に隠す。出すこともできる） --%>
       <p
         :if={!@embed and @view == "films" and unavailable_count(@marks, @relation[:nodes]) > 0}

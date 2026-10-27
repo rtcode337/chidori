@@ -44,6 +44,9 @@ defmodule ChidoriWeb.RelationsLive do
   # 増えるほど凡例が図より長くなる。少ない様式は丸の下の字で読む
   @legend_max 14
 
+  # 知名度の下限の選択肢（閲覧数。0 はすべて。`fame_floor`）
+  @fame_floors [0, 3_000, 10_000, 30_000]
+
   # 札どうしのあいだに空ける幅（図の座標）。0 にすると線がぴったり接して、
   # 2 枚あるのか 1 枚なのか読めなくなる
   @label_gap 2
@@ -66,6 +69,8 @@ defmodule ChidoriWeb.RelationsLive do
        # 「見ていないホラー」のように、見ていない中から選びたい）。映画の図は隠した状態で開く
        # （`unseen_by_default?/2`。図を開くたびに handle_params が決める）
        unseen_only: false,
+       # 知名度の下限（閲覧数。0 はすべて。`default_fame_floor/1`。図を開くたびに handle_params が決める）
+       fame_floor: 0,
        # 見ていない作品だけの図で、いまは見られない印の作品も出すか（既定は隠す）
        unavailable_shown: false,
        # 直近の巡回で動いたものだけを出しているか。**様式の絞り込みとは排他** ——
@@ -225,6 +230,11 @@ defmodule ChidoriWeb.RelationsLive do
           if(socket.assigns[:view] == view,
             do: socket.assigns[:unseen_only],
             else: unseen_by_default?(view, params)
+          ),
+        fame_floor:
+          if(socket.assigns[:view] == view,
+            do: socket.assigns[:fame_floor],
+            else: default_fame_floor(view)
           ),
         pending_focus: params["focus"],
         detail: nil,
@@ -450,6 +460,17 @@ defmodule ChidoriWeb.RelationsLive do
        viewport: nil,
        focus: nil
      )}
+  end
+
+  # 知名度の下限を選び直す（選択肢にある値だけ）
+  def handle_event("fame_floor", %{"floor" => value}, socket) do
+    floor =
+      case Integer.parse(to_string(value)) do
+        {n, ""} -> if n in @fame_floors, do: n, else: socket.assigns.fame_floor
+        _other -> socket.assigns.fame_floor
+      end
+
+    {:noreply, assign(socket, fame_floor: floor, viewport: nil, focus: nil)}
   end
 
   # 見た作品を除いた図にする。**もう一度押すと戻る**
@@ -1049,27 +1070,81 @@ defmodule ChidoriWeb.RelationsLive do
   位置をもとのままにして絞ると、数十人が高さ 2,500 の面に散らばって拡大しないと
   読めません（絞った意味が無い）。
   """
-  def shown(relation, %{unseen_only: true, marks: marks} = assigns) do
-    # **選んだ作品は、見た作品でも隠さない**（探して選んだ・見た作品の一覧から選んだ・押した札）。
-    # 隠したままだと、選んでも図に何も出ない
-    revealed = revealed_names(relation, assigns)
-
-    # **いまは見られない印の作品も隠す**（次に見るものを選ぶ図なので）。出すと決めたときだけ出す
-    hide_unavailable = not Map.get(assigns, :unavailable_shown, false)
-
-    hidden =
-      for {name, mark} <- marks,
-          name not in revealed,
-          mark.seen or (hide_unavailable and Marks.unavailable?(mark)),
-          do: name
-
-    relation |> Graph.without(hidden) |> shown(%{assigns | unseen_only: false})
+  def shown(relation, assigns) do
+    case hidden_names(relation, assigns) do
+      [] -> filtered(relation, assigns)
+      hidden -> relation |> Graph.without(hidden) |> filtered(assigns)
+    end
   end
 
-  def shown(relation, %{review_filter: "unreviewed"}), do: Graph.only_unreviewed(relation)
-  def shown(relation, %{review_filter: "reviewed"}), do: Graph.only_reviewed(relation)
-  def shown(relation, %{changed_only: true}), do: Graph.only_changed(relation)
-  def shown(relation, %{style_filter: style}), do: Graph.only(relation, style)
+  # 図から外す作品の名前。見た作品を隠すとき（`unseen_only`）と、知名度の下限を付けたとき（`fame_floor`）。
+  # **1 度にまとめて外す**（`Graph.without/2` は置き直すので、2 度に分けると 2 度置き直す）
+  defp hidden_names(relation, assigns) do
+    # **選んだ作品は隠さない**（探して選んだ・見た作品の一覧から選んだ・押した札）。
+    # 隠したままだと、選んでも図に何も出ない
+    revealed = revealed_names(relation, assigns)
+    marks = assigns[:marks] || %{}
+
+    unseen =
+      if assigns[:unseen_only] do
+        # **いまは見られない印の作品も隠す**（次に見るものを選ぶ図なので）。出すと決めたときだけ出す
+        hide_unavailable = not Map.get(assigns, :unavailable_shown, false)
+
+        for {name, mark} <- marks,
+            name not in revealed,
+            mark.seen or (hide_unavailable and Marks.unavailable?(mark)),
+            do: name
+      else
+        []
+      end
+
+    Enum.uniq(unseen ++ below_floor(relation, assigns, revealed))
+  end
+
+  @doc """
+  知名度の下限（`fame_floor`。閲覧数）に満たないので図から外す作品の名前。**札の大きさと同じ閲覧数で比べる**
+  （原作の記事の割引と AI の話題度を通したあと）。**外さないもの** —— 選んだ作品・見た記録や印の付いた作品・
+  引き継いだ作品（`記録:`。見た作品や話題の新作なので、閲覧数が少なくても見たい）。
+  """
+  def below_floor(relation, assigns, revealed \\ nil) do
+    floor = assigns[:fame_floor] || 0
+    revealed = revealed || revealed_names(relation, assigns)
+    marks = assigns[:marks] || %{}
+
+    # 読み込みを待つあいだの見本の図（`sample?`）は絞らない（閲覧数を持たない）
+    if floor > 0 and not Map.get(relation, :sample?, false) do
+      for node <- relation[:nodes] || [],
+          (node[:views] || 0) < floor,
+          node.name not in revealed,
+          not Map.has_key?(marks, node.name),
+          Films.record_titles(node) == [],
+          do: node.name
+    else
+      []
+    end
+  end
+
+  @doc "知名度の下限の選択肢（閲覧数。0 はすべて）。"
+  def fame_floors, do: @fame_floors
+
+  @doc "知名度の下限の選択肢の文言。"
+  def fame_floor_label(0), do: "すべて"
+  def fame_floor_label(floor) when rem(floor, 10_000) == 0, do: "月 #{div(floor, 10_000)} 万閲覧以上"
+
+  def fame_floor_label(floor),
+    do: "月 #{String.replace(Integer.to_string(floor), ~r/(\d)(?=(\d{3})+$)/, "\\1,")} 閲覧以上"
+
+  @doc """
+  開いたときの知名度の下限。**映画の図は 1 万**（目録は月 3,000 閲覧から入るので 2,500 本を超え、全部を描くと
+  スマホでは重い。名簿の下限を上げると既に入った作品と食い違うので、名簿ではなく図の側で絞る）。
+  """
+  def default_fame_floor("films"), do: 10_000
+  def default_fame_floor(_view), do: 0
+
+  defp filtered(relation, %{review_filter: "unreviewed"}), do: Graph.only_unreviewed(relation)
+  defp filtered(relation, %{review_filter: "reviewed"}), do: Graph.only_reviewed(relation)
+  defp filtered(relation, %{changed_only: true}), do: Graph.only_changed(relation)
+  defp filtered(relation, %{style_filter: style}), do: Graph.only(relation, style)
 
   @doc "見た作品を隠していても出す作品の名前（探して選んだ作品と、1 回押した札）。"
   def revealed_names(relation, assigns) do

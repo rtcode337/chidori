@@ -87,8 +87,16 @@ defmodule Chidori.Relations.Films do
     "パルム・ドール受賞作",
     "金獅子賞受賞作",
     "金熊賞受賞作",
-    "日本アカデミー賞最優秀作品賞"
+    "日本アカデミー賞最優秀作品賞",
+    # 日本で広く見られた洋画の目印（49 本。監督の分類が無い記事もある）
+    "日本アカデミー賞最優秀外国作品賞"
   ]
+
+  # **公開年の分類からも入れる**（「1985年の映画」「2001年のアニメ映画」。知名度の下限はかかる）。
+  # 監督の分類（「〜の監督映画」）だけでは、記事にその分類が付いていない作品が漏れた ——
+  # 月 2 万の閲覧がある有名作が、監督の分類が無く主な賞も取っていないために名簿に居なかった
+  # （月 3,000 以上で漏れていたのは 904 本）
+  @year_suffixes ["年の映画", "年のアニメ映画"]
 
   # 国の分類（「日本の時代劇映画」「アメリカ合衆国のロマンティック・コメディ映画」）。
   # **書いた国だけを拾う** —— 「〜の…映画」をまとめて拾うと「黒澤明の監督映画」も
@@ -766,13 +774,13 @@ defmodule Chidori.Relations.Films do
   end
 
   @doc """
-  名簿の引き方（Chiezo の「抽出の指定」）。「〜の監督映画」の作品と主な賞の受賞作の和を
+  名簿の引き方（Chiezo の「抽出の指定」）。「〜の監督映画」と公開年の分類（「〇〇年の映画」）の作品と主な賞の受賞作の和を
   知名度で切る（**受賞作は下限を免除**）。監督・公開年・国・ジャンルを機械で付けます。
   """
   def extract(min_pageviews \\ Chidori.Relations.Settings.min_pageviews("films")) do
     %{
       source: "jawiki",
-      tag_suffix: @director_suffix,
+      tag_suffix: Enum.join([@director_suffix | @year_suffixes], ","),
       tag: Enum.join(@award_categories, ","),
       min_extra: %{pageviews_month: min_pageviews},
       min_extra_unless_tag: Enum.join(@award_categories, ","),

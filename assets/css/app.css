@@ -354,6 +354,9 @@ main.relations-page > div { padding-top: 0; }
 .seen-flag-cloth { fill: #facc15; stroke: #a16207; stroke-width: 0.6px; stroke-linejoin: round; }
 .relation-node .seen-flag { pointer-events: none; }
 .seen-legend { margin: .4rem 0; }
+/* 知名度の下限（映画の図）。見た作品の行と同じ並びに置く */
+.fame-floor { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.fame-floor select { margin-left: .3rem; padding: .2rem .4rem; border: 1px solid #dcdff0; border-radius: .5rem; background: #fff; color: #3b4463; font: inherit; }
 /* 線の詳細（映画の図の同じ監督・同じ主演）。その人の説明と、図にあるその人の作品 */
 .edge-person + .edge-person { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid #e2e8f0; }
 .edge-person-films { margin: .3rem 0 0; padding-left: 1.2rem; font-size: .88rem; line-height: 1.7; }

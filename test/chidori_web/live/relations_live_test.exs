@@ -1957,6 +1957,30 @@ defmodule ChidoriWeb.RelationsLiveTest do
       assert html =~ ">W</text>"
     end
 
+    test "知名度の下限に満たない作品は図から外す（見た・印のある・引き継いだ・選んだ作品は残す）" do
+      node = fn name, views, tags -> %{name: name, views: views, tags: tags} end
+
+      relation = %{
+        nodes: [
+          node.("有名作", 50_000, []),
+          node.("小品", 2_000, []),
+          node.("見た小品", 2_000, []),
+          node.("引き継いだ新作", 500, ["記録:新作"]),
+          node.("選んだ小品", 1_000, [])
+        ]
+      }
+
+      assigns = %{fame_floor: 10_000, marks: %{"見た小品" => %Mark{seen: true}}, picked: "選んだ小品"}
+      assert RelationsLive.below_floor(relation, assigns) == ["小品"]
+      assert RelationsLive.below_floor(relation, %{assigns | fame_floor: 0}) == []
+
+      # 映画の図は 1 万から開く（ほかの図は絞らない）
+      assert RelationsLive.default_fame_floor("films") == 10_000
+      assert RelationsLive.default_fame_floor("painters") == 0
+      assert RelationsLive.fame_floor_label(3_000) == "月 3,000 閲覧以上"
+      assert RelationsLive.fame_floor_label(10_000) == "月 1 万閲覧以上"
+    end
+
     test "日付を書いていない印は後ろに回る" do
       relation = %{nodes: [%{name: "あ"}, %{name: "い"}]}
       marks = %{"あ" => %Mark{note: "行きたい"}, "い" => %Mark{seen: true, seen_on: ~D[2020-01-01]}}

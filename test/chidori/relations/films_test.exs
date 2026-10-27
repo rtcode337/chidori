@@ -429,7 +429,7 @@ defmodule Chidori.Relations.FilmsTest do
       %{attrs: Films.attrs()}
     end
 
-    test "名簿は監督の分類と賞の受賞作の和を知名度で切り、受賞作は下限を免除する", %{attrs: attrs} do
+    test "名簿は監督の分類・公開年の分類・賞の受賞作の和を知名度で切り、受賞作は下限を免除する", %{attrs: attrs} do
       assert attrs.name == "chidori_movie_catalog"
 
       # 作品の絵は AI が返した URL から Chiezo が縮めて持つ（ページの og:image は拾わない）
@@ -443,7 +443,9 @@ defmodule Chidori.Relations.FilmsTest do
       assert Films.image_prompt() =~ "tags は全部返してください"
       extract = attrs.extract
 
-      assert extract.tag_suffix == "の監督映画"
+      # 監督の分類が記事に付いていない有名作も、公開年の分類から入る
+      assert extract.tag_suffix == "の監督映画,年の映画,年のアニメ映画"
+      assert "日本アカデミー賞最優秀外国作品賞" in String.split(extract.tag, ",")
       assert extract.tag =~ "アカデミー賞作品賞受賞作"
       assert extract.tag =~ "パルム・ドール受賞作"
       assert extract.min_extra == %{pageviews_month: 3_000}
