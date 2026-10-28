@@ -112,8 +112,9 @@ defmodule Chidori.RelationsTest do
       end)
 
       Relations.refresh("films")
-      assert_receive {:read, url}, 2_000
-      assert url =~ "chidori_movie_catalog"
+
+      # 目録を読みに行くのを待つ（その前に取り込みの状態など、別の読みが挟まることがある）
+      assert_receive {:read, @base <> "/v1/chidori_movie_catalog/" <> _rest}, 2_000
     end
   end
 
