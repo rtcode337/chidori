@@ -89,17 +89,21 @@ defmodule ChidoriWeb.SettingsLiveTest do
     assert render_async(live) =~ "本の巡回に送りました"
   end
 
-  test "開くと写真と表紙のタブが先頭で選ばれている（トップページは廃止した）", %{conn: conn} do
+  test "開くと通知のタブが選ばれている（写真と表紙は収集の画面へ移した）", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/settings")
 
     [_before, tabs | _rest] = String.split(html, ~s(aria-label="設定"))
     [tabs | _rest] = String.split(tabs, "</nav>")
-    assert :binary.match(tabs, "写真と表紙") < :binary.match(tabs, "通知")
 
-    # Chiezo 収集の表は収集の画面（/collect）へ、トップページ（閲覧）は廃止。設定のタブには置かない
+    # Chiezo 収集の表と写真と表紙は収集の画面へ、トップページ（閲覧）は廃止。設定のタブには置かない
+    refute tabs =~ "写真と表紙"
     refute tabs =~ "Chiezo 収集"
     refute tabs =~ "トップページ"
-    assert html =~ ~r/class="selected"[^>]*>\s*写真と表紙/
+    assert html =~ ~r/class="selected"[^>]*>\s*通知/
+
+    # 収集の画面の頭の段に「写真と表紙」がある
+    {:ok, _live, collect} = live(conn, ~p"/collect")
+    assert collect =~ ~s(href="/collect/photos")
   end
 
   test "前の「Chiezo 収集」のタブを開くと、収集の画面へ送る", %{conn: conn} do
@@ -452,8 +456,13 @@ defmodule ChidoriWeb.SettingsLiveTest do
         else: HttpStub.ok("{}")
     end)
 
-    {:ok, live, _html} = live(conn, ~p"/settings?tab=photos")
+    # 収集の画面のタブ（もとは設定ページのタブ。前のリンクは送り直す）
+    assert {:error, {:live_redirect, %{to: "/collect/photos"}}} =
+             live(conn, ~p"/settings?tab=photos")
+
+    {:ok, live, _html} = live(conn, ~p"/collect/photos")
     html = render_async(live)
+    assert html =~ ~s(aria-current="page")
 
     assert html =~ "Chidori の頼みの列"
     assert html =~ "upload.wikimedia.org に断られたので"

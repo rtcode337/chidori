@@ -40,5 +40,5 @@ paths:
 - Web Push: 送り手の鍵（VAPID）は最初に要ったときに作って DB（`web_push_keys`）に置く。宛先はブラウザの配信元
   （Apple・Google・Mozilla・Microsoft）のホストだけ受け取る。404・410 を返した端末は外す。配信元の本文は画面に出さずログへ。
   ntfy と両方あれば両方へ送り、どちらか 1 つ届けば知らせた扱い
-- 設定ページは 2 タブ（写真と表紙・通知。トップページは廃止した）。もとの「Chiezo 収集」のタブは収集の画面（`/collect`。同じ LiveView の `:collect`）へ移した。タブで仕事を分ける。写真と表紙は `Relations.Faces.status/1`・`counts/0` と
+- 設定ページは通知のタブだけ（トップページは廃止した）。もとの「Chiezo 収集」のタブは収集の画面（`/collect`。同じ LiveView の `:collect`）へ、「写真と表紙」は収集の画面のタブ（`/collect/photos`。`:collect_photos`。前の `?tab=photos` は送り直す）へ移した。写真と表紙は `Relations.Faces.status/1`・`counts/0` と
   Chiezo の `GET /v1/thumbs/health`（`Chiezo.thumbs_health/1`）を並べる

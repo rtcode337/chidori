@@ -41,6 +41,9 @@ defmodule ChidoriWeb.Router do
     live "/collect/news", NewsLive, :collect
     live "/collect/events", NewsLive, :collect_events
     live "/collect/relations", RelationsLive, :collect
+
+    # 写真と表紙の取得の様子（もとは設定ページのタブ。Chiezo に頼む仕事なので収集の画面に置く）
+    live "/collect/photos", SettingsLive, :collect_photos
     live "/collect/datasets", DatasetsLive, :collect
 
     # 他のアプリ（travel-log）が読む収集。ご当地グルメ・アニメ聖地・食事処（範囲ごと）

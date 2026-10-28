@@ -37,7 +37,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
   利用者が書くもの（見た記録・お気に入り・興味トピック・読んだ記録）だけを出す。Chiezo へ頼む口（収集の設定・巡回と相手・
   時刻・区画・1 回だけ頼む口・travel-log からの依頼・空き欄を埋める・名簿・書き出し・実行履歴）は収集の画面（`/collect`・
   `/collect/news`・`/collect/relations`・`/collect/datasets`・`/collect/apps`）に集める。**同じ LiveView を `live_action` の `:collect` で開き、
-  `@collect_mode` で出し分ける**（裏の処理は 1 つ）。収集の画面の頭の段（`CollectTabs`）は一覧・ニュース・趣味・イベント・他アプリ用。頭のメニューは ニュース・趣味・イベント・ツール・収集・設定（関連図はどれも趣味に並べる。`Chidori.Hobbies`。トップページは廃止し、`/` はニュースへ送る）。
+  `@collect_mode` で出し分ける**（裏の処理は 1 つ）。収集の画面の頭の段（`CollectTabs`）は一覧・ニュース・趣味・イベント・他アプリ用・写真と表紙（写真と表紙は `SettingsLive` の `:collect_photos`。もとは設定のタブ）。頭のメニューは ニュース・趣味・イベント・ツール・収集・設定（関連図はどれも趣味に並べる。`Chidori.Hobbies`。トップページは廃止し、`/` はニュースへ送る）。
   **他アプリ用（`/collect/apps`。`DatasetsLive` の `:collect_apps`）は Chidori で読まない対象**（食事処・ご当地グルメ・アニメ聖地。読むのは travel-log。
   `Datasets.for_other_app?/1`）で、データ収集には Chidori で読む対象だけを並べる。例外は**見ている 1 件から頼む口**（記事・本・人の詳細の「頼む」、見た映画を足す）で、
   詳細の 1 ボタンとしてだけ読む画面に残す（結果は収集の画面の履歴で見る）

@@ -3,12 +3,15 @@
 <div class="relations-page page-head">
   <div>
     <ChidoriWeb.MainNav.main_nav active={
-      if @live_action == :collect, do: :collect, else: :settings
+      if @live_action in [:collect, :collect_photos], do: :collect, else: :settings
     } />
-    <ChidoriWeb.CollectTabs.collect_tabs :if={@live_action == :collect} current={:list} />
+    <ChidoriWeb.CollectTabs.collect_tabs
+      :if={@live_action in [:collect, :collect_photos]}
+      current={if @live_action == :collect_photos, do: :photos, else: :list}
+    />
 
     <nav
-      :if={@live_action != :collect}
+      :if={@live_action not in [:collect, :collect_photos]}
       id="settings-tabs"
       class="relation-tabs"
       phx-hook="ScrollTabs"
@@ -32,7 +35,7 @@
          待っているのか、休んでいるのか、Chiezo へ届いて断られているのかを 1 か所で読むため --%>
     <section :if={@tab == "photos"} class="settings-panel" aria-label="写真と表紙">
       <section class="relations-intro">
-        <p>SETTINGS</p>
+        <p>COLLECT</p>
         <h1>写真と表紙</h1>
         <p>
           関連図の顔写真・レシピの写真・技術書の表紙は、Chidori が 1 枚ずつ Chiezo に頼み、Chiezo が外から取って縮めたものを写して配っています。ここでは、頼みの列の様子と、Chiezo で何が起きているかを並べます（開いたときに読むだけで、自動では読み直しません）。

@@ -1,10 +1,10 @@
 defmodule ChidoriWeb.SettingsLive do
   @moduledoc """
-  設定ページ。**タブで仕事を分けます**。
+  設定ページ。いまは通知だけ —— まとめの知らせ先（ntfy の宛先と、通知を受け取る端末。`Chidori.WebPush`）と、
+  知らせる話題。
 
-  - 写真と表紙 —— 顔写真・レシピの写真・技術書の表紙を取る様子
-  - 通知 —— まとめの知らせ先（ntfy の宛先と、通知を受け取る端末。`Chidori.WebPush`）と、
-    知らせる話題
+  **写真と表紙**（顔写真・レシピの写真・技術書の表紙を Chiezo に頼む列の様子）は収集の画面のタブ
+  （`/collect/photos`。`live_action` が `:collect_photos`）。Chiezo に頼む仕事なので、設定ではなく収集の画面に置く。
 
   **収集の画面（`/collect`）も同じ LiveView**（`live_action` が `:collect`）。Chidori が Chiezo に
   頼んでいる収集の一覧（巡回の間隔・相手・前回・次回）と、ワーカーと取り込みの待ち行列。
@@ -33,7 +33,6 @@ defmodule ChidoriWeb.SettingsLive do
   # **Chiezo 収集の表は収集の画面（`/collect`）へ移した** —— 同じ LiveView を収集の形で開く。
   # トップページ（閲覧）は廃止したので、並べる枠を選ぶタブも無い
   @tabs [
-    {"photos", "写真と表紙"},
     {"notify", "通知"}
   ]
 
@@ -76,12 +75,23 @@ defmodule ChidoriWeb.SettingsLive do
          |> assign(tab: "chiezo", page_title: "収集")
          |> load("chiezo")}
 
+      # 写真と表紙（収集の画面のタブ）
+      socket.assigns.live_action == :collect_photos ->
+        {:noreply,
+         socket
+         |> assign(tab: "photos", page_title: "収集")
+         |> load("photos")}
+
       # 前の「設定 › Chiezo 収集」へのリンクは、収集の画面へ送る
       params["tab"] == "chiezo" ->
         {:noreply, push_navigate(socket, to: ~p"/collect", replace: true)}
 
+      # 前の「設定 › 写真と表紙」へのリンクは、収集の画面のタブへ送る
+      params["tab"] == "photos" ->
+        {:noreply, push_navigate(socket, to: ~p"/collect/photos", replace: true)}
+
       true ->
-        tab = if params["tab"] in Enum.map(@tabs, &elem(&1, 0)), do: params["tab"], else: "photos"
+        tab = if params["tab"] in Enum.map(@tabs, &elem(&1, 0)), do: params["tab"], else: "notify"
 
         {:noreply, socket |> assign(tab: tab) |> load(tab)}
     end
