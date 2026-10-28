@@ -26,6 +26,10 @@ defmodule Chidori.Relations.Mark do
     # **いまは見られない**と印を付けた日（映画。配信にも上映にも無い作品を、次に見るものの
     # 候補から外しておく）。nil なら付いていない
     field(:unavailable_on, :date)
+
+    # 見た印を付けた（見た日を変えた）時刻（UTC）。同じ日に見たものを、記録した新しい順に並べるのに使う。
+    # この欄を足す前の記録には無い
+    field(:seen_at, :utc_datetime)
   end
 
   @fields ~w(view node_name seen seen_on note unavailable_on)a

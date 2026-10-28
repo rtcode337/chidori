@@ -254,7 +254,10 @@ defmodule ChidoriWeb.SeenFilms do
 
   def handle_async(:thumbs, {:exit, _reason}, socket), do: {:noreply, socket}
 
-  @doc "見た映画（見た日の新しい順。日付の無いものは後ろに名前順。見ていない記録は入れない）。"
+  @doc """
+  見た映画（見た日の新しい順。**同じ日は記録した新しい順**。日付の無いものは後ろに名前順。見ていない記録は
+  入れない）。記録した順は、見た印を付けた時刻（`seen_at`）で、それを持たない前の記録は記録の番号（足した順）で読む。
+  """
   def seen(marks) when is_map(marks) do
     {dated, undated} =
       marks
@@ -262,10 +265,15 @@ defmodule ChidoriWeb.SeenFilms do
       |> Enum.filter(& &1.seen)
       |> Enum.split_with(&match?(%Date{}, &1.seen_on))
 
-    Enum.sort_by(dated, & &1.seen_on, {:desc, Date}) ++ Enum.sort_by(undated, & &1.node_name)
+    Enum.sort_by(dated, &{Date.to_gregorian_days(&1.seen_on), recorded_order(&1)}, :desc) ++
+      Enum.sort_by(undated, & &1.node_name)
   end
 
   def seen(_marks), do: []
+
+  # 同じ日の中の並び。時刻を持つ記録が先（新しい）、持たない前の記録は記録の番号の順
+  defp recorded_order(%{seen_at: %DateTime{} = at}), do: {1, DateTime.to_unix(at)}
+  defp recorded_order(mark), do: {0, mark.doc_id || 0}
 
   defp blank_to_nil(value) when value in [nil, ""], do: nil
   defp blank_to_nil(value), do: value

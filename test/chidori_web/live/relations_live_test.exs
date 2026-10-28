@@ -2006,9 +2006,16 @@ defmodule ChidoriWeb.RelationsLiveTest do
       assert RelationsLive.fame_rank(relation, %{name: "無名", views: 0}) == nil
     end
 
-    test "日付を書いていない印は後ろに回る" do
-      relation = %{nodes: [%{name: "あ"}, %{name: "い"}]}
-      marks = %{"あ" => %Mark{note: "行きたい"}, "い" => %Mark{seen: true, seen_on: ~D[2020-01-01]}}
+    test "見た作品の選ぶ口は見た印のある記録だけで、日付を書いていないものは後ろに回る" do
+      relation = %{nodes: [%{name: "あ"}, %{name: "い"}, %{name: "う"}, %{name: "え"}]}
+
+      marks = %{
+        "あ" => %Mark{seen: true},
+        "い" => %Mark{seen: true, seen_on: ~D[2020-01-01]},
+        # メモだけ・いまは見られない印だけの記録は「見た」ではない
+        "う" => %Mark{note: "行きたい"},
+        "え" => %Mark{unavailable_on: ~D[2026-10-01]}
+      }
 
       assert RelationsLive.seen_options(relation, marks) == [
                {"い", "い（2020-01-01）"},

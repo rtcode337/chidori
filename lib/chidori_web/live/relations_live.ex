@@ -1411,8 +1411,9 @@ defmodule ChidoriWeb.RelationsLive do
   def seen_options(relation, marks) do
     names = MapSet.new(relation.nodes, & &1.name)
 
+    # **見た印のある記録だけ**（いまは見られない印・メモだけの記録は「見た」ではない）
     marks
-    |> Enum.filter(fn {name, _mark} -> MapSet.member?(names, name) end)
+    |> Enum.filter(fn {name, mark} -> mark.seen and MapSet.member?(names, name) end)
     |> Enum.sort_by(fn {name, mark} -> {seen_order(mark), name} end)
     |> Enum.map(fn {name, mark} -> {name, seen_label(name, mark)} end)
   end

@@ -45,9 +45,20 @@ defmodule Chidori.Relations.Marks do
     changeset = Mark.changeset(mark, attrs)
 
     with {:ok, applied} <- Ecto.Changeset.apply_action(changeset, :insert) do
+      applied = %{applied | seen_at: seen_at(mark, applied)}
       if Mark.blank?(applied), do: delete(mark), else: save(applied, changeset)
     end
   end
+
+  # 見た印を付けた時刻。**見た印を新しく付けたか、見た日を変えたときだけ**いまにする（メモを直しただけでは
+  # 動かさない）。見た印を外したら消す
+  defp seen_at(_before, %Mark{seen: false}), do: nil
+
+  defp seen_at(%Mark{seen: true, seen_on: on, seen_at: at}, %Mark{seen_on: on})
+       when not is_nil(at),
+       do: at
+
+  defp seen_at(_before, _after), do: DateTime.utc_now() |> DateTime.truncate(:second)
 
   defp save(%Mark{} = mark, changeset) do
     fields = %{
@@ -55,10 +66,22 @@ defmodule Chidori.Relations.Marks do
       on: mark.seen_on,
       note: mark.note,
       # いまは見られない印は、記録の脇書き（`detail`）に持つ（見た・読んだの形を変えずに足す）
+      # 見た印を付けた時刻も同じ脇書きに（同じ日に見たものの並びに使う）
       detail:
-        if(mark.unavailable_on,
-          do: %{"unavailable_on" => Date.to_iso8601(mark.unavailable_on)}
+        %{}
+        |> then(
+          &if(mark.unavailable_on,
+            do: Map.put(&1, "unavailable_on", Date.to_iso8601(mark.unavailable_on)),
+            else: &1
+          )
         )
+        |> then(
+          &if(mark.seen_at,
+            do: Map.put(&1, "seen_at", DateTime.to_iso8601(mark.seen_at)),
+            else: &1
+          )
+        )
+        |> then(&if(&1 == %{}, do: nil, else: &1))
     }
 
     case MarkRecords.put(mark.view, mark.node_name, fields, mark.doc_id) do
@@ -91,9 +114,19 @@ defmodule Chidori.Relations.Marks do
       seen: done,
       seen_on: on,
       note: note,
-      unavailable_on: unavailable_on(detail)
+      unavailable_on: unavailable_on(detail),
+      seen_at: seen_at_of(detail)
     }
   end
+
+  defp seen_at_of(%{"seen_at" => text}) when is_binary(text) do
+    case DateTime.from_iso8601(text) do
+      {:ok, at, _offset} -> at
+      _error -> nil
+    end
+  end
+
+  defp seen_at_of(_detail), do: nil
 
   defp unavailable_on(%{"unavailable_on" => text}) when is_binary(text) do
     case Date.from_iso8601(text) do

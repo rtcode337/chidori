@@ -24,6 +24,43 @@ defmodule Chidori.Relations.MarksTest do
     assert second.note == "書き直した"
   end
 
+  test "見た印を付けた時刻を残し、メモを直しただけでは動かさない" do
+    {:ok, first} = Marks.put("movies", "時刻の映画", attrs())
+    assert %DateTime{} = first.seen_at
+    assert Marks.get("movies", "時刻の映画").seen_at == first.seen_at
+
+    {:ok, again} = Marks.put("movies", "時刻の映画", attrs(%{"note" => "メモだけ直した"}))
+    assert again.seen_at == first.seen_at
+
+    {:ok, unseen} = Marks.put("movies", "時刻の映画", attrs(%{"seen" => false}))
+    assert unseen.seen_at == nil
+  end
+
+  test "見た映画は、同じ日なら記録した新しい順に並べる（時刻の無い前の記録は記録の番号の順）" do
+    alias Chidori.Relations.Mark
+
+    marks = %{
+      "古い記録" => %Mark{node_name: "古い記録", seen: true, seen_on: ~D[2026-10-01], doc_id: 5},
+      "朝" => %Mark{
+        node_name: "朝",
+        seen: true,
+        seen_on: ~D[2026-10-01],
+        seen_at: ~U[2026-10-01 01:00:00Z],
+        doc_id: 1
+      },
+      "夜" => %Mark{
+        node_name: "夜",
+        seen: true,
+        seen_on: ~D[2026-10-01],
+        seen_at: ~U[2026-10-01 12:00:00Z],
+        doc_id: 2
+      },
+      "前の日" => %Mark{node_name: "前の日", seen: true, seen_on: ~D[2026-09-30], doc_id: 9}
+    }
+
+    assert Enum.map(ChidoriWeb.SeenFilms.seen(marks), & &1.node_name) == ["夜", "朝", "古い記録", "前の日"]
+  end
+
   test "図が違えば別の印になる" do
     {:ok, _} = Marks.put("painters", "同じ名前", attrs())
     {:ok, _} = Marks.put("people", "同じ名前", attrs(%{"note" => "人物のほう"}))
