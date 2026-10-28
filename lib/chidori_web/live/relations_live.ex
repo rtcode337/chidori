@@ -1073,7 +1073,8 @@ defmodule ChidoriWeb.RelationsLive do
   def shown(relation, assigns) do
     case hidden_names(relation, assigns) do
       [] -> filtered(relation, assigns)
-      hidden -> relation |> Graph.without(hidden) |> filtered(assigns)
+      # 国の帯と公開年で読む図のまま置き直す（残りが少なくても読ませる置き方にしない）
+      hidden -> relation |> Graph.without(hidden, layout: :full) |> filtered(assigns)
     end
   end
 
@@ -1103,8 +1104,11 @@ defmodule ChidoriWeb.RelationsLive do
 
   @doc """
   知名度の下限（`fame_floor`。閲覧数）に満たないので図から外す作品の名前。**札の大きさと同じ閲覧数で比べる**
-  （原作の記事の割引と AI の話題度を通したあと）。**外さないもの** —— 選んだ作品・見た記録や印の付いた作品・
-  引き継いだ作品（`記録:`。見た作品や話題の新作なので、閲覧数が少なくても見たい）。
+  （原作の記事の割引と AI の話題度を通したあと）。**小説以外の原作の記事を指す作品は、AI の話題度が付くまで外す**
+  （`Films.unrated_source_work?/1`。漫画などの記事の閲覧数は割り引いても下限を通り、図に漫画の作品が残った）。
+  **外さないもの** —— 選んだ作品・見た記録や印の付いた作品。引き継いだ作品（`記録:`）も、見た記録が無ければ
+  ほかと同じに比べる（閲覧数相当は記事・注目度・話題度から付いている。特別扱いしていた頃は、3 万に絞っても
+  今年の小さな作品がまとまって残った）。
   """
   def below_floor(relation, assigns, revealed \\ nil) do
     floor = assigns[:fame_floor] || 0
@@ -1114,10 +1118,9 @@ defmodule ChidoriWeb.RelationsLive do
     # 読み込みを待つあいだの見本の図（`sample?`）は絞らない（閲覧数を持たない）
     if floor > 0 and not Map.get(relation, :sample?, false) do
       for node <- relation[:nodes] || [],
-          (node[:views] || 0) < floor,
+          (node[:views] || 0) < floor or Films.unrated_source_work?(node),
           node.name not in revealed,
           not Map.has_key?(marks, node.name),
-          Films.record_titles(node) == [],
           do: node.name
     else
       []

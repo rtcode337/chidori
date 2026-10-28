@@ -510,7 +510,7 @@
         </button>
       </p>
       <%!-- 知名度の下限。**図に出す作品を閲覧数で絞る**（目録は 2,500 本を超え、全部を描くとスマホでは重い）。
-         見た記録・印のある作品、引き継いだ作品、選んだ作品は下限に満たなくても出す（`below_floor/3`） --%>
+         見た記録・印のある作品と選んだ作品は下限に満たなくても出す（`below_floor/3`） --%>
       <form
         :if={!@embed and @view == "films"}
         id="fame-floor"
@@ -526,7 +526,7 @@
           </select>
         </label>
         <span :if={@fame_floor > 0}>
-          （閲覧数の少ない {length(below_floor(@relation, assigns))} 本を隠しています。見た作品・引き継いだ作品は出します）
+          （閲覧数の少ない {length(below_floor(@relation, assigns))} 本を隠しています。見た作品は出します）
         </span>
       </form>
       <%!-- いまは見られない印の作品（見ていない作品だけの図では一緒に隠す。出すこともできる） --%>

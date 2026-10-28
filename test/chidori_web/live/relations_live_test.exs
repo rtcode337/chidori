@@ -1957,7 +1957,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
       assert html =~ ">W</text>"
     end
 
-    test "知名度の下限に満たない作品は図から外す（見た・印のある・引き継いだ・選んだ作品は残す）" do
+    test "知名度の下限に満たない作品は図から外す（見た・印のある・選んだ作品は残す）" do
       node = fn name, views, tags -> %{name: name, views: views, tags: tags} end
 
       relation = %{
@@ -1966,12 +1966,17 @@ defmodule ChidoriWeb.RelationsLiveTest do
           node.("小品", 2_000, []),
           node.("見た小品", 2_000, []),
           node.("引き継いだ新作", 500, ["記録:新作"]),
-          node.("選んだ小品", 1_000, [])
+          node.("選んだ小品", 1_000, []),
+          # 漫画の記事は割り引いても閲覧数が大きいので、話題度が付くまで外す（小説の記事は閲覧数で比べる）
+          node.("漫画の実写", 30_000, ["記事:漫画"]),
+          node.("小説の映画", 30_000, ["記事:小説"]),
+          Map.put(node.("話題の漫画の映画", 30_000, ["記事:漫画"]), :fame_level, 8)
         ]
       }
 
       assigns = %{fame_floor: 10_000, marks: %{"見た小品" => %Mark{seen: true}}, picked: "選んだ小品"}
-      assert RelationsLive.below_floor(relation, assigns) == ["小品"]
+      # 引き継いだ作品も、見た記録が無ければほかと同じに比べる
+      assert RelationsLive.below_floor(relation, assigns) == ["小品", "引き継いだ新作", "漫画の実写"]
       assert RelationsLive.below_floor(relation, %{assigns | fame_floor: 0}) == []
 
       # 映画の図は 1 万から開く（ほかの図は絞らない）

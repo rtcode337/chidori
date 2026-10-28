@@ -152,6 +152,23 @@ defmodule Chidori.Relations.FilmsTest do
       assert Graph.without(graph, ["図に無い作品"]) == graph
     end
 
+    test "知名度などで絞った図は、残りが少なくても全体の図と同じ置き方にする" do
+      # いちばん長い作品名に合わせて列を決める読ませる置き方だと、数本しか列が取れずに縦に並ぶ
+      long = String.duplicate("長い作品名", 8)
+
+      docs =
+        [doc(long, ~w(映画 年代:2000 国:日本))] ++
+          for i <- 1..30, do: doc("作品#{i}", ["映画", "年代:#{1950 + i}", "国:日本"])
+
+      graph = Graph.from_docs(docs, Films.graph_spec())
+      fitted = Graph.without(graph, ["作品1"])
+      full = Graph.without(graph, ["作品1"], layout: :full)
+
+      columns = fn g -> g.nodes |> Enum.map(& &1.x) |> Enum.uniq() |> length() end
+      assert columns.(full) > columns.(fitted)
+      assert full.height < fitted.height
+    end
+
     test "線の人（同じ監督・同じ主演）と、図にあるその人の作品を新しい順に", %{graph: graph} do
       edge = Enum.find(graph.edges, &(&1.kind == :director and &1.label == "黒澤明"))
 
@@ -237,6 +254,38 @@ defmodule Chidori.Relations.FilmsTest do
       assert sized["転送の新作"] == 400
     end
 
+    test "知名度は控えてある月の平均（pageviews_avg）を先に使う（その月の値は話題に振られる）" do
+      docs = [
+        Map.put(doc("旧作", ~w(映画 年代:2003 国:日本)), "extra", %{
+          "pageviews_month" => 180_000,
+          "pageviews_avg" => 40_000
+        }),
+        Map.put(doc("平均の無い作品", ~w(映画 年代:2003 国:日本)), "extra", %{
+          "pageviews_month" => 5_000
+        })
+      ]
+
+      views =
+        docs
+        |> Graph.from_docs(Films.graph_spec())
+        |> Map.get(:nodes)
+        |> Map.new(&{&1.name, &1.views})
+
+      assert views == %{"旧作" => 40_000, "平均の無い作品" => 5_000}
+      assert "pageviews_avg" in Films.extract().extra
+    end
+
+    test "公開から間もない作品は閲覧数を割り引く（月の閲覧数は公開直後の話題で膨らむ）" do
+      nodes =
+        for {name, year} <- [{"今年", "2026"}, {"1 年前", "2025"}, {"3 年前", "2023"}, {"昔", "2000"}],
+            do: %{name: name, views: 10_000, tags: [], years: year}
+
+      sized =
+        nodes |> Films.with_new_film_views(%{}, %{}, 2026) |> Map.new(&{&1.name, &1.views})
+
+      assert sized == %{"今年" => 3_000, "1 年前" => 6_000, "3 年前" => 8_000, "昔" => 10_000}
+    end
+
     test "閲覧数の当てにならない作品は、AI の話題度があればそれで大きさを決める" do
       roster =
         for {name, views} <- [{"一", 900}, {"二", 800}, {"三", 700}, {"四", 600}, {"五", 500}],
@@ -255,11 +304,11 @@ defmodule Chidori.Relations.FilmsTest do
         |> Films.with_new_film_views(%{}, %{"引き継いだ新作" => %{views: 90_000, kind: nil}})
         |> Map.new(&{&1.name, &1.views})
 
-      # 基準は話題度で決める作品を除いた多い順で 5 番目（500）。話題度 8 は基準の 8 割の大きさ
-      ratio = &round(500 * :math.pow(&1, 1 / 0.65))
-      assert sized["原作の記事の名作"] == ratio.(0.8)
+      # 基準は話題度で決める作品を除いた多い順で 5 番目（500）。閲覧数相当は話題度が 4 下がるごとに 10 分の 1
+      fame = &round(500 * :math.pow(10, (&1 - 10) / 4))
+      assert sized["原作の記事の名作"] == fame.(8)
       # 引き継いだ作品は、記事の閲覧数があっても話題度を使う
-      assert sized["引き継いだ新作"] == ratio.(0.3)
+      assert sized["引き継いだ新作"] == fame.(3)
 
       # 映画だけの記事を持つ作品は、話題度があっても機械の閲覧数のまま
       assert sized["映画の記事の作品"] == 400

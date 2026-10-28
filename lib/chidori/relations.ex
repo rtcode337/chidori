@@ -1024,8 +1024,10 @@ defmodule Chidori.Relations do
           # 漫画の記事へ飛ぶ）。名簿の作品と同じ規則で原作の記事を見分け、閲覧数を割り引く（`Films.source_kind_of/1`）
           case Chiezo.doc(base_url, "jawiki", name, "title,extra,opening") do
             {:ok, doc} ->
+              # 控えてある月の平均（Chiezo の `pageviews_avg`）を先に。その月の値は話題に振られる
               views =
                 case doc["extra"] do
+                  %{"pageviews_avg" => views} when is_integer(views) and views > 0 -> views
                   %{"pageviews_month" => views} when is_integer(views) -> views
                   _extra -> 0
                 end
@@ -1529,7 +1531,7 @@ defmodule Chidori.Relations do
       # **知名度は長期記憶から写す。** 月次ページビュー（bot 除外）は jawiki の記事に
       # 入っているので、図を出すたびに 1 人ずつ引き直す理由が無い ——
       # 引いていた頃は画家の数だけ往復していた（初回で 9,000 回以上）
-      extra: ["pageviews_month"]
+      extra: ["pageviews_month", "pageviews_avg"]
     }
   end
 

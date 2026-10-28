@@ -116,6 +116,8 @@ defmodule Chidori.Relations.Graph do
   # 逆に最近テレビで扱われた）は、AI が倍率を書いて直す。同じ鍵を書き換えさせると
   # 元の値が失われ、取り込み直しても新しいページビューを反映できなくなる
   @views_key "pageviews_month"
+  # 控えてある月の平均（Chiezo が取り込みのたびに足す。あれば `@views_key` より先に使う）
+  @avg_views_key "pageviews_avg"
   @fame_scale_key "fame_scale"
   # 倍率の効かせ方の上下。**桁で狂わせない** —— 1 人の書き間違いで図が壊れる
   @min_fame_scale 0.1
@@ -318,7 +320,7 @@ defmodule Chidori.Relations.Graph do
   （A → 見た B → C から B を抜くと、A と C が同じ監督なのに線が無くなる）。
   残った作品を鎖ごとに並べ直して隣どうしを結び直します。ほかの線は両端が残るものだけ。
   """
-  def without(relation, names) do
+  def without(relation, names, opts \\ []) do
     drop = MapSet.new(names)
     nodes = relation.nodes || []
 
@@ -331,7 +333,7 @@ defmodule Chidori.Relations.Graph do
 
       kept ->
         ids = MapSet.new(kept, & &1.id)
-        refocus(relation, kept, rebridged(relation.edges || [], relation.nodes, ids))
+        refocus(relation, kept, rebridged(relation.edges || [], relation.nodes, ids), opts)
     end
   end
 
@@ -392,7 +394,7 @@ defmodule Chidori.Relations.Graph do
     refocus(relation, kept, edges)
   end
 
-  defp refocus(relation, kept, edges) do
+  defp refocus(relation, kept, edges, opts \\ []) do
     # **人数が多ければ置き直さない。** 置き直しは読める大きさの升目に並べ直すので、
     # 数千人を並べると図の高さが桁違いに伸び（レビュー済み 3,637 人で約 3 万）、
     # 全体表示では札が 1 枚も描けなくなる。そこまで多いなら元の位置のまま絞る
@@ -400,21 +402,24 @@ defmodule Chidori.Relations.Graph do
       keep = MapSet.new(kept, & &1.id)
       %{relation | nodes: Enum.filter(relation.nodes, &MapSet.member?(keep, &1.id)), edges: edges}
     else
-      relaid(relation, kept, edges)
+      relaid(relation, kept, edges, opts)
     end
   end
 
   # 読ませる置き方（`fitted_columns` と `refit`）にする絞り込みの上限。これより多く残る絞り方は全体の図と同じ置き方
   @fitted_max 150
 
-  defp relaid(relation, kept, edges) do
+  defp relaid(relation, kept, edges, opts) do
     # 升目が変わるので、大きさも付け直す（知名度は `sized` が残しておいたものを使う）
     bare = Enum.map(kept, &Map.drop(&1, [:cell]))
 
     # **数十人に絞った図だけ、読ませる置き方にする**（いちばん長い名前に合わせた列の数・大きい字）。
     # 数百残る絞り方（見ていない作品だけ・知名度の下限）にそれを当てると、列が数本しか取れず、
     # 縦に何千と伸びて札が読めない大きさになった。多いときは全体の図と同じ置き方（升目と知名度）
-    fitted? = length(bare) <= @fitted_max
+    # **全体の図と同じ置き方を名指しされたら、数によらずそうする**（`layout: :full`。知名度や見た作品で
+    # 絞る図は、残りが少なくても国の帯と公開年で読む図のまま —— 読ませる置き方にすると、いちばん長い
+    # 作品名に合わせて列が 2〜3 本しか取れず、縦に並ぶだけになった）
+    fitted? = opts[:layout] != :full and length(bare) <= @fitted_max
 
     laid =
       arrange(
@@ -937,10 +942,12 @@ defmodule Chidori.Relations.Graph do
     |> Enum.sort_by(& &1.removed_at, :desc)
   end
 
-  # 月次ページビュー（bot 除外）に、AI が付けた倍率を掛けたもの。
+  # 月次ページビュー（bot 除外）に、AI が付けた倍率を掛けたもの。**控えてある月の平均（`@avg_views_key`）が
+  # あれば先に使う** —— その月の値は話題に振られる（新作の公開に合わせて同じシリーズの旧作が何倍も読まれ、
+  # 2003 年公開の作品が目録でいちばん多い月 18 万になった）。平均は Chiezo が取り込みのたびに足していく。
   # **持っていない画家もいる**ので、無ければ 0 —— 図が出ないより、丸が小さいほうがまし
   defp views_in(%{"extra" => extra}) when is_map(extra) do
-    case extra[@views_key] do
+    case extra[@avg_views_key] || extra[@views_key] do
       views when is_integer(views) and views > 0 -> round(views * scale_in(extra))
       _other -> 0
     end

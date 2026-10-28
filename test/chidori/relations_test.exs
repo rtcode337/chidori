@@ -37,7 +37,8 @@ defmodule Chidori.RelationsTest do
                 %{
                   "title" => title,
                   "body" => "",
-                  "tags" => ["映画", "年代:2026", "国:日本", "記録:#{title}"]
+                  # 公開から 4 年以上たった作品（公開から間もない作品の割引がかからない）
+                  "tags" => ["映画", "年代:2010", "国:日本", "記録:#{title}"]
                 }
               ])
             )

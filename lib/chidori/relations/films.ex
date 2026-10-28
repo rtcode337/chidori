@@ -68,6 +68,11 @@ defmodule Chidori.Relations.Films do
   # アニメ・ドラマは原作やテレビの人気で読まれ、映画はその後に作られることが多い**。率は目安で、AI の話題度が
   # 入れば使わない
   @source_work_shares %{"小説" => 0.5}
+  # 公開から間もない作品の閲覧数の割引（公開からの年数 → 率。載っていない年数はそのまま）。月の閲覧数は公開直後の
+  # 話題で膨らみ、最近の作品が過去の大作と並んでいた。公開年ごとの上位 1 割の閲覧数は、2005〜2020 年の作品が
+  # 月 1.4 万前後で揃うのに対し、今年の作品は約 4 倍・1〜2 年前は約 1.7 倍・3 年前は約 1.4 倍あった（その逆数ほど）。
+  # 未来の公開年（負の年数）は今年と同じ
+  @recency_shares %{-1 => 0.3, 0 => 0.3, 1 => 0.6, 2 => 0.7, 3 => 0.8}
   @source_work_share 0.2
   # 映画としての話題度（1〜10）を AI が書く脇書きの鍵（`fame_rule/0`・`with_new_film_views/3`）
   @fame_level_key "fame_level"
@@ -382,6 +387,8 @@ defmodule Chidori.Relations.Films do
   大きさを付ける前に呼ぶ）。`wiki_views` は閲覧数の無い作品の作品名 → `%{views: 記事の月の閲覧数, kind: 原作の種類か nil}`
   （Chiezo の jawiki から引いたもの。`kind` は記事の 1 文目から `source_kind_of/1`）。
 
+  0. **公開から間もない作品は閲覧数を割り引く**（今年 3 割・1 年前 6 割・2 年前 7 割・3 年前 8 割。`settled/2`）。
+     月の閲覧数は公開直後の話題で膨らむ
   1. **原作の記事（`#{@source_work_prefix}:<原作の種類>` のタグ。名簿を引くときに機械が記事の 1 文目から付ける
      `source_work_pattern/0`）の閲覧数は、小説なら #{round(@source_work_shares["小説"] * 100)}%、漫画・ライトノベル・アニメ・ドラマ・
      ゲームなら #{round(@source_work_share * 100)}% に割り引く。** 映画だけの記事が無い作品は、
@@ -396,7 +403,8 @@ defmodule Chidori.Relations.Films do
      **最大にはしない** —— 引き継ぐのは注目度が高い作品ばかりなので、高を最大にすると、新作が軒並み
      いちばん流行った作品と肩を並べた
 
-  **AI が書いた話題度（`extra.fame_level`。1〜10）があれば、1〜3 より先にそれを使う**（基準に対して 10 分の話題度の大きさ）。
+  **AI が書いた話題度（`extra.fame_level`。1〜10）があれば、1〜3 より先にそれを使う**（閲覧数相当は基準から話題度が
+  4 下がるごとに 10 分の 1。`fame_views/2`）。
   使うのは閲覧数の当てにならない作品 —— 原作の記事の作品と、引き継いだ・足した作品 —— だけで、映画だけの記事を持つ作品は
   機械の閲覧数のほうを信じる。原作の記事のうち映画の分は作品でまったく違い（アニメ映画の閲覧が大半の記事も、
   漫画とアニメの閲覧が大半の記事もある）、閲覧数からは見分けられないので、興行や受賞を知っている AI に決めさせる。
@@ -404,9 +412,9 @@ defmodule Chidori.Relations.Films do
 
   引き継いでも足してもいない作品（`記録:` の無い名簿の作品）で記事も注目度も無いものは、いちばん小さいまま。
   """
-  def with_new_film_views(nodes, attention, wiki_views)
+  def with_new_film_views(nodes, attention, wiki_views, this_year \\ Chidori.Jst.today().year)
       when is_list(nodes) and is_map(attention) and is_map(wiki_views) do
-    nodes = Enum.map(nodes, &with_wiki(&1, wiki_views[&1.name]))
+    nodes = Enum.map(nodes, &(&1 |> with_wiki(wiki_views[&1.name]) |> settled(this_year)))
 
     top =
       nodes
@@ -418,7 +426,7 @@ defmodule Chidori.Relations.Films do
     Enum.map(nodes, fn node ->
       cond do
         top > 0 and judged?(node) ->
-          Map.put(node, :views, views_for(top, node.fame_level / 10))
+          Map.put(node, :views, fame_views(top, node.fame_level))
 
         (node[:views] || 0) > 0 ->
           node
@@ -435,6 +443,23 @@ defmodule Chidori.Relations.Films do
     end)
   end
 
+  # 公開から間もない作品の閲覧数を割り引く（`@recency_shares`）。公開年は札の年代（`年代:` のタグ）
+  defp settled(node, this_year) do
+    with views when is_integer(views) and views > 0 <- node[:views],
+         {year, _rest} <- Integer.parse(to_string(node[:years] || "")),
+         share when is_number(share) <- Map.get(@recency_shares, this_year - year) do
+      Map.put(node, :views, max(round(views * share), 1))
+    else
+      _not_recent -> node
+    end
+  end
+
+  # 話題度から閲覧数相当を決める。**話題度が 4 上がるごとに 10 倍**（10 = 基準、8 = 約 3 割、6 = 約 1 割、
+  # 4 = 約 3%）—— 実際の映画の記事の閲覧数は桁で開くので、目盛りも桁で刻む。基準に対して 10 分の話題度の
+  # 大きさにしていた頃は、話題度 5（ヒット作）が月 3.6 万相当になり、実写化された漫画の作品が君の名は。
+  # （月 3.9 万）と並ぶ大きさになって、図の知名度の下限（1 万）も通っていた
+  defp fame_views(top, level), do: max(round(top * :math.pow(10, (level - 10) / 4)), 1)
+
   # 大きさは閲覧数の比の 0.65 乗（`Graph`）なので、基準に対して ratio の大きさになる閲覧数は基準の ratio^(1/0.65)
   defp views_for(top, ratio), do: max(round(top * :math.pow(ratio, 1 / 0.65)), 1)
 
@@ -445,7 +470,18 @@ defmodule Chidori.Relations.Films do
 
   defp source_work?(node), do: source_kind(node) != nil
 
-  defp source_kind(node) do
+  @doc """
+  閲覧数では映画の知名度が測れず、AI の話題度もまだ無い作品か。**原作が小説以外**（漫画・ライトノベル・アニメ・
+  ドラマ・ゲーム）の記事を指す作品で、話題度（`fame_level`）が無いもの。漫画などの記事の閲覧数は原作とアニメの
+  人気でいくらでも大きくなり（月 10 万を超える作品もある）、どんな率で割り引いても図の知名度の下限を通った。
+  小説の記事は映画で知られることが多いので、割り引いた閲覧数で比べる。
+  """
+  def unrated_source_work?(node) do
+    source_kind(node) not in [nil, "小説"] and not is_integer(node[:fame_level])
+  end
+
+  @doc "原作の記事の種類（`記事:<種類>` のタグの値）。原作の記事でなければ nil。"
+  def source_kind(node) do
     Enum.find_value(node[:tags] || [], fn
       @source_work_prefix <> ":" <> kind -> kind
       _tag -> nil
@@ -801,7 +837,7 @@ defmodule Chidori.Relations.Films do
             # 続編・同じ題材のように記事どうしが互いにリンクしている組は、薄い線で引く
             %{linked: "mutual", format: "#{Graph.related_tag()}:{1}"}
           ],
-      extra: ["pageviews_month", "image"]
+      extra: ["pageviews_month", "pageviews_avg", "image"]
     }
   end
 

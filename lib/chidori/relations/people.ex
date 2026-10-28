@@ -204,7 +204,7 @@ defmodule Chidori.Relations.People do
             # 相互リンクだけを線にする（画家と同じ。片側だと有名どうしが軒並み繋がる）
             %{linked: "mutual", format: "#{Graph.related_tag()}:{1}"}
           ],
-      extra: ["pageviews_month", "image"]
+      extra: ["pageviews_month", "pageviews_avg", "image"]
     }
   end
 
