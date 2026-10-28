@@ -863,7 +863,7 @@ defmodule Chidori.Relations.Films do
             # 続編・同じ題材のように記事どうしが互いにリンクしている組は、薄い線で引く
             %{linked: "mutual", format: "#{Graph.related_tag()}:{1}"}
           ],
-      extra: ["pageviews_month", "pageviews_avg", "image"]
+      extra: ["pageviews_month", "pageviews_median", "image"]
     }
   end
 

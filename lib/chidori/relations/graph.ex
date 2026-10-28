@@ -116,8 +116,8 @@ defmodule Chidori.Relations.Graph do
   # 逆に最近テレビで扱われた）は、AI が倍率を書いて直す。同じ鍵を書き換えさせると
   # 元の値が失われ、取り込み直しても新しいページビューを反映できなくなる
   @views_key "pageviews_month"
-  # 控えてある月の平均（Chiezo が取り込みのたびに足す。あれば `@views_key` より先に使う）
-  @avg_views_key "pageviews_avg"
+  # 控えてある月の中央値（Chiezo が取り込みのたびに足す。あれば `@views_key` より先に使う）
+  @median_views_key "pageviews_median"
   @fame_scale_key "fame_scale"
   # 倍率の効かせ方の上下。**桁で狂わせない** —— 1 人の書き間違いで図が壊れる
   @min_fame_scale 0.1
@@ -942,12 +942,12 @@ defmodule Chidori.Relations.Graph do
     |> Enum.sort_by(& &1.removed_at, :desc)
   end
 
-  # 月次ページビュー（bot 除外）に、AI が付けた倍率を掛けたもの。**控えてある月の平均（`@avg_views_key`）が
+  # 月次ページビュー（bot 除外）に、AI が付けた倍率を掛けたもの。**控えてある月の中央値（`@median_views_key`）が
   # あれば先に使う** —— その月の値は話題に振られる（新作の公開に合わせて同じシリーズの旧作が何倍も読まれ、
-  # 2003 年公開の作品が目録でいちばん多い月 18 万になった）。平均は Chiezo が取り込みのたびに足していく。
+  # 2003 年公開の作品が目録でいちばん多い月 18 万になった）。中央値は Chiezo が取り込みのたびに足していく月から出す（平均だと、跳ねた月に引っ張られる）。
   # **持っていない画家もいる**ので、無ければ 0 —— 図が出ないより、丸が小さいほうがまし
   defp views_in(%{"extra" => extra}) when is_map(extra) do
-    case extra[@avg_views_key] || extra[@views_key] do
+    case extra[@median_views_key] || extra[@views_key] do
       views when is_integer(views) and views > 0 -> round(views * scale_in(extra))
       _other -> 0
     end

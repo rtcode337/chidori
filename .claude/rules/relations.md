@@ -27,7 +27,7 @@ paths:
   `Graph.from_docs/2` に渡す仕様に寄せてあり、画家の図はその既定
 - 名簿・年代・様式は AI に書かせない。Chidori が条件を言葉で書き、Chiezo が抽出の指定にして jawiki から機械的に引く。
   指定を書けなかったときは収集を作らず、理由を画面に出す。名簿は `tag_suffix`（「〜の画家」）で指し、地域も年代も絞らない
-- 丸の大きさは jawiki の月次ページビュー（`extra.pageviews_month`。機械が写す事実）。Chiezo が控えている月の平均 `extra.pageviews_avg` があれば先に使う（`Graph` の `views_in`。名簿の `extra` に運ばせる。その月の値は新作につられた旧作の閲覧で振られた）。AI が直すのは別の鍵の倍率（`extra.fame_scale`）。同じ鍵を書き換えさせない
+- 丸の大きさは jawiki の月次ページビュー（`extra.pageviews_month`。機械が写す事実）。Chiezo が控えている月の中央値 `extra.pageviews_median` があれば先に使う（`Graph` の `views_in`。名簿の `extra` に運ばせる。その月の値は新作につられた旧作の閲覧で振られた）。AI が直すのは別の鍵の倍率（`extra.fame_scale`）。同じ鍵を書き換えさせない
 - 原作の記事の作品（`記事:`）は、映画化されていれば AI に消させない（`Films.source_work_keep_rule/0`。ざっと見る回と整理の回。消すのは映画の記事が目録に別にあるときと、劇場公開の映画が無いときだけ。「映画ではないもの」を消す決まりだけだった頃は 61 本消された）
 - 詳細の主演の下に「知名度」（札の大きさの順位 / 全体の数・閲覧数相当・決め方。`fame_rank/2`・`fame_rank_row`・`Films.size_basis/1`。主演の無い札はタグの最後）
 - 詳細の「この〜の区画を見る」は収集の画面の区画の表へ飛び（`/collect/relations?view=…&partition_of=<名前>`）、その 1 件のタグを Chiezo から引いて区画を割り出し（`Relations.partition_key/4`・`target_partition/3`）、表を開いてその行を目立たせて画面の真ん中へ寄せる（`chidori:reveal`）

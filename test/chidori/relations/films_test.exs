@@ -254,13 +254,13 @@ defmodule Chidori.Relations.FilmsTest do
       assert sized["転送の新作"] == 400
     end
 
-    test "知名度は控えてある月の平均（pageviews_avg）を先に使う（その月の値は話題に振られる）" do
+    test "知名度は控えてある月の中央値（pageviews_median）を先に使う（その月の値は話題に振られる）" do
       docs = [
         Map.put(doc("旧作", ~w(映画 年代:2003 国:日本)), "extra", %{
           "pageviews_month" => 180_000,
-          "pageviews_avg" => 40_000
+          "pageviews_median" => 40_000
         }),
-        Map.put(doc("平均の無い作品", ~w(映画 年代:2003 国:日本)), "extra", %{
+        Map.put(doc("中央値の無い作品", ~w(映画 年代:2003 国:日本)), "extra", %{
           "pageviews_month" => 5_000
         })
       ]
@@ -271,8 +271,8 @@ defmodule Chidori.Relations.FilmsTest do
         |> Map.get(:nodes)
         |> Map.new(&{&1.name, &1.views})
 
-      assert views == %{"旧作" => 40_000, "平均の無い作品" => 5_000}
-      assert "pageviews_avg" in Films.extract().extra
+      assert views == %{"旧作" => 40_000, "中央値の無い作品" => 5_000}
+      assert "pageviews_median" in Films.extract().extra
     end
 
     test "札の大きさの決め方の言葉（詳細の知名度に添える）" do
