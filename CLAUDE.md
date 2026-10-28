@@ -138,6 +138,8 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
   body を画面の高さの縦並びにし（`root.html.heex`）、各画面は頭（`.page-head`）と `main` を並べる。
   `position: fixed` や sticky で留めない（iPhone の PWA でキーボードの出し入れのあとに位置がずれて取り残される）。
   ページ全体（window）はスクロールしないので、位置を読む・戻すのは `main` に対して書く（`PageScroll`）
+- **ホーム画面から開いたとき（PWA）は、ページそのものの拡大縮小を止める**（`assets/js/pwa_zoom.js`）。図は指の操作を自分で受けるので、
+  ページを拡大して図が画面いっぱいになると動かす手立てが無くなる。図の中の拡大縮小は図の操作（`pan_zoom.js`）が受ける
 - 収集の名前は `chidori_` で始める（`chidori_tech`・`chidori_people`・`chidori_gourmet`・`chidori_dining_<番号>` など）。
   `pta_market` は売買提案のアプリが書く収集で、Chidori は読むだけ
 - コードを変えたら、同じ変更で README（入口。1 画面に収める）と対応する `docs/*.md`、このファイルと

@@ -46,9 +46,13 @@ import AskNearby from "./ask_nearby"
 import TheaterNearby from "./theater_nearby"
 // 設定の「通知」タブの「この端末に通知を送る」（Web Push の購読）
 import WebPush from "./web_push"
+import {lockPageZoom} from "./pwa_zoom"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+// ホーム画面から開いたときは、ページそのものの拡大縮小を止める（図の上で動けなくなるため。`pwa_zoom.js`）
+lockPageZoom()
+
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
