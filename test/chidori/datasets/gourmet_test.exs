@@ -939,6 +939,9 @@ defmodule Chidori.Datasets.GourmetTest do
 
     test "travel-log からの閉店の報告は、店の 1 件なら墓標" do
       assert Gourmet.request_preface() =~ "現地から閉店の報告"
+
+      # web で確かめられなかった料理は、報告に書いてあったことだけにする（紹介文を作らない）
+      assert Gourmet.request_preface() =~ "ほかは報告に書いてあったことだけに"
     end
   end
 

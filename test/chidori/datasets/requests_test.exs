@@ -205,6 +205,11 @@ defmodule Chidori.Datasets.RequestsTest do
     assert preface =~ "前の店を墓標で消し、新しい店を\n  足す"
     assert preface =~ "web で見つからなくても足して"
     assert preface =~ "現地からの報告（web では確かめられず）"
+
+    # 確かめていない店の紹介文や印を作らせない（地図では確かめた紹介と同じ顔で並ぶ）
+    assert preface =~ "報告に書いてあったことだけにしてください"
+    assert preface =~ "確かめていない紹介文（場所の様子・名物・どういう店か）を"
+    assert preface =~ "特徴・ランク・営業時間は付けない"
     # 打ち間違いは web の名前に寄せ、別の店では置き換えない
     assert preface =~ "一字違いの店"
     assert preface =~ "その店で\n  置き換えずに報告の名前で足して"
