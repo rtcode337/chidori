@@ -1986,6 +1986,26 @@ defmodule ChidoriWeb.RelationsLiveTest do
       assert RelationsLive.fame_floor_label(10_000) == "月 1 万閲覧以上"
     end
 
+    test "詳細の知名度は、札の大きさの順位と閲覧数相当・決め方" do
+      film = %{name: "原作の映画", views: 12_345, kind: :film, tags: ["記事:漫画"], years: "2010"}
+
+      relation = %{
+        nodes: [%{name: "大作", views: 90_000}, film, %{name: "小品", views: 800}]
+      }
+
+      assert RelationsLive.fame_rank(relation, film) == %{
+               rank: 2,
+               total: "3",
+               views: "1.2 万閲覧",
+               basis: ["原作（漫画）の記事の閲覧数を 2 割に"]
+             }
+
+      assert RelationsLive.fame_rank(relation, %{name: "小品", views: 800, kind: :artist}).views ==
+               "800 閲覧"
+
+      assert RelationsLive.fame_rank(relation, %{name: "無名", views: 0}) == nil
+    end
+
     test "日付を書いていない印は後ろに回る" do
       relation = %{nodes: [%{name: "あ"}, %{name: "い"}]}
       marks = %{"あ" => %Mark{note: "行きたい"}, "い" => %Mark{seen: true, seen_on: ~D[2020-01-01]}}

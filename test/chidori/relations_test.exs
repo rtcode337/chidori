@@ -92,6 +92,26 @@ defmodule Chidori.RelationsTest do
     end
   end
 
+  describe "1 件の区画" do
+    test "区画の一覧とその 1 件のタグから、入っている区画の鍵を割り出す" do
+      partitions = [%{key: "日本|-1999"}, %{key: "日本|2000-"}, %{key: "アメリカ合衆国|-"}]
+
+      assert Relations.partition_key("films", partitions, ["映画", "国:日本", "年代:2010"], "作品") ==
+               "日本|2000-"
+
+      assert Relations.partition_key("films", partitions, ["国:日本", "年代:1954"], "古い作品") ==
+               "日本|-1999"
+
+      assert Relations.partition_key("films", nil, ["国:日本"], "作品") == nil
+
+      # 収集の画面は、区画の一覧（設定）とタグが揃うまで割り出さない
+      cfg = %{collection: %{partitions: partitions}}
+      target = %{name: "作品", tags: ["国:日本", "年代:2010"]}
+      assert ChidoriWeb.RelationsLive.target_partition(cfg, target, "films") == "日本|2000-"
+      assert ChidoriWeb.RelationsLive.target_partition(cfg, %{target | tags: nil}, "films") == nil
+    end
+  end
+
   describe "読み込み中の印が残ったとき" do
     @tag :capture_log
     test "その図を読むタスクがもう無ければ、残った印とみなして読み直す" do

@@ -869,7 +869,18 @@
                  巡回のほうの「まだ」が全区画に並び、ざっと見るがどこまで済んだのか読めなかった --%>
             <% sweeps = [Chidori.Relations.rough_sweep(), Chidori.Relations.survey_sweep()] %>
             <% rows = partition_rows(cfg, sweeps) %>
-            <details :if={rows != []} class="partition-list">
+            <% target = target_partition(cfg, @partition_of, @view) %>
+            <%!-- 詳細の「この作品の区画を見る」から来たら、その区画の行を開いて目立たせる --%>
+            <p :if={@partition_of && rows != []} class="muted-note partition-target-note">
+              {if target,
+                do: "「#{@partition_of.name}」は区画「#{target}」に入っています（下の表で目立たせています）。",
+                else:
+                  if(is_list(@partition_of.tags),
+                    do: "「#{@partition_of.name}」の区画が見つかりませんでした。",
+                    else: "「#{@partition_of.name}」の区画を調べています…"
+                  )}
+            </p>
+            <details :if={rows != []} class="partition-list" open={target != nil}>
               <% progress = partition_progress(rows, sweeps) %>
               <summary>
                 区画（<span :if={progress}>{elem(progress, 1)} / </span>{length(rows)}）
@@ -907,7 +918,12 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr :for={row <- rows}>
+                  <tr
+                    :for={row <- rows}
+                    id={if row.key == target, do: "partition-target"}
+                    class={row.key == target && "is-target"}
+                    phx-mounted={row.key == target && JS.dispatch("chidori:reveal")}
+                  >
                     <% asked = partition_state(@relation, row.key) %>
                     <td>{row.key}</td>
                     <td>{row.count}</td>
@@ -1290,6 +1306,13 @@
         <%!-- その画家の短い説明（記事の冒頭）。**絵の説明だけが出て、描いた人の
              説明が出ないのは片手落ち** —— 押したのは画家のほう --%>
         <p :if={@detail[:summary]} class="artwork-extract">{@detail.summary}</p>
+        <%!-- **その 1 件の区画へ飛ぶ**（収集の画面の区画の表。その行を開いて目立たせる）。巡回がどこまで
+             見たか・先に見てもらうかを、その 1 件から辿れるように --%>
+        <p :if={!@embed and Chidori.Relations.chiezo_view?(@view)} class="partition-jump">
+          <.link navigate={"/collect/relations?" <> URI.encode_query(%{"view" => @view, "partition_of" => @detail.name})}>
+            この{unit_of(@view)}の区画を見る
+          </.link>
+        </p>
         <%!-- 上映時間（映画の図。整理の回に AI が確かめて書く） --%>
         <p :if={@detail[:runtime]} class="muted-note runtime-note">上映時間 {@detail.runtime} 分</p>
 
@@ -1330,7 +1353,19 @@
             <dd :if={label != "主演" and not (@view == "films" and label == "監督")}>
               {Enum.join(values, "、")}
             </dd>
+            <%!-- **知名度は主演の下に**（札の大きさの順位と、その閲覧数・決め方） --%>
+            <.fame_rank_row
+              :if={label == "主演"}
+              rank={fame_rank(@relation, @detail)}
+              counter={counter_of(@view)}
+            />
           <% end %>
+          <%!-- 主演の無い札は、タグの最後に --%>
+          <.fame_rank_row
+            :if={not List.keymember?(tag_groups(@detail), "主演", 0)}
+            rank={fame_rank(@relation, @detail)}
+            counter={counter_of(@view)}
+          />
         </dl>
 
         <%= cond do %>

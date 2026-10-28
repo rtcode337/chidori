@@ -468,6 +468,17 @@ defmodule Chidori.Relations do
   defp graph_spec(_key), do: Graph.painters_spec()
 
   # 区画を割り出すタグの頭（`Partitions.locator/3`）
+  @doc """
+  1 件がどの区画に入っているか（区画の一覧と、その 1 件のタグ・見出しから。Chiezo と同じ規則 `Partitions`）。
+  区画の一覧が無い・どの区画にも入らなければ nil。
+  """
+  def partition_key(key, partitions, tags, name) when is_list(partitions) and is_binary(name) do
+    {prefix, value} = partition_tags(valid_key(key))
+    Partitions.locator(partitions, prefix, value).(tags || [], name)
+  end
+
+  def partition_key(_key, _partitions, _tags, _name), do: nil
+
   defp partition_tags("people"), do: {People.category_tag(), Graph.years_tag()}
   defp partition_tags("films"), do: {Films.category_tag(), Graph.years_tag()}
   defp partition_tags(_key), do: {Graph.region_tag(), Graph.years_tag()}

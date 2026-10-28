@@ -275,6 +275,17 @@ defmodule Chidori.Relations.FilmsTest do
       assert "pageviews_avg" in Films.extract().extra
     end
 
+    test "札の大きさの決め方の言葉（詳細の知名度に添える）" do
+      assert Films.size_basis(%{tags: ["記事:小説"], years: "2025"}, 2026) ==
+               ["原作（小説）の記事の閲覧数を 5 割に", "公開から間もないので 6 割に"]
+
+      assert Films.size_basis(%{tags: ["記事:漫画"], fame_level: 6, years: "2025"}, 2026) == [
+               "AI の話題度 6"
+             ]
+
+      assert Films.size_basis(%{tags: [], years: "1990"}, 2026) == []
+    end
+
     test "公開から間もない作品は閲覧数を割り引く（月の閲覧数は公開直後の話題で膨らむ）" do
       nodes =
         for {name, year} <- [{"今年", "2026"}, {"1 年前", "2025"}, {"3 年前", "2023"}, {"昔", "2000"}],
@@ -312,6 +323,14 @@ defmodule Chidori.Relations.FilmsTest do
 
       # 映画だけの記事を持つ作品は、話題度があっても機械の閲覧数のまま
       assert sized["映画の記事の作品"] == 400
+    end
+
+    test "原作の記事の作品は、映画化されていれば消させない（ざっと見る回と整理の回）" do
+      for prompt <- [Films.prompt(), Films.survey_prompt()] do
+        assert prompt =~ "「小説の記事だから映画ではない」は消す理由になりません"
+        assert prompt =~ "同じ作品の映画の記事が目録に別にある"
+        refute prompt =~ "映画ではないもの（テレビドラマ・小説・人物の記事など）"
+      end
     end
 
     test "整理の回と引き継ぎの回に、話題度を書かせる" do

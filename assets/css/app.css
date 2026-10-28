@@ -357,6 +357,9 @@ main.relations-page > div { padding-top: 0; }
 .seen-flag-cloth { fill: #facc15; stroke: #a16207; stroke-width: 0.6px; stroke-linejoin: round; }
 .relation-node .seen-flag { pointer-events: none; }
 .seen-legend { margin: .4rem 0; }
+/* 詳細から区画へ飛ぶ口と、飛んだ先の区画の行 */
+.partition-jump { margin: .4rem 0 0; font-size: .85rem; }
+.partition-table tr.is-target td { background: #fff4d6; font-weight: 700; }
 /* 知名度の下限（映画の図）。見た作品の行と同じ並びに置く */
 .fame-floor { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
 .fame-floor select { margin-left: .3rem; padding: .2rem .4rem; border: 1px solid #dcdff0; border-radius: .5rem; background: #fff; color: #3b4463; font: inherit; }

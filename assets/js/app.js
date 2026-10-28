@@ -96,6 +96,12 @@ async function copyText(text) {
   }
 }
 
+// 名指しされた行を画面の真ん中へ（詳細の「この作品の区画を見る」から来たとき、区画の表のその行）。
+// 表は畳みの中で長いので、開いただけでは目当ての行が画面の外にある
+window.addEventListener("chidori:reveal", event => {
+  event.target.scrollIntoView({block: "center", behavior: "smooth"})
+})
+
 window.addEventListener("chidori:copy", async event => {
   const button = event.target.closest("button")
   const text = button && button.dataset.copy

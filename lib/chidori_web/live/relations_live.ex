@@ -17,6 +17,7 @@ defmodule ChidoriWeb.RelationsLive do
   alias Chidori.Relations.CarrySetting
   alias Chidori.Relations.FilmCarry
   alias Chidori.Relations.Films
+  alias Phoenix.LiveView.JS
   alias Chidori.Relations.Mark
   alias Chidori.Relations.Marks
 
@@ -237,6 +238,8 @@ defmodule ChidoriWeb.RelationsLive do
             else: default_fame_floor(view)
           ),
         pending_focus: params["focus"],
+        # 区画を見に来た 1 件（詳細の「この作品の区画を見る」。収集の画面で、その区画の行を開いて目立たせる）
+        partition_of: partition_of(params["partition_of"]),
         detail: nil,
         edge: nil
       )
@@ -247,7 +250,7 @@ defmodule ChidoriWeb.RelationsLive do
     # 収集の画面は設定を開いた形で出す（開いたときに Chiezo から読む）
     socket =
       if collect_mode and connected?(socket),
-        do: socket |> assign(settings_open: true) |> load_settings(),
+        do: socket |> assign(settings_open: true) |> load_settings() |> load_partition_of(),
         else: socket
 
     {:noreply, apply_pending_focus(socket)}
@@ -801,7 +804,46 @@ defmodule ChidoriWeb.RelationsLive do
   """
   def fold(text), do: text |> String.normalize(:nfkc) |> String.downcase()
 
+  defp partition_of(name) when is_binary(name) and name != "", do: %{name: name, tags: nil}
+  defp partition_of(_name), do: nil
+
+  # 区画を見に来た 1 件のタグを Chiezo から引く（収集の画面は図を読まないので、札のタグが手元に無いことがある）
+  defp load_partition_of(%{assigns: %{partition_of: %{name: name}, view: view}} = socket) do
+    collection = Relations.collection_of(view)
+
+    start_async(socket, :partition_of, fn ->
+      with base when is_binary(base) <- Chidori.Chiezo.base_url(),
+           {:ok, %{"tags" => tags}} when is_list(tags) <-
+             Chidori.Chiezo.doc(base, collection, name, "title,tags") do
+        {name, tags}
+      else
+        _not_found -> {name, []}
+      end
+    end)
+  end
+
+  defp load_partition_of(socket), do: socket
+
+  @doc """
+  区画を見に来た 1 件（`partition_of`）が入っている区画の鍵。区画の一覧（設定）と、その 1 件のタグが
+  揃うまでは nil。
+  """
+  def target_partition(%{collection: %{partitions: parts}}, %{name: name, tags: tags}, view)
+      when is_list(parts) and is_list(tags),
+      do: Relations.partition_key(view, parts, tags, name)
+
+  def target_partition(_cfg, _partition_of, _view), do: nil
+
   @impl true
+  def handle_async(:partition_of, {:ok, {name, tags}}, socket) do
+    case socket.assigns.partition_of do
+      %{name: ^name} = target -> {:noreply, assign(socket, partition_of: %{target | tags: tags})}
+      _other -> {:noreply, socket}
+    end
+  end
+
+  def handle_async(:partition_of, _result, socket), do: {:noreply, socket}
+
   def handle_async(:recent_runs, {:ok, {:ok, runs}}, socket),
     do: {:noreply, assign(socket, recent_runs: runs)}
 
@@ -1125,6 +1167,49 @@ defmodule ChidoriWeb.RelationsLive do
     else
       []
     end
+  end
+
+  @doc """
+  詳細に出す知名度（札の大きさの順位）。図の全部の札の中で、札の大きさに使う閲覧数（相当）の多い順の何番目か、
+  その閲覧数、決め方の言葉（`Films.size_basis/1`。映画の図だけ）。閲覧数が無ければ nil。
+  """
+  def fame_rank(relation, %{views: views} = detail) when is_integer(views) and views > 0 do
+    nodes = relation[:nodes] || []
+
+    %{
+      rank: Enum.count(nodes, &((&1[:views] || 0) > views)) + 1,
+      total: grouped(length(nodes)),
+      views: views_text(views),
+      basis: if(detail[:kind] == :film, do: Films.size_basis(detail), else: [])
+    }
+  end
+
+  def fame_rank(_relation, _detail), do: nil
+
+  # 閲覧数（月）の書き方。1 万からは「万」で
+  defp views_text(views) when views >= 10_000,
+    do:
+      "#{:erlang.float_to_binary(views / 10_000, decimals: 1) |> String.trim_trailing(".0")} 万閲覧"
+
+  defp views_text(views), do: "#{grouped(views)} 閲覧"
+
+  defp grouped(n), do: String.replace(Integer.to_string(n), ~r/(\d)(?=(\d{3})+$)/, "\\1,")
+
+  attr :rank, :map, default: nil
+  attr :counter, :string, default: "本"
+
+  @doc "詳細の「知名度」の行（`fame_rank/2`）。"
+  def fame_rank_row(assigns) do
+    ~H"""
+    <%= if @rank do %>
+      <dt>知名度</dt>
+      <dd>
+        {@rank.rank} 位 / {@rank.total} {@counter}（月 {@rank.views}相当{for basis <- @rank.basis,
+                                                                        into: "",
+                                                                        do: "・" <> basis}）
+      </dd>
+    <% end %>
+    """
   end
 
   @doc "知名度の下限の選択肢（閲覧数。0 はすべて）。"

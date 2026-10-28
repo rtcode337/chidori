@@ -443,6 +443,32 @@ defmodule Chidori.Relations.Films do
     end)
   end
 
+  @doc """
+  札の大きさがどう決まったかの言葉（詳細の「知名度」に添える）。AI の話題度で決めた作品はそれだけ、
+  そうでなければ閲覧数にかけた割引（原作の記事・公開から間もない）。何もかけていなければ空。
+  """
+  def size_basis(node, this_year \\ Chidori.Jst.today().year) do
+    if judged?(node) do
+      ["AI の話題度 #{node.fame_level}"]
+    else
+      kind = source_kind(node)
+
+      recent =
+        with {year, _rest} <- Integer.parse(to_string(node[:years] || "")),
+             share when is_number(share) <- Map.get(@recency_shares, this_year - year),
+             do: share,
+             else: (_none -> nil)
+
+      [
+        kind && "原作（#{kind}）の記事の閲覧数を #{tenths(share_of(kind))} 割に",
+        recent && "公開から間もないので #{tenths(recent)} 割に"
+      ]
+      |> Enum.reject(&is_nil/1)
+    end
+  end
+
+  defp tenths(share), do: round(share * 10)
+
   # 公開から間もない作品の閲覧数を割り引く（`@recency_shares`）。公開年は札の年代（`年代:` のタグ）
   defp settled(node, this_year) do
     with views when is_integer(views) and views > 0 <- node[:views],
@@ -906,6 +932,20 @@ defmodule Chidori.Relations.Films do
     """
   end
 
+  # 原作の記事の作品を消さない決まり（ざっと見る回と整理の回で共有）。**映画化された作品の映画の記事が無いとき、
+  # 原作（小説・漫画）やテレビ番組の記事がその映画の札**になっている（名簿は記事の分類から引くので、映画の分類が
+  # 付いた原作の記事も入る）。「映画ではないもの」を消す決まりだけを渡していた頃は、AI が「小説の記事なので
+  # 映画ではない」と原作の記事を 61 本消した（映画の記事が別にあったのは 4 本だけ）
+  def source_work_keep_rule do
+    """
+    **"#{@source_work_prefix}:" のタグが付いた作品は、記事が原作（小説・漫画）やテレビ番組の記事でも、劇場公開された
+    映画があれば消さないでください。** 映画の記事が別に無いので、その記事が映画の札の代わりになっています
+    （「小説の記事だから映画ではない」は消す理由になりません）。消すのは次のときだけです:
+      - 同じ作品の映画の記事が目録に別にある（同じ映画が 2 枚になる）
+      - 劇場公開の映画がそもそも 1 本も無い（テレビ放送・配信・ビデオだけ）
+    """
+  end
+
   # 機械で付けたタグ（触らせない）
   defp machine_rule do
     """
@@ -940,8 +980,10 @@ defmodule Chidori.Relations.Films do
     いちばん大事なのは**主演**です。一本ずつ確かめて付けてください。
 
     #{stars_rule()}
-    **映画ではないもの**（テレビドラマ・小説・人物の記事など）が混ざっていたら、墓標で消してください
-    （tags に "#{Chiezo.tombstone_tag()}" を入れ、body に消す理由を 1 行）。
+    **映画ではないもの**（人物の記事・劇場公開の映画が 1 本も無いテレビドラマや小説の記事など）が混ざっていたら、
+    墓標で消してください（tags に "#{Chiezo.tombstone_tag()}" を入れ、body に消す理由を 1 行）。
+
+    #{source_work_keep_rule()}
 
     **変えないものを返す必要はありません。** 返すものは次の形にしてください。
     - title: 作品名（**上に並んでいる表記をそのまま使う**）
@@ -969,9 +1011,11 @@ defmodule Chidori.Relations.Films do
     名前の書き方が記事名と違う）だけ直してください。**確かめられなかったものは触らないでください。**
 
     #{stars_rule()}
-    **2. 要らないものを消す。** 映画ではないもの（テレビドラマ・小説・人物の記事など）と、
-    表記の揺れで 2 つに分かれた同じ作品（残すほうに中身をまとめる）だけを墓標で消してください
+    **2. 要らないものを消す。** 映画ではないもの（人物の記事・劇場公開の映画が 1 本も無いテレビドラマや小説の
+    記事など）と、表記の揺れで 2 つに分かれた同じ作品（残すほうに中身をまとめる）だけを墓標で消してください
     （tags に "#{Chiezo.tombstone_tag()}"、body に理由を 1 行）。
+
+    #{source_work_keep_rule()}
 
     **3. ポスターを探す。** 行の後ろに「〔空: thumb〕」と付いている作品は、まだ絵がありません。
     **ポスターかキービジュアルの画像の URL** を探して image に入れて返してください。
