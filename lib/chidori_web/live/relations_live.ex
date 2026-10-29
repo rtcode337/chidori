@@ -1177,7 +1177,8 @@ defmodule ChidoriWeb.RelationsLive do
     nodes = relation[:nodes] || []
 
     %{
-      rank: Enum.count(nodes, &((&1[:views] || 0) > views)) + 1,
+      rank:
+        fame_ranks(relation)[detail.name] || Enum.count(nodes, &((&1[:views] || 0) > views)) + 1,
       total: grouped(length(nodes)),
       views: views_text(views),
       basis: if(detail[:kind] == :film, do: Films.size_basis(detail), else: [])
@@ -1185,6 +1186,24 @@ defmodule ChidoriWeb.RelationsLive do
   end
 
   def fame_rank(_relation, _detail), do: nil
+
+  @doc """
+  札ごとの大きさの順位（名前 → 順位）。札の大きさに使う閲覧数（相当）の多い順で、同じ数なら同じ順位
+  （1 位が 2 つなら次は 3 位）。閲覧数の無い札は入れない。**図の全部の札の中で数える**（絞った図でも
+  順位は変えない —— 絞るたびに順位が変わると、同じ作品の位置づけが読めなくなる）。
+  """
+  def fame_ranks(relation) do
+    relation[:nodes]
+    |> List.wrap()
+    |> Enum.filter(&(is_integer(&1[:views]) and &1.views > 0))
+    |> Enum.sort_by(& &1.views, :desc)
+    |> Enum.reduce({%{}, nil, 0, 0}, fn node, {acc, last, rank, seen} ->
+      seen = seen + 1
+      rank = if node.views == last, do: rank, else: seen
+      {Map.put_new(acc, node.name, rank), node.views, rank, seen}
+    end)
+    |> elem(0)
+  end
 
   # 閲覧数（月）の書き方。1 万からは「万」で
   defp views_text(views) when views >= 10_000,

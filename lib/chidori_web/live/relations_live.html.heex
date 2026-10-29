@@ -278,6 +278,8 @@
              線形探索になる --%>
           <%!-- 目立たせている札の線の先は、小さくても描く（探して選んだ人と同じ） --%>
           <% drawn = drawn_nodes(shown, @viewport, pick || @focus) %>
+          <%!-- 札の大きさの順位（図の全部の札の中で。詳細の「知名度」と同じ数え方）。年の行に添える --%>
+          <% ranks = fame_ranks(@relation) %>
           <%= for edge <- edge_lines(shown, drawn) do %>
             <line
               x1={edge.x1}
@@ -418,15 +420,18 @@
               >
                 <path class="seen-flag-cloth" d={flag_path(flag_unit(node))} />
               </g>
-              <%!-- 年代は外（下）のまま。札の中に 3 行入れると札が縦に伸びすぎる --%>
+              <%!-- 年代は外（下）のまま。札の中に 3 行入れると札が縦に伸びすぎる。
+                 **大きさの順位も同じ行に添える**（札の大きさだけでは、どれくらい上なのか読めない） --%>
               <text
-                :if={node.years}
+                :if={node.years || ranks[node.name]}
                 text-anchor="middle"
                 class="year-label"
                 y={label_height_of(node) / 2 + sub_size_of(node) * 1.15}
                 style={"font-size: #{sub_size_of(node)}px"}
               >
-                {node.years}
+                {[node.years, ranks[node.name] && "#{ranks[node.name]} 位"]
+                |> Enum.reject(&is_nil/1)
+                |> Enum.join(" · ")}
               </text>
             </g>
           <% end %>

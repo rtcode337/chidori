@@ -1986,6 +1986,20 @@ defmodule ChidoriWeb.RelationsLiveTest do
       assert RelationsLive.fame_floor_label(10_000) == "月 1 万閲覧以上"
     end
 
+    test "札ごとの大きさの順位（同じ数なら同じ順位、閲覧数の無い札は入れない）" do
+      relation = %{
+        nodes: [
+          %{name: "一", views: 900},
+          %{name: "二の甲", views: 500},
+          %{name: "二の乙", views: 500},
+          %{name: "四", views: 100},
+          %{name: "無名", views: 0}
+        ]
+      }
+
+      assert RelationsLive.fame_ranks(relation) == %{"一" => 1, "二の甲" => 2, "二の乙" => 2, "四" => 4}
+    end
+
     test "詳細の知名度は、札の大きさの順位と閲覧数相当・決め方" do
       film = %{name: "原作の映画", views: 12_345, kind: :film, tags: ["記事:漫画"], years: "2010"}
 
