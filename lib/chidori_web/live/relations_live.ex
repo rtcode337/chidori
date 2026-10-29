@@ -782,7 +782,12 @@ defmodule ChidoriWeb.RelationsLive do
     end
   end
 
-  defp search(relation, q) do
+  @doc """
+  探す欄の候補。名前の一部で探すほか、**順位でも探せる**（「10位」「#10」。全角でもよい）—— その順位から
+  下の札を順位の順に並べる。大きさの順位は札の下に出ているが、引いて見ていると小さい札は描かれず、
+  上位の作品でも図の上で見つからないことがある。**数字だけでは順位にしない**（「1917」のような題名がある）。
+  """
+  def search(relation, q) do
     case String.trim(q) do
       "" ->
         []
@@ -790,10 +795,32 @@ defmodule ChidoriWeb.RelationsLive do
       needle ->
         needle = fold(needle)
 
-        relation.nodes
-        |> Enum.filter(&String.contains?(fold(&1.name), needle))
-        |> Enum.sort_by(&radius_of/1, :desc)
-        |> Enum.take(@max_matches)
+        case rank_query(needle) do
+          nil ->
+            relation.nodes
+            |> Enum.filter(&String.contains?(fold(&1.name), needle))
+            |> Enum.sort_by(&radius_of/1, :desc)
+            |> Enum.take(@max_matches)
+
+          rank ->
+            ranks = fame_ranks(relation)
+
+            relation.nodes
+            |> Enum.filter(&((ranks[&1.name] || 0) >= rank))
+            |> Enum.sort_by(&{ranks[&1.name], &1.name})
+            |> Enum.take(@max_matches)
+            |> Enum.map(&Map.put(&1, :rank, ranks[&1.name]))
+        end
+    end
+  end
+
+  # 「10位」「10 位」「#10」→ 10。ほかは nil（`fold/1` を通したあとの形で読む）
+  defp rank_query(needle) do
+    case Regex.run(~r/^(?:#\s*(\d+)|(\d+)\s*位)$/u, needle) do
+      [_, n, ""] -> String.to_integer(n)
+      [_, n] -> String.to_integer(n)
+      [_, "", n] -> String.to_integer(n)
+      _other -> nil
     end
   end
 

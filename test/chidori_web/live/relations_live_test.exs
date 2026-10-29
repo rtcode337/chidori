@@ -1986,6 +1986,22 @@ defmodule ChidoriWeb.RelationsLiveTest do
       assert RelationsLive.fame_floor_label(10_000) == "月 1 万閲覧以上"
     end
 
+    test "探す欄は順位でも探せる（「10位」「#10」。数字だけは題名として探す）" do
+      nodes =
+        for {name, views} <- [{"一番", 900}, {"二番", 800}, {"三番", 700}, {"1917", 10}],
+            do: %{name: name, views: views, radius: 10, years: "2000"}
+
+      relation = %{nodes: nodes}
+
+      names = fn q -> Enum.map(RelationsLive.search(relation, q), & &1.name) end
+      assert names.("2位") == ["二番", "三番", "1917"]
+      assert names.("＃３") == ["三番", "1917"]
+      assert names.("2 位") == ["二番", "三番", "1917"]
+      assert [%{rank: 2} | _] = RelationsLive.search(relation, "#2")
+      # 数字だけは題名の一部として探す
+      assert names.("1917") == ["1917"]
+    end
+
     test "札ごとの大きさの順位（同じ数なら同じ順位、閲覧数の無い札は入れない）" do
       relation = %{
         nodes: [

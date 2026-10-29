@@ -160,7 +160,11 @@
                 <li :for={match <- @matches}>
                   <button type="button" phx-click="focus" phx-value-name={match.name}>
                     {match.name}
-                    <span :if={match.years} class="match-years">{match.years}</span>
+                    <span :if={match.years || match[:rank]} class="match-years">
+                      {[match[:rank] && "#{match.rank} 位", match.years]
+                      |> Enum.reject(&is_nil/1)
+                      |> Enum.join(" · ")}
+                    </span>
                   </button>
                 </li>
               </ul>
