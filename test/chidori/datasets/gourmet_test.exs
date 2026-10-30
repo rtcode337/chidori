@@ -111,6 +111,22 @@ defmodule Chidori.Datasets.GourmetTest do
       assert Gourmet.survey_prompt() =~ "米の品種"
     end
 
+    test "市の食文化の括りも入口にし（末尾で指す）、県は市から地図辞典で読む。外国の市は外す" do
+      extract = Gourmet.extract()
+      assert extract.tag_suffix == "市の食文化"
+      assert "ニューヨーク市の食文化" in String.split(extract.not_tag, ",")
+
+      # 県の括りでも県の食文化でも県が決まらない記事は、市の括りから読む
+      city = Enum.find(extract.tags, &Map.has_key?(&1, :area_of))
+      assert [_, "横浜市"] = Regex.run(Regex.compile!(city.pattern, "u"), "横浜市の食文化")
+      assert city.fallback == true
+
+      # 全国に広まっていても、その土地が発祥の料理は「どこにでもある料理」として消さない
+      for prompt <- [Gourmet.survey_prompt(), Gourmet.scan_prompt()] do
+        assert prompt =~ "発祥として知られる料理は"
+      end
+    end
+
     test "会社・メーカー・商品・作品・店でないもの・閉じた店・一覧の記事は外す" do
       excluded = String.split(Gourmet.extract().not_tag, ",")
 
