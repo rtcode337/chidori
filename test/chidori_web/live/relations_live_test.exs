@@ -192,6 +192,52 @@ defmodule ChidoriWeb.RelationsLiveTest do
     assert click.() =~ ~s(id="edge-name")
   end
 
+  test "隠した作品をまたいでつなぎ直した線も、2 回押すと詳細を開く", %{conn: conn} do
+    {:ok, live, _html} = live(conn, ~p"/relations?view=films")
+
+    film = fn title, year, views ->
+      %{
+        "title" => title,
+        "tags" => ["映画", "監督:小津安二郎", "年代:#{year}", "国:日本"],
+        "extra" => %{"pageviews_median" => views}
+      }
+    end
+
+    # 真ん中の 1 本は知名度の下限（月 1 万）に満たないので隠れ、両端が直につながる
+    graph =
+      Chidori.Relations.Graph.from_docs(
+        [film.("東京物語", 1953, 50_000), film.("早春", 1956, 100), film.("秋刀魚の味", 1962, 40_000)],
+        Chidori.Relations.Films.graph_spec()
+      )
+
+    relation =
+      Chidori.Relations.current("films")
+      |> Map.merge(graph)
+      |> Map.merge(%{sample?: false, status: :ready})
+
+    send(live.pid, {:relation_updated, relation})
+    html = render(live)
+    refute html =~ ~s(phx-value-name="早春")
+
+    [{from, to}] =
+      for [_, from, to] <-
+            Regex.scan(
+              ~r|class="edge-target"[^>]*phx-value-from="([^"]*)"[^>]*phx-value-to="([^"]*)"[^>]*phx-value-kind="director"|s,
+              html
+            ),
+          do: {from, to}
+
+    # もとの図にこの線は無い（隠した 1 本を挟んでいた）
+    refute Enum.any?(graph.edges, &(&1.from == from and &1.to == to))
+
+    click = fn ->
+      render_click(live, "show_edge", %{"from" => from, "to" => to, "kind" => "director"})
+    end
+
+    assert click.() =~ "has-pick"
+    assert click.() =~ ~s(id="edge-name")
+  end
+
   test "収集の画面には図を取り直す口を出さない（図を描かない）", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/collect/relations?view=painters")
     assert html =~ "芸術家の設定"

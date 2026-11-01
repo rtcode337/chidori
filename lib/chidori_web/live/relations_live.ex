@@ -409,7 +409,11 @@ defmodule ChidoriWeb.RelationsLive do
   # 影響関係は Wikipedia に書いていないので機械では引けず、ここは AI の判断そのもの。
   # 根拠を確かめたい人が記事へ行けることが、いま渡せる最良のもの。
   def handle_event("show_edge", %{"from" => from, "to" => to} = params, socket) do
-    nodes = Map.new(socket.assigns.relation.nodes, &{&1.id, &1})
+    # **線は描いた図から引く**（`shown/2`）。作品を隠した図（知名度の下限・見た作品）は、
+    # 共通項の線を残った作品どうしでつなぎ直している —— もとの図の線から探すと、
+    # つなぎ直した線はどれも見つからず、押しても何も起きなかった
+    shown = shown(socket.assigns.relation, socket.assigns)
+    nodes = Map.new(shown.nodes, &{&1.id, &1})
 
     # **知っている種類だけ読む**（画面から来る値なので、そのまま atom にしない）
     kind =
@@ -427,8 +431,7 @@ defmodule ChidoriWeb.RelationsLive do
         :related
       )
 
-    edges = socket.assigns.relation.edges
-    edge = Enum.find(edges, fn e -> e.from == from and e.to == to and e.kind == kind end)
+    edge = Enum.find(shown.edges, fn e -> e.from == from and e.to == to and e.kind == kind end)
 
     key = {from, to, kind}
 
