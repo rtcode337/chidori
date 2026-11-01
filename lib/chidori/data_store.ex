@@ -1,7 +1,8 @@
 defmodule Chidori.DataStore do
   @moduledoc """
   **利用者が書いたことの置き場**。興味トピックと、読んだ・見た記録（技術書・関連図・
-  Pi-hole のドメイン）を、Chiezo の名前付きの置き場（`chidori_data`）に預けます。
+  Pi-hole のドメイン）と、travel-log から届いた依頼の控えを、Chiezo の名前付きの
+  置き場（`chidori_data`）に預けます。
 
   **Chidori の DB には置きません。** 動かす場所を変えたり DB を作り直したりしても
   消えないように、そして同じ Chiezo を見ている別の Chidori とも同じ記録を共有できる
@@ -22,7 +23,7 @@ defmodule Chidori.DataStore do
   （ほかで消した記録も消える。消すと件数が変わる）。聞けなかったら前の写しのまま開く。
 
   1 件は Chiezo の文書 1 つで、`%{doc_id, title, tags, extra}` の形で持ちます。
-  何の記録かはタグで分けます（`interest_tag/0`・`mark_tag/0`）。
+  何の記録かはタグで分けます（`interest_tag/0`・`mark_tag/0`・`request_tag/0`）。
 
   Chiezo との読み書きは `backend/0` が受け持ちます（テストは手元だけで持つ実装に
   差し替える）。
@@ -35,6 +36,7 @@ defmodule Chidori.DataStore do
   @store "chidori_data"
   @interest_tag "興味トピック"
   @mark_tag "見た・読んだ"
+  @request_tag "依頼の控え"
   @retry_ms 30_000
   # 画面を開くのを待たせる上限（Chiezo が遅ければ前の写しのまま開く）
   @refresh_timeout 3_000
@@ -48,8 +50,11 @@ defmodule Chidori.DataStore do
   @doc "読んだ・見た記録の印のタグ。"
   def mark_tag, do: @mark_tag
 
+  @doc "travel-log から届いた依頼の控えのタグ（`Chidori.DataStore.RequestRecords`）。"
+  def request_tag, do: @request_tag
+
   @doc "記録の種類のタグ（全部読むときに引く）。"
-  def kind_tags, do: [@interest_tag, @mark_tag]
+  def kind_tags, do: [@interest_tag, @mark_tag, @request_tag]
 
   @doc """
   画面を開いたときに読み直します。置き場の件数と最後に書かれた時刻が、読んだときと
@@ -112,7 +117,7 @@ defmodule Chidori.DataStore do
 
     case backend().load() do
       {:ok, docs} ->
-        {:noreply, loaded(state, docs, signature)}
+        {:noreply, state |> loaded(docs, signature) |> import_legacy()}
 
       {:error, reason} ->
         Logger.warning("chidori_data を読めませんでした（#{inspect(reason)}）。読み直します")
@@ -190,6 +195,19 @@ defmodule Chidori.DataStore do
 
   defp loaded(state, docs, signature) do
     %{state | docs: Map.new(docs, &{&1.doc_id, &1}), ready: true, signature: signature}
+  end
+
+  # 前の表（`pending_requests`）に残っている依頼の控えを移す（`RequestRecords.move_legacy/2`）。
+  # 起動して最初に読めたときだけ。テストでは切る（置き場のプロセスは DB の貸し出しの外にいる）
+  defp import_legacy(state) do
+    if Application.get_env(:chidori, :data_store_import_legacy, true) do
+      state.docs
+      |> Map.values()
+      |> Chidori.DataStore.RequestRecords.move_legacy(&backend().add(&1))
+      |> Enum.reduce(state, &put_in(&2.docs[&1.doc_id], &1))
+    else
+      state
+    end
   end
 
   defp current_signature do

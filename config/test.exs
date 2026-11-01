@@ -27,6 +27,7 @@ config :chidori, :http_client, Chidori.HttpStub
 
 # 利用者が書いたことの置き場は手元だけで持つ（Chiezo に届かない）
 config :chidori, :data_store, Chidori.DataStore.Memory
+config :chidori, :data_store_import_legacy, false
 
 # Print only warnings and errors during test
 config :logger, level: :warning

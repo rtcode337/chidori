@@ -1,7 +1,9 @@
 defmodule Chidori.Datasets.PendingRequest do
   @moduledoc """
-  travel-log から届いた依頼 1 件の控え（**まだ Chiezo に頼んでいないもの**）。
-  区画ごとに溜まった件数を見てから頼むために持ちます（`Chidori.Datasets.Requests`）。
+  前の表 `pending_requests` の 1 行（travel-log から届いた依頼の控え）。
+  控えはいまは Chiezo の置き場 `chidori_data` に持つ（`Chidori.DataStore.RequestRecords`）。
+  この形は、表に残っている行を置き場へ移すためだけに残している（`RequestRecords.move_legacy/2`）。
+  表は、移し終えたのを確かめてから別の移行で消す。
   """
 
   use Ecto.Schema

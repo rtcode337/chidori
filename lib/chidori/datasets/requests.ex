@@ -21,8 +21,9 @@ defmodule Chidori.Datasets.Requests do
   import Ecto.Query
 
   alias Chidori.Chiezo
+  alias Chidori.DataStore
+  alias Chidori.DataStore.RequestRecords
   alias Chidori.Datasets
-  alias Chidori.Datasets.PendingRequest
   alias Chidori.Datasets.RequestLog
   alias Chidori.Repo
 
@@ -307,8 +308,10 @@ defmodule Chidori.Datasets.Requests do
   依頼を**控えます**（すぐには頼まない）。貼ったその場で頼むと、1 件しか依頼の無い
   区画にも AI の回が 1 回走り、枠を使い潰す —— 区画ごとに溜まった件数を見てから頼む。
 
+  控えの置き場は Chiezo の `chidori_data`（`Chidori.DataStore.RequestRecords`）。
   **同じ依頼を貼り直しても 1 件のまま**（テキストが同じものは足さない）。
-  返すのは `{:ok, %{added: 件数, skipped: 件数}}`。
+  返すのは `{:ok, %{added: 件数, skipped: 件数}}`。置き場に書けなければ
+  `{:refused, :not_stored}`（途中まで書けた分は残る。貼り直せば残りだけが足される）。
 
   **報告に名前の出てくる店が近くで消えていたら、その店のいる区画で頼みます**
   （`revive_point/2`）。`nearby` は依頼 1 件の近くの文書を返す関数（テストで差し替える）。
@@ -316,24 +319,31 @@ defmodule Chidori.Datasets.Requests do
   def stash(%{collection: name} = dataset, text, nearby \\ nil) do
     nearby = nearby || (&chiezo_nearby(dataset, &1))
 
-    results =
-      for item <- items(text) do
-        item = item |> revive_point(nearby.(item)) |> with_partition_key(dataset)
+    if DataStore.ready?() do
+      at = DateTime.utc_now()
+      have = MapSet.new(RequestRecords.for_collection(name), & &1.text)
 
-        %PendingRequest{}
-        |> PendingRequest.changeset(Map.put(item, :collection, name))
-        |> Repo.insert(on_conflict: :nothing, conflict_target: [:collection, :text])
-        |> case do
-          {:ok, %{id: id}} when not is_nil(id) -> :added
-          _skipped -> :skipped
+      text
+      |> items()
+      |> Enum.reduce_while({have, 0, 0}, fn item, {have, added, skipped} ->
+        if MapSet.member?(have, item.text) do
+          {:cont, {have, added, skipped + 1}}
+        else
+          item = item |> revive_point(nearby.(item)) |> with_partition_key(dataset)
+
+          case DataStore.add(RequestRecords.record(name, item, at)) do
+            {:ok, _doc} -> {:cont, {MapSet.put(have, item.text), added + 1, skipped}}
+            {:error, _reason} -> {:halt, :not_stored}
+          end
         end
+      end)
+      |> case do
+        {_have, added, skipped} -> {:ok, %{added: added, skipped: skipped}}
+        :not_stored -> {:refused, :not_stored}
       end
-
-    {:ok,
-     %{
-       added: Enum.count(results, &(&1 == :added)),
-       skipped: Enum.count(results, &(&1 == :skipped))
-     }}
+    else
+      {:refused, :not_stored}
+    end
   end
 
   # **座標で区画を引けない対象は、控えるときに区画の鍵を決めて残す**（対象の
@@ -415,10 +425,8 @@ defmodule Chidori.Datasets.Requests do
     boxes = boxes(partitions)
     keys = MapSet.new(partitions, & &1.key)
 
-    PendingRequest
-    |> where([p], p.collection == ^name)
-    |> order_by([p], asc: p.inserted_at, asc: p.id)
-    |> Repo.all()
+    name
+    |> RequestRecords.for_collection()
     |> Enum.group_by(&partition_of(&1, boxes, keys))
     |> Enum.map(fn {key, items} -> %{key: key, items: items, since: hd(items).inserted_at} end)
     |> Enum.sort_by(&{&1.key == nil, -length(&1.items), DateTime.to_unix(&1.since)})
@@ -427,9 +435,7 @@ defmodule Chidori.Datasets.Requests do
   def pending(_dataset, _partitions), do: []
 
   @doc "控えている依頼の数（区画に関係なく）。"
-  def pending_count(%{collection: name}) do
-    PendingRequest |> where([p], p.collection == ^name) |> select([p], count(p.id)) |> Repo.one()
-  end
+  def pending_count(%{collection: name}), do: length(RequestRecords.for_collection(name))
 
   @doc """
   1 つの区画に溜まった依頼を頼みます（`items` はその区画の控え）。**頼む前に控えを
@@ -537,12 +543,11 @@ defmodule Chidori.Datasets.Requests do
 
   @doc "控えを消します（頼んだあと・取り消したとき）。消した件数を返す。"
   def drop(%{collection: name}, ids) when is_list(ids) do
-    {count, _} =
-      PendingRequest
-      |> where([p], p.collection == ^name and p.id in ^ids)
-      |> Repo.delete_all()
+    ids = MapSet.new(ids)
 
-    count
+    name
+    |> RequestRecords.for_collection()
+    |> Enum.count(&(MapSet.member?(ids, &1.id) and DataStore.delete(&1.id) == :ok))
   end
 
   @doc "1 回に頼める区画の数。"
@@ -951,6 +956,9 @@ defmodule Chidori.Datasets.Requests do
   @doc "見積もりの段で断った理由の言い方（Chiezo が断った理由は画面の側が言う）。"
   def error_text(:no_points),
     do: "座標が見つかりませんでした。travel-log の「渡すテキスト」をそのまま貼ってください。"
+
+  def error_text(:not_stored),
+    do: "控えを Chiezo に書けませんでした。Chiezo に繋がってから、もう一度貼ってください（控えた分は二重になりません）。"
 
   def error_text(:no_partition),
     do: "どの座標も、いまの区画のどれにも入りませんでした（区画の外の場所です）。"

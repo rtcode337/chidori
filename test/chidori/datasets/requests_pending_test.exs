@@ -4,7 +4,7 @@ defmodule Chidori.Datasets.RequestsPendingTest do
   1 件ずつ座標で控え、見るたびにいまの区画で振り分ける。
   """
 
-  use Chidori.DataCase, async: true
+  use Chidori.DataCase, async: false
 
   alias Chidori.Datasets.Requests
 
@@ -127,6 +127,55 @@ defmodule Chidori.Datasets.RequestsPendingTest do
       item = %{text: "- [追加] (35.62,139.75): そば屋", lat: 35.62, lon: 139.75}
 
       assert Requests.revive_point(item, [shop("駅前の焼肉店", 35.68, 139.75, true)]) == item
+    end
+  end
+
+  describe "控えの置き場（Chiezo の chidori_data）" do
+    alias Chidori.DataStore
+    alias Chidori.DataStore.RequestRecords
+    alias Chidori.Datasets.PendingRequest
+    alias Chidori.Repo
+
+    test "控えは 1 件 1 文書で、収集のタグと区画の鍵を持つ" do
+      Requests.stash(@dataset, "- [追加] (35.65,139.75): そば屋")
+
+      assert [%{tags: tags, extra: extra}] = DataStore.docs(DataStore.request_tag())
+      assert "収集:chidori_dining_test" in tags
+      assert %{"text" => "- [追加] (35.65,139.75): そば屋", "lat" => 35.65} = extra
+      refute Map.has_key?(extra, "partition_key")
+    end
+
+    test "前の表の行は置き場へ移して表から消す（置き場にもうあるものは足さない）" do
+      Requests.stash(@dataset, "- [追加] (35.65,139.75): そば屋")
+
+      for text <- ["- [追加] (35.65,139.75): そば屋", "- [修正] 店 (35.66,139.75): 閉店"] do
+        Repo.insert!(%PendingRequest{
+          collection: @dataset.collection,
+          text: text,
+          lat: 35.65,
+          lon: 139.75
+        })
+      end
+
+      docs = DataStore.docs(DataStore.request_tag())
+
+      assert [%{extra: %{"text" => "- [修正] 店" <> _}}] =
+               RequestRecords.move_legacy(docs, &DataStore.add/1)
+
+      assert Repo.all(PendingRequest) == []
+      assert Requests.pending_count(@dataset) == 2
+    end
+
+    test "書けなかった行は表に残す（次に読めたときにまた試す）" do
+      Repo.insert!(%PendingRequest{
+        collection: @dataset.collection,
+        text: "- [追加] (35.65,139.75): そば屋",
+        lat: 35.65,
+        lon: 139.75
+      })
+
+      assert RequestRecords.move_legacy([], fn _attrs -> {:error, :chiezo_unavailable} end) == []
+      assert [_row] = Repo.all(PendingRequest)
     end
   end
 end
