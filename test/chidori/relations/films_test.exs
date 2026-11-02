@@ -325,11 +325,15 @@ defmodule Chidori.Relations.FilmsTest do
       assert sized["映画の記事の作品"] == 400
     end
 
-    test "原作の記事の作品は、映画化されていれば消させない（ざっと見る回と整理の回）" do
+    test "名簿の作品は、記事の主語が何でも消させない（ざっと見る回と整理の回）" do
       for prompt <- [Films.prompt(), Films.survey_prompt()] do
-        assert prompt =~ "「小説の記事だから映画ではない」は消す理由になりません"
-        assert prompt =~ "同じ作品の映画の記事が目録に別にある"
-        refute prompt =~ "映画ではないもの（テレビドラマ・小説・人物の記事など）"
+        assert prompt =~ "どれも Wikipedia の映画の分類"
+        assert prompt =~ "見当たらない」は、消す理由になりません"
+        assert prompt =~ "同じ映画の記事が目録に別にある"
+
+        # 「映画ではないもの」「劇場公開の映画が無いもの」を消させない（記事の主語だけで消していた）
+        refute prompt =~ "映画ではないもの"
+        refute prompt =~ "劇場公開の映画が 1 本も無い"
       end
     end
 
