@@ -1,6 +1,6 @@
 defmodule Chidori.CollectCatalog do
   @moduledoc """
-  Chidori が Chiezo に送る収集の一覧（収集の画面（`/collect`）の表）。
+  Chidori が Chiezo に送る収集の一覧（収集の一覧（設定の `?tab=chiezo`）の表）。
 
   **並びと中身は Chidori の画面のもの**です —— 最新情報（話題と、そのトピックの網）→
   関連図 → データ収集（その下の本棚）の順。Chiezo の一覧の順で並べると、同じ画面の

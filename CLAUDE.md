@@ -35,16 +35,16 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
   外のアプリ（travel-log）に渡し、専用のアプリを作るほどでないものは Chidori が見せる
 - **画面は「読む画面」と「収集の画面」に分ける。** 読む画面（`/`・`/news`・`/relations`・`/datasets`）は集めたものと、
   利用者が書くもの（見た記録・お気に入り・興味トピック・読んだ記録）だけを出す。Chiezo へ頼む口（収集の設定・巡回と相手・
-  時刻・区画・1 回だけ頼む口・travel-log からの依頼・空き欄を埋める・名簿・書き出し・実行履歴）は収集の画面（`/collect`・
-  `/collect/news`・`/collect/relations`・`/collect/datasets`・`/collect/apps`）に集める。**同じ LiveView を `live_action` の `:collect` で開き、
-  `@collect_mode` で出し分ける**（裏の処理は 1 つ）。収集の画面の頭の段（`CollectTabs`）は一覧・ニュース・趣味・イベント・他アプリ用・写真と表紙（写真と表紙は `SettingsLive` の `:collect_photos`。もとは設定のタブ）。頭のメニューは ニュース・趣味・イベント・ツール・収集・設定（関連図はどれも趣味に並べる。`Chidori.Hobbies`。トップページは廃止し、`/` はニュースへ送る）。
+  時刻・区画・1 回だけ頼む口・travel-log からの依頼・空き欄を埋める・名簿・書き出し・実行履歴）は収集の画面（
+  `/collect/news`・`/collect/events`・`/collect/relations`・`/collect/datasets`・`/collect/apps`）に集める。**同じ LiveView を `live_action` の `:collect` で開き、
+  `@collect_mode` で出し分ける**（裏の処理は 1 つ）。収集の画面の頭の段（`CollectTabs`）は**Chiezo の収集の種類で分ける** —— 流れ（話題。ニュース・イベント・映画・アニメ）・網羅（図と Chidori で読むデータ）・他アプリ用・写真と表紙（`SettingsLive` の `:collect_photos`）。流れ・網羅の下の段は収集ごとのタブ（`CollectTabs.kind_tabs/1`。画面をまたぐ）。収集の一覧（巡回の間隔・相手・待ち行列の表）は設定の「収集の一覧」（`/settings?tab=chiezo`。前の `/collect` はここへ送る）。頭のメニューは ニュース・趣味・ツール・収集・設定（イベントとアニメはいまニュースのタブ。`Topics.news_tabs/0`。関連図はどれも趣味に並べる。`Chidori.Hobbies`。トップページは廃止し、`/` はニュースへ送る）。
   **他アプリ用（`/collect/apps`。`DatasetsLive` の `:collect_apps`）は Chidori で読まない対象**（食事処・ご当地グルメ・アニメ聖地。読むのは travel-log。
   `Datasets.for_other_app?/1`）で、データ収集には Chidori で読む対象だけを並べる。例外は**見ている 1 件から頼む口**（記事・本・人の詳細の「頼む」、見た映画を足す）で、
   詳細の 1 ボタンとしてだけ読む画面に残す（結果は収集の画面の履歴で見る）
 - **Chiezo へ頼むのは Chidori の画面だけで済むようにする。** Chiezo の管理画面に残すのは、外部からの有効化の許可（最初の 1 回）・
   名前の変更・データごとの削除・世代を戻す・ワーカーの作成と変更・AI の相手と鍵（取り消せない操作と、ほかのアプリとも共有する設定）だけ
 - **画面の 3 つの種類は、溜まったものの扱いで分ける。** 最新情報は古いものを捨てていく、関連図は集めたものを
-  図で見せる、データ収集（頭のメニューでは「趣味」。映画・アニメの話題と同じ段に並ぶ）は集めたものを分かりやすく見せる（技術書の本棚・レシピ集・Pi-hole）。
+  図で見せる、データ収集（頭のメニューでは「趣味」。映画の話題と同じ段に並ぶ）は集めたものを分かりやすく見せる（技術書の本棚・レシピ集・Pi-hole）。
   **食事処・ご当地グルメ・アニメ聖地は Chidori で一覧にしない** —— 読むのは travel-log で、両方に出すと二重に管理することになる
 - **利用者が書いたこと（興味トピック・読んだ/見た記録・ニュースのお気に入り・お気に入りの映画館・travel-log からの依頼の控え）は Chiezo の置き場 `chidori_data`、**
   その Chidori ごとの設定（トップの並び・通知）は手元の DB に置く（`Chidori.DataStore`）
@@ -72,7 +72,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
 
 - `lib/chidori/` — 画面に依らない中身
   - Chiezo とのやり取り —— `chiezo.ex`（依頼・読み・走らせる、の共通部）・`http.ex`（外への HTTP の唯一の口）・
-    `collect_catalog.ex` / `collect_drift.ex` / `collect_overview.ex` / `collect_pace.ex`（収集の画面（`/collect`））・
+    `collect_catalog.ex` / `collect_drift.ex` / `collect_overview.ex` / `collect_pace.ex`（収集の一覧（設定の `?tab=chiezo`）と収集の画面）・
     `sweep_names.ex`・`settings_restore.ex`・`single_flight.ex` → `chiezo-client.md`
   - 利用者が書いたことの置き場 —— `data_store.ex`・`data_store/` → `chiezo-client.md`
   - 最新情報 —— `topics.ex`（話題の定義）・`news.ex`・`news/`（映画・アニメ・イベント・市況の要約・はてブ数・レポート）・

@@ -29,7 +29,7 @@ paths:
 
 詳しい説明と、それぞれの形にした理由（実測値つき）は `docs/news-and-topics.md`。トップと設定は `docs/overview.md`。
 
-- 頭のメニューでは「ニュース」。映画・アニメ（`hobby: true`。`Topics.hobby?/1`）は「趣味」の段に並べ、ニュースのタブ（`Topics.news/0`）には出さない。
+- 頭のメニューでは「ニュース」。タブはニュースの話題（アニメも。いまは `hobby` を外してある）のあとにイベント（`Topics.news_tabs/0`。イベントはイベントの道 `NewsLive.topic_path/2`）。映画（`hobby: true`。`Topics.hobby?/1`）は「趣味」の段に並べ、ニュースのタブには出さない。
   画面と道（`/news?view=…`）はそのまま（通知のリンクがこの形）。開いているときは頭のメニューの「趣味」に印を付け、趣味の段（`DiningTabs.dataset_tabs/1` の `elsewhere`。並びは `Chidori.Hobbies`）を出す
 - **読む画面（`/news`）と収集の画面（`/collect/news`）は同じ `NewsLive`**（`@collect_mode`）。収集の設定・トピックの収集・要約の時刻・知らせる設定・「絵を探させる」は収集の画面、
   記事の詳細の「この記事について Chiezo に頼む」は読む画面に残す（見ている 1 件から頼む口）
@@ -67,4 +67,5 @@ paths:
 - 網の置き方は決まった手順で詰める（同じ材料なら同じ図）。札の大きさは直近の件数、線は一緒に出た回数
 - 興味トピックは `chidori_data` に持ち、依頼文に書き込んで送る。選び直したら整理と興味の要約の依頼文をその場で送り直す。付け終えた興味度は動かさない
 - トップページ（閲覧）は廃止した。`/` はニュースへ送る（`ChidoriWeb.PageController`）
-- イベント（技術イベント・お笑いイベント。`event: true`・`Topics.events/0`）は頭のメニューの「イベント」（`/events`。`NewsLive` の `:events` / `:collect_events`）。ニュースのタブ（`Topics.news/0`）には出さず、`/news?view=<イベント>` はイベントの道へ送る
+- イベント（技術イベント・お笑いイベント。`event: true`・`Topics.events/0`）は**いまニュースのタブに並べる**（頭のメニューの「イベント」はやめた）。画面と道は `/events`（`NewsLive` の `:events` / `:collect_events`。開いているときも頭のメニューは「ニュース」）で、`/news?view=<イベント>` はイベントの道へ送る
+- 収集の画面（`/collect/news`・`/collect/events`）では、話題はどれも「流れ」の段（`CollectTabs.kind_tabs/1`）に並べ、読む画面の話題のタブ・趣味の段は出さない

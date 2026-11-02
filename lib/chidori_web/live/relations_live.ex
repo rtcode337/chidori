@@ -107,7 +107,7 @@ defmodule ChidoriWeb.RelationsLive do
        raw_marks: %{},
        # 映画の図で、まだ図に載っていない見た記録（見出し → 記録）
        # 引き継ぎの時計の設定と前回の記録・次の予定（映画の図で開いたときに読む。
-       # 時刻と 1 回の数を直すのは収集の画面（`/collect`））
+       # 時刻と 1 回の数を直すのは収集の一覧（設定の `?tab=chiezo`））
        carry_setting: nil,
        carry_next: nil,
        # 引き継ぎを待っている作品（nil = まだ読んでいない / :loading / 一覧 / {:error, 理由}）。

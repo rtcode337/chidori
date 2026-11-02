@@ -122,7 +122,7 @@ defmodule Chidori.Datasets do
   end
 
   @doc """
-  `push/2` が送る設定。**収集の画面（`/collect`）の表で、Chiezo の今の設定と突き合わせるのにも
+  `push/2` が送る設定。**収集の一覧（設定の `?tab=chiezo`）の表で、Chiezo の今の設定と突き合わせるのにも
   使う** —— 送るものと比べるものを別々に組むと、片方だけ直る。
   """
   def outgoing(dataset, choices \\ %{}), do: call(dataset, :attrs, [choices])

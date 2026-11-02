@@ -3,15 +3,12 @@
 <div class="relations-page page-head">
   <div>
     <ChidoriWeb.MainNav.main_nav active={
-      if @live_action in [:collect, :collect_photos], do: :collect, else: :settings
+      if @live_action == :collect_photos, do: :collect, else: :settings
     } />
-    <ChidoriWeb.CollectTabs.collect_tabs
-      :if={@live_action in [:collect, :collect_photos]}
-      current={if @live_action == :collect_photos, do: :photos, else: :list}
-    />
+    <ChidoriWeb.CollectTabs.collect_tabs :if={@live_action == :collect_photos} current={:photos} />
 
     <nav
-      :if={@live_action not in [:collect, :collect_photos]}
+      :if={@live_action != :collect_photos}
       id="settings-tabs"
       class="relation-tabs"
       phx-hook="ScrollTabs"

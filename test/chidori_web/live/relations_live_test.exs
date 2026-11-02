@@ -44,12 +44,16 @@ defmodule ChidoriWeb.RelationsLiveTest do
     assert html =~ ~s(href="/news?view=chidori_movies")
     assert html =~ ~s(href="/datasets?view=pihole")
 
-    # 収集の画面でも同じ
+    # 収集の画面では「網羅」の段（図とデータが並ぶ）
     {:ok, _live, html} = live(conn, ~p"/collect/relations?view=painters")
+    refute html =~ ~s(id="dataset-tabs")
     assert html =~ ~s(href="/collect/datasets?view=books")
+    assert html =~ ~r|href="/collect/relations\?view=painters"[^>]*class="selected"[^>]*>\s*芸術家|
     [_, collect_tabs] = String.split(html, ~s(id="collect-tabs"), parts: 2)
     [collect_tabs, _] = String.split(collect_tabs, "</nav>", parts: 2)
-    assert collect_tabs =~ ~r|href="/collect/news\?view=chidori_movies"[^>]*class="selected"|
+
+    assert collect_tabs =~
+             ~r|href="/collect/relations\?view=painters"[^>]*class="selected"[^>]*>\s*網羅|
   end
 
   test "芸能人の関連図を表示する", %{conn: conn} do
@@ -102,7 +106,7 @@ defmodule ChidoriWeb.RelationsLiveTest do
     assert html =~ "最新情報からの引き継ぎ"
     assert html =~ "まだ頼んでいません"
     assert html =~ "時刻を決めていないので、頼みません"
-    assert html =~ ~s(href="/collect")
+    assert html =~ ~s(href="/settings?tab=chiezo")
     # 収集の画面には図も、見た映画を足す欄も出さない
     refute html =~ "見た映画を足す"
     refute html =~ "relation-canvas"

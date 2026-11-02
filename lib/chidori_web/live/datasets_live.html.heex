@@ -6,7 +6,13 @@
     <ChidoriWeb.MainNav.main_nav active={if @collect_mode, do: :collect, else: :datasets} />
     <ChidoriWeb.CollectTabs.collect_tabs
       :if={@collect_mode}
-      current={if @for_other_app, do: :apps, else: :datasets}
+      current={if @for_other_app, do: :apps, else: :stock}
+    />
+    <%!-- 収集の画面では、Chidori で読むデータは「網羅」の段に並べる（`CollectTabs.kind_tabs/1`） --%>
+    <ChidoriWeb.CollectTabs.kind_tabs
+      :if={@collect_mode and !@for_other_app}
+      kind={:stock}
+      current={@view}
     />
 
     <%!-- 集めるものごとのタブ。**収集も溜まる先も別**なので、1 つに混ぜると
@@ -15,6 +21,7 @@
          見出しと説明は選んだものなので、切り替える口がその下にあると、
          どこまでが切り替わるのかが読めない --%>
     <ChidoriWeb.DiningTabs.dataset_tabs
+      :if={!@collect_mode or @for_other_app}
       datasets={@datasets}
       current={@view}
       mode={
@@ -662,7 +669,7 @@
           </form>
 
           <%!-- **情報収集を起こす時刻**（時刻で起こす対象だけ。食事処の範囲・ご当地グルメ・アニメ聖地）。Chiezo の時計は外してあり、
-           Chidori がこの時刻に起こす。収集の画面（`/collect`）の表と同じ値。
+           Chidori がこの時刻に起こす。収集の一覧（設定の `?tab=chiezo`）の表と同じ値。
            上のフォームの中には置けない（フォームは入れ子にできない） --%>
           <form
             :if={@survey_times}

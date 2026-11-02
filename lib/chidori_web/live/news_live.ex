@@ -51,7 +51,7 @@ defmodule ChidoriWeb.NewsLive do
     socket =
       assign(socket,
         # ニュースのタブ（映画・アニメは趣味のタブに出す）
-        topics: Topics.news(),
+        topics: Topics.news_tabs(),
         backends: [],
         picks: %{},
         # トピックの網（記事から育つ話題）。**持つ話題だけ**読みに行く
@@ -170,8 +170,8 @@ defmodule ChidoriWeb.NewsLive do
         events_mode: events_mode,
         # 映画のタブの中の切り替え（最新・映画館・見た映画。関連図は関連図の画面）
         movie_section: movie_section(collect_mode, topic, params["section"]),
-        # 話題のタブ（ニュースかイベントか。趣味の話題は趣味の段に並べる）
-        topics: if(events_mode, do: Topics.events(), else: Topics.news()),
+        # 話題のタブ（ニュースの話題とイベント。趣味の話題は趣味の段に並べる）
+        topics: Topics.news_tabs(),
         base_path: base_path,
         topic: topic,
         page_title: page_title(topic, favorites_view),
@@ -1063,6 +1063,19 @@ defmodule ChidoriWeb.NewsLive do
       {:error, _reason} -> assign(socket, favorite_error: "お気に入りを保存できませんでした")
       _ok -> assign(socket, favorite_error: nil)
     end
+  end
+
+  @doc "話題のタブの行き先（イベントはイベントの道、ほかはニュースの道。収集の画面ならその収集の道）。"
+  def topic_path(topic, collect_mode) do
+    base =
+      case {collect_mode, Topics.event?(topic)} do
+        {false, false} -> "/news"
+        {true, false} -> "/collect/news"
+        {false, true} -> "/events"
+        {true, true} -> "/collect/events"
+      end
+
+    "#{base}?view=#{topic.collection}"
   end
 
   defp page_title(_topic, true), do: "ニュース（お気に入り）"

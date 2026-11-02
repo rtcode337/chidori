@@ -15,23 +15,22 @@
         true -> :relations
       end
     } />
-    <ChidoriWeb.CollectTabs.collect_tabs
-      :if={@collect_mode}
-      current={if hobby?, do: :datasets, else: :relations}
-    />
+    <%!-- 収集の画面では、図はどれも「網羅」の段に並べる（`CollectTabs.kind_tabs/1`） --%>
+    <ChidoriWeb.CollectTabs.collect_tabs :if={@collect_mode} current={:stock} />
+    <ChidoriWeb.CollectTabs.kind_tabs :if={@collect_mode} kind={:stock} current={@view} />
     <%!-- **芸術家は趣味の段**（データの対象と同じタブに並べる）。画面はこのまま --%>
     <ChidoriWeb.DiningTabs.dataset_tabs
-      :if={hobby?}
+      :if={hobby? and !@collect_mode}
       datasets={Chidori.Datasets.list()}
       current={@view}
-      mode={if @collect_mode, do: :collect, else: :read}
+      mode={:read}
       elsewhere={true}
     />
 
     <%!-- **図の種類はタブで、見出しの上に置く。** 見出しと説明は選んだ図のものなので、
          切り替える口がその下にあると、どこまでが切り替わるのかが読めない --%>
     <nav
-      :if={!hobby?}
+      :if={!hobby? and !@collect_mode}
       id="relation-tabs"
       class="relation-tabs"
       phx-hook="ScrollTabs"
@@ -729,7 +728,7 @@
             <p class="muted-note">
               最新情報の映画のうち、見た記録を付けた作品と、注目度が高く公開された作品を、決めた時刻に
               まとめて図へ足すよう頼みます（まだのものがあるときだけ。AI を 1 回使います）。時刻と 1 回に頼む数は
-              <.link navigate={~p"/collect"}>収集</.link>
+              <.link navigate={~p"/settings?tab=chiezo"}>設定の「収集の一覧」</.link>
               の「映画のつながり」の行で決めます。時刻を決めていない Chidori からは頼みません。
             </p>
             <p>

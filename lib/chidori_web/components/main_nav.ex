@@ -12,15 +12,14 @@ defmodule ChidoriWeb.MainNav do
     statics: ChidoriWeb.static_paths()
 
   @items [
+    # ニュース（技術ニュース・アニメ・技術イベント・お笑いイベントなど。イベントは画面が `/events`）
     {:news, "ニュース", "/news"},
-    # 趣味（映画・芸術家・技術書・レシピ・芸能人・アニメ・Pi-hole）。先頭のタブ（映画）を開く
+    # 趣味（映画・芸術家・技術書・レシピ・芸能人・Pi-hole）。先頭のタブ（映画）を開く
     {:datasets, "趣味", "/news?view=chidori_movies"},
-    # 技術イベント・お笑いイベント（画面は最新情報のもの）
-    {:events, "イベント", "/events"},
     # その場の様子を見る道具（いま止めている通信）
     {:tools, "ツール", "/tools"},
-    # 収集の画面（Chiezo へ頼む口をまとめた所）。読む画面とは分ける
-    {:collect, "収集", "/collect"},
+    # 収集の画面（Chiezo へ頼む口をまとめた所）。読む画面とは分ける。先頭の段（流れ）を開く
+    {:collect, "収集", "/collect/news"},
     {:settings, "設定", "/settings"}
   ]
 

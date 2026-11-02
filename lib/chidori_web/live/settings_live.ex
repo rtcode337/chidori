@@ -6,11 +6,12 @@ defmodule ChidoriWeb.SettingsLive do
   **写真と表紙**（顔写真・レシピの写真・技術書の表紙を Chiezo に頼む列の様子）は収集の画面のタブ
   （`/collect/photos`。`live_action` が `:collect_photos`）。Chiezo に頼む仕事なので、設定ではなく収集の画面に置く。
 
-  **収集の画面（`/collect`）も同じ LiveView**（`live_action` が `:collect`）。Chidori が Chiezo に
-  頼んでいる収集の一覧（巡回の間隔・相手・前回・次回）と、ワーカーと取り込みの待ち行列。
+  **収集の一覧**（タブ「収集の一覧」。`?tab=chiezo`）。Chidori が Chiezo に頼んでいる収集の一覧
+  （巡回の間隔・相手・前回・次回）と、ワーカーと取り込みの待ち行列。
   **待ち行列が溜まってきたときに、何がどれだけの間隔で回っているかを 1 枚で読むため**
   （`Chidori.CollectOverview`）。収集ごとに、巡回の相手と整理を自動で回すかを選んで送れる。
-  もとは設定ページの「Chiezo 収集」のタブだった
+  収集の画面（`/collect`）の頭のタブだった時期があり、前の道はここへ送る（`PageController`）。
+  収集の画面の段は、収集ごとの画面（流れ・網羅）だけにした
   """
 
   use ChidoriWeb, :live_view
@@ -30,10 +31,10 @@ defmodule ChidoriWeb.SettingsLive do
 
   require Logger
 
-  # **Chiezo 収集の表は収集の画面（`/collect`）へ移した** —— 同じ LiveView を収集の形で開く。
-  # トップページ（閲覧）は廃止したので、並べる枠を選ぶタブも無い
+  # 通知と、収集の一覧（Chidori が Chiezo に頼んでいる収集の表）
   @tabs [
-    {"notify", "通知"}
+    {"notify", "通知"},
+    {"chiezo", "収集の一覧"}
   ]
 
   @impl true
@@ -68,23 +69,12 @@ defmodule ChidoriWeb.SettingsLive do
   @impl true
   def handle_params(params, _uri, socket) do
     cond do
-      # 収集の画面（`/collect`）は、収集の表だけを出す
-      socket.assigns.live_action == :collect ->
-        {:noreply,
-         socket
-         |> assign(tab: "chiezo", page_title: "収集")
-         |> load("chiezo")}
-
       # 写真と表紙（収集の画面のタブ）
       socket.assigns.live_action == :collect_photos ->
         {:noreply,
          socket
          |> assign(tab: "photos", page_title: "収集")
          |> load("photos")}
-
-      # 前の「設定 › Chiezo 収集」へのリンクは、収集の画面へ送る
-      params["tab"] == "chiezo" ->
-        {:noreply, push_navigate(socket, to: ~p"/collect", replace: true)}
 
       # 前の「設定 › 写真と表紙」へのリンクは、収集の画面のタブへ送る
       params["tab"] == "photos" ->

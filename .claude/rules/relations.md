@@ -59,7 +59,7 @@ paths:
   3 回頼んでも載らない作品は時計から外す（枠の頭を占め続けないように）。画面からは「いま頼む」（時計と同じ並びで上から
   1 回の数まで。押した 1 回なので止めた収集でも走り、時計の記録は動かさない）と、外した作品の「この作品を頼む」で頼める。
   時刻（JST。既定は空 = その Chidori からは頼まない。本番とテストの二重を避けるため）・1 回の数と、前回いつ何を頼んで
-  どうなったかは表 `film_carry_settings`（`Chidori.Relations.CarrySetting`）。時刻は収集の画面（`/collect`）の表の
+  どうなったかは表 `film_carry_settings`（`Chidori.Relations.CarrySetting`）。時刻は設定の「収集の一覧」（`/settings?tab=chiezo`）の表の
   映画の図の行（`CollectOverview.chidori_rows/1`。Chiezo へは送らない行）で直す。過ぎて 30 分までの回を拾い、
   済まなかった回は次の予定まで試し直す。時計の回は画面から足した 1 回と別に数える（`clock_at`）。
   映画の図には前回と次の予定を出し、待っている作品は押したときだけ Chiezo に聞く。

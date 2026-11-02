@@ -270,7 +270,7 @@ defmodule Chidori.Topics do
       %{
         name: "アニメ",
         collection: "chidori_anime",
-        hobby: true,
+        # **いまはニュースのタブに並べる**（趣味の段には出さない）
         interest:
           "日本で放送・配信される今期と来期のアニメ(テレビアニメと配信アニメの新作)。" <>
             "観るかどうかの判断が変わるもの(放送・配信の開始日と曜日、放送局と配信サービス、" <>
@@ -438,12 +438,19 @@ defmodule Chidori.Topics do
   @doc "趣味に並べる話題（定義の順）。"
   def hobbies, do: Enum.filter(defined(), &hobby?/1)
 
-  @doc "ニュースのタブに並べる話題（趣味の話題とイベントを除く）。"
+  @doc "ニュースの話題（趣味の話題とイベントを除く）。"
   def news, do: Enum.reject(defined(), &(hobby?(&1) or event?(&1)))
 
   @doc """
-  頭のメニューの「イベント」に並べる話題か（技術イベント・お笑いイベント）。画面は最新情報のもの
-  （`NewsLive` の `:events`。道は `/events?view=…`）。映画・アニメもカレンダーを持つが、趣味に並べる。
+  ニュースのタブに並べる話題（ニュースの話題のあとにイベント）。**イベントもいまはニュースのタブに
+  並べる** —— 頭のメニューに「イベント」を置いていた頃は、話題 2 つのために段が 1 つ増えていた。
+  イベントの画面の道（`/events?view=…`）はそのまま（カレンダーの画面と通知のリンク）。
+  """
+  def news_tabs, do: news() ++ events()
+
+  @doc """
+  イベントの話題か（技術イベント・お笑いイベント）。画面は最新情報のもの（`NewsLive` の `:events`。
+  道は `/events?view=…`）。タブはニュースの段に並べる（`news_tabs/0`）。
   """
   def event?(%{event: true}), do: true
   def event?(_topic), do: false

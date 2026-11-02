@@ -71,7 +71,7 @@ defmodule ChidoriWeb.DiningTabs do
   # どの画面の段か（`:read` = 読む画面 / `:collect` = 収集の画面の趣味 / `:apps` = 他アプリ用）
   attr :mode, :atom, default: :read
 
-  # よその画面（最新情報・関連図）から出しているか。映画・アニメ・芸術家はその画面のものなので、
+  # よその画面（最新情報・関連図）から出しているか。映画・芸術家はその画面のものなので、
   # そこから趣味の段を出す —— そのときデータの対象へは別の LiveView へ移る（patch できない）
   attr :elsewhere, :boolean, default: false
 
@@ -91,7 +91,7 @@ defmodule ChidoriWeb.DiningTabs do
             do: Enum.filter(tabs, &(&1 == :dining or Chidori.Datasets.for_other_app?(&1))),
             else: Enum.filter(tabs, &(&1 != :dining and in_mode?(&1, assigns.mode)))
           ),
-        # **趣味の段には映画・芸術家・アニメも並べる**（画面はそれぞれのもの。並びは
+        # **趣味の段には映画・芸術家・芸能人も並べる**（画面はそれぞれのもの。並びは
         # `Chidori.Hobbies.arrange/2`）
         hobbies: if(assigns.mode == :apps, do: [], else: Chidori.Hobbies.entries()),
         base:

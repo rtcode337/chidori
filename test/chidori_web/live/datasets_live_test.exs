@@ -72,7 +72,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
 
   test "収集の画面では、頭のメニューの「収集」を選んだ状態にする", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/collect/datasets")
-    assert html =~ ~r|class="active" href="/collect"|
+    assert html =~ ~r|class="active" href="/collect/news"|
 
     # 読む画面では「趣味」（先頭のタブの映画を指す）
     {:ok, _live, html} = live(conn, ~p"/datasets")
@@ -90,10 +90,13 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     refute tabs =~ "view=anime"
     refute tabs =~ "食事処"
 
+    # 収集の画面では「網羅」の段に、図と Chidori で読むデータが並ぶ
     {:ok, _live, html} = live(conn, ~p"/collect/datasets")
-    [_, tabs] = String.split(html, ~s(id="dataset-tabs"), parts: 2)
+    refute html =~ ~s(id="dataset-tabs")
+    [_, tabs] = String.split(html, ~s(id="collect-kind-tabs"), parts: 2)
     [tabs, _] = String.split(tabs, "</nav>", parts: 2)
 
+    assert tabs =~ ~s(href="/collect/relations?view=painters")
     assert tabs =~ ~s(href="/collect/datasets?view=books")
     assert tabs =~ ~s(href="/collect/datasets?view=recipes")
     refute tabs =~ "view=anime"
@@ -127,7 +130,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     assert picked =~ ~s(class="selected")
 
     {:ok, _live, html} = live(conn, ~p"/collect/datasets?view=books")
-    [picked] = Regex.run(~r|<a[^>]*href="/collect/news\?view=chidori_movies"[^>]*>|, html)
+    [picked] = Regex.run(~r|<a[^>]*href="/collect/relations\?view=painters"[^>]*>\s*網羅|, html)
     assert picked =~ ~s(class="selected")
   end
 
@@ -221,23 +224,23 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     assert html =~ ~r|href="/news\?view=chidori_movies"[^>]*>\s*趣味|
   end
 
-  test "趣味の段の頭に映画・アニメが並び、データの対象と行き来できる", %{conn: conn} do
+  test "趣味の段の頭に映画が並び、データの対象と行き来できる（アニメはニュースのタブ）", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/datasets?view=pihole")
     [_, tabs] = String.split(html, ~s(id="dataset-tabs"), parts: 2)
     [tabs, _] = String.split(tabs, "</nav>", parts: 2)
 
-    # 映画・芸術家・レシピ・アニメ・Pi-hole の順（アニメはレシピの後ろ）
+    # 映画・芸術家・レシピ・Pi-hole の順
     order =
       for href <- [
             ~s(href="/news?view=chidori_movies"),
             ~s(href="/relations?view=painters"),
             ~s(href="/datasets?view=recipes"),
-            ~s(href="/news?view=chidori_anime"),
             ~s(href="/datasets?view=pihole")
           ],
           do: tabs |> :binary.match(href) |> elem(0)
 
     assert order == Enum.sort(order)
+    refute tabs =~ "chidori_anime"
 
     # 映画の画面はニュースのタブではなく趣味の段を出し、頭のメニューは「趣味」
     {:ok, _live, html} = live(conn, ~p"/news?view=chidori_movies")
@@ -246,21 +249,20 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     assert html =~ ~r|class="active" href="/news\?view=chidori_movies"|
     assert html =~ ~s(href="/datasets?view=recipes")
 
-    # ニュースのタブには映画・アニメを出さない
+    # ニュースのタブには映画を出さない（アニメはいまニュースのタブ）
     {:ok, _live, html} = live(conn, ~p"/news")
     [_, tabs] = String.split(html, ~s(id="topic-tabs"), parts: 2)
     [tabs, _] = String.split(tabs, "</nav>", parts: 2)
     refute tabs =~ "chidori_movies"
-    refute tabs =~ "chidori_anime"
+    assert tabs =~ "chidori_anime"
 
-    # 収集の画面でも同じ（趣味の段に映画の収集の画面）
+    # 収集の画面では、アニメも映画も「流れ」の段（頭の段は「流れ」を選んだ状態）
     {:ok, _live, html} = live(conn, ~p"/collect/news?view=chidori_anime")
-    assert html =~ ~s(href="/collect/datasets?view=books")
-
-    # 収集の頭の段は「趣味」を選んだ状態（アニメの収集の画面にいる）
+    refute html =~ ~s(id="dataset-tabs")
+    assert html =~ ~s(href="/collect/news?view=chidori_movies")
     [_, collect_tabs] = String.split(html, ~s(id="collect-tabs"), parts: 2)
     [collect_tabs, _] = String.split(collect_tabs, "</nav>", parts: 2)
-    assert collect_tabs =~ ~r|href="/collect/news\?view=chidori_movies"[^>]*class="selected"|
+    assert collect_tabs =~ ~r|href="/collect/news"[^>]*class="selected"|
   end
 
   test "技術書の画面も開ける（抽出の指定と区画を持たない対象）", %{conn: conn} do

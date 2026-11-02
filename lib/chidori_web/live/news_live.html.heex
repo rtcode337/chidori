@@ -9,26 +9,22 @@
       cond do
         @collect_mode -> :collect
         hobby? -> :datasets
-        @events_mode -> :events
         true -> :news
       end
     } />
-    <ChidoriWeb.CollectTabs.collect_tabs
+    <%!-- 収集の画面では、話題はどれも「流れ」の段に並べる（`CollectTabs.kind_tabs/1`） --%>
+    <ChidoriWeb.CollectTabs.collect_tabs :if={@collect_mode} current={:flow} />
+    <ChidoriWeb.CollectTabs.kind_tabs
       :if={@collect_mode}
-      current={
-        cond do
-          hobby? -> :datasets
-          @events_mode -> :events
-          true -> :news
-        end
-      }
+      kind={:flow}
+      current={@topic && @topic.collection}
     />
-    <%!-- **映画・アニメは趣味の段**（データの対象と同じタブに並べる）。画面はこのまま --%>
+    <%!-- **映画は趣味の段**（データの対象と同じタブに並べる）。画面はこのまま --%>
     <ChidoriWeb.DiningTabs.dataset_tabs
-      :if={hobby?}
+      :if={hobby? and !@collect_mode}
       datasets={Chidori.Datasets.list()}
       current={@topic.collection}
-      mode={if @collect_mode, do: :collect, else: :read}
+      mode={:read}
       elsewhere={true}
     />
 
@@ -38,15 +34,16 @@
          **見出しの上に置く**（関連図・データ収集と同じ）—— 見出しと説明は選んだ話題の
          ものなので、切り替える口がその下にあると、どこまでが切り替わるのかが読めない --%>
     <nav
-      :if={@topics != [] and !hobby?}
+      :if={@topics != [] and !hobby? and !@collect_mode}
       id="topic-tabs"
       class="relation-tabs"
       phx-hook="ScrollTabs"
       aria-label="話題"
     >
+      <%!-- イベントはイベントの道へ（同じ LiveView なので patch で移れる） --%>
       <.link
         :for={topic <- @topics}
-        patch={"#{@base_path}?view=#{topic.collection}"}
+        patch={topic_path(topic, @collect_mode)}
         class={if @topic && @topic.collection == topic.collection, do: "selected"}
         aria-current={if @topic && @topic.collection == topic.collection, do: "page"}
       >
@@ -54,7 +51,6 @@
       </.link>
       <%!-- お気に入りは話題をまたいだ 1 つの一覧なので、話題のタブの最後に置く（収集の画面には無い） --%>
       <.link
-        :if={!@collect_mode and !@events_mode}
         patch={~p"/news?view=#{favorites_view()}"}
         class={if @favorites_view, do: "selected"}
         aria-current={if @favorites_view, do: "page"}

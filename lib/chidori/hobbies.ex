@@ -1,8 +1,9 @@
 defmodule Chidori.Hobbies do
   @moduledoc """
-  頭のメニューの「趣味」に並べる、**よその画面のもの**（映画・アニメの話題と、芸術家・芸能人の関連図）。
+  頭のメニューの「趣味」に並べる、**よその画面のもの**（映画の話題と、芸術家・芸能人の関連図）。
+  アニメの話題はいまニュースのタブに並べる（`Chidori.Topics`）。
 
-  画面と道はそれぞれの画面のまま（映画・アニメは `/news?view=…`。通知のリンクがこの形。
+  画面と道はそれぞれの画面のまま（映画は `/news?view=…`。通知のリンクがこの形。
   芸術家・芸能人は `/relations?view=…`）で、趣味の段（`ChidoriWeb.DiningTabs.dataset_tabs/1`）に
   並べ、開いているときは頭のメニューの「趣味」に印を付ける。元の画面のタブには出さない。
 
@@ -14,10 +15,10 @@ defmodule Chidori.Hobbies do
   alias Chidori.Topics
 
   # 段の頭ではなく、データの対象の後ろに置くもの（`id` → その後ろに置く対象の key）
-  @follows %{"people" => "recipes", "chidori_anime" => "recipes"}
+  @follows %{"people" => "recipes"}
 
   # 並べる順（同じ場所に置くものどうしの順もこれで決まる）
-  @order ["chidori_movies", "painters", "people", "chidori_anime"]
+  @order ["chidori_movies", "painters", "people"]
 
   # 段に出す短い名前（図の見出しは長いので）
   @names %{"people" => "芸能人"}

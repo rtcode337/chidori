@@ -209,7 +209,7 @@ defmodule ChidoriWeb.DatasetsLive do
         fill_fields: fill_fields_default(dataset),
         filled: nil,
         # 範囲ごとの食事処の、情報収集を起こす時刻（`Chidori.Datasets.SurveyClock`）。
-        # 収集の画面（`/collect`）の表と同じ値（同じ表を読み書きする）
+        # 収集の一覧（設定の `?tab=chiezo`）の表と同じ値（同じ表を読み書きする）
         survey_times: survey_times_of(dataset),
         survey_saved: nil,
         survey_run: nil
@@ -260,7 +260,7 @@ defmodule ChidoriWeb.DatasetsLive do
   def handle_event("run_survey_now", _params, socket), do: {:noreply, socket}
 
   # **情報収集を起こす時刻を直す**（時刻で起こす対象だけ）。Chiezo には送らない ——
-  # 時計を持つのは Chidori。収集の画面（`/collect`）の表と同じ値を書き換える
+  # 時計を持つのは Chidori。収集の一覧（設定の `?tab=chiezo`）の表と同じ値を書き換える
   def handle_event("save_survey_times", %{"times" => times}, socket) do
     dataset = socket.assigns.dataset
 

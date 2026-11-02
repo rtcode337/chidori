@@ -59,29 +59,30 @@ defmodule ChidoriWeb.NewsLiveTest do
     assert conn |> get("/") |> redirected_to() == "/news"
   end
 
-  test "頭のメニューは ニュース・趣味・イベント・ツール・収集・設定", %{conn: conn} do
+  test "頭のメニューは ニュース・趣味・ツール・収集・設定（イベントはニュースのタブ）", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/news")
     [_, menu] = String.split(html, ~s(id="main-menu"), parts: 2)
     [menu, _] = String.split(menu, "</nav>", parts: 2)
 
     labels = Regex.scan(~r|>\s*([^<>\s][^<>]*?)\s*</a>|, menu) |> Enum.map(&Enum.at(&1, 1))
-    assert labels == ["ニュース", "趣味", "イベント", "ツール", "収集", "設定"]
+    assert labels == ["ニュース", "趣味", "ツール", "収集", "設定"]
+    assert menu =~ ~s(href="/collect/news")
   end
 
-  test "イベントは独立した画面（ニュースのタブには出さず、前の道はイベントの道へ送る）", %{conn: conn} do
+  test "イベントとアニメはニュースのタブに並ぶ（イベントの画面の道はそのまま）", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/news")
     [_, tabs] = String.split(html, ~s(id="topic-tabs"), parts: 2)
     [tabs, _] = String.split(tabs, "</nav>", parts: 2)
-    refute tabs =~ "chidori_events"
-    refute tabs =~ "chidori_comedy"
+    assert tabs =~ ~s(href="/news?view=chidori_anime")
+    assert tabs =~ ~s(href="/events?view=chidori_events")
+    assert tabs =~ ~s(href="/events?view=chidori_comedy")
 
     {:ok, _live, html} = live(conn, ~p"/events")
+    assert html =~ ~r|class="active" href="/news"|
     [_, tabs] = String.split(html, ~s(id="topic-tabs"), parts: 2)
     [tabs, _] = String.split(tabs, "</nav>", parts: 2)
     assert tabs =~ ~r|href="/events\?view=chidori_events"[^>]*class="selected"|
-    assert tabs =~ ~s(href="/events?view=chidori_comedy")
-    refute tabs =~ "chidori_news"
-    assert html =~ ~r|class="active" href="/events"|
+    assert tabs =~ ~s(href="/news?view=chidori_tech")
 
     assert {:error, {:live_redirect, %{to: "/events?view=chidori_events"}}} =
              live(conn, ~p"/news?view=chidori_events")
@@ -104,11 +105,12 @@ defmodule ChidoriWeb.NewsLiveTest do
              "digest" => "latest"
            }
 
-    # 収集の画面も同じ（頭の段の「イベント」）
+    # 収集の画面では、イベントも「流れ」の段に並ぶ
     {:ok, _live, html} = live(conn, ~p"/collect/events?view=chidori_comedy")
     [_, collect_tabs] = String.split(html, ~s(id="collect-tabs"), parts: 2)
     [collect_tabs, _] = String.split(collect_tabs, "</nav>", parts: 2)
-    assert collect_tabs =~ ~r|href="/collect/events"[^>]*class="selected"|
+    assert collect_tabs =~ ~r|href="/collect/news"[^>]*class="selected"|
+    assert html =~ ~r|href="/collect/events\?view=chidori_comedy"[^>]*class="selected"|
   end
 
   test "最新情報のタブは見出しの上にある", %{conn: conn} do
@@ -641,7 +643,7 @@ defmodule ChidoriWeb.NewsLiveTest do
     # 誰に頼むかは巡回ごとに収集の枠で選ぶ。**別の置き場を残すと、どちらが効くのか
     # 押す前に読めない**（しかも片方は何にも効かない欄になる）。
     # 収集の画面（/collect）の一覧は見るだけ
-    {:ok, _live, html} = live(conn, ~p"/collect")
+    {:ok, _live, html} = live(conn, ~p"/settings?tab=chiezo")
 
     assert html =~ "収集の画面を開く"
     refute html =~ ~s(name="backend")
@@ -707,8 +709,13 @@ defmodule ChidoriWeb.NewsLiveTest do
     test "収集の画面でタブを切り替えると、その話題の収集の画面になる", %{conn: conn} do
       {:ok, live, _html} = live(conn, ~p"/collect/news")
 
-      html = live |> element(~s|a[href="/collect/news?view=chidori_tech"]|) |> render_click()
+      # 収集の画面の話題は「流れ」の段に並び、押すとその話題の収集の画面へ移る
+      assert {:error, {:live_redirect, %{to: "/collect/news?view=chidori_tech"}}} =
+               live
+               |> element(~s|#collect-kind-tabs a[href="/collect/news?view=chidori_tech"]|)
+               |> render_click()
 
+      {:ok, _live, html} = live(conn, ~p"/collect/news?view=chidori_tech")
       assert html =~ ~r|<h1[^>]*>\s*技術ニュース\s*</h1>|
       # 依頼の本文も話題の関心から作る（話題ごとに文面を持たせない）
       assert html =~ "技術に関する新しい動き"

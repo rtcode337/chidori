@@ -37,7 +37,8 @@ defmodule ChidoriWeb.Router do
 
     # **収集の画面**（Chiezo へ頼む口をここに集める）。読む画面と同じ LiveView を、収集の形
     # （`:collect`）で開く —— 見る画面には集めたものだけを出し、頼むのは Chidori のこの画面だけで済むように
-    live "/collect", SettingsLive, :collect
+    # 収集の一覧は設定のタブへ移した（前の道を送る）
+    get "/collect", PageController, :to_collect_list
     live "/collect/news", NewsLive, :collect
     live "/collect/events", NewsLive, :collect_events
     live "/collect/relations", RelationsLive, :collect
