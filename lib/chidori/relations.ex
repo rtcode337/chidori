@@ -467,21 +467,25 @@ defmodule Chidori.Relations do
   defp graph_spec("films"), do: Films.graph_spec()
   defp graph_spec(_key), do: Graph.painters_spec()
 
-  # 区画を割り出すタグの頭（`Partitions.locator/3`）
+  # 区画を割り出すタグの頭（`Partitions.locator/4`）
   @doc """
   1 件がどの区画に入っているか（区画の一覧と、その 1 件のタグ・見出しから。Chiezo と同じ規則 `Partitions`）。
   区画の一覧が無い・どの区画にも入らなければ nil。
   """
   def partition_key(key, partitions, tags, name) when is_list(partitions) and is_binary(name) do
-    {prefix, value} = partition_tags(valid_key(key))
-    Partitions.locator(partitions, prefix, value).(tags || [], name)
+    {prefix, value, detail} = partition_tags(valid_key(key))
+    Partitions.locator(partitions, prefix, value, detail).(tags || [], name)
   end
 
   def partition_key(_key, _partitions, _tags, _name), do: nil
 
-  defp partition_tags("people"), do: {People.category_tag(), Graph.years_tag()}
-  defp partition_tags("films"), do: {Films.category_tag(), Graph.years_tag()}
-  defp partition_tags(_key), do: {Graph.region_tag(), Graph.years_tag()}
+  # （分類・数の軸・月で割った年を引く細かい軸）。映画だけが細かい軸を持つ（`Films.partition/0` の `detail`）
+  defp partition_tags("people"), do: {People.category_tag(), Graph.years_tag(), nil}
+
+  defp partition_tags("films"),
+    do: {Films.category_tag(), Graph.years_tag(), Films.release_month_tag()}
+
+  defp partition_tags(_key), do: {Graph.region_tag(), Graph.years_tag(), nil}
 
   @doc """
   Chiezo で頼める相手の一覧（画面の選択肢に使う）。
@@ -1139,8 +1143,8 @@ defmodule Chidori.Relations do
   def unreviewed_by_partition(collection, nodes, key \\ "painters")
 
   def unreviewed_by_partition(%{partitions: [_ | _] = partitions}, nodes, key) do
-    {prefix, value} = partition_tags(key)
-    find = Partitions.locator(partitions, prefix, value)
+    {prefix, value, detail} = partition_tags(key)
+    find = Partitions.locator(partitions, prefix, value, detail)
 
     nodes
     |> Enum.filter(& &1[:unreviewed?])
@@ -1208,11 +1212,11 @@ defmodule Chidori.Relations do
   成功すれば `{:ok, 区画の鍵}`。
   """
   def ask_painter_partition(base_url, name, tags, key \\ "painters") do
-    {prefix, value} = partition_tags(key)
+    {prefix, value, detail} = partition_tags(key)
 
     with %{partitions: [_ | _] = partitions} <-
            collection_or_nil(base_url, key) || :no_partitions,
-         find = Partitions.locator(partitions, prefix, value),
+         find = Partitions.locator(partitions, prefix, value, detail),
          partition when is_binary(partition) <- find.(tags, name) || :no_partition,
          :ok <-
            ask_partition(base_url, partition, rough_note(partition, key), @rough_sweep, key) do

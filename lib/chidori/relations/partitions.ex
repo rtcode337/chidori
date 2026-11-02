@@ -17,6 +17,9 @@ defmodule Chidori.Relations.Partitions do
     手前が無ければいちばん下の帯（端の帯は開いているので、外側も引き受ける）
   - 値が無ければ `分類|不明|A〜B` の置き場のうち、「`A〜B` が見出し以下で
     いちばん後ろのもの」（**鍵の文字列ごと比べる**のが Chiezo の規則）
+  - **月で割った年**（`分類|2026|1-3月`。Chiezo の `detail`）は、細かい軸のタグ（公開月）の月で引く。
+    数の軸の上では「年 + 月/13」で並ぶ（月の分からないもの・年の合わない月は「年 + 0」で、
+    手前を開いた最初の月の帯に入る）。**月の帯は自分の年しか引き受けない**（ほかの年なら nil）
   """
 
   @sep "|"
@@ -24,34 +27,61 @@ defmodule Chidori.Relations.Partitions do
   # 分類のタグを持たない文書が落ちる先（Chiezo の `DEFAULT_OTHER`）
   @other "その他"
   @span ~r/^(\d*)-(\d*)$/
+  @month_span ~r/^(\d*)-(\d*)月$/
+  # 月の帯を数の軸に並べる幅（Chiezo の `MONTH_SCALE`）
+  @month_scale 13
 
   @doc """
   区画の一覧から、`(タグ, 見出し) -> 鍵 | nil` を組みます。
 
-  `prefix` は分類のタグの頭（地域）、`value` は数の軸のタグの頭（年代）。
+  `prefix` は分類のタグの頭（地域）、`value` は数の軸のタグの頭（年代）、`detail` は
+  月で割った年を引く細かい軸のタグの頭（公開月。無ければ nil）。
   **組むのは 1 回**にして、全員に使い回してください（区画ごとに探すと重い）。
   """
-  def locator(partitions, prefix, value) when is_list(partitions) do
-    {bands, piles} =
-      Enum.reduce(partitions, {%{}, %{}}, fn partition, acc ->
-        add(acc, partition[:key] || partition["key"])
-      end)
+  def locator(partitions, prefix, value, detail \\ nil) when is_list(partitions) do
+    keys = Enum.map(partitions, &(&1[:key] || &1["key"]))
+    {bands, piles} = Enum.reduce(keys, {%{}, %{}}, &add(&2, &1))
 
     bands = Map.new(bands, fn {name, rows} -> {name, rows |> Enum.sort() |> List.to_tuple()} end)
     piles = Map.new(piles, fn {name, rows} -> {name, rows |> Enum.sort() |> List.to_tuple()} end)
+    # 月で割った年（分類ごと）と、月の帯の年
+    year_of =
+      for key <- keys, {:month, _names, _start, year} <- [parse(key)], into: %{}, do: {key, year}
+
+    split_years =
+      for key <- keys,
+          {:month, names, _start, year} <- [parse(key)],
+          name <- names,
+          reduce: %{} do
+        acc -> Map.update(acc, name, MapSet.new([year]), &MapSet.put(&1, year))
+      end
 
     fn tags, title ->
       name = tag_value(tags, prefix) || @other
 
       case number_in(tag_value(tags, value)) do
-        nil -> pick(Map.get(piles, name), title)
-        number -> pick(Map.get(bands, name), number)
+        nil ->
+          pick(Map.get(piles, name), title)
+
+        year ->
+          at =
+            if MapSet.member?(Map.get(split_years, name, MapSet.new()), year),
+              do: year + (month_in(tags, detail, year) || 0) / @month_scale,
+              else: year
+
+          case pick(Map.get(bands, name), at) do
+            nil -> nil
+            key -> if Map.get(year_of, key, year) == year, do: key
+          end
       end
     end
   end
 
   defp add(acc, key) when is_binary(key) do
     case parse(key) do
+      {:month, names, start, _year} ->
+        add(acc, names, start, key)
+
       {:band, names, start} ->
         Enum.reduce(names, acc, fn name, {bands, piles} ->
           {Map.update(bands, name, [{start, key}], &[{start, key} | &1]), piles}
@@ -68,6 +98,12 @@ defmodule Chidori.Relations.Partitions do
   end
 
   defp add(acc, _key), do: acc
+
+  defp add(acc, names, start, key) do
+    Enum.reduce(names, acc, fn name, {bands, piles} ->
+      {Map.update(bands, name, [{start, key}], &[{start, key} | &1]), piles}
+    end)
+  end
 
   # 始まりが自分以下のうち、いちばん後ろ。手前が無ければ先頭
   defp pick(nil, _at), do: nil
@@ -90,7 +126,8 @@ defmodule Chidori.Relations.Partitions do
   end
 
   @doc """
-  鍵を読みます。`{:band, 分類の並び, 始まり}` か `{:pile, 分類の並び, 見出しの範囲}`。
+  鍵を読みます。`{:band, 分類の並び, 始まり}`・`{:month, 分類の並び, 始まり, 年}`
+  （月の帯。始まりは「年 + 月/13」）・`{:pile, 分類の並び, 見出しの範囲}` のどれか。
 
   開いた始まり（`-1869`）は負の無限大として扱います。数どうしの比べでしか
   使わないので、十分小さい数で足ります。
@@ -102,6 +139,14 @@ defmodule Chidori.Relations.Partitions do
     cond do
       length(parts) < 2 ->
         nil
+
+      length(parts) >= 3 and Regex.match?(~r/^\d+$/, Enum.at(parts, -2)) and
+          Regex.match?(@month_span, last) ->
+        names = Enum.drop(parts, -2)
+        year = String.to_integer(Enum.at(parts, -2))
+        [_, lo, _hi] = Regex.run(@month_span, last)
+        first = if lo == "", do: 0, else: String.to_integer(lo)
+        if Enum.all?(names, &(&1 != "")), do: {:month, names, year + first / @month_scale, year}
 
       match = Regex.run(@span, last) ->
         names = Enum.drop(parts, -1)
@@ -136,6 +181,27 @@ defmodule Chidori.Relations.Partitions do
         end
       end
     end)
+  end
+
+  # 細かい軸のタグ（`公開月:2026年3月`・`2026-03`）の月。**年が合わなければ読まない**（Chiezo の `month_in`）
+  defp month_in(_tags, nil, _year), do: nil
+
+  defp month_in(tags, detail, year) do
+    numbers =
+      ~r/\d+/
+      |> Regex.scan(tag_value(tags, detail) || "")
+      |> List.flatten()
+      |> Enum.map(&String.to_integer/1)
+
+    month =
+      case numbers do
+        [^year, month | _rest] -> month
+        [first, _month | _rest] when first >= 100 -> nil
+        [month] when month < 100 -> month
+        _other -> nil
+      end
+
+    if month in 1..12, do: month
   end
 
   defp number_in(nil), do: nil

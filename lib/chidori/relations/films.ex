@@ -182,8 +182,19 @@ defmodule Chidori.Relations.Films do
   # 日本の大手の製作の分類（国の分類を持たない古い邦画がある）
   @japanese_studios ~w(東宝 東映 松竹 日活 大映)
 
-  # 区画の割り方。**国 × 公開年で 25 本ずつ**（画家・芸能人と同じ大きさ）
-  @partition %{by: "band", prefix: @country_prefix, value: Graph.years_tag(), target: 25}
+  # 公開された年月のタグの頭（`公開月:2026年1月`）。**月で区画を割るための軸**（`@partition` の `detail`）
+  @release_month_prefix "公開月"
+
+  # 区画の割り方。**国 × 公開年で 25 本ずつ**（画家・芸能人と同じ大きさ）。**最近の年は月でも割る**
+  # （`detail`。新作の引き継ぎで 1 年に何十本も並び、日本の 2026 年が 70 本の 1 区画になっていた。
+  # Chiezo が目安を超えた年だけを `日本|2026|1-3月` のような月の帯にする）
+  @partition %{
+    by: "band",
+    prefix: @country_prefix,
+    value: Graph.years_tag(),
+    detail: @release_month_prefix,
+    target: 25
+  }
 
   # 一周の日数（既定の間隔のとき）。名簿は芸能人の 3 分の 1 ほど
   @rough_days_at_default 2
@@ -229,6 +240,9 @@ defmodule Chidori.Relations.Films do
 
   @doc "区画の割り方。"
   def partition, do: @partition
+
+  @doc "公開された年月のタグの頭（月で割った区画を引く軸）。"
+  def release_month_tag, do: @release_month_prefix
 
   @doc "見た記録の見出しのタグの頭（引き継いだ作品が持つ）。"
   def record_tag, do: @record_prefix
@@ -366,6 +380,8 @@ defmodule Chidori.Relations.Films do
       （監督の日本語版 Wikipedia の記事名。記事の無い監督は書かない）を付けてください
     - 上で「注目度」が書いてある作品には、"#{@attention_prefix}:<高・中・低>" のタグも付けてください（書いてあるとおりに写す。
       図の札の大きさに使います —— 新しい作品は Wikipedia の閲覧数がまだ無いため）
+    - 上で「公開日」が書いてある作品には、"#{@release_month_prefix}:<年>年<月>月" のタグも付けてください
+      （公開日の年と月をそのまま写す。例: "#{@release_month_prefix}:2026年1月"。最近の作品は月で区画を分けるのに使います）
     - 足す作品にも、既にある作品として返す作品にも、#{fame_rule()}
 
     #{stars_rule()}
@@ -666,6 +682,19 @@ defmodule Chidori.Relations.Films do
       fill: true
     }
 
+  # 公開された年月（`公開月:2026年1月`）。**記事の 1 文目から機械で**（「2026年1月9日に公開された」）。
+  # 1 文目に書いていない記事（情報欄から始まる記事・原作の記事）には付かないので、整理の回と
+  # 引き継ぎの回で AI に足させる。年は年の分類と別の年のこともあるが、区画を引く側が年の合わない
+  # 月を読まない（Chiezo の `month_in`）
+  defp release_month_rule,
+    do: %{
+      # Chiezo は pattern を頭から当てる（`(?s)^.*?` で 1 文目のどこにあっても拾う）
+      pattern: "(?s)^.*?(\\d{4})年(\\d{1,2})月[^。]{0,15}?公開",
+      format: "#{@release_month_prefix}:{1}年{2}月",
+      on: "lead",
+      fill: true
+    }
+
   defp size_ratio(:high, _carried?), do: 0.4
   defp size_ratio(:mid, _carried?), do: 0.3
   defp size_ratio(_level, true), do: 0.2
@@ -860,6 +889,7 @@ defmodule Chidori.Relations.Films do
           genre_rules() ++
           [
             source_work_rule(),
+            release_month_rule(),
             # 続編・同じ題材のように記事どうしが互いにリンクしている組は、薄い線で引く
             %{linked: "mutual", format: "#{Graph.related_tag()}:{1}"}
           ],
@@ -956,6 +986,7 @@ defmodule Chidori.Relations.Films do
     （アメリカ合衆国・イギリス・フランス・日本など）。合作は主な製作国から順に、確かめられた国だけ。
     **"#{@record_prefix}:" のタグも、そのまま残してください**（見た記録と結び付ける印です）。
     **"#{@source_work_prefix}:" のタグも機械が記事から付けたものです。そのまま残してください**。
+    **"#{@release_month_prefix}:" のタグもそのまま残してください**（区画を月で分ける印です）。
     """
   end
 
@@ -1005,7 +1036,7 @@ defmodule Chidori.Relations.Films do
 
     **上に並んでいるのが、この範囲の全部です。** 範囲は「国」と「公開年」で区切ってあります。
 
-    やってほしいことは 5 つです。
+    やってほしいことは 6 つです。
 
     **1. 主演を確かめる。** 主演のタグが空のものを埋め、明らかに違うもの（助演を主演にしている・
     名前の書き方が記事名と違う）だけ直してください。**確かめられなかったものは触らないでください。**
@@ -1035,6 +1066,11 @@ defmodule Chidori.Relations.Films do
     "#{@record_prefix}:" のタグがある作品だけ**（Wikipedia の閲覧数では映画の知名度が測れない作品です。
     "#{@source_work_prefix}:" は記事が原作（小説・漫画など）の記事、"#{@record_prefix}:" は最近足した作品）、#{fame_rule()}
     3 と同じく、title と tags（全部）と extra だけで構いません。ほかの作品には書かなくて構いません。
+
+    **6. 公開月を書く。** 範囲が「公開月」で区切られているとき（上の「今回見る範囲」に「公開月」が出てくるとき）だけ、
+    **"#{@release_month_prefix}:" のタグが無い作品に** "#{@release_month_prefix}:<年>年<月>月" を足してください
+    （例: "#{@release_month_prefix}:2026年1月"）。日本での劇場公開の年月で、年は "#{Graph.years_tag()}:" のタグと同じ年のものだけ。
+    確かめられなければ書かないでください。tags は**いま付いているものを全部**残して足してください。
 
     #{machine_rule()}
     **触ったものだけ返してください。** いま付いているタグは、直すもの以外そのまま残してください
