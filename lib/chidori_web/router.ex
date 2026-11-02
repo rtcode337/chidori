@@ -22,7 +22,8 @@ defmodule ChidoriWeb.Router do
     # 技術イベント・お笑いイベント（画面は最新情報のもの。頭のメニューの「イベント」）
     live "/events", NewsLive, :events
     # その場の様子を見る道具（いま止めている通信）
-    live "/tools", ToolsLive, :index
+    # ツールの画面は Pi-hole のタブへ戻した（前の道を送る）
+    get "/tools", PageController, :to_pihole
     # 設定（Chiezo に頼んでいる収集の一覧・トップページに並べる枠）
     live "/settings", SettingsLive, :index
     # 記事のタグから育てたトピック。仕分けを頼むのもここ

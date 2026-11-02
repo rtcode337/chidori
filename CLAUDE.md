@@ -37,7 +37,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
   利用者が書くもの（見た記録・お気に入り・興味トピック・読んだ記録）だけを出す。Chiezo へ頼む口（収集の設定・巡回と相手・
   時刻・区画・1 回だけ頼む口・travel-log からの依頼・空き欄を埋める・名簿・書き出し・実行履歴）は収集の画面（
   `/collect/news`・`/collect/events`・`/collect/relations`・`/collect/datasets`・`/collect/apps`）に集める。**同じ LiveView を `live_action` の `:collect` で開き、
-  `@collect_mode` で出し分ける**（裏の処理は 1 つ）。収集の画面の頭の段（`CollectTabs`）は**Chiezo の収集の種類で分ける** —— 流れ（話題。ニュース・イベント・映画・アニメ）・網羅（図と Chidori で読むデータ）・他アプリ用・写真と表紙（`SettingsLive` の `:collect_photos`）。流れ・網羅の下の段は収集ごとのタブ（`CollectTabs.kind_tabs/1`。画面をまたぐ）。収集の一覧（巡回の間隔・相手・待ち行列の表）は設定の「収集の一覧」（`/settings?tab=chiezo`。前の `/collect` はここへ送る）。頭のメニューは ニュース・趣味・ツール・収集・設定（イベントとアニメはいまニュースのタブ。`Topics.news_tabs/0`。関連図はどれも趣味に並べる。`Chidori.Hobbies`。トップページは廃止し、`/` はニュースへ送る）。
+  `@collect_mode` で出し分ける**（裏の処理は 1 つ）。収集の画面の頭の段（`CollectTabs`）は**Chiezo の収集の種類で分ける** —— 流れ（話題。ニュース・イベント・映画・アニメ）・網羅（図と Chidori で読むデータ）・他アプリ用・写真と表紙（`SettingsLive` の `:collect_photos`）。流れ・網羅の下の段は収集ごとのタブ（`CollectTabs.kind_tabs/1`。画面をまたぐ）。収集の一覧（巡回の間隔・相手・待ち行列の表）は設定の「収集の一覧」（`/settings?tab=chiezo`。前の `/collect` はここへ送る）。頭のメニューは ニュース・趣味・収集・設定（いま止めている通信は趣味の Pi-hole のタブ。イベントとアニメはいまニュースのタブ。`Topics.news_tabs/0`。関連図はどれも趣味に並べる。`Chidori.Hobbies`。トップページは廃止し、`/` はニュースへ送る）。
   **他アプリ用（`/collect/apps`。`DatasetsLive` の `:collect_apps`）は Chidori で読まない対象**（食事処・ご当地グルメ・アニメ聖地。読むのは travel-log。
   `Datasets.for_other_app?/1`）で、データ収集には Chidori で読む対象だけを並べる。例外は**見ている 1 件から頼む口**（記事・本・人の詳細の「頼む」、見た映画を足す）で、
   詳細の 1 ボタンとしてだけ読む画面に残す（結果は収集の画面の履歴で見る）
@@ -82,7 +82,7 @@ Chidori はそれを人に見せ、人の意図（何を集めてほしいか・
   - データ収集 —— `datasets.ex`・`datasets/`（技術書・Pi-hole・レシピ集・ご当地グルメ・アニメ聖地・食事処・範囲・依頼・travel-log 書き出し）・`geo/` → `datasets-dining.md`
   - 共通の道具 —— `jst.ex`（人に見せる日時）・`safe_url.ex`（外から来た URL）・`repo.ex`・`release.ex`（移行）
 - `lib/chidori_web/` — 画面
-  - `live/` —— `news_live`（イベントも）・`tools_live`・`relations_live`・`datasets_live`・`dining_areas_live`・`settings_live`・`collect.ex`（収集の枠の道具）。
+  - `live/` —— `news_live`（イベントも）・`relations_live`・`datasets_live`・`dining_areas_live`・`settings_live`・`collect.ex`（収集の枠の道具）。
     最新情報・関連図・データ収集・設定は、同じ LiveView を収集の画面（`/collect/…`。`live_action` が `:collect`。他アプリ用は `:collect_apps`）としても開く
   - `components/` —— 収集の枠・レポート・トピックの網・区画の地図・県の地図・食事処の中のタブ・作品の詳細・主要メニューなど
   - `controllers/` —— travel-log 用 ZIP・顔写真・サムネイルの配り口

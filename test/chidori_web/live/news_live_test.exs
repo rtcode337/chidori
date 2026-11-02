@@ -59,13 +59,13 @@ defmodule ChidoriWeb.NewsLiveTest do
     assert conn |> get("/") |> redirected_to() == "/news"
   end
 
-  test "頭のメニューは ニュース・趣味・ツール・収集・設定（イベントはニュースのタブ）", %{conn: conn} do
+  test "頭のメニューは ニュース・趣味・収集・設定（イベントはニュースのタブ、ツールは Pi-hole のタブ）", %{conn: conn} do
     {:ok, _live, html} = live(conn, ~p"/news")
     [_, menu] = String.split(html, ~s(id="main-menu"), parts: 2)
     [menu, _] = String.split(menu, "</nav>", parts: 2)
 
     labels = Regex.scan(~r|>\s*([^<>\s][^<>]*?)\s*</a>|, menu) |> Enum.map(&Enum.at(&1, 1))
-    assert labels == ["ニュース", "趣味", "ツール", "収集", "設定"]
+    assert labels == ["ニュース", "趣味", "収集", "設定"]
     assert menu =~ ~s(href="/collect/news")
   end
 

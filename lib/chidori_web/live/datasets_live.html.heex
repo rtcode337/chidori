@@ -189,6 +189,11 @@
           </li>
         </ul>
       </section>
+
+      <%!-- **いま止めている通信**（`ChidoriWeb.PiholeLive`。流しているかと行は部品が持つ）。
+           溜めたドメインの下に置く —— 見に来るのは溜まったほうで、こちらは確かめたいときに流す。
+           頭のメニューに「ツール」の画面を別に置いていた頃は、これ 1 つのために画面が 1 つあった --%>
+      <.live_component :if={@dataset[:listing]} module={ChidoriWeb.PiholeLive} id="pihole-live" />
     <% end %>
 
     <%!-- Chiezo の状態と、そこへ送る設定を **1 つの枠にまとめる**（関連図と同じ形）。
