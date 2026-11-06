@@ -47,67 +47,51 @@ defmodule Chidori.Datasets.GourmetTest do
       assert "沖縄県の土産菓子" in tags
       assert "北海道のご当地ラーメン" in tags
       assert "北海道の駅弁" in tags
-      assert "神奈川県の農業" in tags
-      # 店の括り（県の飲食店）も 47 県ぶん
+      # 店の括り（県の飲食店）と県の食文化も 47 県ぶん
       assert "東京都の飲食店" in tags
-      # 組で入れる全国の括り（県の食文化にも入っている記事だけ）
-      assert "日本の郷土料理" in tags
-      assert "日本の水産加工品" in tags
+      assert "茨城県の食文化" in tags
 
       # 店の種類のカテゴリも（市区町村の括りと組のときだけ。外食事業者は入れない）
       assert "ラーメン店" in tags
       assert "パン店" in tags
       refute "日本の外食事業者" in tags
 
-      assert length(tags) ==
-               47 * 9 + length(Gourmet.national_categories()) +
-                 length(Gourmet.shop_entry_categories())
+      assert length(tags) == 47 * 9 + length(Gourmet.shop_entry_categories())
 
       # 県が読めない括り・どこにでもある料理が混ざる括り・食べもの以外を抱える括りは入れない
-      for wide <- ~w(ご当地グルメ 関東地方のご当地ラーメン 東北地方の駅弁 東京都の食文化 京都府の菓子) do
+      # （県の食文化にも入っている全国の括りの料理や県の農業の名産は、食文化から入る）
+      for wide <-
+            ~w(ご当地グルメ 日本の郷土料理 関東地方のご当地ラーメン 東北地方の駅弁 京都府の菓子 群馬県の農業) do
         refute wide in tags
       end
+
+      assert Gourmet.extract()[:tag_pairs] == nil
     end
 
-    test "全国の括りは、どこかの県の食文化にも入っている記事だけ（県は食文化から読む）" do
+    test "県は県の括りが先。決まらなかった記事だけ県の食文化から、当たった県ごとに読む" do
       extract = Gourmet.extract()
-      [_farm, %{pattern: pattern, with_pattern: partner}] = extract.tag_pairs
-      pattern = Regex.compile!(pattern, "u")
-      partner = Regex.compile!(partner, "u")
-
-      for national <- ~w(日本の郷土料理 日本の水産加工品 日本の鍋料理 日本の発酵食品 農山漁村の郷土料理百選) do
-        assert Regex.match?(pattern, national)
-      end
-
-      # 県の括りは組を要らない（全国の括りの組に当たらない）
-      refute Regex.match?(pattern, "秋田県の麺料理")
-      refute Regex.match?(pattern, "日本の郷土料理の一覧")
-      assert Regex.match?(partner, "秋田県の食文化")
-      refute Regex.match?(partner, "秋田市の食文化")
-
-      # 県は県の括りが先。決まらなかった記事だけ食文化から、当たった県ごとに読む
       [_kind, region, culture | _rest] = extract.tags
       assert culture.fallback == "all"
       assert culture.format == region.format
       assert culture.map == region.map
       assert [_, "宮崎県"] = Regex.run(Regex.compile!(culture.pattern, "u"), "宮崎県の食文化")
+      refute Regex.match?(Regex.compile!(culture.pattern, "u"), "秋田市の食文化")
 
-      # 全国の括りは外す括りと重ならない
-      excluded = String.split(extract.not_tag, ",")
-      for national <- Gourmet.national_categories(), do: refute(national in excluded)
+      # 県の食文化は県の括りの読み方に入れない（麺料理の県と別の県の食文化で 1 件増やさない）
+      refute Regex.match?(Regex.compile!(region.pattern, "u"), "宮崎県の食文化")
     end
 
-    test "農業の括りは、同じ県の食文化にも入っている記事だけ（米の品種は外す）" do
-      extract = Gourmet.extract()
-      assert [%{pattern: pattern, with: "{1}の食文化"}, _national] = extract.tag_pairs
-      assert [_, "群馬県"] = Regex.run(Regex.compile!(pattern, "u"), "群馬県の農業")
-      # 県は農業の括りからも読む
-      [_kind, region | _rest] = extract.tags
-      assert [_, "群馬県"] = Regex.run(Regex.compile!(region.pattern, "u"), "群馬県の農業")
+    test "県の食文化から入る、料理でない記事の括りと米の品種は外す" do
+      excluded = String.split(Gourmet.extract().not_tag, ",")
 
-      # 県の飲食店は組を要らない（tag_pairs のどの pattern にも当たらない）
-      refute Regex.match?(Regex.compile!(pattern, "u"), "群馬県の飲食店")
-      assert "イネの品種" in String.split(extract.not_tag, ",")
+      for other <- ~w(日本の調味料メーカー 日本の飲料メーカー 市販清涼飲料水 炭酸飲料 牛乳の商品名
+                      食文化に関する日本のイベント 茨城県の祭り 存命人物 イネの品種) do
+        assert other in excluded
+      end
+
+      assert "食文化の祭典 (日本)" in excluded
+      # 店と会社が混ざる括りは外さない（情報収集の回が主語で分ける）
+      refute "日本の外食事業者" in excluded
       assert Gourmet.survey_prompt() =~ "米の品種"
     end
 
@@ -199,7 +183,8 @@ defmodule Chidori.Datasets.GourmetTest do
       assert [_, "福井県"] = Regex.run(pattern, "福井県の麺料理")
       assert [_, "京都府"] = Regex.run(pattern, "京都府の土産菓子")
       assert [_, "北海道"] = Regex.run(pattern, "北海道のご当地カレー")
-      # 食文化からは読まない（名簿に入れていない括り）
+
+      # 食文化からは読まない（県の括りで県が決まらなかった記事だけ、次の規則が読む）
       assert Regex.run(pattern, "東京都の食文化") == nil
       # 「日本の…」は表に無いので作らない
       assert map_size(region.map) == 47
@@ -210,7 +195,7 @@ defmodule Chidori.Datasets.GourmetTest do
     test "店の種類のカテゴリだけで入る店は、県を市区町村の括りから読み、読めなければ「不明」の区画へ" do
       extract = Gourmet.extract()
       # 組は要らない（県が読めない店も名簿に入れる）
-      assert length(extract.tag_pairs) == 2
+      assert extract[:tag_pairs] == nil
 
       [_kind, region, culture, city, unknown | _rest] = extract.tags
       assert city.fallback == true
