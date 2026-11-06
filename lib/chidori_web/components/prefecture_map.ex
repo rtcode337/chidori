@@ -4,7 +4,8 @@ defmodule ChidoriWeb.PrefectureMap do
   （その県の数と「この区画で 1 回走らせる」が出る）。**押しただけでは走らせません**。
 
   **塗りの濃さは代表店ありの割合**（料理と店のうち、代表店が引き当たって地図に置けるもの）を
-  段に分けて出し、**引き当てできずがある県には別の印**（丸）を置きます。色だけに頼らない ——
+  段に分けて出し、**引き当てできずがある県には別の印**（丸）を置きます。**情報収集まで終わった県は
+  淡い緑**で塗ります（割合の塗りより優先。どこまで回ったかは割合の塗りでは読めない）。色だけに頼らない ——
   県に指を置けば名前と数が出て（`title`）、押せば下に数が並び、表にも同じ数があります。
 
   **操作は区画の地図・関連図と同じ**（`pan_zoom.js`。引きずって移動、Ctrl+ホイール、
@@ -19,6 +20,10 @@ defmodule ChidoriWeb.PrefectureMap do
 
   attr :map, :map, required: true, doc: "`Chidori.Datasets.Map.prefectures/1` が返すもの"
   attr :picked, :string, default: nil, doc: "いま選んでいる区画の鍵（`地域:<県>`）"
+
+  attr :done, :any,
+    default: MapSet.new(),
+    doc: "情報収集まで終わった区画の鍵の集まり（淡い緑で塗る）"
 
   def prefecture_map(assigns) do
     ~H"""
@@ -45,6 +50,11 @@ defmodule ChidoriWeb.PrefectureMap do
             >
               <title>{shape_title(shape)}</title>
             </path>
+          </g>
+          <%!-- **情報収集まで終わった県の塗り**（上に重ねる）。押す口ではない（下の県が受ける）。
+               塗りの一覧とは分けてあり、終わった県が増えても塗りの一覧は描き直さない --%>
+          <g class="pref-done" aria-hidden="true">
+            <path :for={shape <- @map.shapes} :if={MapSet.member?(@done, shape.key)} d={shape.d} />
           </g>
           <%!-- **引き当てできずの印**。押す口ではない（下の県が受ける）。
                大きさは台本が倍率で割り戻す（寄っても引いても同じに見せる） --%>
@@ -81,6 +91,7 @@ defmodule ChidoriWeb.PrefectureMap do
         <li><span class="swatch pref-step-3"></span>50〜75 %</li>
         <li><span class="swatch pref-step-4"></span>75 % 以上</li>
         <li><span class="flag-mark"></span>引き当てできずがある</li>
+        <li><span class="swatch pref-done"></span>情報収集まで終わった</li>
       </ul>
       <p class="muted-note map-hint">
         <strong>県を押すと選ばれます</strong>（押しただけでは走りません）。

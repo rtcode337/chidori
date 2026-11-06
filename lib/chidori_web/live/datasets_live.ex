@@ -32,6 +32,9 @@ defmodule ChidoriWeb.DatasetsLive do
   alias Chidori.SingleFlight
   alias Chidori.Jst
 
+  # 選んだ区画の枠（`picked_partition/1`）。地図の下と県の表の行の下の 2 か所から出す
+  embed_templates "datasets_live/*"
+
   # 区画の一覧に出す数。**数百あるので全部は並べない**（並びは次に回ってくる順なので、
   # 先頭だけ見えれば足りる）
   @shown_partitions 60
@@ -90,6 +93,7 @@ defmodule ChidoriWeb.DatasetsLive do
        # 地図で選んでいる区画。**選ぶのと頼むのを分ける** —— 押した瞬間に走ると、
        # どこを押したのか確かめる前に AI が動く
        picked: nil,
+       picked_in_table: false,
        # 選んだ区画を走らせるときの、巡回と相手。**覚えるのはサーバー側** ——
        # 状態が届いた拍子にフォームが描き直されるので、覚えないと選び直した
        # ところが元へ戻る（巡回の表と同じ理由）
@@ -316,10 +320,12 @@ defmodule ChidoriWeb.DatasetsLive do
 
   # **地図で区画を選ぶ。** ここでは頼みません —— 押した先に何があるのか
   # （件数・見終わったか）を読んでから頼めるように、選ぶのと頼むのを分けてあります
-  def handle_event("pick_partition", %{"key" => key}, socket) do
+  # 県の表の「選ぶ」（`from=table`）で選んだら、枠を表のその行の下に出す（地図で選んだら地図の下）
+  def handle_event("pick_partition", %{"key" => key} = params, socket) do
     picked = if socket.assigns.picked == key, do: nil, else: key
 
-    {:noreply, assign(socket, picked: picked, asked: nil)}
+    {:noreply,
+     assign(socket, picked: picked, picked_in_table: params["from"] == "table", asked: nil)}
   end
 
   # **地図の上で地名を探す**（地図辞典）。候補を出すだけで、図はまだ動かさない
@@ -1187,6 +1193,27 @@ defmodule ChidoriWeb.DatasetsLive do
     if defines?(dataset, :extract, 0),
       do: Jason.encode!(Datasets.call(dataset, :extract), pretty: true)
   end
+
+  @doc """
+  県の表の狭い画面に出す、見終わった時刻の短い形（年と「JST」を落とす。`2026-11-07 03:13 JST` →
+  `11/07 03:13`）。形の違う値はそのまま返す。
+  """
+  def short_seen(seen) when is_binary(seen) do
+    case Regex.run(~r/^\d{4}-(\d{2})-(\d{2}) (\d{2}:\d{2})/, seen) do
+      [_, month, day, time] -> "#{month}/#{day} #{time}"
+      nil -> seen
+    end
+  end
+
+  def short_seen(seen), do: seen
+
+  @doc """
+  情報収集の巡回が見たことのある区画の鍵（県の地図で緑の縁にする）。情報収集の無い対象は空。
+  """
+  def surveyed_keys(rows, %{survey_sweep: sweep}) when is_binary(sweep),
+    do: for(row <- rows, sweep in row.seen_by, into: MapSet.new(), do: row.key)
+
+  def surveyed_keys(_rows, _dataset), do: MapSet.new()
 
   @doc """
   県ごとの進み具合の行に、その県の区画の「見終わった巡回」を添えます（区画の台帳から）。

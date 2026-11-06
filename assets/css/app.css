@@ -236,6 +236,19 @@ main.relations-page > div { padding-top: 0; }
      持たせ、それより長い名前だけ折り返す。**全部を 1 行にはしない** —— 小さい国を
      寄せ集めた区画の名前は長く、列がその幅（実測 772px）まで広がる */
   .settings-panel .partition-table td:first-child { min-width: 10.5rem; max-width: 14rem; white-space: normal; overflow-wrap: anywhere; }
+  /* 県の表は 1 行を 2 段までに詰めて、横にずらさずに「選ぶ」まで届くようにする（行が 47 あるので
+     カードのように縦に積むと長くなりすぎる）。段は字の折り返しに任せず、狭い画面用の字を
+     1 段ずつ置いて決める（折り返しに任せると、列の幅しだいで 3 段に割れる） */
+  .settings-panel .prefecture-table { font-size: .78rem; }
+  .settings-panel .prefecture-table th, .settings-panel .prefecture-table td { padding: .3rem .25rem; }
+  /* 1 段目の数を行の中で揃える（真ん中に寄せると、2 段の列と 1 段の列で数の高さがずれる） */
+  .settings-panel .prefecture-table td { vertical-align: top; }
+  .settings-panel .prefecture-table td:first-child { min-width: 0; max-width: none; white-space: nowrap; }
+  .settings-panel .prefecture-table tr.picked-detail > td { padding: 0 0 .7rem; white-space: normal; }
+  .settings-panel .prefecture-table .wide-only { display: none; }
+  .settings-panel .prefecture-table .narrow-only, .settings-panel .prefecture-progress p.narrow-only { display: block; }
+  .settings-panel .prefecture-table button.narrow-only { margin-top: .15rem; padding: .1rem .5rem; font-size: .72rem; }
+  .settings-panel .prefecture-table .muted-note.narrow-only { font-size: .7rem; }
 }
 .settings-panel > h2 { margin: 0 0 .9rem; font-size: 1.05rem; color: #2a2463; }
 .settings-panel > h3 { margin: 0 0 .5rem; font-size: .95rem; color: #332c75; }
@@ -765,6 +778,8 @@ main.relations-page > div { padding-top: 0; }
 .prefecture-map .pref-step-4 { fill: #2e3a9a; }
 .prefecture-map path.pref:hover { fill: #fdba74; }
 /* 引き当てできずの印。**押す口ではない**（下の県が受ける）。半径は台本が倍率で割り戻す */
+/* 情報収集まで終わった県は薄い緑（食事処の区画の地図の「見終わった」と同じ色。割合の塗りの青より優先） */
+.prefecture-map .pref-done path { fill: #86efac; stroke: rgba(51, 65, 120, .45); stroke-width: .7; stroke-linejoin: round; vector-effect: non-scaling-stroke; fill-rule: evenodd; pointer-events: none; }
 .prefecture-map .pref-flags circle { fill: #f97316; stroke: #fff; stroke-width: 1.5; vector-effect: non-scaling-stroke; pointer-events: none; }
 /* 選んだ県。上に重ねた 1 本を太い縁で囲む（塗りの段は透かして残す） */
 .prefecture-map path.pref-picked { fill: rgba(249, 115, 22, .35); stroke: #c2410c; stroke-width: 2.5; stroke-linejoin: round; vector-effect: non-scaling-stroke; cursor: pointer; fill-rule: evenodd; }
@@ -778,8 +793,14 @@ main.relations-page > div { padding-top: 0; }
 .pref-legend .swatch.pref-step-2 { background: #8293e3; }
 .pref-legend .swatch.pref-step-3 { background: #5265cf; }
 .pref-legend .swatch.pref-step-4 { background: #2e3a9a; }
+.pref-legend .swatch.pref-done { background: #86efac; }
 .pref-legend .flag-mark { display: inline-block; width: .65rem; height: .65rem; border-radius: 50%; background: #f97316; border: 1.5px solid #fff; box-shadow: 0 0 0 1px #f97316; }
 .prefecture-table tr.is-picked td { background: #fff7ed; }
+/* 表の「選ぶ」で選んだ県の枠は、その行のすぐ下の 1 行に置く（表の列の決まりを受けない） */
+.prefecture-table tr.picked-detail > td { padding: 0 0 .9rem; white-space: normal; }
+.prefecture-table tr.picked-detail .partition-picked { margin-top: .3rem; }
+/* 県の表は狭い画面だけ別の形（下の 640px の段）。広い画面では狭い画面用の字を出さない */
+.prefecture-table .narrow-only, .prefecture-progress p.narrow-only { display: none; }
 
 /* 選んだ区画。押した先に何があるのかを読んでから頼めるように、選ぶのと頼むのを分ける */
 .partition-picked { margin-top: .8rem; border: 1px solid #dcdff0; border-radius: .8rem; padding: .9rem 1rem; background: #fff; }

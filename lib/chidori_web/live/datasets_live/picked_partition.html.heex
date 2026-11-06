@@ -1,0 +1,190 @@
+<%!-- 選んだ区画の枠（数・控えている依頼・この区画で 1 回走らせる）。区画の地図の下と、
+   県の表の選んだ行の下（`DatasetsLive` の `picked_in_table`）の 2 か所から出す。
+   `picked_row` は選んだ区画の行、`rows` は区画の行の全部 --%>
+<section class="partition-picked" aria-label="選んだ区画">
+  <h3>選んだ区画</h3>
+  <dl class="collect-facts">
+    <div>
+      <dt>{if @dataset[:prefectures], do: "県", else: "範囲（南西 / 北東）"}</dt>
+      <dd>
+        {if @dataset[:prefectures],
+          do: @dataset.module.prefecture_of_key(@picked_row.key) || @picked_row.key,
+          else: @picked_row.key}
+      </dd>
+    </div>
+    <div>
+      <dt>この区画にあるもの</dt>
+      <dd>{@picked_row.count} 件</dd>
+    </div>
+    <%= if counts = @dataset[:prefectures] && picked_prefecture(@prefecture_progress, @picked_row.key) do %>
+      <div>
+        <dt>料理・店</dt>
+        <dd>
+          {counts.dishes} 件{if Map.get(counts, :shops, 0) > 0,
+            do: "（うち店 #{counts.shops} 件）",
+            else: ""}
+        </dd>
+      </div>
+      <div>
+        <dt>代表店あり</dt>
+        <dd>{counts.placed} 件</dd>
+      </div>
+      <div>
+        <dt>代表店まだ</dt>
+        <dd>
+          {counts.pending} 件{if elem(@prefecture_progress, 1).unresolved_total,
+            do: "（うち引き当てできず #{counts.unresolved} 件）",
+            else: ""}
+        </dd>
+      </div>
+      <div>
+        <dt>代表店なし</dt>
+        <dd>{counts.no_shop} 件</dd>
+      </div>
+    <% end %>
+    <%!-- **空いている欄のある店**（食事処の範囲だけ。どれか 1 つでも空いている店の数） --%>
+    <div :if={@dataset[:area]}>
+      <dt>空いている欄のある店</dt>
+      <dd>
+        <% blanks = blanks_in(@blank_report, @rows) %>
+        {if blanks, do: "#{Map.get(blanks, @picked_row.key, 0)} 店", else: "—"}
+      </dd>
+    </div>
+    <div>
+      <dt>見終わった巡回</dt>
+      <dd>{if @picked_row.by, do: "#{@picked_row.by}（#{@picked_row.seen}）", else: "まだ"}</dd>
+    </div>
+  </dl>
+  <%!-- **代表店まだ・代表店なしの料理を理由つきで並べる**（ご当地グルメ）。数だけでは、
+     何が残っているのか、情報収集が見たうえで残したのかが読めない --%>
+  <%= if counts = @dataset[:prefectures] && picked_prefecture(@prefecture_progress, @picked_row.key) do %>
+    <%!-- 代表店まだ・代表店なしは閉じて出す（狭い画面では数件でも高さを取り、枠の下の「1 回走らせる」が遠くなる） --%>
+    <details :if={Map.get(counts, :pending_items, []) != []} class="shop-state-list">
+      <summary>代表店まだ（{length(counts.pending_items)} 件）</summary>
+      <ul>
+        <li :for={item <- counts.pending_items}>
+          <strong>{item.title}</strong> <span class="muted-note">{item.reason}</span>
+        </li>
+      </ul>
+    </details>
+    <details :if={Map.get(counts, :no_shop_items, []) != []} class="shop-state-list">
+      <summary>代表店なし（{length(counts.no_shop_items)} 件）</summary>
+      <ul>
+        <li :for={item <- counts.no_shop_items}>
+          <strong>{item.title}</strong> <span class="muted-note">{item.reason}</span>
+        </li>
+      </ul>
+    </details>
+  <% end %>
+  <%!-- **この区画に控えている travel-log からの依頼**（下の「控えている依頼」と同じもの）。
+     区画を地図で選んだところで、何が溜まっているかを見て、そのまま頼めるように --%>
+  <% waiting =
+    if @dataset.reader == "travel-log",
+      do: Enum.find(@pending, &(&1.key == @picked_row.key)) %>
+  <div :if={@dataset.reader == "travel-log"} class="partition-pending">
+    <h4>
+      travel-log からの依頼（控えている {if waiting, do: length(waiting.items), else: 0} 件）
+    </h4>
+    <%= if waiting do %>
+      <p class="muted-note">{Jst.format(waiting.since)} から溜まっています。</p>
+      <pre>{Enum.map_join(waiting.items, "\n", & &1.text)}</pre>
+      <.request_picker
+        id="request-picker-partition"
+        backends={@backends}
+        backend={@request_backend}
+        model={@request_model}
+      />
+      <div class="button-row">
+        <button
+          type="button"
+          phx-click="send_pending"
+          phx-value-key={waiting.key}
+          disabled={@requesting != nil}
+          phx-disable-with="頼んでいます…"
+        >
+          この区画を頼む
+        </button>
+        <button
+          type="button"
+          phx-click="drop_pending"
+          phx-value-key={waiting.key}
+          data-confirm={"この#{length(waiting.items)} 件の控えを、頼まずに捨てます。よいですか？"}
+        >
+          控えを捨てる
+        </button>
+      </div>
+    <% else %>
+      <p class="muted-note">この区画に控えている依頼はありません。</p>
+    <% end %>
+  </div>
+  <%!-- **Chiezo の「選んだ区画で 1 回走らせる」と同じ形**にする ——
+     割り込み（進み具合にも印にも触らない）は、押しても画面が変わらず
+     「何が起きたのか分からない」になっていた。こちらは**ふつうの回として
+     走る**ので、印が付き、読み直せば結果が見える --%>
+  <form
+    id="run-partition-form"
+    phx-submit="run_partition"
+    phx-change="pick_run"
+    class="collect-form"
+  >
+    <input type="hidden" name="key" value={@picked_row.key} />
+    <% {plain, hands} = by_kind(@backends) %>
+    <% models = models_for(@backends, @run_backend) %>
+    <p>
+      <label>
+        どの巡回として<br />
+        <select name="sweep">
+          <%!-- 手で回す回・機械で引く回は出さない（選んでも Chiezo が断る） --%>
+          <option
+            :for={name <- runnable_sweeps(@state, @dataset.partition_sweeps)}
+            value={name}
+            selected={name == @run_sweep}
+          >
+            {name}
+          </option>
+        </select>
+      </label>
+    </p>
+    <p>
+      <label>
+        頼む相手<br />
+        <%!-- 欄の名前を `run|backend` にしておくと、モデルの入れ替えは
+           収集の表と同じ台本が引き受ける（`pages.BACKEND_PICKER_SCRIPT`）--%>
+        <select name="run|backend">
+          <option value="">巡回の設定のまま</option>
+          <option :for={b <- plain} value={b.id} selected={b.id == @run_backend}>
+            {b.label}
+          </option>
+          <optgroup
+            :if={hands != []}
+            label="ワーカー（枠を見て振り替える）"
+          >
+            <option :for={b <- hands} value={b.id} selected={b.id == @run_backend}>
+              {b.label}
+            </option>
+          </optgroup>
+        </select>
+      </label>
+      <label :if={models != []}>
+        モデル<br />
+        <select name="run|model">
+          <option value="">モデルは相手の既定</option>
+          <option :for={m <- models} value={m} selected={m == @run_model}>{m}</option>
+        </select>
+      </label>
+    </p>
+    <p class="muted-note">
+      <strong>ふつうの回として走ります</strong> —— この区画に「見た」印が付き、
+      進み具合も次の予定も進みます。AI の呼び出しは<strong>この 1 区画ぶん</strong>です。
+    </p>
+    <div class="button-row">
+      <button type="submit" disabled={@asking} phx-disable-with="走らせています…">
+        この区画で 1 回走らせる
+      </button>
+      <button type="button" phx-click="unpick_partition">やめる</button>
+    </div>
+    <p :if={ask_message(@asked)} class="muted-note" aria-live="polite">
+      {ask_message(@asked)}
+    </p>
+  </form>
+</section>

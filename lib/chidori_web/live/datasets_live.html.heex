@@ -337,7 +337,12 @@
           <% end %>
           <%!-- 地図は**数が届いたときに組んだもの**（`@prefecture_map`）だけで描く。
              画面の中の値から組むと、選び直すたびに 47 県の境目を送り直す --%>
-          <.prefecture_map :if={@prefecture_map} map={@prefecture_map} picked={@picked} />
+          <.prefecture_map
+            :if={@prefecture_map}
+            map={@prefecture_map}
+            picked={@picked}
+            done={surveyed_keys(rows, @dataset)}
+          />
           <p :if={@prefecture_map && @picked && !picked_row(rows, @picked)} class="muted-note">
             {@dataset.module.prefecture_of_key(@picked)}はまだ区画がありません。収集を作って有効にしたあと、最初の回で区画になります。
           </p>
@@ -354,192 +359,14 @@
         />
 
         <% picked = picked_row(rows, @picked) %>
-        <section :if={picked} class="partition-picked" aria-label="選んだ区画">
-          <h3>選んだ区画</h3>
-          <dl class="collect-facts">
-            <div>
-              <dt>{if @dataset[:prefectures], do: "県", else: "範囲（南西 / 北東）"}</dt>
-              <dd>
-                {if @dataset[:prefectures],
-                  do: @dataset.module.prefecture_of_key(picked.key) || picked.key,
-                  else: picked.key}
-              </dd>
-            </div>
-            <div>
-              <dt>この区画にあるもの</dt>
-              <dd>{picked.count} 件</dd>
-            </div>
-            <%= if counts = @dataset[:prefectures] && picked_prefecture(@prefecture_progress, picked.key) do %>
-              <div>
-                <dt>料理・店</dt>
-                <dd>
-                  {counts.dishes} 件{if Map.get(counts, :shops, 0) > 0,
-                    do: "（うち店 #{counts.shops} 件）",
-                    else: ""}
-                </dd>
-              </div>
-              <div>
-                <dt>代表店あり</dt>
-                <dd>{counts.placed} 件</dd>
-              </div>
-              <div>
-                <dt>代表店まだ</dt>
-                <dd>
-                  {counts.pending} 件{if elem(@prefecture_progress, 1).unresolved_total,
-                    do: "（うち引き当てできず #{counts.unresolved} 件）",
-                    else: ""}
-                </dd>
-              </div>
-              <div>
-                <dt>代表店なし</dt>
-                <dd>{counts.no_shop} 件</dd>
-              </div>
-            <% end %>
-            <%!-- **空いている欄のある店**（食事処の範囲だけ。どれか 1 つでも空いている店の数） --%>
-            <div :if={@dataset[:area]}>
-              <dt>空いている欄のある店</dt>
-              <dd>
-                <% blanks = blanks_in(@blank_report, rows) %>
-                {if blanks, do: "#{Map.get(blanks, picked.key, 0)} 店", else: "—"}
-              </dd>
-            </div>
-            <div>
-              <dt>見終わった巡回</dt>
-              <dd>{if picked.by, do: "#{picked.by}（#{picked.seen}）", else: "まだ"}</dd>
-            </div>
-          </dl>
-          <%!-- **代表店まだ・代表店なしの料理を理由つきで並べる**（ご当地グルメ）。数だけでは、
-             何が残っているのか、情報収集が見たうえで残したのかが読めない --%>
-          <%= if counts = @dataset[:prefectures] && picked_prefecture(@prefecture_progress, picked.key) do %>
-            <details :if={Map.get(counts, :pending_items, []) != []} class="shop-state-list" open>
-              <summary>代表店まだ（{length(counts.pending_items)} 件）</summary>
-              <ul>
-                <li :for={item <- counts.pending_items}>
-                  <strong>{item.title}</strong> <span class="muted-note">{item.reason}</span>
-                </li>
-              </ul>
-            </details>
-            <details :if={Map.get(counts, :no_shop_items, []) != []} class="shop-state-list" open>
-              <summary>代表店なし（{length(counts.no_shop_items)} 件）</summary>
-              <ul>
-                <li :for={item <- counts.no_shop_items}>
-                  <strong>{item.title}</strong> <span class="muted-note">{item.reason}</span>
-                </li>
-              </ul>
-            </details>
-          <% end %>
-          <%!-- **この区画に控えている travel-log からの依頼**（下の「控えている依頼」と同じもの）。
-             区画を地図で選んだところで、何が溜まっているかを見て、そのまま頼めるように --%>
-          <% waiting =
-            if @dataset.reader == "travel-log",
-              do: Enum.find(@pending, &(&1.key == picked.key)) %>
-          <div :if={@dataset.reader == "travel-log"} class="partition-pending">
-            <h4>
-              travel-log からの依頼（控えている {if waiting, do: length(waiting.items), else: 0} 件）
-            </h4>
-            <%= if waiting do %>
-              <p class="muted-note">{Jst.format(waiting.since)} から溜まっています。</p>
-              <pre>{Enum.map_join(waiting.items, "\n", & &1.text)}</pre>
-              <.request_picker
-                id="request-picker-partition"
-                backends={@backends}
-                backend={@request_backend}
-                model={@request_model}
-              />
-              <div class="button-row">
-                <button
-                  type="button"
-                  phx-click="send_pending"
-                  phx-value-key={waiting.key}
-                  disabled={@requesting != nil}
-                  phx-disable-with="頼んでいます…"
-                >
-                  この区画を頼む
-                </button>
-                <button
-                  type="button"
-                  phx-click="drop_pending"
-                  phx-value-key={waiting.key}
-                  data-confirm={"この#{length(waiting.items)} 件の控えを、頼まずに捨てます。よいですか？"}
-                >
-                  控えを捨てる
-                </button>
-              </div>
-            <% else %>
-              <p class="muted-note">この区画に控えている依頼はありません。</p>
-            <% end %>
-          </div>
-          <%!-- **Chiezo の「選んだ区画で 1 回走らせる」と同じ形**にする ——
-             割り込み（進み具合にも印にも触らない）は、押しても画面が変わらず
-             「何が起きたのか分からない」になっていた。こちらは**ふつうの回として
-             走る**ので、印が付き、読み直せば結果が見える --%>
-          <form
-            id="run-partition-form"
-            phx-submit="run_partition"
-            phx-change="pick_run"
-            class="collect-form"
-          >
-            <input type="hidden" name="key" value={picked.key} />
-            <% {plain, hands} = by_kind(@backends) %>
-            <% models = models_for(@backends, @run_backend) %>
-            <p>
-              <label>
-                どの巡回として<br />
-                <select name="sweep">
-                  <%!-- 手で回す回・機械で引く回は出さない（選んでも Chiezo が断る） --%>
-                  <option
-                    :for={name <- runnable_sweeps(@state, @dataset.partition_sweeps)}
-                    value={name}
-                    selected={name == @run_sweep}
-                  >
-                    {name}
-                  </option>
-                </select>
-              </label>
-            </p>
-            <p>
-              <label>
-                頼む相手<br />
-                <%!-- 欄の名前を `run|backend` にしておくと、モデルの入れ替えは
-                   収集の表と同じ台本が引き受ける（`pages.BACKEND_PICKER_SCRIPT`）--%>
-                <select name="run|backend">
-                  <option value="">巡回の設定のまま</option>
-                  <option :for={b <- plain} value={b.id} selected={b.id == @run_backend}>
-                    {b.label}
-                  </option>
-                  <optgroup
-                    :if={hands != []}
-                    label="ワーカー（枠を見て振り替える）"
-                  >
-                    <option :for={b <- hands} value={b.id} selected={b.id == @run_backend}>
-                      {b.label}
-                    </option>
-                  </optgroup>
-                </select>
-              </label>
-              <label :if={models != []}>
-                モデル<br />
-                <select name="run|model">
-                  <option value="">モデルは相手の既定</option>
-                  <option :for={m <- models} value={m} selected={m == @run_model}>{m}</option>
-                </select>
-              </label>
-            </p>
-            <p class="muted-note">
-              <strong>ふつうの回として走ります</strong> —— この区画に「見た」印が付き、
-              進み具合も次の予定も進みます。AI の呼び出しは<strong>この 1 区画ぶん</strong>です。
-            </p>
-            <div class="button-row">
-              <button type="submit" disabled={@asking} phx-disable-with="走らせています…">
-                この区画で 1 回走らせる
-              </button>
-              <button type="button" phx-click="unpick_partition">やめる</button>
-            </div>
-            <p :if={ask_message(@asked)} class="muted-note" aria-live="polite">
-              {ask_message(@asked)}
-            </p>
-          </form>
-        </section>
+        <%!-- 県の表の「選ぶ」で選んだときは、表のその行の下に出す（下の表）。狭い画面で、
+           表の行と地図の下の枠のあいだを上下に行き来しなくて済むように --%>
+        <.picked_partition
+          :if={picked && !(@dataset[:prefectures] && @picked_in_table)}
+          {assigns}
+          picked_row={picked}
+          rows={rows}
+        />
 
         <%!-- **県ごとの数の表。** 地図で押しにくい小さな県を選ぶ口で、数を並べて読む用 --%>
         <section
@@ -549,46 +376,96 @@
         >
           <% {:ok, progress} = @prefecture_progress %>
           <% prows = prefecture_rows(progress.rows, rows) %>
+          <%!-- **狭い画面では 1 行を 2 段までに詰める**（`narrow-only` / `wide-only`）。「選ぶ」を県の
+             下へ寄せ、注記は短く、巡回の時刻は年と JST を落とす。横にずらさないと「選ぶ」まで届かなかった --%>
           <table class="partition-table prefecture-table">
             <thead>
               <tr>
                 <th>県</th>
                 <th>料理・店</th>
-                <th>代表店あり</th>
-                <th>代表店まだ</th>
-                <th>代表店なし</th>
-                <th>見終わった巡回</th>
-                <th></th>
+                <th>
+                  <span class="wide-only">代表店あり</span><span class="narrow-only">代表店</span><span class="narrow-only">あり</span>
+                </th>
+                <th>
+                  <span class="wide-only">代表店まだ</span><span class="narrow-only">まだ</span>
+                </th>
+                <th>
+                  <span class="wide-only">代表店なし</span><span class="narrow-only">なし</span>
+                </th>
+                <th>
+                  <span class="wide-only">見終わった巡回</span><span class="narrow-only">見終わった</span><span class="narrow-only">巡回</span>
+                </th>
+                <th class="wide-only"></th>
               </tr>
             </thead>
             <tbody>
-              <tr :for={row <- prows} class={if @picked == row.key, do: "is-picked"}>
-                <td>{row.prefecture}</td>
-                <td>
-                  {row.dishes}<span :if={Map.get(row, :shops, 0) > 0} class="muted-note">（うち店 {row.shops}）</span>
-                </td>
-                <td>{row.placed}</td>
-                <td>
-                  {row.pending}<span
-                    :if={progress.unresolved_total && row.unresolved > 0}
-                    class="muted-note"
-                  >（うち引き当てできず {row.unresolved}）</span>
-                </td>
-                <td>{row.no_shop}</td>
-                <td>{if row.by, do: "#{row.by}（#{row.seen}）", else: "まだ"}</td>
-                <td>
-                  <button
-                    :if={row.in_ledger}
-                    type="button"
-                    phx-click="pick_partition"
-                    phx-value-key={row.key}
-                  >
-                    選ぶ
-                  </button>
-                </td>
-              </tr>
+              <%= for row <- prows do %>
+                <tr class={if @picked == row.key, do: "is-picked"}>
+                  <td>
+                    {row.prefecture}
+                    <button
+                      :if={row.in_ledger}
+                      type="button"
+                      class="narrow-only"
+                      phx-click="pick_partition"
+                      phx-value-key={row.key}
+                      phx-value-from="table"
+                    >
+                      選ぶ
+                    </button>
+                  </td>
+                  <td>
+                    {row.dishes}<span
+                      :if={Map.get(row, :shops, 0) > 0}
+                      class="muted-note wide-only"
+                    >（うち店 {row.shops}）</span><span
+                      :if={Map.get(row, :shops, 0) > 0}
+                      class="muted-note narrow-only"
+                    >店 {row.shops}</span>
+                  </td>
+                  <td>{row.placed}</td>
+                  <td>
+                    {row.pending}<span
+                      :if={progress.unresolved_total && row.unresolved > 0}
+                      class="muted-note wide-only"
+                    >（うち引き当てできず {row.unresolved}）</span><span
+                      :if={progress.unresolved_total && row.unresolved > 0}
+                      class="muted-note narrow-only"
+                    >不可 {row.unresolved}</span>
+                  </td>
+                  <td>{row.no_shop}</td>
+                  <td>
+                    <span class="wide-only">
+                      {if row.by, do: "#{row.by}（#{row.seen}）", else: "まだ"}
+                    </span>
+                    <span class="narrow-only">{row.by || "まだ"}</span>
+                    <span :if={row.by} class="muted-note narrow-only">{short_seen(row.seen)}</span>
+                  </td>
+                  <td class="wide-only">
+                    <button
+                      :if={row.in_ledger}
+                      type="button"
+                      phx-click="pick_partition"
+                      phx-value-key={row.key}
+                      phx-value-from="table"
+                    >
+                      選ぶ
+                    </button>
+                  </td>
+                </tr>
+                <% picked_here =
+                  @picked_in_table && @picked == row.key && picked_row(rows, @picked) %>
+                <tr :if={picked_here} class="picked-detail">
+                  <td colspan="7">
+                    <.picked_partition {assigns} picked_row={picked_here} rows={rows} />
+                  </td>
+                </tr>
+              <% end %>
             </tbody>
           </table>
+          <p :if={progress.unresolved_total} class="muted-note narrow-only">
+            代表店まだの「不可」は、代表店の住所から座標を引き当てられなかった数です。
+          </p>
           <p class="muted-note">
             地図の県か「選ぶ」を押すと、その県を選んだ巡回で 1 回走らせられます（押しただけでは走りません）。
             区画がまだ無い県は、収集を作って有効にしたあと、最初の回で区画になります。

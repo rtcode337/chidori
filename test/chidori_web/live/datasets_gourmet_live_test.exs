@@ -91,11 +91,15 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
     [_, table] = String.split(html, "prefecture-table", parts: 2)
 
     assert table =~
-             ~r/<td>東京都<\/td>\s*<td>\s*2<span[^>]*>（うち店 1）<\/span>\s*<\/td>\s*<td>1<\/td>\s*<td>\s*1<span[^>]*>（うち引き当てできず 1）<\/span>\s*<\/td>\s*<td>0<\/td>/
+             ~r/<td>\s*東京都\s*<button[^>]*class="narrow-only"[^>]*>\s*選ぶ\s*<\/button><\/td>\s*<td>\s*2<span[^>]*>（うち店 1）<\/span><span[^>]*>店 1<\/span><\/td>\s*<td>1<\/td>\s*<td>\s*1<span[^>]*>（うち引き当てできず 1）<\/span><span[^>]*>不可 1<\/span><\/td>\s*<td>0<\/td>/
+
+    # 狭い画面では 1 行を 2 段までに詰める（見終わった時刻は年と JST を落とす。「選ぶ」は県の下にも）
+    assert table =~
+             ~r/<span class="narrow-only">情報収集<\/span><span class="muted-note narrow-only">10\/01 09:00<\/span>/
 
     # 「AI が見たか」の列は出さない（代表店がまだでも 0 になり紛らわしい）
     refute table =~ "未確認"
-    assert String.split(table, "<td>東京都</td>") |> hd() |> String.contains?("<td>") == false
+    assert String.split(table, ~r/<td>\s*東京都/) |> hd() |> String.contains?("<td>") == false
 
     # 溜まったものそのものは見せない（読むのは travel-log）
     # 名前を出すのは片付いていないものの一覧（空いている欄の一覧）だけ
@@ -139,14 +143,22 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
 
     html =
       live
-      |> element(~s|button[phx-click="pick_partition"][phx-value-key="地域:東京都"]|)
+      |> element(~s|td.wide-only button[phx-click="pick_partition"][phx-value-key="地域:東京都"]|)
       |> render_click()
 
     refute_received {:posted, _url, _body}
     assert html =~ "選んだ区画"
 
-    # 代表店まだの料理を理由つきで並べる（数だけでは何が残っているのか読めない）
-    assert html =~ ~r|<summary>代表店まだ（1 件）</summary>|
+    # 表から選んだら、枠は表のその行のすぐ下に出す（地図の下には出さない）
+    [_, table] = String.split(html, "prefecture-table", parts: 2)
+
+    assert table =~
+             ~r/<tr class="picked-detail">\s*<td colspan="7">\s*<section[^>]*class="partition-picked"/
+
+    assert length(String.split(html, ~s(class="partition-picked"))) == 2
+
+    # 代表店まだの料理を理由つきで並べる（数だけでは何が残っているのか読めない）。代表店まだ・なしは閉じて出す
+    assert html =~ ~r|<details class="shop-state-list">\s*<summary>代表店まだ（1 件）</summary>|
     assert html =~ "この区画で 1 回走らせる"
     assert html =~ ~s(<option value="情報収集")
     assert html =~ ~s(<option value="ざっと見る")
@@ -212,7 +224,15 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
     assert picked =~ ~r/<dt>代表店あり<\/dt>\s*<dd>1 件<\/dd>/
     # 地図の上でも選んだ県が分かる（表の行と同じ状態）
     assert html =~ ~r/class="pref-picked"[^>]*phx-value-key="地域:東京都"/
-    assert html =~ ~r/<tr class="is-picked">\s*<td>東京都<\/td>/
+    assert html =~ ~r/<tr class="is-picked">\s*<td>\s*東京都/
+    # 情報収集まで終わった県（東京都）は緑の縁で囲む
+    [_, done] = String.split(html, ~s(class="pref-done"), parts: 2)
+    [done | _] = String.split(done, "</g>", parts: 2)
+    assert length(String.split(done, "<path")) == 2
+    assert html =~ "情報収集まで終わった"
+
+    # 地図で選んだら、枠は地図の下（表の行の下には出さない）
+    refute html =~ "picked-detail"
 
     # もう一度押すと選びやめる
     html =

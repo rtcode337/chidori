@@ -132,7 +132,7 @@ paths:
   県はカテゴリから（県と書き方の違う地名は表、市区町村は `area_of`、決まらなければ「不明」）、2 県は `split`。場所は OSM → 住所の街区 → AI の座標（店舗辞典は使わない）。
   巡回は 機械収集 → 情報収集（1 回 1 県・`hold_tag` は `状態:場所未定`・Chidori が時刻を決めて起こす）。travel-log の種別は `anime`（travel-log-data の `anime_seichi` とは混ぜない）
 - 県の地図（`ChidoriWeb.PrefectureMap`・`Chidori.Datasets.Map.prefectures/1`）: 県の境界は手元（`priv/geo/japan_prefectures.json`。Natural Earth の admin-1、
-  `scripts/build_prefectures.py` で境目を共有したまま間引く）。範囲を描く地図と同じ枠・メルカトル。塗りは代表店ありの割合の 5 段、引き当てできずは別の印、凡例と
+  `scripts/build_prefectures.py` で境目を共有したまま間引く）。範囲を描く地図と同じ枠・メルカトル。塗りは代表店ありの割合の 5 段、引き当てできずは別の印、情報収集まで終わった県は淡い緑で塗る（`DatasetsLive.surveyed_keys/2`）、凡例と
   県名・数の `title` を添える（色だけに頼らない）。離れた島も本当の位置と大きさ（小さい県は拡大か表から）。地図は数が届いたときに 1 回組み、
   選んだ県は上に重ねる 1 本（選び直しで境目を送り直さない）。並びは 地図 → 選んだ県 → 表。押しただけでは走らせない
 - 区画の地図: 白地図は手元（`priv/geo/japan_coast.json`。Natural Earth）、寄ると地理院タイル（見る人のブラウザが取る。参照元は送らない）。
