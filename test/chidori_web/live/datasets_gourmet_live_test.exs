@@ -186,10 +186,10 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
     assert length(Regex.scan(~r/<path[^>]*class="pref /, html)) == 47
 
     # 東京都は料理 2・代表店あり 1（50 %）で 3 段目、引き当てできずがあるので印が 1 つ
-    assert html =~ ~r/class="pref pref-step-3"[^>]*phx-value-key="地域:東京都"/
+    assert html =~ ~r/class="pref pref-step-3 [^"]*"[^>]*phx-value-key="地域:東京都"/
     assert length(Regex.scan(~r/<circle[^>]*data-flag/, html)) == 1
     # 料理も店も無い県は「料理も店もまだ無い」の色
-    assert html =~ ~r/class="pref pref-empty"[^>]*phx-value-key="地域:北海道"/
+    assert html =~ ~r/class="pref pref-empty [^"]*"[^>]*phx-value-key="地域:北海道"/
     # 色だけに頼らない（県名と数が読める）
     assert html =~
              "東京都：料理・店 2（うち店 1）・代表店あり 1（50 %）・代表店まだ 1（うち引き当てできず 1）・代表店なし 0"
@@ -225,11 +225,19 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
     # 地図の上でも選んだ県が分かる（表の行と同じ状態）
     assert html =~ ~r/class="pref-picked"[^>]*phx-value-key="地域:東京都"/
     assert html =~ ~r/<tr class="is-picked">\s*<td>\s*東京都/
-    # 情報収集まで終わった県（東京都）は緑の縁で囲む
-    [_, done] = String.split(html, ~s(class="pref-done"), parts: 2)
-    [done | _] = String.split(done, "</g>", parts: 2)
-    assert length(String.split(done, "<path")) == 2
+
+    # 進み具合の塗り: 情報収集まで終わった東京都は薄い緑。境目は送らず、県の番号を指す
+    [_, tokyo] =
+      Regex.run(~r/class="pref [^"]*pref-n(\d+)"[^>]*phx-value-key="地域:東京都"/, html)
+
+    [_, done_rule] = Regex.run(~r/([^}<>]*)\{fill:var\(--pref-done-fill\)\}/, html)
+    assert ".prefecture-map path.pref-n#{tokyo}" in String.split(String.trim(done_rule), ",")
     assert html =~ "情報収集まで終わった"
+
+    # ざっと見るがまだの県は、まだ無い県と同じ色（東京都は入らない）
+    [_, waiting_rule] = Regex.run(~r/([^}<>]*)\{fill:var\(--pref-empty-fill\)\}/, html)
+    refute ".prefecture-map path.pref-n#{tokyo}" in String.split(String.trim(waiting_rule), ",")
+    assert html =~ "ざっと見るがまだ・料理も店もまだ無い"
 
     # 地図で選んだら、枠は地図の下（表の行の下には出さない）
     refute html =~ "picked-detail"

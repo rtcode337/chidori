@@ -1207,13 +1207,9 @@ defmodule ChidoriWeb.DatasetsLive do
 
   def short_seen(seen), do: seen
 
-  @doc """
-  情報収集の巡回が見たことのある区画の鍵（県の地図で緑の縁にする）。情報収集の無い対象は空。
-  """
-  def surveyed_keys(rows, %{survey_sweep: sweep}) when is_binary(sweep),
+  @doc "その巡回が見たことのある区画の鍵（県の地図の進み具合の塗りに使う）。"
+  def seen_keys(rows, sweep),
     do: for(row <- rows, sweep in row.seen_by, into: MapSet.new(), do: row.key)
-
-  def surveyed_keys(_rows, _dataset), do: MapSet.new()
 
   @doc """
   県ごとの進み具合の行に、その県の区画の「見終わった巡回」を添えます（区画の台帳から）。

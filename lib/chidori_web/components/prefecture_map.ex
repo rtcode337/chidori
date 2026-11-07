@@ -4,8 +4,9 @@ defmodule ChidoriWeb.PrefectureMap do
   （その県の数と「この区画で 1 回走らせる」が出る）。**押しただけでは走らせません**。
 
   **塗りの濃さは代表店ありの割合**（料理と店のうち、代表店が引き当たって地図に置けるもの）を
-  段に分けて出し、**引き当てできずがある県には別の印**（丸）を置きます。**情報収集まで終わった県は
-  淡い緑**で塗ります（割合の塗りより優先。どこまで回ったかは割合の塗りでは読めない）。色だけに頼らない ——
+  段に分けて出し、**引き当てできずがある県には別の印**（丸）を置きます。**塗りは進み具合を優先します**:
+  情報収集まで終わった県は薄い緑、ざっと見るが終わっていない県は料理も店もまだ無い県と同じ色
+  （割合の塗りでは、どこまで回ったかが読めない）。色だけに頼らない ——
   県に指を置けば名前と数が出て（`title`）、押せば下に数が並び、表にも同じ数があります。
 
   **操作は区画の地図・関連図と同じ**（`pan_zoom.js`。引きずって移動、Ctrl+ホイール、
@@ -13,7 +14,8 @@ defmodule ChidoriWeb.PrefectureMap do
 
   **県の境目は塗りの一覧に、選んだ県は上に重ねる 1 本に分けてあります。** 選び直すたびに
   47 県ぶんの境目（6,700 点ほど）を送り直さないため —— 塗りの一覧は地図（`map`）だけで
-  描くので、選び直しでは描き直されません。
+  描くので、選び直しでは描き直されません。進み具合の塗りも同じ理由で、境目を重ねて描かず、
+  県の番号（`pref-n<番号>`）を指す短い `<style>` だけで変えます。
   """
 
   use Phoenix.Component
@@ -23,11 +25,18 @@ defmodule ChidoriWeb.PrefectureMap do
 
   attr :done, :any,
     default: MapSet.new(),
-    doc: "情報収集まで終わった区画の鍵の集まり（淡い緑で塗る）"
+    doc: "情報収集まで終わった区画の鍵の集まり（薄い緑で塗る）"
+
+  attr :scanned, :any,
+    default: MapSet.new(),
+    doc: "ざっと見るが見た区画の鍵の集まり（どちらにも無い県は、まだ無い県と同じ色）"
 
   def prefecture_map(assigns) do
     ~H"""
     <div class="prefecture-map">
+      <style>
+        <%= progress_css(@map, @done, @scanned) %>
+      </style>
       <div class="map-canvas pref-canvas" id="prefecture-canvas" phx-hook="PrefectureMap">
         <div class="map-tools">
           <button type="button" data-zoom="in" aria-label="拡大">＋</button>
@@ -42,19 +51,14 @@ defmodule ChidoriWeb.PrefectureMap do
         >
           <g class="pref-shapes">
             <path
-              :for={shape <- @map.shapes}
+              :for={{shape, index} <- Enum.with_index(@map.shapes)}
               d={shape.d}
-              class={["pref", step_class(shape.step)]}
+              class={["pref", step_class(shape.step), "pref-n#{index}"]}
               phx-click="pick_partition"
               phx-value-key={shape.key}
             >
               <title>{shape_title(shape)}</title>
             </path>
-          </g>
-          <%!-- **情報収集まで終わった県の塗り**（上に重ねる）。押す口ではない（下の県が受ける）。
-               塗りの一覧とは分けてあり、終わった県が増えても塗りの一覧は描き直さない --%>
-          <g class="pref-done" aria-hidden="true">
-            <path :for={shape <- @map.shapes} :if={MapSet.member?(@done, shape.key)} d={shape.d} />
           </g>
           <%!-- **引き当てできずの印**。押す口ではない（下の県が受ける）。
                大きさは台本が倍率で割り戻す（寄っても引いても同じに見せる） --%>
@@ -84,7 +88,7 @@ defmodule ChidoriWeb.PrefectureMap do
       </div>
       <ul class="pref-legend" aria-label="地図の凡例">
         <li class="legend-title">代表店ありの割合（料理と店のうち）</li>
-        <li><span class="swatch pref-empty"></span>料理も店もまだ無い</li>
+        <li><span class="swatch pref-empty"></span>ざっと見るがまだ・料理も店もまだ無い</li>
         <li><span class="swatch pref-step-0"></span>0 %</li>
         <li><span class="swatch pref-step-1"></span>25 % 未満</li>
         <li><span class="swatch pref-step-2"></span>25〜50 %</li>
@@ -106,6 +110,29 @@ defmodule ChidoriWeb.PrefectureMap do
   # 選んだ県（無ければ空）。`:for` で書くのは、無いときに要素ごと出さないため
   defp picked_shapes(_map, nil), do: []
   defp picked_shapes(map, key), do: Enum.filter(map.shapes, &(&1.key == key))
+
+  # 進み具合の塗り（`<style>` の中身）。色は app.css の変数で持つ（凡例と同じ色）
+  defp progress_css(map, done, scanned) do
+    indexed = Enum.with_index(map.shapes)
+
+    done_rule =
+      fill_rule(for {shape, index} <- indexed, MapSet.member?(done, shape.key), do: index)
+
+    waiting =
+      for {shape, index} <- indexed,
+          not MapSet.member?(done, shape.key),
+          not MapSet.member?(scanned, shape.key),
+          do: index
+
+    done_rule.("--pref-done-fill") <> fill_rule(waiting).("--pref-empty-fill")
+  end
+
+  defp fill_rule([]), do: fn _variable -> "" end
+
+  defp fill_rule(indexes) do
+    selectors = Enum.map_join(indexes, ",", &".prefecture-map path.pref-n#{&1}")
+    fn variable -> "#{selectors}{fill:var(#{variable})}" end
+  end
 
   defp step_class(nil), do: "pref-empty"
   defp step_class(step), do: "pref-step-#{step}"

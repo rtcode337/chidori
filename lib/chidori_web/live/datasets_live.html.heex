@@ -341,7 +341,8 @@
             :if={@prefecture_map}
             map={@prefecture_map}
             picked={@picked}
-            done={surveyed_keys(rows, @dataset)}
+            done={seen_keys(rows, @dataset.survey_sweep)}
+            scanned={seen_keys(rows, hd(@dataset.partition_sweeps))}
           />
           <p :if={@prefecture_map && @picked && !picked_row(rows, @picked)} class="muted-note">
             {@dataset.module.prefecture_of_key(@picked)}はまだ区画がありません。収集を作って有効にしたあと、最初の回で区画になります。
