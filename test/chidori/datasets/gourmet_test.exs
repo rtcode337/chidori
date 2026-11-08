@@ -479,7 +479,10 @@ defmodule Chidori.Datasets.GourmetTest do
         assert prompt =~ "終わったもの"
         assert prompt =~ "extra.sources"
         assert prompt =~ "Google マップや食べログ"
-        assert prompt =~ "辞典にも住所にも当たらない店に限って"
+
+        # 座標は店の辞典に無い店だけ。住所で引けずに落ちた店は、座標を添えて書き直させる
+        assert prompt =~ "店の辞典（osm_japan・overture_japan）に無い店に限って"
+        assert prompt =~ "座標（lat / lon）を必ず添えてください"
 
         # 料理の県の外でもよい・発祥を争う料理は県ごと（利用者の決めごと）
         assert prompt =~ "県の外でもかまいません"
