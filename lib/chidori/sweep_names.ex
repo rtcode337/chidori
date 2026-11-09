@@ -15,6 +15,7 @@ defmodule Chidori.SweepNames do
   | ざっと見る | 区画を一周して、座標・閉店・空欄を手早く直す |
   | 整理 | 入ったものを読んで、印を付け直し・要らないものを落とし・足りないものを足す |
   | 情報収集 | 足りないものを外から探して足す（技術イベントは先の月を週に 1 回）。外の検索が得意な相手に考える量を多く頼む重い回で、食事処・ご当地グルメ・アニメ聖地は確かめる・直す・足すをこの 1 本で回し（ご当地グルメの手前には軽いざっと見るを置く）、Chidori が時刻を決めて起こす |
+  | 漏れ探し | 今あるものには触らず、足りないものだけを外から探して足す（足すだけ。ご当地グルメは、情報収集が見終えた県から 1 県ずつ） |
   | 要約 | 前回から入ったものを 1 件の読み物にまとめる |
   | 興味の要約 | 要約と同じ仕事を、興味トピックに絞って別の 1 本で |
   """
@@ -58,6 +59,9 @@ defmodule Chidori.SweepNames do
   @doc "足りないものを外から探して足す回。"
   def survey, do: "情報収集"
 
+  @doc "今あるものに触らず、足りないものだけを探して足す回。"
+  def omission, do: "漏れ探し"
+
   @doc "まとめを書く回。"
   def digest, do: "要約"
 
@@ -65,5 +69,6 @@ defmodule Chidori.SweepNames do
   def interest_digest, do: "興味の要約"
 
   @doc "ここにある名前の全部（テストが、定義がここから選んでいるかを見る）。"
-  def all, do: [machine(), collect(), scan(), tidy(), survey(), digest(), interest_digest()]
+  def all,
+    do: [machine(), collect(), scan(), tidy(), survey(), omission(), digest(), interest_digest()]
 end

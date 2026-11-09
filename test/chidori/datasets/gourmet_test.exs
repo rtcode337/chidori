@@ -319,15 +319,27 @@ defmodule Chidori.Datasets.GourmetTest do
   end
 
   describe "巡回" do
-    test "機械収集・ざっと見る・情報収集の 3 本をこの順に並べ、名前は SweepNames から選ぶ" do
+    test "機械収集・ざっと見る・情報収集・漏れ探しの 4 本をこの順に並べ、名前は SweepNames から選ぶ" do
       sweeps = Gourmet.sweeps()
       names = Enum.map(sweeps, & &1.name)
 
-      # 整理は無い（整理しつつ足りないものを探すのは情報収集の 1 本）
-      assert names == [SweepNames.machine(), SweepNames.scan(), SweepNames.survey()]
+      # 整理は無い（整理しつつ代表店と空欄を探すのは情報収集の 1 本。足すのは漏れ探し）
+      assert names == [
+               SweepNames.machine(),
+               SweepNames.scan(),
+               SweepNames.survey(),
+               SweepNames.omission()
+             ]
+
       assert Enum.all?(names, &(&1 in SweepNames.all()))
 
-      [roster, scan, survey] = sweeps
+      [roster, scan, survey, omission] = sweeps
+
+      # 漏れ探しは足すだけ・1 回に 1 県・情報収集が見終えた県から・整理と同じ間隔
+      assert %{only_new: true, partitions_per_run: 1, after: "情報収集", after_each: true} = omission
+      assert omission.interval_minutes == SweepNames.tidy_minutes()
+      refute Map.has_key?(omission, :hold_tag)
+      assert Datasets.get("gourmet").partition_sweeps == ["ざっと見る", "情報収集", "漏れ探し"]
 
       # ざっと見るは名簿を待ち、2 時間おきの間隔で一周したら止まる。**足止めしない**（各県を 1 回で通り抜ける）
       assert %{after: "機械収集", one_lap: true, partitions_per_run: 1} = scan
@@ -361,6 +373,7 @@ defmodule Chidori.Datasets.GourmetTest do
       prompts = Map.new(attrs.sweeps, &{&1.name, &1[:prompt]})
       assert prompts[SweepNames.survey()] == Gourmet.survey_prompt()
       assert prompts[SweepNames.scan()] == Gourmet.scan_prompt()
+      assert prompts[SweepNames.omission()] == Gourmet.omission_prompt()
       refute Map.has_key?(prompts, SweepNames.tidy())
       assert attrs.prompt == Gourmet.survey_prompt()
     end
@@ -408,12 +421,14 @@ defmodule Chidori.Datasets.GourmetTest do
   end
 
   describe "依頼文" do
-    test "情報収集は、並んでいるものを見て薄い切り口から探し、何を試したかを残させる" do
-      prompt = Gourmet.survey_prompt()
+    test "漏れ探しは、並んでいるものを見て薄い切り口から探し、何を試したかを残させる" do
+      prompt = Gourmet.omission_prompt()
 
       for needle <- ["{partition}", "{current}", "{now}", "少ない切り口から", "checked", "chiezo の MCP"] do
         assert prompt =~ needle
       end
+
+      assert Gourmet.survey_prompt() =~ "checked"
     end
 
     test "情報収集は、機械の名簿を確かめ、代表店を決め、空欄を埋め、古いものから確かめ直す" do
@@ -434,9 +449,8 @@ defmodule Chidori.Datasets.GourmetTest do
             Gourmet.no_shop_tag(),
             "extra.no_shop",
             "料理そのものが終わった証拠",
-            # 手の空いた回は名簿に無い名産を数品足す（並んでいる見出しでは返さない）
-            "まだ並んでいない料理",
-            "上に並んでいる料理の見出しでは返さないでください",
+            # 足すのは漏れ探しの仕事
+            "漏れ探し",
             # 一般名の食材は、ずば抜けた産地か名物として売り出しているときだけ。名前は土地を頭に
             "一般名の食材",
             "extra.display_name"
@@ -922,8 +936,26 @@ defmodule Chidori.Datasets.GourmetTest do
       end
     end
 
-    test "情報収集は記事の無い店も抜けていれば足す（数は問わない。3 つのどれかで、公的な紹介があるものだけ）" do
-      prompt = Gourmet.survey_prompt()
+    test "足すのは漏れ探しだけ（情報収集は足さない）" do
+      survey = Gourmet.survey_prompt()
+      refute survey =~ "まだ並んでいない料理を足す。**"
+      refute survey =~ "抜けているものは数を問わず足してください"
+      assert survey =~ "この回では足さないでください"
+
+      omission = Gourmet.omission_prompt()
+      assert omission =~ "{current}"
+      assert omission =~ "この回は足すだけの回です"
+
+      # 全国に広まっていても、この県が発祥の料理を探す切り口に入れる（名簿からは入らない）
+      assert omission =~ "この県の土地が発祥として知られる料理"
+      assert omission =~ "見出しの後ろに「（この県の名前）」"
+      # 代表店の決め方と 1 件の形は情報収集と同じ文
+      assert omission =~ "代表店:本店"
+      assert omission =~ "座標（lat / lon）"
+    end
+
+    test "漏れ探しは記事の無い店も抜けていれば足す（数は問わない。3 つのどれかで、公的な紹介があるものだけ）" do
+      prompt = Gourmet.omission_prompt()
 
       assert prompt =~ "記事の無い地元の店も、抜けていれば足してください**（数は問いません）"
       refute prompt =~ "1 回 2 軒まで"

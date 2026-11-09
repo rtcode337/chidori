@@ -238,6 +238,8 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
     [_, waiting_rule] = Regex.run(~r/([^}<>]*)\{fill:var\(--pref-empty-fill\)\}/, html)
     refute ".prefecture-map path.pref-n#{tokyo}" in String.split(String.trim(waiting_rule), ",")
     assert html =~ "ざっと見るがまだ・料理も店もまだ無い"
+    # 漏れ探しまで終わった県はさらに濃い緑（凡例にも出す）
+    assert html =~ "漏れ探しまで終わった"
 
     # 地図で選んだら、枠は地図の下（表の行の下には出さない）
     refute html =~ "picked-detail"
@@ -292,5 +294,37 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
       [whole] ->
         whole
     end
+  end
+
+  test "県の地図の進み具合は 漏れ探し → 情報収集 → まだ の順に塗り分ける" do
+    map = Chidori.Datasets.Map.prefectures([])
+    key = fn name -> Enum.find(map.shapes, &(&1.name == name)).key end
+
+    html =
+      Phoenix.LiveViewTest.render_component(&ChidoriWeb.PrefectureMap.prefecture_map/1,
+        map: map,
+        searched: MapSet.new([key.("宮城県")]),
+        done: MapSet.new([key.("宮城県"), key.("福島県")]),
+        scanned: MapSet.new([key.("山形県")])
+      )
+
+    index = fn name ->
+      [_, n] =
+        Regex.run(~r/class="pref [^"]*pref-n(\d+)"[^>]*phx-value-key="#{key.(name)}"/, html)
+
+      ".prefecture-map path.pref-n#{n}"
+    end
+
+    rule = fn variable ->
+      [_, selectors] = Regex.run(~r/([^}<>]*)\{fill:var\(#{variable}\)\}/, html)
+      String.split(String.trim(selectors), ",")
+    end
+
+    assert rule.("--pref-searched-fill") == [index.("宮城県")]
+    assert rule.("--pref-done-fill") == [index.("福島県")]
+    waiting = rule.("--pref-empty-fill")
+    refute index.("宮城県") in waiting
+    refute index.("山形県") in waiting
+    assert index.("秋田県") in waiting
   end
 end

@@ -777,10 +777,11 @@ main.relations-page > div { padding-top: 0; }
 .prefecture-map .pref-step-3 { fill: #5265cf; }
 .prefecture-map .pref-step-4 { fill: #2e3a9a; }
 .prefecture-map path.pref:hover { fill: #fdba74; }
+/* 進み具合の塗りの色（`ChidoriWeb.PrefectureMap` の `<style>` が県ごとに当てる）。漏れ探しまで終わった県は
+   濃い緑、情報収集まで終わった県は食事処の区画の地図の「見終わった」と同じ薄い緑、ざっと見るがまだの県は
+   料理も店もまだ無い県と同じ色 */
+.prefecture-map { --pref-searched-fill: #22c55e; --pref-done-fill: #86efac; --pref-empty-fill: #f8fafc; }
 /* 引き当てできずの印。**押す口ではない**（下の県が受ける）。半径は台本が倍率で割り戻す */
-/* 進み具合の塗りの色（`ChidoriWeb.PrefectureMap` の `<style>` が県ごとに当てる）。情報収集まで終わった県は
-   食事処の区画の地図の「見終わった」と同じ薄い緑、ざっと見るがまだの県は料理も店もまだ無い県と同じ色 */
-.prefecture-map { --pref-done-fill: #86efac; --pref-empty-fill: #f8fafc; }
 .prefecture-map .pref-flags circle { fill: #f97316; stroke: #fff; stroke-width: 1.5; vector-effect: non-scaling-stroke; pointer-events: none; }
 /* 選んだ県。上に重ねた 1 本を太い縁で囲む（塗りの段は透かして残す） */
 .prefecture-map path.pref-picked { fill: rgba(249, 115, 22, .35); stroke: #c2410c; stroke-width: 2.5; stroke-linejoin: round; vector-effect: non-scaling-stroke; cursor: pointer; fill-rule: evenodd; }
@@ -795,6 +796,7 @@ main.relations-page > div { padding-top: 0; }
 .pref-legend .swatch.pref-step-3 { background: #5265cf; }
 .pref-legend .swatch.pref-step-4 { background: #2e3a9a; }
 .pref-legend .swatch.pref-done { background: #86efac; }
+.pref-legend .swatch.pref-searched { background: #22c55e; }
 .pref-legend .flag-mark { display: inline-block; width: .65rem; height: .65rem; border-radius: 50%; background: #f97316; border: 1.5px solid #fff; box-shadow: 0 0 0 1px #f97316; }
 .prefecture-table tr.is-picked td { background: #fff7ed; }
 /* 表の「選ぶ」で選んだ県の枠は、その行のすぐ下の 1 行に置く（表の列の決まりを受けない） */

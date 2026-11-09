@@ -341,6 +341,7 @@
             :if={@prefecture_map}
             map={@prefecture_map}
             picked={@picked}
+            searched={seen_keys(rows, @dataset[:omission_sweep])}
             done={seen_keys(rows, @dataset.survey_sweep)}
             scanned={seen_keys(rows, hd(@dataset.partition_sweeps))}
           />

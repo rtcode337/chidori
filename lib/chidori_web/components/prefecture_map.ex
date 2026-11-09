@@ -5,7 +5,8 @@ defmodule ChidoriWeb.PrefectureMap do
 
   **塗りの濃さは代表店ありの割合**（料理と店のうち、代表店が引き当たって地図に置けるもの）を
   段に分けて出し、**引き当てできずがある県には別の印**（丸）を置きます。**塗りは進み具合を優先します**:
-  情報収集まで終わった県は薄い緑、ざっと見るが終わっていない県は料理も店もまだ無い県と同じ色
+  漏れ探しまで終わった県は濃い緑、情報収集まで終わった県は薄い緑、ざっと見るが終わっていない県は
+  料理も店もまだ無い県と同じ色
   （割合の塗りでは、どこまで回ったかが読めない）。色だけに頼らない ——
   県に指を置けば名前と数が出て（`title`）、押せば下に数が並び、表にも同じ数があります。
 
@@ -27,6 +28,10 @@ defmodule ChidoriWeb.PrefectureMap do
     default: MapSet.new(),
     doc: "情報収集まで終わった区画の鍵の集まり（薄い緑で塗る）"
 
+  attr :searched, :any,
+    default: MapSet.new(),
+    doc: "漏れ探しまで終わった区画の鍵の集まり（濃い緑で塗る）"
+
   attr :scanned, :any,
     default: MapSet.new(),
     doc: "ざっと見るが見た区画の鍵の集まり（どちらにも無い県は、まだ無い県と同じ色）"
@@ -35,7 +40,7 @@ defmodule ChidoriWeb.PrefectureMap do
     ~H"""
     <div class="prefecture-map">
       <style>
-        <%= progress_css(@map, @done, @scanned) %>
+        <%= progress_css(@map, @searched, @done, @scanned) %>
       </style>
       <div class="map-canvas pref-canvas" id="prefecture-canvas" phx-hook="PrefectureMap">
         <div class="map-tools">
@@ -96,6 +101,7 @@ defmodule ChidoriWeb.PrefectureMap do
         <li><span class="swatch pref-step-4"></span>75 % 以上</li>
         <li><span class="flag-mark"></span>引き当てできずがある</li>
         <li><span class="swatch pref-done"></span>情報収集まで終わった</li>
+        <li><span class="swatch pref-searched"></span>漏れ探しまで終わった</li>
       </ul>
       <p class="muted-note map-hint">
         <strong>県を押すと選ばれます</strong>（押しただけでは走りません）。
@@ -112,19 +118,29 @@ defmodule ChidoriWeb.PrefectureMap do
   defp picked_shapes(map, key), do: Enum.filter(map.shapes, &(&1.key == key))
 
   # 進み具合の塗り（`<style>` の中身）。色は app.css の変数で持つ（凡例と同じ色）
-  defp progress_css(map, done, scanned) do
+  defp progress_css(map, searched, done, scanned) do
     indexed = Enum.with_index(map.shapes)
 
+    searched_rule =
+      fill_rule(for {shape, index} <- indexed, MapSet.member?(searched, shape.key), do: index)
+
     done_rule =
-      fill_rule(for {shape, index} <- indexed, MapSet.member?(done, shape.key), do: index)
+      fill_rule(
+        for {shape, index} <- indexed,
+            not MapSet.member?(searched, shape.key),
+            MapSet.member?(done, shape.key),
+            do: index
+      )
 
     waiting =
       for {shape, index} <- indexed,
+          not MapSet.member?(searched, shape.key),
           not MapSet.member?(done, shape.key),
           not MapSet.member?(scanned, shape.key),
           do: index
 
-    done_rule.("--pref-done-fill") <> fill_rule(waiting).("--pref-empty-fill")
+    searched_rule.("--pref-searched-fill") <>
+      done_rule.("--pref-done-fill") <> fill_rule(waiting).("--pref-empty-fill")
   end
 
   defp fill_rule([]), do: fn _variable -> "" end
