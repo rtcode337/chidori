@@ -462,7 +462,7 @@ defmodule Chidori.Datasets.Requests do
 
     case run_regrouped(dataset, items, deadline, opts) do
       {:ok, sent} ->
-        # 依頼の結果は区画の鍵で引き当てるので、実際に頼んだ鍵に直しておく
+        # 最近の回の「依頼」の印は区画の鍵で引き当てるので、実際に頼んだ鍵に直しておく
         {:ok, log} = log |> RequestLog.changeset(%{keys: sent.keys}) |> Repo.update()
         mark(log, :ok)
         drop(dataset, Enum.map(sent.points, & &1.id))
@@ -800,13 +800,10 @@ defmodule Chidori.Datasets.Requests do
 
   defp with_preface(text, dataset), do: preface(dataset) <> "\n\n" <> text
 
-  # 画面に並べる依頼の数
+  # 依頼の控えを読むときの既定の数
   @shown_logs 5
   # 画面に並べる最近の回の数（自動の回も含む）
   @shown_runs 10
-  # 焼くところで落ちて戻した行が、もとの回からどこまで遅れて残るか。焼くのは集め終えた
-  # 直後なので数十分で足りるが、取り込みが混んでいる日を見込んで広めに取る
-  @rewind_window_s 3 * 60 * 60
 
   @doc """
   依頼を控えます（**頼む前に**。取り込みが空くのを最長 1 時間待つので、その間も
@@ -842,93 +839,12 @@ defmodule Chidori.Datasets.Requests do
   end
 
   @doc """
-  依頼ごとに、**その結果になった回**を引き当てます（`result`。まだ無ければ nil）。
-
-  Chiezo の変更履歴は、その回がどの依頼から走ったのかを持ちません。そこで
-  **頼んだ時刻より後に、頼んだ区画をちょうど見た回**のうち、いちばん早いものを
-  結果とみなします（区画の並びは問わない）。定時の回は Chiezo が選んだ区画を
-  見るので、区画の組がそっくり一致することは、まずありません。
-  """
-  def with_results(logs, changes) do
-    Enum.map(logs, fn log ->
-      wanted = MapSet.new(log.keys)
-
-      result =
-        changes
-        |> Enum.filter(fn change ->
-          change.at != nil and DateTime.compare(change.at, log.requested_at) != :lt and
-            MapSet.new(change.scope) == wanted
-        end)
-        |> Enum.min_by(& &1.at, DateTime, fn -> nil end)
-        |> rewound(changes)
-
-      %{log: log, result: result, unfinished: unfinished(log, result)}
-    end)
-  end
-
-  # **焼くところで落ちた回は、戻されている。** Chiezo は集め終えた時点で ok の行を
-  # 残し、焼くところで落ちたと分かると進み具合を戻して、**見ていた区画を名指しした
-  # 失敗の行をあとから足す**（ok の行は消えない）。ok の行だけを読むと、何も残らな
-  # かった回が「動いた」ことになる
-  defp rewound(%{status: "ok", at: at} = result, changes) do
-    seen = MapSet.new(Map.get(result, :visited) || result.scope)
-
-    changes
-    |> Enum.filter(fn change ->
-      change.status != "ok" and change.at != nil and
-        DateTime.compare(change.at, at) == :gt and
-        DateTime.diff(change.at, at) <= @rewind_window_s and
-        MapSet.size(seen) > 0 and MapSet.new(change.scope) == seen
-    end)
-    |> Enum.min_by(& &1.at, DateTime, fn -> result end)
-  end
-
-  defp rewound(result, _changes), do: result
-
-  @doc """
-  頼んだ区画のうち、**その回が見終えなかったもの**。途中で相手に繋がらなくなった回は
-  残りの区画を見送って ok で終わるので、見る予定の区画（`scope`）が揃っていても、
-  全部を見たとは限らない。見終えた区画を持たない古い Chiezo の行では空（分からない）。
-  """
-  def unfinished(_log, nil), do: []
-  def unfinished(_log, %{status: status}) when status != "ok", do: []
-
-  def unfinished(log, result) do
-    case Map.get(result, :visited) do
-      nil ->
-        []
-
-      visited ->
-        done = MapSet.new(visited)
-        Enum.reject(log.keys, &MapSet.member?(done, &1))
-    end
-  end
-
-  @doc """
-  直近の依頼と、その結果。Chiezo を引くので、呼ぶのは画面の裏から。
-  """
-  def results(%{collection: name} = dataset) do
-    logs = recent(name)
-
-    changes =
-      with {:ok, base} <- Datasets.base_url(),
-           {:ok, rows} <- Chiezo.changes(base, name, sweep: sweep(dataset), limit: 50) do
-        rows
-      else
-        _unavailable -> []
-      end
-
-    with_results(logs, changes)
-  end
-
-  @doc """
   最近の回（**自動で回った回も、依頼で走った回も**）。新しい順に `limit` 件。
   `{:ok, [%{change: 回, by_request: 依頼で走った回か}]}` か `{:error, 理由}`。
 
-  依頼の結果（`results/1`）は、Chidori が控えた依頼ごとに回を引き当てるので、
-  自動の回は出てこない —— 整理やざっと見るが何を直したのかを見るには、Chiezo の
-  画面まで行くしかなかった。**依頼で走った回は見分けて印を付ける**（同じ回が
-  依頼の結果にも出るので、どちらで見ているのかが分かるように）。
+  依頼の結果も、ここで見る（依頼ごとに回を引き当てて並べる「依頼の結果」の枠は外した。
+  自動の回が出てこず、依頼で走った回は最近の回と同じものが二重に並ぶだけだった）。
+  **依頼で走った回は見分けて印を付ける**。
   """
   def runs(%{collection: name} = dataset, limit \\ @shown_runs) do
     logs = recent(name, @shown_runs * 2)
@@ -940,8 +856,9 @@ defmodule Chidori.Datasets.Requests do
     end
   end
 
-  # 依頼で走った回か。**頼んだ区画の組がそっくり同じで、頼んだあとの回**
-  # （`with_results/2` と同じ引き当て方）
+  # 依頼で走った回か。**頼んだ区画の組がそっくり同じで、頼んだあとの回**。
+  # 変更履歴はどの依頼から走った回かを持たない。定時の回は Chiezo が選んだ区画を見るので、
+  # 区画の組がそっくり一致することは、まずない
   defp by_request?(%{at: %DateTime{} = at, scope: scope, sweep: run_sweep}, logs, sweep)
        when scope != [] do
     run_sweep == sweep and

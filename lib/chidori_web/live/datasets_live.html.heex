@@ -1100,71 +1100,6 @@
           {request_message(@requesting, @requested, sweep)}
         </p>
 
-        <%!-- **依頼と、その結果を並べる。** 結果は Chiezo の変更履歴から、頼んだ後に
-           同じ区画を見た回を引き当てたもの。見出しを押すと、この画面の上に
-           その 1 件の「直す前との違い」が開く（`ChidoriWeb.DocDiff`）。**結果はどれも畳んで出す** ——
-           開いて置くと、足した・直した見出しの一覧が依頼の欄の下を長く埋める --%>
-        <section
-          :if={@dataset.reader == "travel-log" and @request_results != []}
-          class="request-results"
-          aria-label="依頼の結果"
-        >
-          <header class="request-results-head">
-            <h3>依頼の結果</h3>
-            <button type="button" phx-click="reload_request_results">読み直す</button>
-          </header>
-          <details :for={entry <- @request_results} class="request-result">
-            <summary>
-              <span class="request-when">{Jst.format(entry.log.requested_at)}</span>
-              <span class="request-scope">
-                座標 {entry.log.points} 件 → 区画 {length(entry.log.keys)} つ
-              </span>
-              <span class={[
-                "request-state",
-                entry.result && entry.unfinished == [] && "has-result",
-                entry.unfinished != [] && "is-partial"
-              ]}>
-                {request_state(entry)}
-              </span>
-            </summary>
-
-            <%= if entry.result && entry.result.status == "ok" do %>
-              <%!-- **止まった理由と、見ていない区画を出す。** 件数だけ並べると、頼んだ区画が
-                   全部片付いたように読める。頼み直すには、同じテキストをもう一度貼る --%>
-              <div :if={entry.unfinished != []} class="request-partial">
-                <p>
-                  頼んだ {length(entry.log.keys)} 区画のうち {length(entry.unfinished)} 区画は見ていません。
-                  直したいところが残っていれば、同じテキストをもう一度貼って頼み直してください。
-                </p>
-                <p :if={entry.result.error != ""} class="muted-note">理由: {entry.result.error}</p>
-              </div>
-              <%!-- 最後まで見た回（見終えた区画を控えていない古い回も含む）でも、Chiezo が
-                   添え書きを残していれば出す（見送った区画・見られなかった件数など） --%>
-              <p :if={entry.unfinished == [] and entry.result.error != ""} class="muted-note">
-                Chiezo の控え: {entry.result.error}
-              </p>
-              <p class="muted-note">
-                {Jst.format(entry.result.at)} に終わった回{if entry.result.backend,
-                  do:
-                    "（#{entry.result.backend}#{if entry.result.model, do: " / #{entry.result.model}", else: ""}）",
-                  else: ""}。見出しを押すと、直す前との違いが開きます。
-              </p>
-              <.change_lists change={entry.result} collection={@dataset.collection} />
-              <p
-                :if={entry.result.added + entry.result.updated + entry.result.removed == 0}
-                class="muted-note"
-              >
-                この回では何も変わりませんでした。
-              </p>
-            <% end %>
-
-            <details class="request-text">
-              <summary>依頼の中身</summary>
-              <pre>{entry.log.text}</pre>
-            </details>
-          </details>
-        </section>
-
         <%!-- この収集から作る収集を持たない対象は、検索に使った語と最近の回を枠の後ろに置く --%>
         <%= if !@dataset[:derived] do %>
           <.search_queries queries={@search_queries} />
@@ -1301,7 +1236,7 @@
         <% end %>
       </section>
     </div>
-    <%!-- 最近の回・依頼の結果の見出しを押したときの、1 件の変更（この画面の上に重ねて開く） --%>
+    <%!-- 最近の回の見出しを押したときの、1 件の変更（この画面の上に重ねて開く） --%>
     <.live_component module={ChidoriWeb.DocDiff} id="doc-diff" />
     <.live_component module={ChidoriWeb.DocView} id="doc-view" />
   </div>

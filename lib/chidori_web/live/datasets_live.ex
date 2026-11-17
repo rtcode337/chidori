@@ -77,7 +77,6 @@ defmodule ChidoriWeb.DatasetsLive do
        requesting: nil,
        requested: nil,
        # 直近の依頼と、その結果（Chiezo の変更履歴から引き当てたもの）
-       request_results: [],
        # 最近の回（自動の回も依頼の回も。Chiezo の変更履歴から）
        recent_runs: [],
        # この収集から作る収集（本棚）の最近の回
@@ -652,10 +651,6 @@ defmodule ChidoriWeb.DatasetsLive do
      |> start_async(:apply_locks, fn -> Requests.apply_now(dataset) end)}
   end
 
-  # 依頼の結果を読み直す（Chiezo の変更履歴は回が終わってから 1 行になる）
-  def handle_event("reload_request_results", _params, socket),
-    do: {:noreply, load_request_results(socket)}
-
   def handle_event("reload_recent_runs", _params, socket),
     do: {:noreply, load_recent_runs(socket)}
 
@@ -786,11 +781,6 @@ defmodule ChidoriWeb.DatasetsLive do
 
   def handle_async(:backends, {:exit, _reason}, socket), do: {:noreply, socket}
 
-  def handle_async(:request_results, {:ok, results}, socket),
-    do: {:noreply, assign(socket, request_results: results)}
-
-  def handle_async(:request_results, {:exit, _reason}, socket), do: {:noreply, socket}
-
   def handle_async(:hold, {:ok, result}, socket),
     do: {:noreply, assign(socket, held: result, applied: nil)}
 
@@ -865,7 +855,7 @@ defmodule ChidoriWeb.DatasetsLive do
      socket
      |> assign(requesting: nil, requested: {result, sent})
      |> assign_pending()
-     |> load_request_results()}
+     |> load_recent_runs()}
   end
 
   # **まだ何も読んでいない状態。** 「収集が無い」と区別する —— 読めていないのに
@@ -886,7 +876,7 @@ defmodule ChidoriWeb.DatasetsLive do
     |> start_async(:shelf, fn -> Datasets.shelf(dataset) end)
   end
 
-  # 設定欄に出すものを Chiezo から読む（収集の状態・本棚の収集の状態・相手・依頼の結果）
+  # 設定欄に出すものを Chiezo から読む（収集の状態・本棚の収集の状態・相手・最近の回）
   defp load_settings(socket) do
     dataset = socket.assigns.dataset
 
@@ -895,7 +885,6 @@ defmodule ChidoriWeb.DatasetsLive do
     |> start_async(:read, fn -> Datasets.read(dataset) end)
     |> read_derived(dataset)
     |> start_async(:backends, &Datasets.backends/0)
-    |> load_request_results()
     |> load_recent_runs()
     |> load_derived_runs(dataset)
     |> load_search_queries(dataset)
@@ -1280,11 +1269,6 @@ defmodule ChidoriWeb.DatasetsLive do
   end
 
   # travel-log から依頼を受ける対象だけ読む（依頼の口があるのはそこだけ）
-  defp load_request_results(%{assigns: %{dataset: %{reader: "travel-log"} = dataset}} = socket),
-    do: start_async(socket, :request_results, fn -> Requests.results(dataset) end)
-
-  defp load_request_results(socket), do: socket
-
   # 控えている依頼を、いま読めている区画で振り分け直す（travel-log から依頼を受ける対象だけ）
   defp assign_pending(%{assigns: %{dataset: %{reader: "travel-log"} = dataset}} = socket) do
     partitions = get_in(socket.assigns, [:state, :collection, :partitions]) || []
@@ -1435,33 +1419,6 @@ defmodule ChidoriWeb.DatasetsLive do
     </details>
     """
   end
-
-  @doc "依頼の状態の言い方。"
-  def request_state(%{log: %{status: "failed", error: error}}),
-    do: "頼めませんでした（#{error}）"
-
-  def request_state(%{log: %{status: "waiting"}}),
-    do: "取り込みが空くのを待っています"
-
-  def request_state(%{result: nil}),
-    do: "Chiezo が受けました。回が終わると、ここに結果が出ます"
-
-  # **途中で止まった回は「動いた」と言わない。** 見終えた区画のぶんは直っているので
-  # 件数は添えるが、頼んだ区画の残りはまだ誰も見ていない
-  def request_state(%{
-        result: %{status: "ok"} = result,
-        unfinished: [_ | _] = unfinished,
-        log: log
-      }),
-      do:
-        "途中で止まりました（見終えたのは #{length(log.keys) - length(unfinished)} / #{length(log.keys)} 区画。" <>
-          "足した #{result.added} ・直した #{result.updated} ・消した #{result.removed}）"
-
-  def request_state(%{result: %{status: "ok"} = result}),
-    do: "足した #{result.added} ・直した #{result.updated} ・消した #{result.removed}"
-
-  def request_state(%{result: result}),
-    do: "回が失敗しました（#{result.error}）"
 
   # 対象の関数を持つか。**範囲を持つ対象は範囲を最後の引数に足して呼ぶ**ので
   # （`Datasets.call/3`）、そのぶん引数が 1 つ多い

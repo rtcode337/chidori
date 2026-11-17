@@ -1,6 +1,6 @@
 defmodule ChidoriWeb.DocDiff do
   @moduledoc """
-  最近の回・依頼の結果に並ぶ見出しを押したときの、**その 1 件がどう書き換わったか**
+  最近の回に並ぶ見出しを押したときの、**その 1 件がどう書き換わったか**
   （Chiezo の `GET /v1/collect/{name}/diff`）。Chiezo の管理画面へ飛ばさず、Chidori の
   画面の上に重ねて開く。
 

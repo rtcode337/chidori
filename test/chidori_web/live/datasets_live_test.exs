@@ -655,7 +655,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
             Jason.encode!(%{"sources" => [%{"name" => "chidori_dining_1", "docs" => 42}]})
           )
 
-        # 変更履歴。**依頼した区画をちょうど見た回**が 1 つある（依頼の結果として引き当たる）
+        # 変更履歴。**依頼した区画をちょうど見た回**が 1 つある（依頼で走った回として最近の回に印が付く）
         %{method: :get, url: "http://chiezo.test:7010/v1/collect/changes?" <> _query} ->
           Chidori.HttpStub.ok(
             Jason.encode!(%{
@@ -1201,12 +1201,13 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       # 頼んだ区画の控えは消え、区画の外の 1 件だけが残る
       assert html =~ "控えている依頼（1 件）"
 
-      # **依頼と、その結果を並べる**（頼んだ区画をちょうど見た回を引き当てる）
+      # 依頼の控えは頼んだ区画の鍵で残る（最近の回の「依頼」の印はこれで引き当てる）。
+      # 結果は最近の回で見る（依頼ごとに並べる「依頼の結果」の枠は出さない）
       assert [log] = Chidori.Datasets.Requests.recent("chidori_dining_1")
       assert log.keys == ["35.6,139.7/35.7,139.8"]
       assert log.status == "sent"
-      assert html =~ "依頼の結果"
-      assert html =~ "足した 25 ・直した 1 ・消した 1"
+      refute html =~ "依頼の結果"
+      assert html =~ "最近の回"
 
       # 見出しは Chiezo の管理画面へ飛ばさず、この画面の上で変更を開く（`ChidoriWeb.DocDiff`）
       assert html =~ ~r|phx-target="#doc-diff"[^>]*phx-value-collection="chidori_dining_1"|s
@@ -1281,7 +1282,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       assert html =~ "区画 2 つで情報収集を頼みました"
       refute html =~ "控えている依頼（"
 
-      # 依頼の結果は区画の鍵で引き当てるので、記録も頼んだ鍵になっている
+      # 依頼の回は区画の鍵で引き当てるので、記録も頼んだ鍵になっている
       assert [log] = Chidori.Datasets.Requests.recent("chidori_dining_1")
       assert log.keys == [south, north]
       assert log.status == "sent"
@@ -1305,7 +1306,7 @@ defmodule ChidoriWeb.DatasetsLiveTest do
     end
 
     test "最近の回は、自動で回った回も並べ、依頼で走った回には印を付ける", %{conn: conn} do
-      # 依頼の結果は依頼ごとに回を引き当てるので、自動の回は出てこなかった
+      # 依頼ごとに回を引き当てる形では、自動の回は出てこなかった
       {:ok, _log} =
         %Chidori.Datasets.RequestLog{}
         |> Chidori.Datasets.RequestLog.changeset(%{
