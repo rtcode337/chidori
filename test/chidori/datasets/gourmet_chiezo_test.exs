@@ -154,7 +154,7 @@ defmodule Chidori.Datasets.GourmetChiezoTest do
       assert settings["categories"] == Gourmet.category_order()
 
       [header, line | _] = String.split(files["gourmet/spots.csv"], "\r\n")
-      assert header =~ ",available_months,opening_hours,key"
+      assert header =~ ",available_months,opening_hours,ask_name,key"
       assert line =~ "東京のうどん,35.68,139.76,東京都,B,麺類,県の紹介,"
 
       exclude = files["gourmet/excluded_candidates/exclude.txt"]

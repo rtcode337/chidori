@@ -554,6 +554,11 @@ defmodule Chidori.Datasets.Gourmet do
         who: "代表店の辞典の値が先、無ければ AI"
       },
       %{
+        field: "生成 AI に聞く名前（ask_name）",
+        stored: "extra.shop の名前と地図に出す名前（「<代表店>（<料理名>）」。代表店が無ければ空）",
+        who: "機械が組み立てる（travel-log の Gemini のボタンが料理名の代わりに使う）"
+      },
+      %{
         field: "説明（description）",
         stored:
           "タグ「裏付け:…」（選定理由）・extra.shop（代表店）・extra.#{@shop_reason_key}（代表店の理由）・" <>
@@ -1771,9 +1776,9 @@ defmodule Chidori.Datasets.Gourmet do
 
   # ── travel-log への書き出し（`Chidori.Datasets.TravelLog` が呼ぶ） ──
 
-  @csv_header ~w(name lat lng region rank series categories description available_months opening_hours key)
+  @csv_header ~w(name lat lng region rank series categories description available_months opening_hours ask_name key)
 
-  @doc "spots.csv の列（提供の時期と営業時間の 2 列を足したもの）。"
+  @doc "spots.csv の列（提供の時期・営業時間と、生成 AI に聞くときの名前を足したもの）。"
   def csv_header, do: @csv_header
 
   @doc "travel-log のカテゴリの並び（絞り込みの並び）。"
@@ -1816,8 +1821,28 @@ defmodule Chidori.Datasets.Gourmet do
         "description" => description(tags, extra),
         "available_months" => text(extra["available_months"]),
         "opening_hours" => text(extra["opening_hours"]),
+        "ask_name" => ask_name(name, extra),
         "key" => Chidori.Datasets.TravelLog.spot_key(doc["doc_id"], dataset)
       }
+    end
+  end
+
+  @doc """
+  travel-log が生成 AI（Gemini）に聞くときの名前（`ask_name`）。**代表店の名前に料理名を
+  添える**（「<代表店>（<料理名>）」）。代表店が無ければ空（travel-log は料理名で聞く）。
+
+  スポットの名前は料理名のまま（地図で探すのは「その土地で何を食べるか」）だが、料理名で
+  聞くと料理の説明が返り、行き先の店の営業時間・アクセスが分からない。座標は代表店の
+  ものなので、店名で聞けば同じ名前の別の店と取り違えにくい。料理名も添えるのは、
+  店でその料理を食べられるかまで答えてもらうため。店の 1 件で名前が店名と同じなら店名だけ。
+  """
+  def ask_name(name, extra) do
+    shop = if is_map(extra["shop"]), do: extra["shop"], else: %{}
+
+    case text(shop["name"]) do
+      "" -> ""
+      ^name -> name
+      shop_name -> "#{shop_name}（#{name}）"
     end
   end
 

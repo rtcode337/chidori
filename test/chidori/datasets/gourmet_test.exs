@@ -671,9 +671,23 @@ defmodule Chidori.Datasets.GourmetTest do
       csv = Chidori.Datasets.TravelLog.csv([row], Gourmet.csv_header())
 
       assert csv =~
-               "name,lat,lng,region,rank,series,categories,description,available_months,opening_hours,key\r\n"
+               "name,lat,lng,region,rank,series,categories,description,available_months,opening_hours,ask_name,key\r\n"
 
-      assert csv =~ ",11-3,Mo-Fr 11:00-20:00; We off,77\r\n"
+      assert csv =~ ",11-3,Mo-Fr 11:00-20:00; We off,サンプル軒総本店（ソースカツ丼）,77\r\n"
+    end
+
+    test "生成 AI に聞く名前は、代表店に料理名を添えたもの（スポット名は料理名のまま）" do
+      # 料理名で聞くと料理の説明が返り、行き先の店の営業時間・アクセスが分からない
+      row = Gourmet.spot(doc(%{}), dataset())
+
+      assert row["name"] == "ソースカツ丼"
+      assert row["ask_name"] == "サンプル軒総本店（ソースカツ丼）"
+
+      # 代表店の名前が無ければ空（travel-log は料理名で聞く）
+      assert Gourmet.ask_name("ソースカツ丼", %{"shop" => nil}) == ""
+      assert Gourmet.ask_name("ソースカツ丼", %{"shop" => %{"name" => " "}}) == ""
+      # 店の 1 件で、名前が店名そのものなら店名だけ
+      assert Gourmet.ask_name("サンプル軒", %{"shop" => %{"name" => "サンプル軒"}}) == "サンプル軒"
     end
 
     test "代表店が引き当たっていない料理（座標が無い）は行にしない" do

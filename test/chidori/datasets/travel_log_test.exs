@@ -36,6 +36,18 @@ defmodule Chidori.Datasets.TravelLogTest do
       assert row["rank"] == "C"
     end
 
+    test "範囲の名前もカテゴリにして、並びの先頭に置く" do
+      # travel-log では範囲によらず 1 つの種別に読み込むので、範囲で絞る軸がほかに無い
+      row = TravelLog.row(doc(%{}), dataset())
+      assert row["categories"] |> String.split("|") |> List.first() == "東京駅"
+
+      other = Chidori.Datasets.Dining.definition(%{@area | id: 4, name: "神田|秋葉原"})
+      # 区切りの | は名前に入れられない。同じ名前は重ねない
+      assert TravelLog.area_categories([dataset(), other, dataset()]) == ["東京駅", "神田/秋葉原"]
+      # 範囲を持たない対象では空
+      assert TravelLog.area_categories([Datasets.get("gourmet")]) == []
+    end
+
     test "シリーズはジャンルの先頭、カテゴリは店の特徴" do
       # ジャンルの 2 つめ以降を回していた頃は、粗いジャンルの重複（寿司屋の「和食」）
       # ばかりで絞り込みの軸にならなかった
@@ -43,7 +55,7 @@ defmodule Chidori.Datasets.TravelLogTest do
 
       assert row["series"] == "和食"
       # 特徴が無くても、位置を確かめたかどうかは付く
-      assert row["categories"] == "位置未確認"
+      assert row["categories"] == "東京駅|位置未確認"
 
       tags = ["食事処", "ジャンル:和食", "地域:東京都", "特徴:個室あり", "特徴:ゆっくりできる", "特徴:眺めがいい"]
 
@@ -56,7 +68,7 @@ defmodule Chidori.Datasets.TravelLogTest do
       row = TravelLog.row(doc(%{"tags" => tags, "extra" => extra}), dataset())
 
       # 語彙の並びで、語彙に無い語は落とす。営業時間から読めるものは機械で足す
-      assert row["categories"] == "ランチ営業|深夜営業|ゆっくりできる|個室あり|位置未確認"
+      assert row["categories"] == "東京駅|ランチ営業|深夜営業|ゆっくりできる|個室あり|位置未確認"
       assert row["description"] =~ "営業時間: 月〜金 11:00〜14:00 / 土 17:00〜23:00"
 
       # 機械が読む営業時間は、地図辞典の書き方のまま列に出す（travel-log の「今営業中」）
@@ -71,12 +83,12 @@ defmodule Chidori.Datasets.TravelLogTest do
       extra = %{"lat" => 35.6, "lon" => 139.7}
       row = TravelLog.row(doc(%{"tags" => tags, "extra" => extra}), dataset())
 
-      assert row["categories"] == "個室あり|位置確認済み"
+      assert row["categories"] == "東京駅|個室あり|位置確認済み"
 
       # まだ確かめていない店を現地で見て回れるよう、未確認も絞り込めるようにする
       unchecked = List.delete(tags, Chidori.Chiezo.locked_tag())
       row = TravelLog.row(doc(%{"tags" => unchecked, "extra" => extra}), dataset())
-      assert row["categories"] == "個室あり|位置未確認"
+      assert row["categories"] == "東京駅|個室あり|位置未確認"
 
       # AI に付けさせる語彙には入れない（確かめていない店に付けられないように）
       refute "位置確認済み" in Chidori.Datasets.Dining.features()
@@ -86,7 +98,7 @@ defmodule Chidori.Datasets.TravelLogTest do
       # 位置を確かめた店を AI が閉店と読むと、Chiezo が消さずに印を付けて残す。その印もカテゴリになる
       doubted = tags ++ ["閉店の可能性あり"]
       row = TravelLog.row(doc(%{"tags" => doubted, "extra" => extra}), dataset())
-      assert row["categories"] == "個室あり|閉店の可能性あり|位置確認済み"
+      assert row["categories"] == "東京駅|個室あり|閉店の可能性あり|位置確認済み"
       assert Chidori.Datasets.Dining.attrs(%{}, @area).locked_doubt_tag == "閉店の可能性あり"
     end
 

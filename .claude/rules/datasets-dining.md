@@ -91,6 +91,8 @@ paths:
   人が閉店と報告した店は頼む直前に固定を外す（`Requests.release_closed/2`）
 - travel-log への書き出しは `Chidori.Datasets.TravelLog`。行を自分で組む対象（`spot/2`。ご当地グルメ）は列（`csv_header/0`）も
   説明文もランクもその対象が決め、地図に置けない 1 件（座標が無い）の key は exclude.txt に入れる。travel-log に Chidori の決めごとを持たせず、向こうの形（`settings.json`・`spots.csv`・`exclude.txt`）に直す。
+  食事処のカテゴリの先頭には範囲の名前を機械で付ける（`TravelLog.area_categories/1`。travel-log では 1 つの種別に読み込むので範囲で絞る軸がほかに無い）。
+  ご当地グルメは `ask_name`（travel-log の Gemini に聞く名前）に「<代表店>（<料理名>）」を入れる（`Gourmet.ask_name/2`。スポット名は料理名のまま。代表店が無ければ空）。
   key は食事処が `<範囲の番号>-<doc_id>`・ご当地グルメが `doc_id`、シリーズの並びと色は Chidori の語彙の順で固定（色は訪問済みの緑に近い色相を避ける。既にある見た目は残してもらい、上書きさせるのは `?styles=replace` の ZIP だけ。食事処は全範囲の ZIP だけ（範囲の ZIP では効かせない。別の範囲の見た目が壊れる））、説明には 1 件ごとに出典を添える（辞典ごとにライセンスが違う）。
   URL は Chiezo に確かめさせた結果で選ぶ（`Chidori.Datasets.ShopLinks`）
 - ご当地グルメ（`Chidori.Datasets.Gourmet`・`chidori_gourmet`。全国で 1 つ）: 1 件は料理（土産・駅弁・食材も）か、料理と結び付く店（タグ `区分:店`、料理は無印。入れる店は 3 つだけ、下の店の 1 件の決まり）。

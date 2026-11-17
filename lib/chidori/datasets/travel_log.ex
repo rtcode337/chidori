@@ -92,7 +92,16 @@ defmodule Chidori.Datasets.TravelLog do
     with true <- exportable?(dataset) || {:error, :not_exportable},
          {:ok, base} <- Datasets.base_url(),
          {:ok, part} <- gather(base, dataset) do
-      zip(zip_name, key, name, part, module, dataset[:series_order], opts)
+      zip(
+        zip_name,
+        key,
+        name,
+        part,
+        module,
+        categories_for([dataset], module),
+        dataset[:series_order],
+        opts
+      )
     else
       {:error, reason} -> {:error, reason}
       false -> {:error, :not_exportable}
@@ -136,7 +145,16 @@ defmodule Chidori.Datasets.TravelLog do
         skipped: Enum.sum(Enum.map(parts, & &1.skipped)) + length(twins)
       }
 
-      zip(zip_name, key, name, part, module, first[:series_order], opts)
+      zip(
+        zip_name,
+        key,
+        name,
+        part,
+        module,
+        categories_for(datasets, module),
+        first[:series_order],
+        opts
+      )
     else
       {:error, reason} -> {:error, reason}
       false -> {:error, :not_exportable}
@@ -233,13 +251,13 @@ defmodule Chidori.Datasets.TravelLog do
     :math.sqrt(dx * dx + dy * dy)
   end
 
-  defp zip(zip_name, key, name, part, module, series_order, opts) do
+  defp zip(zip_name, key, name, part, module, categories, series_order, opts) do
     %{rows: rows, excluded: excluded} = part
 
     files =
       [
         {~c"#{key}/settings.json",
-         settings_json(key, name, rows, category_order(module), series_order, opts)},
+         settings_json(key, name, rows, categories, series_order, opts)},
         {~c"#{key}/spots.csv", csv(rows, csv_header(module))}
       ] ++
         if excluded == [],
@@ -290,6 +308,29 @@ defmodule Chidori.Datasets.TravelLog do
       function_exported?(module, :features, 0) -> module.features()
       true -> nil
     end
+  end
+
+  # settings.json に載せるカテゴリの並び（範囲の名前 → 収集の語彙）。どちらも無ければ渡さない
+  defp categories_for(datasets, module) do
+    case {area_categories(datasets), category_order(module)} do
+      {[], order} -> order
+      {areas, order} -> areas ++ (order || [])
+    end
+  end
+
+  @doc """
+  **範囲を持つ対象（食事処）は、範囲の名前もカテゴリにする**（範囲の並びのまま、重ねずに）。
+  travel-log では範囲によらず 1 つの種別に読み込むので、範囲で絞り込む軸がほかに無い。
+  カテゴリの並びの先頭に置く（特徴より先に「どこの店か」で絞ることが多い）。
+  区切りの `|` は名前に入れられないので `/` へ寄せる。範囲を持たない対象では空。
+  """
+  def area_categories(datasets) do
+    for %{area: %{name: name}} <- datasets,
+        is_binary(name),
+        label = name |> String.trim() |> String.replace("|", "/"),
+        label != "",
+        uniq: true,
+        do: label
   end
 
   # 全ページ。**件数は 1 ページ目が教えてくれる**ので、何周するかはそこで決まる
@@ -390,7 +431,9 @@ defmodule Chidori.Datasets.TravelLog do
         "rank" => tags |> tagged(module.rank_tag()) |> List.first() || "",
         "series" => List.first(genres) || "",
         # カテゴリはパイプ区切りの 1 列（CSV の区切りと衝突しないため）
-        "categories" => categories(module, tags, extra, genres) |> Enum.join("|"),
+        "categories" =>
+          (area_categories([dataset]) ++ categories(module, tags, extra, genres))
+          |> Enum.join("|"),
         "description" => description(doc, tags, extra, collection, module, {name, links}),
         "opening_hours" => clean(Map.get(extra, "opening_hours")),
         "key" => spot_key(Map.get(doc, "doc_id"), dataset)

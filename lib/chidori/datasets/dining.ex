@@ -349,8 +349,8 @@ defmodule Chidori.Datasets.Dining do
       },
       %{
         field: "カテゴリ（categories）",
-        stored: "タグ「#{feature_tag()}:…」と extra.opening_hours",
-        who: "営業時間から機械で（朝食営業・ランチ営業・深夜営業）、残りは AI"
+        stored: "範囲の名前と、タグ「#{feature_tag()}:…」と extra.opening_hours",
+        who: "範囲の名前は書き出すときに機械で（先頭）。営業時間から機械で（朝食営業・ランチ営業・深夜営業）、残りは AI"
       },
       %{
         field: "ランク（rank）",
