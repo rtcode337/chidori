@@ -840,11 +840,13 @@ defmodule Chidori.Datasets.Requests do
 
   @doc """
   最近の回（**自動で回った回も、依頼で走った回も**）。新しい順に `limit` 件。
-  `{:ok, [%{change: 回, by_request: 依頼で走った回か}]}` か `{:error, 理由}`。
+  `{:ok, [%{change: 回, by_request: 依頼で走った回か, request: その依頼の控え}]}` か `{:error, 理由}`
+  （`request` は依頼で走った回だけ。ほかは nil）。
 
   依頼の結果も、ここで見る（依頼ごとに回を引き当てて並べる「依頼の結果」の枠は外した。
   自動の回が出てこず、依頼で走った回は最近の回と同じものが二重に並ぶだけだった）。
-  **依頼で走った回は見分けて印を付ける**。
+  **依頼で走った回は見分けて印を付け、依頼の中身も添える**（何を頼んだ結果なのかが、
+  件数と見出しだけでは読めないため）。
   """
   def runs(%{collection: name} = dataset, limit \\ @shown_runs) do
     logs = recent(name, @shown_runs * 2)
@@ -852,23 +854,30 @@ defmodule Chidori.Datasets.Requests do
 
     with {:ok, base} <- Datasets.base_url(),
          {:ok, rows} <- Chiezo.changes(base, name, limit: limit) do
-      {:ok, Enum.map(rows, &%{change: &1, by_request: by_request?(&1, logs, sweep)})}
+      {:ok,
+       Enum.map(rows, fn row ->
+         request = request_of(row, logs, sweep)
+         %{change: row, by_request: request != nil, request: request}
+       end)}
     end
   end
 
-  # 依頼で走った回か。**頼んだ区画の組がそっくり同じで、頼んだあとの回**。
+  # その回を走らせた依頼（無ければ nil）。**頼んだ区画の組がそっくり同じで、頼んだあとの回**。
   # 変更履歴はどの依頼から走った回かを持たない。定時の回は Chiezo が選んだ区画を見るので、
-  # 区画の組がそっくり一致することは、まずない
-  defp by_request?(%{at: %DateTime{} = at, scope: scope, sweep: run_sweep}, logs, sweep)
+  # 区画の組がそっくり一致することは、まずない。同じ区画を何度か頼んでいれば、
+  # その回より前でいちばん新しい依頼を採る
+  defp request_of(%{at: %DateTime{} = at, scope: scope, sweep: sweep}, logs, sweep)
        when scope != [] do
-    run_sweep == sweep and
-      Enum.any?(logs, fn log ->
-        MapSet.new(log.keys) == MapSet.new(scope) and
-          DateTime.compare(at, log.requested_at) != :lt
-      end)
+    wanted = MapSet.new(scope)
+
+    logs
+    |> Enum.filter(fn log ->
+      MapSet.new(log.keys) == wanted and DateTime.compare(at, log.requested_at) != :lt
+    end)
+    |> Enum.max_by(& &1.requested_at, DateTime, fn -> nil end)
   end
 
-  defp by_request?(_change, _logs, _sweep), do: false
+  defp request_of(_change, _logs, _sweep), do: nil
 
   @doc "見積もりの段で断った理由の言い方（Chiezo が断った理由は画面の側が言う）。"
   def error_text(:no_points),

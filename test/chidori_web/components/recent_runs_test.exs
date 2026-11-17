@@ -39,6 +39,24 @@ defmodule ChidoriWeb.RecentRunsTest do
     assert [{_, true}, {_, true}] = RecentRuns.scope_rows(run(%{visited: nil}))
   end
 
+  test "依頼で走った回には、依頼の中身を添える" do
+    request = %{requested_at: ~U[2026-10-01 00:00:00Z], text: "- [修正] 駅前の店: 閉店している"}
+
+    html =
+      render_component(&RecentRuns.recent_runs/1,
+        runs: [
+          %{change: run(%{}), by_request: true, request: request},
+          %{change: run(%{}), by_request: false, request: nil}
+        ],
+        collection: "chidori_dining_2",
+        reload: "reload_recent_runs"
+      )
+
+    assert html =~ "- [修正] 駅前の店: 閉店している"
+    # 依頼で走った 1 回にだけ出る
+    assert length(String.split(html, "依頼の中身")) == 2
+  end
+
   test "区画を選べる画面では、区画を押すと地図で選ぶ" do
     html =
       render_component(&RecentRuns.recent_runs/1,

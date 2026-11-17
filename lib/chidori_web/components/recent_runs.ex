@@ -42,7 +42,7 @@ defmodule ChidoriWeb.RecentRuns do
 
   @doc """
   **最近の回**（自動で回った回も、依頼で走った回も）。整理やざっと見るが何を直したのかも、
-  依頼の結果もここで見る。依頼で走った回には印を付ける。**どれも畳んで出す** —— 開いて置くと、
+  依頼の結果もここで見る。依頼で走った回には印を付け、依頼の中身も畳んで添える（`request`）。**どれも畳んで出す** —— 開いて置くと、
   足した・直した見出しの一覧が画面を長く埋める。収集ごとに 1 つ（親の収集と、この収集から作る収集）。
   """
   def recent_runs(assigns) do
@@ -52,7 +52,10 @@ defmodule ChidoriWeb.RecentRuns do
         <h3>最近の回</h3>
         <button type="button" phx-click={@reload}>読み直す</button>
       </header>
-      <details :for={%{change: run, by_request: by_request} <- @runs} class="request-result">
+      <details
+        :for={%{change: run, by_request: by_request} = entry <- @runs}
+        class="request-result"
+      >
         <summary>
           <span class="request-when">{Jst.format(run.at)}</span>
           <span class="request-scope">
@@ -93,6 +96,11 @@ defmodule ChidoriWeb.RecentRuns do
             else: ""}見出しを押すと、直す前との違いが開きます。
         </p>
         <.change_lists change={run} collection={@collection} />
+        <%!-- **依頼で走った回は、何を頼んだのかも読める**（貼った依頼のテキストそのまま） --%>
+        <details :if={entry[:request]} class="request-text">
+          <summary>依頼の中身（{Jst.format(entry.request.requested_at)} に頼んだもの）</summary>
+          <pre>{entry.request.text}</pre>
+        </details>
       </details>
     </section>
     """

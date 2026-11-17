@@ -1326,6 +1326,9 @@ defmodule ChidoriWeb.DatasetsLiveTest do
       # 依頼で走った回（頼んだ区画をちょうど見た回）
       assert html =~ "足した 25 ・直した 1 ・消した 1"
       assert html =~ ~s(class="run-by-request")
+      # 依頼で走った回には、何を頼んだのかも添える（自動の回には出さない）
+      assert html =~ "駅前うどん (35.65,139.75): 閉店している"
+      assert length(String.split(html, "依頼の中身")) == 2
       # 自動の回（Chiezo が選んだ別の区画）も出る
       assert html =~ "足した 9 ・直した 0 ・消した 0"
       assert html =~ "情報収集・区画 1 つ"
