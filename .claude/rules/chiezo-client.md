@@ -33,14 +33,14 @@ Chidori は Chiezo の「集める」層に収集を頼み、溜まったもの�
 - `Chidori.Http` —— 外への HTTP の唯一の口。テストでは `test/support/http_stub.ex` が応答を差し込み、
   差し込まないまま外へ出ようとしたら失敗させる
 - 人が押した 1 回は `Chidori.Chiezo.by_hand/1` で包む（Chiezo に `manual=true` と申告し、止めた収集でも走る）。
-  定時の時計（要約・情報収集）からは申告しない
+  定時の時計（要約・情報収集・漏れ探し）からは申告しない
 - 「収集の設定を更新」は、無ければ止まった状態で作り、あれば Chidori の今の依頼文・抽出の指定・区画・巡回を送り直す。
   その場で走らせない。送るときは Chiezo に入っている巡回ごとの相手をそのまま載せる（載せないと既定へ戻る）
 - 収集の一覧（設定の「収集の一覧」。`/settings?tab=chiezo`。前の `/collect` はここへ送る） —— `Chidori.CollectCatalog`（Chidori の画面の並びで収集を並べ、送る）、
   `Chidori.CollectDrift`（Chiezo の今の設定と Chidori の定義の違い。頼む相手と止めた・動かしたは比べない）、
   `Chidori.CollectOverview`、`Chidori.CollectPace`（整理・ざっと見るの間隔。区画を回る巡回は一周の日数も同じ比で）、
   `Chidori.SettingsRestore`（Chiezo の収集から間隔・整理を止める収集・知名度の下限を戻す）
-- 表には Chidori の時計が起こす行も並ぶ（要約の回の時刻・映画の図の「最新情報からの引き継ぎ」・食事処の「情報収集」。`CollectOverview.chidori_rows/1` と `wake/2`）。
+- 表には Chidori の時計が起こす行も並ぶ（要約の回の時刻・映画の図の「最新情報からの引き継ぎ」・時刻で起こす情報収集とご当地グルメの漏れ探し。`CollectOverview.chidori_rows/1` と `wake/2`。情報収集・漏れ探しの行は巡回の名前も送る）。
   時刻は Chidori が持つので、ここで直しても Chiezo へは送らない（引き継ぎの行は相手を選ばせず、送るときも数えない）
 - 設定ページの表で収集を止める・動かす（`Chidori.Chiezo.switch/3` → Chiezo の `POST /v1/collect/{name}/enabled`。名乗りは `chidori`）。
   動かすのは Chiezo の管理画面で「外部からの有効化を許可する」を押したときだけ通る（403 ならそう出す）。止まっている収集は塊ごと色を付ける（`tbody.is-stopped`。各収集の画面の設定の枠も `ChidoriWeb.Collect.stopped_class/1` で同じ色）

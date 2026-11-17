@@ -353,6 +353,10 @@ defmodule Chidori.Datasets.GourmetTest do
       refute Map.get(survey, :only_new)
       assert survey.hold_tag == Gourmet.unplaced_tag()
       assert Datasets.get("gourmet").survey_clock
+
+      # 漏れ探しも Chiezo の時計では回さない（情報収集と同じく、Chidori が時刻を決めて起こす）
+      assert omission.by_caller
+      assert Datasets.get("gourmet").clocked_sweeps == ["情報収集", "漏れ探し"]
     end
 
     test "送る中身に、名簿・区画・引き当て・書式・各巡回の依頼文が入る" do

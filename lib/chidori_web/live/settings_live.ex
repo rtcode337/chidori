@@ -419,8 +419,8 @@ defmodule ChidoriWeb.SettingsLive do
   end
 
   # **Chidori が起こす回の時刻を直す**（要約の回は `Notify.Settings` の digest_at、
-  # 映画の図への引き継ぎは `Relations.CarrySetting` の run_at、情報収集は
-  # `Datasets.SurveySetting` の run_at）。
+  # 映画の図への引き継ぎは `Relations.CarrySetting` の run_at、情報収集・漏れ探しは
+  # `Datasets.SurveySetting` の run_at。巡回の名前は `sweep` で届く）。
   # Chiezo には送らない
   def handle_event(
         "save_wake",
@@ -436,9 +436,10 @@ defmodule ChidoriWeb.SettingsLive do
         "carry" ->
           Chidori.Relations.CarrySetting.put(%{"run_at" => times, "batch" => params["batch"]})
 
-        # 情報収集を起こす時刻（収集ごと。`Chidori.Datasets.SurveySetting`）
+        # 情報収集・漏れ探しを起こす時刻（収集と巡回の組ごと。`Chidori.Datasets.SurveySetting`）
         "survey" ->
-          Chidori.Datasets.SurveySetting.put(name, %{"run_at" => times})
+          sweep = params["sweep"] || Chidori.SweepNames.survey()
+          Chidori.Datasets.SurveySetting.put(name, sweep, %{"run_at" => times})
 
         _other ->
           {:error, :unknown}

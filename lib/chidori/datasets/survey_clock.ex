@@ -1,7 +1,12 @@
 defmodule Chidori.Datasets.SurveyClock do
   @moduledoc """
-  **情報収集を、決めた時刻に起こす時計**（定義に `survey_clock: true` を持つ対象のぜんぶ。
-  食事処の範囲ごとの収集・ご当地グルメ・アニメ聖地）。
+  **情報収集（とご当地グルメの漏れ探し）を、決めた時刻に起こす時計**（定義に `survey_clock: true` を
+  持つ対象のぜんぶ。食事処の範囲ごとの収集・ご当地グルメ・アニメ聖地）。起こす巡回は定義の
+  `clocked_sweeps`（書いていなければ情報収集だけ）。
+
+  ご当地グルメの漏れ探しも重い相手で回す回なので、情報収集と同じく Chiezo の時計を外して
+  ここから起こす。Chiezo の時計で回していた頃は、情報収集をいつ何回起こすかを Chidori で
+  決めても、後に続く漏れ探しは Chiezo の間隔のまま枠を使っていた。
 
   情報収集は外の頁を何枚も当たる仕事なので、重い相手（外部の検索が得意な相手に、考える量を
   多く）で回します（`Chidori.Datasets.Dining` / `Gourmet` / `AnimeSeichi`）。
@@ -11,10 +16,10 @@ defmodule Chidori.Datasets.SurveyClock do
 
   ## 時計
 
-  **収集ごとに決めた時刻（JST）に起こします**（収集の一覧（設定の `?tab=chiezo`）の表の「情報収集」の行か、
-  データ収集の画面の「Chiezo の収集」。`Chidori.Datasets.SurveySetting`）。1 回十分ほどかかるので、
-  全部を同じ時刻にすると収集の数だけ並んで取り込みを占める —— 時刻をずらして書く。
-  **時刻を書いていない収集は起こしません（既定）** —— 時計は Chidori の中にあるので、
+  **収集と巡回の組ごとに決めた時刻（JST）に起こします**（収集の一覧（設定の `?tab=chiezo`）の表の
+  その巡回の行か、データ収集の画面の「Chiezo の収集」。`Chidori.Datasets.SurveySetting`）。1 回十分ほど
+  かかるので、全部を同じ時刻にすると組の数だけ並んで取り込みを占める —— 時刻をずらして書く。
+  **時刻を書いていない組は起こしません（既定）** —— 時計は Chidori の中にあるので、
   本番とテストの 2 つを立てていると同じ回が二重に走る。時刻を書いた Chidori だけが起こす。
 
   5 分ごとに起きて、予定を過ぎた収集があれば起こします。**過ぎて 30 分までの回だけ
@@ -59,19 +64,19 @@ defmodule Chidori.Datasets.SurveyClock do
   def handle_info(_message, state), do: {:noreply, state}
 
   defp maybe_wake(now) do
-    for name <- clocked(),
-        setting = SurveySetting.get(name),
+    for {name, sweep} <- clocked_sweeps(),
+        setting = SurveySetting.get(name, sweep),
         %DateTime{} = slot <- [due(setting, now)],
         base = Chiezo.base_url(),
         is_binary(base) do
-      result = wake(base, name)
-      SurveySetting.record(name, slot, result in [:ok, :stopped], summary(result))
+      result = wake(base, name, sweep)
+      SurveySetting.record(name, sweep, slot, result in [:ok, :stopped], summary(result))
     end
   end
 
-  # 1 つの収集を起こす。止めた収集は「済んだ」に数える（起こさないと決めてあるので、試し直さない）
-  defp wake(base, name) do
-    case Chiezo.run(base, name, sweep: SweepNames.survey(), timeout: 60_000) do
+  # 1 つの巡回を起こす。止めた収集は「済んだ」に数える（起こさないと決めてあるので、試し直さない）
+  defp wake(base, name, sweep) do
+    case Chiezo.run(base, name, sweep: sweep, timeout: 60_000) do
       :ok ->
         :ok
 
@@ -79,7 +84,7 @@ defmodule Chidori.Datasets.SurveyClock do
         :stopped
 
       {:error, reason} ->
-        Logger.info("情報収集を起こせませんでした（#{name}）: #{inspect(reason)}")
+        Logger.info("#{sweep}を起こせませんでした（#{name}）: #{inspect(reason)}")
         {:error, reason}
     end
   end
@@ -88,8 +93,24 @@ defmodule Chidori.Datasets.SurveyClock do
   defp summary(:stopped), do: "収集を止めてあるので起こしませんでした"
   defp summary({:error, reason}), do: "起こせませんでした（次の起床で試し直します）: #{inspect(reason)}"
 
-  @doc "時刻で情報収集を起こす収集の名前（定義に `survey_clock: true` を持つ対象）。"
+  @doc "時刻で起こす収集の名前（定義に `survey_clock: true` を持つ対象）。"
   def clocked, do: for(d <- Datasets.list(), d[:survey_clock], do: d.collection)
+
+  @doc "時刻で起こす収集と巡回の組（`{収集の名前, 巡回の名前}`）。"
+  def clocked_sweeps,
+    do:
+      for(
+        d <- Datasets.list(),
+        d[:survey_clock],
+        sweep <- sweeps_of(d),
+        do: {d.collection, sweep}
+      )
+
+  @doc "その対象で時刻で起こす巡回（定義の `clocked_sweeps`。書いていなければ情報収集だけ）。"
+  def sweeps_of(dataset), do: dataset[:clocked_sweeps] || [SweepNames.survey()]
+
+  @doc "その収集のその巡回を、この時計が起こすか。"
+  def clocked?(collection, sweep), do: {collection, sweep} in clocked_sweeps()
 
   @doc """
   起こす番か。起こすなら予定の時刻、そうでなければ nil。

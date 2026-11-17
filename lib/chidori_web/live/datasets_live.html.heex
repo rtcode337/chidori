@@ -552,37 +552,42 @@
             </div>
           </form>
 
-          <%!-- **情報収集を起こす時刻**（時刻で起こす対象だけ。食事処の範囲・ご当地グルメ・アニメ聖地）。Chiezo の時計は外してあり、
-           Chidori がこの時刻に起こす。収集の一覧（設定の `?tab=chiezo`）の表と同じ値。
-           上のフォームの中には置けない（フォームは入れ子にできない） --%>
-          <form
-            :if={@survey_times}
-            id="survey-times-form"
-            class="wake-form"
-            phx-submit="save_survey_times"
-          >
-            <label>
-              情報収集を起こす時刻（日本時間）
-              <input type="text" name="times" value={@survey_times} placeholder="04:00,16:00" />
-            </label>
-            <button type="submit" phx-disable-with="保存しています…">時刻を保存</button>
-            <p class="muted-note">
-              「04:00,16:00」のようにカンマで並べます。空なら起こしません。1 回十分ほどかかるので、
-              ほかの範囲と時刻をずらしてください。
-            </p>
-            <p :if={@survey_saved} aria-live="polite">{@survey_saved}</p>
-          </form>
-          <%!-- **情報収集を今すぐ 1 回**（区画は Chiezo が選ぶふつうの回。区画を選んで頼むのは区画の画面） --%>
-          <div :if={@dataset[:survey_clock] && @state.collection} class="button-row">
-            <button
-              type="button"
-              phx-click="run_survey_now"
-              phx-disable-with="頼んでいます…"
+          <%!-- **時計が起こす巡回の時刻**（時刻で起こす対象だけ。食事処の範囲・ご当地グルメ・アニメ聖地の
+           情報収集と、ご当地グルメの漏れ探し）。Chiezo の時計は外してあり、Chidori がこの時刻に起こす。
+           収集の一覧（設定の `?tab=chiezo`）の表と同じ値。上のフォームの中には置けない（フォームは入れ子にできない） --%>
+          <%= for {{sweep, times}, index} <- Enum.with_index(@survey_times || []) do %>
+            <form
+              id={if index == 0, do: "survey-times-form", else: "survey-times-form-#{index}"}
+              class="wake-form"
+              phx-submit="save_survey_times"
             >
-              情報収集を今すぐ 1 回走らせる
-            </button>
-            <span :if={@survey_run} class="muted-note" aria-live="polite">{@survey_run}</span>
-          </div>
+              <input type="hidden" name="sweep" value={sweep} />
+              <label>
+                {sweep}を起こす時刻（日本時間）
+                <input type="text" name="times" value={times} placeholder="04:00,16:00" />
+              </label>
+              <button type="submit" phx-disable-with="保存しています…">時刻を保存</button>
+              <p class="muted-note">
+                「04:00,16:00」のようにカンマで並べます。空なら起こしません。1 回十分ほどかかるので、
+                ほかの収集・巡回と時刻をずらしてください。
+              </p>
+              <p :if={@survey_saved[sweep]} aria-live="polite">{@survey_saved[sweep]}</p>
+            </form>
+            <%!-- **今すぐ 1 回**（区画は Chiezo が選ぶふつうの回。区画を選んで頼むのは区画の画面） --%>
+            <div :if={@state.collection} class="button-row">
+              <button
+                type="button"
+                phx-click="run_survey_now"
+                phx-value-sweep={sweep}
+                phx-disable-with="頼んでいます…"
+              >
+                {sweep}を今すぐ 1 回走らせる
+              </button>
+              <span :if={@survey_run[sweep]} class="muted-note" aria-live="polite">
+                {@survey_run[sweep]}
+              </span>
+            </div>
+          <% end %>
 
           <p :if={@state.collection && @state.collection.url} class="muted-note">
             <a href={@state.collection.url} target="_blank" rel="noreferrer">Chiezo で見る</a>

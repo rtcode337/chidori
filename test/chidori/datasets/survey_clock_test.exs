@@ -56,6 +56,19 @@ defmodule Chidori.Datasets.SurveyClockTest do
                SurveySetting.put("chidori_dining_1", %{run_at: "25:00"})
     end
 
+    test "時刻と記録は巡回ごと（巡回を省けば情報収集）" do
+      {:ok, _} = SurveySetting.put("chidori_gourmet", %{run_at: "04:00"})
+      {:ok, _} = SurveySetting.put("chidori_gourmet", "漏れ探し", %{run_at: "10:00"})
+
+      assert SurveySetting.get("chidori_gourmet").run_at == "04:00"
+      assert SurveySetting.get("chidori_gourmet", "情報収集").run_at == "04:00"
+      assert SurveySetting.get("chidori_gourmet", "漏れ探し").run_at == "10:00"
+
+      {:ok, _} = SurveySetting.record("chidori_gourmet", "漏れ探し", @slot, true, "起こしました")
+      assert SurveySetting.get("chidori_gourmet", "漏れ探し").slot_ok
+      refute SurveySetting.get("chidori_gourmet").slot_ok
+    end
+
     test "予定ごとに、起こせたかを残す" do
       {:ok, _} = SurveySetting.record("chidori_dining_1", @slot, true, "起こしました")
       saved = SurveySetting.get("chidori_dining_1")
@@ -80,6 +93,22 @@ defmodule Chidori.Datasets.SurveyClockTest do
       assert CollectOverview.clock(sweep, "chidori_anime_seichi") == "時刻を決めていない（起こさない）"
       # 時刻で起こさない収集の情報収集には出さない
       assert CollectOverview.wake(sweep, "chidori_news") == nil
+    end
+
+    test "ご当地グルメは漏れ探しも時刻で起こし、時刻は情報収集と別に持つ" do
+      assert {"chidori_gourmet", "情報収集"} in SurveyClock.clocked_sweeps()
+      assert {"chidori_gourmet", "漏れ探し"} in SurveyClock.clocked_sweeps()
+      # ほかの対象は情報収集だけ
+      refute {"chidori_anime_seichi", "漏れ探し"} in SurveyClock.clocked_sweeps()
+
+      {:ok, _} = SurveySetting.put("chidori_gourmet", "漏れ探し", %{run_at: "10:00"})
+      omission = %{"name" => "漏れ探し", "by_caller" => true}
+
+      assert CollectOverview.clock(omission, "chidori_gourmet") == "Chidori が起こす（10:00）"
+      assert CollectOverview.wake(omission, "chidori_gourmet") == {:survey, "10:00"}
+
+      assert CollectOverview.clock(%{"name" => "情報収集", "by_caller" => true}, "chidori_gourmet") ==
+               "時刻を決めていない（起こさない）"
     end
   end
 end

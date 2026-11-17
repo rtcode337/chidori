@@ -37,7 +37,7 @@ defmodule Chidori.Datasets.Gourmet do
   機械収集（名簿）→ ざっと見る（名簿を一通り確かめ、すぐ分かる代表店だけ決める。一周で止まる）→
   情報収集（整理しつつ足りない情報を探す重い回。代表店を決める・空欄を埋める・確かめ直す。
   Chidori が時刻を決めて起こす）→ 漏れ探し（まだ並んでいない料理・名産・名物の店を足すだけの回。
-  情報収集が見終えた県から）。**1 回に 1 県**。
+  情報収集が見終えた県から。これも Chidori が時刻を決めて起こす）。**1 回に 1 県**。
   """
 
   alias Chidori.Chiezo
@@ -487,8 +487,10 @@ defmodule Chidori.Datasets.Gourmet do
       request_sweep: @survey_sweep,
       # **区画を回る巡回を、回る順に**（情報収集はざっと見るが、漏れ探しは情報収集が見終えた県から回る）
       partition_sweeps: [@scan_sweep, @survey_sweep, @omission_sweep],
-      # **情報収集は Chidori が時刻を決めて起こす**（`Chidori.Datasets.SurveyClock`）
+      # **情報収集と漏れ探しは Chidori が時刻を決めて起こす**（`Chidori.Datasets.SurveyClock`。
+      # 時刻は巡回ごと）
       survey_clock: true,
+      clocked_sweeps: [@survey_sweep, @omission_sweep],
       # **県ごとの進み具合を出す対象**（データ収集の画面。区画の地図の代わり）
       prefectures: true,
       export_key: @export_key,
@@ -775,7 +777,8 @@ defmodule Chidori.Datasets.Gourmet do
       %{
         name: @omission_sweep,
         prompt: :omission,
-        # 整理と同じ間隔（1 回 1 県なので、一周は 47 県 × 12 時間 ≒ 24 日）
+        # 間隔は整理と同じ（Chiezo の時計は外してあるので、読まれるのは画面の一周の目安と、
+        # 時計を戻したときだけ。1 回 1 県・12 時間おきなら一周 47 県 × 12 時間 ≒ 24 日）
         interval_minutes: SweepNames.tidy_minutes(),
         partitions_per_run: 1,
         # **情報収集が見終えた県から回る**（`after_each`。一周は待たない）。代表店を決めて
@@ -783,7 +786,10 @@ defmodule Chidori.Datasets.Gourmet do
         after: @survey_sweep,
         after_each: true,
         # **足すだけ**。今ある料理は直さず消さない（直すのは情報収集の仕事）
-        only_new: true
+        only_new: true,
+        # **Chiezo の時計では回さない**（情報収集と同じく重い相手で回すので、Chidori が
+        # 時刻を決めて起こす。`Chidori.Datasets.SurveyClock`）
+        by_caller: true
       }
     ]
   end

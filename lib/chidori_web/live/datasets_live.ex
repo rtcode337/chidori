@@ -26,6 +26,7 @@ defmodule ChidoriWeb.DatasetsLive do
   alias Chidori.Chiezo
   alias Chidori.Datasets
   alias Chidori.Datasets.DiningAreas
+  alias Chidori.Datasets.SurveyClock
   alias Chidori.Datasets.SurveySetting
   alias Chidori.Datasets.Requests
   alias Chidori.Datasets.ShelfCache
@@ -212,11 +213,12 @@ defmodule ChidoriWeb.DatasetsLive do
         # 埋めてほしい欄は対象ごとに違うので、対象を替えたら全部を選び直す
         fill_fields: fill_fields_default(dataset),
         filled: nil,
-        # 範囲ごとの食事処の、情報収集を起こす時刻（`Chidori.Datasets.SurveyClock`）。
-        # 収集の一覧（設定の `?tab=chiezo`）の表と同じ値（同じ表を読み書きする）
+        # 時刻で起こす巡回（情報収集・ご当地グルメの漏れ探し）の、起こす時刻
+        # （`Chidori.Datasets.SurveyClock`）。収集の一覧（設定の `?tab=chiezo`）の表と同じ値
+        # （同じ表を読み書きする）。保存と「今すぐ 1 回」の一言は巡回の名前ごと
         survey_times: survey_times_of(dataset),
-        survey_saved: nil,
-        survey_run: nil
+        survey_saved: %{},
+        survey_run: %{}
       )
 
     # **本棚のある対象は、開いただけでは Chiezo と話さない。** 本棚は覚え書きを出し、
@@ -239,43 +241,50 @@ defmodule ChidoriWeb.DatasetsLive do
   end
 
   @impl true
-  # **情報収集を今すぐ 1 回走らせる**（時刻で起こす対象だけ。区画は Chiezo が選ぶふつうの回）。
-  # 押した人の 1 回なので、止めている収集でも走る（`Chiezo.by_hand/1`）
+  # **時刻で起こす巡回を今すぐ 1 回走らせる**（時刻で起こす対象の、時計が起こす巡回だけ。
+  # 区画は Chiezo が選ぶふつうの回）。押した人の 1 回なので、止めている収集でも走る（`Chiezo.by_hand/1`）
   def handle_event(
         "run_survey_now",
-        _params,
+        params,
         %{assigns: %{dataset: %{survey_clock: true} = dataset}} = socket
       ) do
-    {:noreply,
-     socket
-     |> assign(survey_run: "頼んでいます…")
-     |> start_async(:run_survey_now, fn ->
-       with {:ok, base} <- Datasets.base_url() do
-         Chiezo.by_hand(fn ->
-           Chiezo.run(base, dataset.collection,
-             sweep: Chidori.Datasets.Dining.survey_sweep(),
-             timeout: 60_000
-           )
-         end)
-       end
-     end)}
+    sweep = clocked_sweep(dataset, params["sweep"])
+
+    if sweep do
+      {:noreply,
+       socket
+       |> update(:survey_run, &Map.put(&1, sweep, "頼んでいます…"))
+       |> start_async({:run_survey_now, sweep}, fn ->
+         with {:ok, base} <- Datasets.base_url() do
+           Chiezo.by_hand(fn ->
+             Chiezo.run(base, dataset.collection, sweep: sweep, timeout: 60_000)
+           end)
+         end
+       end)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("run_survey_now", _params, socket), do: {:noreply, socket}
 
-  # **情報収集を起こす時刻を直す**（時刻で起こす対象だけ）。Chiezo には送らない ——
+  # **時刻で起こす巡回の時刻を直す**（時刻で起こす対象だけ）。Chiezo には送らない ——
   # 時計を持つのは Chidori。収集の一覧（設定の `?tab=chiezo`）の表と同じ値を書き換える
-  def handle_event("save_survey_times", %{"times" => times}, socket) do
+  def handle_event("save_survey_times", %{"times" => times} = params, socket) do
     dataset = socket.assigns.dataset
+    sweep = dataset[:survey_clock] && clocked_sweep(dataset, params["sweep"])
 
     message =
-      case dataset[:survey_clock] && SurveySetting.put(dataset.collection, %{"run_at" => times}) do
+      case sweep && SurveySetting.put(dataset.collection, sweep, %{"run_at" => times}) do
         {:ok, _saved} -> "起こす時刻を保存しました。"
         {:error, %Ecto.Changeset{} = changeset} -> changeset_error(changeset)
         _other -> "起こす時刻を保存できませんでした。"
       end
 
-    {:noreply, assign(socket, survey_times: survey_times_of(dataset), survey_saved: message)}
+    {:noreply,
+     socket
+     |> assign(survey_times: survey_times_of(dataset))
+     |> update(:survey_saved, &Map.put(&1, sweep || "", message))}
   end
 
   # **依頼を送って、そのまま読み直す。** 送っただけでは画面が変わらないので、
@@ -687,19 +696,19 @@ defmodule ChidoriWeb.DatasetsLive do
      )}
   end
 
-  def handle_async(:run_survey_now, {:ok, result}, socket) do
+  def handle_async({:run_survey_now, sweep}, {:ok, result}, socket) do
     message =
       case result do
-        :ok -> "情報収集を 1 回頼みました（区画は Chiezo が選びます）。"
+        :ok -> "#{sweep}を 1 回頼みました（区画は Chiezo が選びます）。"
         {:error, reason} -> "頼めませんでした: #{inspect(reason)}"
         _other -> "頼めませんでした。"
       end
 
-    {:noreply, assign(socket, survey_run: message)}
+    {:noreply, update(socket, :survey_run, &Map.put(&1, sweep, message))}
   end
 
-  def handle_async(:run_survey_now, {:exit, _reason}, socket),
-    do: {:noreply, assign(socket, survey_run: "頼めませんでした。")}
+  def handle_async({:run_survey_now, sweep}, {:exit, _reason}, socket),
+    do: {:noreply, update(socket, :survey_run, &Map.put(&1, sweep, "頼めませんでした。"))}
 
   def handle_async(:push, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, state: %{crashed(socket.assigns.state) | pushing: false})}
@@ -1578,9 +1587,19 @@ defmodule ChidoriWeb.DatasetsLive do
 
   defp with_survey_per_run(dataset, _value), do: dataset
 
-  # 情報収集を時刻で起こす対象の、起こす時刻（ほかの対象では nil = 欄を出さない）
+  # 時刻で起こす対象の、巡回ごとの起こす時刻（`{巡回の名前, 時刻}` を並べて。ほかの対象では
+  # nil = 欄を出さない）
   defp survey_times_of(dataset) do
-    if dataset[:survey_clock], do: SurveySetting.get(dataset.collection).run_at || ""
+    if dataset[:survey_clock] do
+      for sweep <- SurveyClock.sweeps_of(dataset),
+          do: {sweep, SurveySetting.get(dataset.collection, sweep).run_at || ""}
+    end
+  end
+
+  # 画面から届いた巡回の名前を、その対象で時計が起こす巡回に限る（書いていなければ情報収集）
+  defp clocked_sweep(dataset, sweep) do
+    sweep = sweep || Chidori.SweepNames.survey()
+    if sweep in SurveyClock.sweeps_of(dataset), do: sweep
   end
 
   defp changeset_error(changeset) do

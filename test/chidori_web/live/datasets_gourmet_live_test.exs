@@ -68,7 +68,8 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
         Chidori.HttpStub.ok(Jason.encode!(%{"changes" => []}))
 
       %{method: :post, url: url, body: body} ->
-        send(test_pid, {:posted, url, Jason.decode!(body)})
+        # 区画も相手も書かないふつうの 1 回は本文が空
+        send(test_pid, {:posted, url, if(body in [nil, ""], do: %{}, else: Jason.decode!(body))})
         Chidori.HttpStub.ok(~s({}))
 
       %{method: :get} ->
@@ -266,6 +267,31 @@ defmodule ChidoriWeb.DatasetsGourmetLiveTest do
     refute html =~ "この区画で 1 回走らせる"
     assert html =~ "沖縄県はまだ区画がありません"
     refute_received {:posted, _url, _body}
+  end
+
+  test "情報収集と漏れ探しの起こす時刻を、巡回ごとに直せて、どちらも今すぐ 1 回走らせられる", %{conn: conn} do
+    {:ok, _} = Chidori.Datasets.SurveySetting.put("chidori_gourmet", %{run_at: "04:00"})
+    {:ok, live, _html} = live(conn, ~p"/collect/apps?view=gourmet")
+    html = render_async(live)
+
+    assert html =~ "情報収集を起こす時刻"
+    assert html =~ "漏れ探しを起こす時刻"
+
+    html = live |> form("#survey-times-form-1", %{times: "10:00"}) |> render_submit()
+    assert html =~ "起こす時刻を保存しました。"
+    assert Chidori.Datasets.SurveySetting.get("chidori_gourmet", "漏れ探し").run_at == "10:00"
+    # 情報収集の時刻は動かない
+    assert Chidori.Datasets.SurveySetting.get("chidori_gourmet").run_at == "04:00"
+
+    live
+    |> element(~s|button[phx-click="run_survey_now"][phx-value-sweep="漏れ探し"]|)
+    |> render_click()
+
+    assert_receive {:posted, url, _body}, 2_000
+    assert url =~ "/v1/collect/chidori_gourmet/run"
+    assert url =~ URI.encode_query(%{"sweep" => "漏れ探し"})
+    assert url =~ "manual=true"
+    assert render_async(live) =~ "漏れ探しを 1 回頼みました"
   end
 
   test "依頼文と、引き当て・書式の指定が読める", %{conn: conn} do
