@@ -649,6 +649,22 @@ defmodule Chidori.Datasets.GourmetTest do
              |> String.starts_with?("選定理由: 県や県の観光協会が名物として紹介\n代表店: ")
     end
 
+    test "説明の先頭は料理そのものの説明（本文の冒頭。段落の間の空行は詰める）" do
+      opening = "ソースカツ丼は、福井県の名物の丼。\n\n薄いカツをソースにくぐらせて載せる。"
+
+      lines =
+        String.split(Gourmet.spot(doc(%{"opening" => opening}), dataset())["description"], "\n")
+
+      assert Enum.take(lines, 3) == [
+               "ソースカツ丼は、福井県の名物の丼。",
+               "薄いカツをソースにくぐらせて載せる。",
+               "選定理由: 県や県の観光協会が名物として紹介"
+             ]
+
+      # 本文が無ければ今までどおり選定理由から
+      assert Gourmet.description(["裏付け:県"], %{}, nil) |> String.starts_with?("選定理由: ")
+    end
+
     test "代表店の理由は代表店の行のすぐ後ろに（書いていなければ出さない）" do
       extra = Map.put(doc(%{})["extra"], "shop_reason", "1950 年創業の発祥の店で、いまも本店で出している")
       lines = String.split(Gourmet.spot(doc(%{"extra" => extra}), dataset())["description"], "\n")

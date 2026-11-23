@@ -561,9 +561,9 @@ defmodule Chidori.Datasets.Gourmet do
       %{
         field: "説明（description）",
         stored:
-          "タグ「裏付け:…」（選定理由）・extra.shop（代表店）・extra.#{@shop_reason_key}（代表店の理由）・" <>
+          "本文の冒頭（料理の説明）・タグ「裏付け:…」（選定理由）・extra.shop（代表店）・extra.#{@shop_reason_key}（代表店の理由）・" <>
             "提供の時期・営業時間・extra.url / extra.sources",
-        who: "機械が組み立てる（選定理由は裏付けから機械で、代表店の理由は AI が書いた 1 行）"
+        who: "機械が組み立てる（料理の説明は本文の冒頭、選定理由は裏付けから機械で、代表店の理由は AI が書いた 1 行）"
       },
       %{
         field: "（座標の出どころ）",
@@ -1818,7 +1818,7 @@ defmodule Chidori.Datasets.Gourmet do
         "rank" => rank(tags, extra),
         "series" => series_of(tags),
         "categories" => tags |> categories(extra) |> Enum.join("|"),
-        "description" => description(tags, extra),
+        "description" => description(tags, extra, doc["opening"]),
         "available_months" => text(extra["available_months"]),
         "opening_hours" => text(extra["opening_hours"]),
         "ask_name" => ask_name(name, extra),
@@ -2012,18 +2012,24 @@ defmodule Chidori.Datasets.Gourmet do
   end
 
   @doc """
-  説明文。**選定理由・代表店の名前と選んだ決まり・代表店の理由・提供の時期・営業時間・出典**を
-  1 行ずつ（店の 1 件は代表店ではなく「店:」で、その店自身・本店を書く）。
-  料理そのものの説明（本文）は入れません —— 名簿の 1 件は百科事典の冒頭を持っていて、
-  写すと CC BY-SA の帰属と継承が付く。座標の出どころ（辞典ごとにライセンスが違う）も添える。
+  説明文。**料理そのものの説明（本文の冒頭）**を先頭に置き、続けて**選定理由・代表店の名前と
+  選んだ決まり・代表店の理由・提供の時期・営業時間・出典**を 1 行ずつ（店の 1 件は代表店ではなく
+  「店:」で、その店自身・本店を書く）。座標の出どころ（辞典ごとにライセンスが違う）も添える。
+
+  - **料理の説明**は 1 件の本文の冒頭（`opening`）。無ければ出さない。以前は入れていなかった ——
+    名簿の 1 件は百科事典の冒頭を持っていて、写すと CC BY-SA の帰属と継承が付くため。だが
+    説明に何の料理かが書かれず、地図で見ても分からなかった。本文は 9 割以上を AI が自分の言葉で
+    書き直していて、百科事典の冒頭のままの 1 件には出典の行に記事（`[ja.wikipedia:…]`）が付く
+    （travel-log の観光地が百科事典の冒頭を出典つきで出しているのと同じ扱い）
 
   - **選定理由**（なぜご当地グルメなのか）は、タグ「裏付け:」から機械で組む（AI に文を書かせない。
     裏付けの無い 1 件には出さない）
   - **代表店の理由**（なぜこの店か）は、AI が `extra.shop_reason` に書いた 1 行（確かめた頁に
     基づく事実だけ）。店の 1 件では「選んだ理由」と書く
   """
-  def description(tags, extra) do
+  def description(tags, extra, opening \\ "") do
     [
+      opening_text(opening),
       backing_line(tags),
       shop_line(tags, extra),
       shop_reason_line(tags, extra),
@@ -2034,6 +2040,14 @@ defmodule Chidori.Datasets.Gourmet do
     ]
     |> Enum.reject(&(&1 == ""))
     |> Enum.join("\n")
+  end
+
+  # 料理の説明（本文の冒頭）。段落の間の空行は詰める（説明の中で行が空くと読みにくい）
+  defp opening_text(opening) do
+    opening
+    |> text()
+    |> String.split(~r/\R+/u, trim: true)
+    |> Enum.map_join("\n", &String.trim/1)
   end
 
   defp shop_line(tags, extra) do
