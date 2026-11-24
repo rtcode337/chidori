@@ -88,7 +88,7 @@ paths:
   区画が矩形でない対象（ご当地グルメ）は控えるときに区画の鍵を決めて残す（`partition_key`。対象の `request_partition/1`。
   名前の出てくる依頼は近くの同じ名前の料理の県、追加は座標の県）。前置きは対象が持っていればそれ（`request_preface/0`）。
   補足は区画ごとに分けて渡す。1 回 20 区画まで。「位置確認」「位置修正」の行は AI に渡さず Chiezo の locks で座標を固定する。
-  人が閉店と報告した店は頼む直前に固定を外す（`Requests.release_closed/2`）
+  人が閉店・名前の変更と報告した店は頼む直前に固定を外す（`Requests.release_closed/2`。名前は「名前・店名・屋号」の語と組で見る。「閉店していない」のような打ち消しは数えない）
 - travel-log への書き出しは `Chidori.Datasets.TravelLog`。行を自分で組む対象（`spot/2`。ご当地グルメ）は列（`csv_header/0`）も
   説明文もランクもその対象が決め、地図に置けない 1 件（座標が無い）の key は exclude.txt に入れる。travel-log に Chidori の決めごとを持たせず、向こうの形（`settings.json`・`spots.csv`・`exclude.txt`）に直す。
   食事処のカテゴリの先頭には範囲の名前を機械で付ける（`TravelLog.area_categories/1`。travel-log では 1 つの種別に読み込むので範囲で絞る軸がほかに無い）。

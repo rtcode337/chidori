@@ -46,9 +46,19 @@ defmodule Chidori.Datasets.Requests do
 
   # 「閉店している」の報告（`- [修正] 名前 (緯度,経度): 理由`）。**位置を固定した店は
   # AI の墓標では消えない**（Chiezo の `locked_doubt_tag`）ので、人が現地で見た報告は
-  # 頼む前に固定を外す（`release_closed/2`）—— 外さないと「閉店の可能性あり」が付くだけで残る
+  # 頼む前に固定を外す（`release_closed/2`）—— 外さないと「閉店の可能性あり」が付くだけで残る。
+  #
+  # **店の名前が変わった報告も同じ扱い**（前の店は消して、新しい店を足す。依頼の前置き）。
+  # 閉店の言葉だけを見ていた頃は、名前が変わったと報告した位置確認済みの店が固定に止められて
+  # 消えず、「閉店の可能性あり」を付けて新しい店と同じ場所に並んだ。**名前・屋号の語と組で
+  # 見る** —— 「変わった」だけで当てると、営業時間や種類が変わった報告でも固定が外れる。
+  #
+  # **打ち消しは閉店の報告に数えない**（「閉店していない」「潰れていない」）。数えていた頃は、
+  # 営業していると報告した店の固定まで外していた
   @fix_mark "[修正]"
   @closed ~r/閉店|閉業|廃業|潰れ|つぶれ|なくなって|無くなって|営業して(い)?ない|やってい?ない|存在しない|見当たらない/u
+  @renamed ~r/(名前|店名|屋号|看板)(が|を|も|は)?.{0,8}?(変わ|かわ|替わ|変更|変え)|改名|別の店|違う店|別のお店|違うお店/u
+  @not_closed ~r/(閉店|閉業|廃業|潰れ|つぶれ)(して|て)?(い)?(ない|ません)/u
 
   @doc """
   AI を通さずに座標を固定させる行。`%{name, lat, lon}` の並び（`lat` / `lon` は店を探す
@@ -146,19 +156,26 @@ defmodule Chidori.Datasets.Requests do
   end
 
   @doc """
-  人が「閉店している」と報告した店（`%{name, lat, lon}` の並び）。`[修正]` の行のうち、
-  理由が閉店を言っているものだけ。
+  人が「閉店している」「名前が変わった」と報告した店（`%{name, lat, lon}` の並び）。
+  `[修正]` の行のうち、理由が閉店か名前の変更を言っているものだけ（「閉店していない」の
+  ような打ち消しは数えない）。
   """
   def closures(text) when is_binary(text) do
     for line <- String.split(text, "\n"),
         String.contains?(line, @fix_mark),
         [_head, reason] <- [String.split(line, "):", parts: 2)],
-        Regex.match?(@closed, reason),
+        closing?(reason),
         %{name: name, lat: lat, lon: lon} <- held_line(line, @fix_mark),
         do: %{name: name, lat: lat, lon: lon}
   end
 
   def closures(_text), do: []
+
+  # 前の店を消してよい報告か（閉店した・名前が変わった）。打ち消しは数えない
+  defp closing?(reason) do
+    Regex.match?(@renamed, reason) or
+      (Regex.match?(@closed, reason) and not Regex.match?(@not_closed, reason))
+  end
 
   @doc """
   閉店を報告された店のうち、**位置を固定している店の固定を外します**（`Chiezo.unlock/3`）。
